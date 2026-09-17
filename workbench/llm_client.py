@@ -27,8 +27,10 @@ def _preview(text, limit=_MAX_TRACE):
     return text if len(text) <= limit else text[:limit] + '…（截断）'
 
 
-def chat(provider, messages, max_tokens=4000, timeout=None):
-    """单次对话调用。返回 (content, trace)；失败抛 LlmError（中文可读）。"""
+def chat(provider, messages, max_tokens=4000, timeout=None, probe=False):
+    """单次对话调用。返回 (content, trace)；失败抛 LlmError（中文可读）。
+    probe=True：连通性探测——HTTP 2xx 即视为连通，不校验截断与内容
+    （推理模型思考 token 计入 max_tokens，极小 max_tokens 必然截断）。"""
     endpoint = str(provider.get('endpoint') or '')
     model = str(provider.get('model') or '')
     if not endpoint or not model:
@@ -56,14 +58,17 @@ def chat(provider, messages, max_tokens=4000, timeout=None):
     except (ValueError, json.JSONDecodeError):
         raise LlmError('LLM 接口返回的内容无法解析') from None
     duration = int((time.monotonic() - started) * 1000)
-    if data.get('choices') and data['choices'][0].get('finish_reason') == 'length':
-        raise LlmError('LLM 输出被截断（超出 max_tokens），请简化代码或计算规则后重试')
-    try:
-        content = data['choices'][0]['message']['content']
-    except (KeyError, IndexError, TypeError):
-        raise LlmError('LLM 接口响应格式不符合 chat/completions 结构') from None
-    if not isinstance(content, str) or len(content) > 200000:
-        raise LlmError('LLM 输出无效或过大')
+    if not probe:
+        if data.get('choices') and data['choices'][0].get('finish_reason') == 'length':
+            raise LlmError('LLM 输出被截断（超出 max_tokens），请简化代码或计算规则后重试')
+        try:
+            content = data['choices'][0]['message']['content']
+        except (KeyError, IndexError, TypeError):
+            raise LlmError('LLM 接口响应格式不符合 chat/completions 结构') from None
+        if not isinstance(content, str) or len(content) > 200000:
+            raise LlmError('LLM 输出无效或过大')
+    else:
+        content = ''
     trace = {'provider': str(provider.get('name') or provider.get('id') or ''),
              'model': model, 'durationMs': duration,
              'request': _preview(json.dumps(messages, ensure_ascii=False)),
@@ -134,11 +139,12 @@ def evaluate_json(payload, provider, timeout=None, system=EVALUATOR_SYSTEM):
 
 
 def test_connect(provider):
-    """连通性探测：发送极小请求验证地址/密钥/模型。返回 {'ok', 'message', 'latencyMs'}。"""
+    """连通性探测：发送极小请求验证地址/密钥/模型（2xx 即连通，不要求可解析输出）。
+    返回 {'ok', 'message', 'latencyMs'}。"""
     started = time.monotonic()
     try:
         content, _trace = chat(provider, [{'role': 'user', 'content': 'ping'}], max_tokens=1,
-                               timeout=min(int(provider.get('timeout') or 30), 30))
+                               timeout=min(int(provider.get('timeout') or 30), 30), probe=True)
     except LlmError as exc:
         return {'ok': False, 'message': str(exc), 'latencyMs': int((time.monotonic() - started) * 1000)}
     return {'ok': True, 'message': '连通正常（模型已响应）',
