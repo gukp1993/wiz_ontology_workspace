@@ -158,10 +158,10 @@ button:active:not(:disabled){transform:translateY(1px)}
 .ld-tabs button:hover{color:var(--ink)}
 .ld-tabs button.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
 .ld-body{padding:18px 24px 24px}
-.ld-switch-list{max-height:320px;overflow:auto;margin:10px 0}
-.ld-switch-row{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:1px solid transparent;background:transparent;padding:9px 10px;border-radius:var(--r-sm);font-size:13px}
-.ld-switch-row:hover{background:var(--paper-2)}
-.ld-switch-row small{color:var(--muted)}
+
+
+
+
 /* 窄屏单栏：断点判定只在 JS（matchMedia）一处，布局只认 .ld-stacked，避免双份断点漂移。 */
 .ld-stacked{grid-template-columns:1fr;height:auto;min-height:0}
 .ld-stacked .ld-list{border-right:0}

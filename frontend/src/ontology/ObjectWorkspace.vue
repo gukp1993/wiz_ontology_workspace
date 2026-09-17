@@ -78,7 +78,7 @@ function closeEditor() { editor.value = null; editorError.value = '' }
 // 保存成功/取消后返回原对象与原页签，并定位（闪烁 + 滚动到可见）条目。
 const highlightId = ref('')
 let highlightTimer: ReturnType<typeof setTimeout> | null = null
-// 定位（保存后/深链/快速切换）：目标不在当前筛选结果里时，清除妨碍定位的筛选并翻到目标页——
+// 定位（保存后/深链）：目标不在当前筛选结果里时，清除妨碍定位的筛选并翻到目标页——
 // 只对「对象类型」生效；属性/链接/动作/规则行只做滚动定位，不动列表筛选。
 async function locate(id: string) {
   if (!id) return
@@ -295,20 +295,6 @@ function listKeydown(e: KeyboardEvent) {
   const n = e.key === 'ArrowDown' ? Math.min(i + 1, rows.length - 1) : e.key === 'ArrowUp' ? Math.max(i - 1, 0)
     : e.key === 'Home' ? 0 : e.key === 'End' ? rows.length - 1 : -1
   if (n >= 0) { e.preventDefault(); rows[n].focus() }
-}
-
-// 快速切换：搜索全部对象类型，不受左侧筛选限制。
-const switcherOpen = ref(false), switchQuery = ref(''), switchInput = ref<HTMLInputElement | null>(null)
-const switchRows = computed(() => {
-  const q = switchQuery.value.trim().toLowerCase()
-  return objects.value.filter((o: any) => !q || ((o['rdfs:label'] || '') + ' ' + (o['rdfs:comment'] || '')).toLowerCase().includes(q)).slice(0, 60)
-})
-function openSwitcher() { switcherOpen.value = true; switchQuery.value = ''; nextTick(() => switchInput.value?.focus()) }
-async function switchTo(id: string) {
-  switcherOpen.value = false
-  selected.value = id; message.value = ''
-  openDetailIfStacked()
-  await locate(id)
 }
 
 // ─── 深链定位（共享库「查看引用」/校验问题/旧 hash）：进入即打开对应属性表单 ───
@@ -590,7 +576,6 @@ function selectById(id: string) {
               <h2 class="ow-h2-name">{{ current['rdfs:label'] || '未命名对象' }}</h2>
               <div class="ow-head-side">
                 <button type="button" :aria-pressed="starred" :title="starred ? '取消收藏（仅保存在本机浏览器，不写入本体）' : '收藏（仅保存在本机浏览器，不写入本体）'" @click="toggleStar(current['@id'])">{{ starred ? '★ 已收藏' : '☆ 收藏' }}</button>
-                <button type="button" @click="openSwitcher">切换对象</button>
                 <button type="button" @click="showInCanvas" title="在关系画布中定位此对象">在画布查看</button>
                 <button type="button" @click="openObjectEditor(false)">编辑定义</button>
                 <button type="button" class="danger" @click="removeNode(current['@id'], current['rdfs:label'])">删除对象</button>
@@ -700,19 +685,6 @@ function selectById(id: string) {
           <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
           </div>
         </template>
-      </section>
-    </div>
-    <!-- 快速切换：搜索全部对象类型；目标不在当前筛选结果时清除筛选并翻到目标页 -->
-    <div v-if="switcherOpen" class="modal-backdrop" @click.self="switcherOpen = false">
-      <section class="modal-card dialog-md" role="dialog" aria-modal="true" aria-label="切换对象">
-        <h2>切换对象</h2>
-        <p class="field-help">搜索全部对象类型，不受左侧筛选限制。目标不在当前筛选结果时，会清除筛选并翻到目标所在页。</p>
-        <input ref="switchInput" type="search" :value="switchQuery" placeholder="输入对象名称" aria-label="搜索要切换的对象" @input="switchQuery = ($event.target as HTMLInputElement).value">
-        <div class="ld-switch-list">
-          <button v-for="o in switchRows" :key="o['@id']" type="button" class="ld-switch-row" @click="switchTo(o['@id'])"><span>{{ o['rdfs:label'] || '未命名对象' }}</span><small>{{ o['@id'] === selected ? '当前' : '→' }}</small></button>
-          <p v-if="!switchRows.length" class="muted">没有匹配对象。</p>
-        </div>
-        <div class="dialogtools"><button type="button" @click="switcherOpen = false">取消</button></div>
       </section>
     </div>
   </template>
