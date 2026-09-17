@@ -17,6 +17,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import AppSelect from '../shared/AppSelect.vue'
+import RowMenu from '../shared/RowMenu.vue'
 import PropertyManager from './PropertyManager.vue'
 import { shortType } from './editorModel'
 import { listShared, referencesOf, externalReferencesOf, shapeConflict, copyAsPrivate, propertyTypeLabel, valueShapeOf, detachProperty, makeProperty, localProperties, effectiveProperty, addReference, asShared, parsePropertyRows } from './propertyModel'
@@ -102,6 +103,19 @@ function copyOne() {
   feedback.value = `已在 ${typeName(t)} 创建私有副本（含完整元数据与新属性标识），此后可独立修改，不再跟随共享定义。`
 }
 
+// 行内更多操作（G4）：只承载已有能力；引用到对象/复制为私有仍走原有弹窗与转换语义
+function rowMenuItems(s: any) {
+  return [
+    { id: 'reference', label: '引用到对象' },
+    { id: 'copy', label: '复制为私有' },
+    { id: 'delete', label: '删除定义', danger: true },
+  ]
+}
+function onRowMenu(s: any, id: string) {
+  if (id === 'delete') { removeShared(s); return }
+  openDialog(id, s)
+}
+
 // ── 删除定义：契约/接口/项目映射直接引用时禁止；仅有本地属性引用时先解除引用并拷贝内容，防静默断链 ──
 function removeShared(s: any) {
   if (!s) return
@@ -110,8 +124,8 @@ function removeShared(s: any) {
   const usages = referencesOf(graph.value, s['@id'])
   const count = usages.length
   const tip = count
-    ? `此共享定义被 ${count} 个对象属性引用。删除后将先解除这些引用，并把名称、类型、单位等完整共享内容拷贝为各属性的本地定义（不会静默断链），再删除定义本身。可通过顶部撤销恢复。`
-    : `删除共享定义「${s['rdfs:label'] || '未命名'}」？可通过顶部撤销恢复。`
+    ? `此共享定义被 ${count} 个对象属性引用。删除后会把这些引用转为各自对象的本地私有属性（复制名称、类型、单位等完整内容，此后不再跟随共享定义同步），再删除共享定义本身；可通过顶部撤销恢复。`
+    : `删除共享定义「${s['rdfs:label'] || '未命名'}」？删除后各对象若仍需要该属性，只能改为本地私有属性单独维护；可通过顶部撤销恢复。`
   if (!confirm(tip)) return
   mutate(() => {
     for (const p of usages) detachProperty(p, graph.value)
@@ -174,9 +188,8 @@ function distribute() {
     <div class="tools lib-row-actions">
       <button class="primary" @click="openEditor(s['@id'])">维护定义</button>
       <button class="row-link" @click="openDialog('usages', s)">查看引用</button>
-      <button class="row-link" @click="openDialog('reference', s)">引用到对象</button>
-      <button class="row-link" @click="openDialog('copy', s)">复制为私有</button>
-      <button class="row-link danger" @click="removeShared(s)">删除定义</button>
+      <!-- G4：引用到对象／复制为私有／删除定义收进更多操作（能力不变，删除置底且危险色） -->
+      <RowMenu :items="rowMenuItems(s)" :aria-label="'更多操作 · ' + (s['rdfs:label'] || '未命名共享属性')" @pick="onRowMenu(s, $event)"/>
     </div>
   </div>
 </section>

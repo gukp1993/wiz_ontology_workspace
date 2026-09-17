@@ -19,12 +19,15 @@
 <script setup lang="ts">
 import {computed,inject,onMounted,ref,watch} from 'vue'
 import ReferenceNotice from './ReferenceNotice.vue'
+import AppError from '../shared/AppError.vue'
+import { isOutcomeUnknown } from '../app/http'
 import type {FormGuardAPI} from '../app/formGuard'
 import {decodeState} from '../ontology/modelFormat'
 import {effectiveProperty} from '../ontology/propertyModel'
 import { listProjectReleases, loadProjectStateRaw, projectPost } from './api'
 import { versionStateRaw } from '../ontology/api'
-const props=defineProps<{report:any;busy:boolean;projectState:any;refState?:any}>()
+// validateError（G2）：校验请求自身失败（网络/超时/服务问题）——不是业务问题，也不是校验通过
+const props=defineProps<{report:any;busy:boolean;projectState:any;refState?:any;validateError?:string}>()
 const emit=defineEmits(['refresh','navigate','published','open-ontology'])
 const commitNow=inject<(()=>Promise<void>)|undefined>('commit-now',undefined)
 const guardApi=inject<FormGuardAPI|undefined>('form-guard',undefined)
@@ -115,9 +118,12 @@ const scopeRows=computed(()=>{
 
 // --- 发布区：两步法；服务端发布时会再跑一次正式校验，422 返回 error/report ---
 const publishBusy=ref(false),publishError=ref(''),publishReport=ref<any>(null),lastPublish=ref('')
+// G2：写操作结果未知（超时/网络中断）时不显示成功、也不断言未写入；用现有「已发布版本」读取能力核对
+const publishUnknown=ref(false),publishCheckNote=ref(''),publishBaseline=ref<string[]>([])
 async function doPublish(){
   if(publishBusy.value)return
-  publishBusy.value=true;publishError.value='';publishReport.value=null
+  publishBusy.value=true;publishError.value='';publishReport.value=null;publishUnknown.value=false;publishCheckNote.value=''
+  publishBaseline.value=published.value.map((v:any)=>String(v.version||''))
   try{
     if(guardApi?.hasDirty()){publishError.value='还有打开的编辑表单未保存；请先在对应页面保存或放弃本次修改，再发布。';return}
     if(commitNow)await commitNow() // ① 未落盘修改先持久化
@@ -136,7 +142,22 @@ async function doPublish(){
     }
     emit('published')
     await loadPublished()
-  }catch(e){publishError.value=(e as Error).message}finally{publishBusy.value=false}
+  }catch(e:any){
+    publishUnknown.value=isOutcomeUnknown(e)
+    publishError.value=publishUnknown.value?'未收到发布结果，暂不能确认是否成功。':((e as Error).message||'发布失败')
+  }finally{publishBusy.value=false}
+}
+// 核对是否已产生新版本：只读取已发布清单，不覆盖本地草稿、不自动重发
+async function verifyPublished(){
+  if(publishBusy.value)return
+  const before=publishBaseline.value
+  await loadPublished()
+  const now=published.value.map((v:any)=>String(v.version||''))
+  const added=now.filter(v=>v&&!before.includes(v))
+  publishCheckNote.value=added.length
+    ? '服务端已有新版本 '+added.join('、')+'：本次发布很可能已经成功，请勿重复发布。'
+    : (publishedError.value?'暂时无法读取已发布版本：'+publishedError.value:'服务端未发现新版本：本次发布很可能没有写入，可修正后重新发布。')
+  if(added.length)publishUnknown.value=false
 }
 </script>
 <template><div class="project-home">
@@ -146,6 +167,7 @@ async function doPublish(){
 <p class="muted">只检查当前启用的对象与属性，不要求实现全部本体。配置校验检查结构完整性：引用版本、对象与属性归属、契约与实现匹配、输入输出绑定。它不能证明自然语言规则已正确执行或输出真实有效。</p>
 <p class="muted">配置校验通过 ≠ 已执行验证；执行验证在实例浏览/计算预览中。</p></div>
 <div class="tools"><span v-if="report" class="status-pill" :class="report.errors.length?'pill-error':'pill-ok'">{{report.errors.length?report.errors.length+' 个问题':'校验通过'}}</span><button :disabled="busy" @click="emit('refresh')">{{busy?'校验中…':'刷新校验'}}</button></div></div>
+<AppError v-if="validateError" title="未能完成校验" :reason="validateError" hint="这是校验请求本身失败（本地服务或网络问题），不代表配置有问题，也不代表校验通过；修正后可重新校验。" retry-label="重新校验" @retry="emit('refresh')"/>
 <template v-if="report">
 <p :class="report.errors.length?'inline-error':'inline-success'">{{report.errors.length?('发现 '+report.errors.length+' 个问题，发布前需全部解决：这些是阻断问题，下方发布已禁用'):'已配置项校验通过（未执行业务数据验证）；未配置项见下方清单'}}</p>
 <template v-if="report.errors.length"><h3 class="issue-group">错误 {{report.errors.length}}</h3><div v-for="e in report.errors" :key="e" class="issue-row error"><span>{{friendly(e)}}</span>
@@ -167,7 +189,7 @@ async function doPublish(){
 <p class="muted">因此：连接测试成功 ≠ 取值成功；配置校验通过 ≠ 已执行验证。发布的是配置快照，不等于上线或可运行。</p>
 </div>
 </template>
-<p v-else class="muted">尚未执行校验。点击“刷新校验”获取当前配置状态。</p>
+<p v-else-if="!validateError" class="muted">尚未执行校验。点击“刷新校验”获取当前配置状态。</p>
 <details class="scope-details"><summary>本项目属性使用范围</summary>
 <p class="muted">只读范围清单：逐对象列出已配置取值的属性；未配置数 = 引用版本中该对象尚未配置来源的属性数。</p>
 <div class="sample-panel">
@@ -184,7 +206,8 @@ async function doPublish(){
 <p class="muted">保存可追溯的配置版本，发布不代表已运行。发布先生成已保存的完整项目修订（未落盘修改会先自动保存），再写入不可变配置快照；引用的本体发布版本随之固定在快照中。</p></div>
 <div class="tools"><span v-if="hasErrors" class="muted">先处理上方问题，再发布当前草稿。</span><button class="primary" :disabled="publishBusy||!checkReady||hasErrors" @click="doPublish">{{publishBusy?'发布中…':'发布项目配置'}}</button></div></div>
 <p v-if="lastPublish" class="inline-success">已发布 {{lastPublish}}。项目引用的本体版本与配置已固定在快照中。</p>
-<p v-if="publishError" class="inline-error">{{publishError}}</p>
+<AppError v-if="publishError" :compact="true" :title="publishUnknown?'未收到发布结果，暂不能确认是否成功':'发布未完成'" :reason="publishError" :hint="publishUnknown?'发布请求可能已到达服务端。请先核对下方「已发布版本」是否已产生新版本，再决定是否重新发布——不要重复发布。':'已保存的项目草稿不受影响；修正后可在上方重新校验并再次发布。'" retry-label="核对已发布版本" @retry="verifyPublished"/>
+<p v-if="publishCheckNote" :class="publishCheckNote.startsWith('服务端已有')?'inline-warning':'muted'">{{publishCheckNote}}</p>
 <template v-if="publishReport">
 <p class="inline-error">服务端校验发现 {{publishReport.errors?.length||0}} 个问题：</p>
 <div v-for="e in publishReport.errors" :key="e" class="issue-row error"><span>{{friendly(e)}}</span></div>

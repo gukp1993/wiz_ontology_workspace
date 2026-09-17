@@ -137,6 +137,7 @@ try {
     assert.equal(a.projectListState.value, 'error')
     assert.match(a.projectListError.value, /服务不可用/)
     assert.equal(a.projectAreaFailed.value, true, '失败要在项目上下文呈现，而不是「还没有项目」')
+    assert.equal(a.projectAreaWaiting.value, false, '失败态与等待骨架互斥（否则错误面板被骨架挡住）')
     assert.equal(a.view.value, 'p-home')
     server.setFail()
     await a.retryProjectContext()

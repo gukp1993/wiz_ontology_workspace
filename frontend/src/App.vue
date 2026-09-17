@@ -14,6 +14,7 @@ import OntologyDiscover from './tools/OntologyDiscover.vue'
 import KnowledgeExplorer from './tools/KnowledgeExplorer.vue'
 import InstanceExplorer from './tools/InstanceExplorer.vue'
 import AppSelect from './shared/AppSelect.vue'
+import AppError from './shared/AppError.vue'
 import FunctionManager from './ontology/FunctionManager.vue'
 import ActionLibrary from './ontology/ActionLibrary.vue'
 import DefinitionManager from './tools/DefinitionManager.vue'
@@ -28,7 +29,8 @@ import FlowList from './flow/FlowList.vue'
 import FlowEditor from './flow/FlowEditor.vue'
 import { decodeState, requestBody, type WorkbenchState } from './ontology/modelFormat'
 import { shortcutAction } from './app/shortcuts'
-import { createSaver, SaveRequestError } from './app/saveCoordinator'
+import { READ_TIMEOUT_MS, SaveRequestError, isOriginRejected, localAccessUrl } from './app/http'
+import { createSaver } from './app/saveCoordinator'
 import type { FormGuardInstance, FormGuardAPI, FormSaveAPI } from './app/formGuard'
 import { pages, normalizeView, projectViews, projectSpaceViews, flowViews, menuOntology, menuProjectOf, initialView, initialSpace } from './app/navigation'
 import { navIcons } from './shared/icons'
@@ -41,9 +43,29 @@ import { stripCatalogs } from './project/api'
 
 const clone = (x: any) => JSON.parse(JSON.stringify(x))
 const message = ref(''), error = ref(false), busy = ref(false)
-// 初始加载链（本体草稿→本体列表→项目列表→项目）完成前，不渲染任何依赖数据的内容，
-// 否则会先闪一帧“还没有项目/创建第一个本体”这类自相矛盾的错误空态。
+// 初始加载链完成前，不渲染任何依赖数据的内容，否则会先闪一帧“还没有项目/创建第一个本体”这类自相矛盾的错误空态。
+// G1（20260917 全局交互评审采纳）：必要读取有明确状态——loading / ready / error。
+// 读取失败不能渲染成「没有本体」，也不能引导用户误建重复本体；超过 3 秒给出「仍在加载」提示。
 const booting = ref(true)
+const ontologyLoad = ref<'loading' | 'ready' | 'error'>('loading')
+const ontologyLoadError = ref('')
+const ontologyLoadFailure = ref<string>('')
+const ontologySlow = ref(false)
+let ontologySlowTimer: ReturnType<typeof setTimeout> | null = null
+// 慢加载提示阈值：测试可注入更短时间（globalThis.__WIZ_SLOW_HINT_MS）
+const ONTOLOGY_SLOW_MS = Number((globalThis as any).__WIZ_SLOW_HINT_MS) || 3000
+// G2：Origin 明确被拒时给本机标准地址（按当前端口推导，不写死测试端口，也不放宽服务端校验）
+const ontologyOriginBlocked = ref(false)
+const localAccess = computed(() => localAccessUrl(location.hash || '#' + view.value))
+const ontologyFailureHint = computed(() => ontologyOriginBlocked.value
+  ? '当前页面地址未通过服务校验，本次请求已被拒绝。请改用本机标准地址访问后重试；已保存的草稿不会丢失。'
+  : ontologyLoadFailure.value === 'timeout'
+    ? '本地服务超过 ' + Math.round(READ_TIMEOUT_MS / 1000) + ' 秒仍未返回。请确认本地服务已启动、网络未被拦截，然后重试读取。'
+    : '无法读取本体草稿与本体列表。请确认本地服务已启动后重试读取。读取失败不代表本体不存在，请勿重复新建本体。')
+const ontologyFailureDetails = computed(() => ontologyLoadError.value || '')
+const projectFailureTitle = computed(() => projectOriginBlocked.value ? '当前页面地址未通过服务校验' : '项目数据加载失败')
+function startSlowHint() { stopSlowHint(); ontologySlowTimer = setTimeout(() => { if (ontologyLoad.value === 'loading') ontologySlow.value = true }, ONTOLOGY_SLOW_MS) }
+function stopSlowHint() { if (ontologySlowTimer) { clearTimeout(ontologySlowTimer); ontologySlowTimer = null } ontologySlow.value = false }
 const definitionFocusId = ref('')
 function friendlyIssue(text: string) {
   const records = [...(state.value?.ontology?.['@graph'] || []), ...['functions', 'actions', 'interfaces'].flatMap(k => state.value?.workflow?.[k] || [])]
@@ -68,7 +90,7 @@ const projectSaveErrors = ref<string[]>([])
 
 const ontologySaver = createSaver('本体草稿',
   async () => {
-    const d = await oapi.loadStateRaw(ontologyId).catch((e: any) => { throw e.status ? e : new SaveRequestError('读取草稿失败', e.status || 0) })
+    const d = await oapi.loadStateRaw(ontologyId).catch((e: any) => { throw e instanceof SaveRequestError ? e : new SaveRequestError('读取草稿失败', 0) })
     latestVersion.value = d.latestVersion || ''
     return { state: decodeState(d.state), revision: d.revision }
   },
@@ -79,7 +101,7 @@ const ontologySaver = createSaver('本体草稿',
   })
 const projectSaver = createSaver('项目草稿',
   async () => {
-    const d = await papi.loadProjectStateRaw(projectId.value).catch((e: any) => { throw e.status ? e : new SaveRequestError('读取项目失败', e.status || 0) })
+    const d = await papi.loadProjectStateRaw(projectId.value).catch((e: any) => { throw e instanceof SaveRequestError ? e : new SaveRequestError('读取项目失败', 0) })
     projectLoadMeta = { migrationTodos: d.migrationTodos || [], warning: d.warning || '' } // load 协议只含 state/revision，扩展字段经闭包带出
     return { state: d.state, revision: d.revision }
   },
@@ -94,7 +116,7 @@ const flowId = ref(''), flowSaveErrors = ref<string[]>([]), flowCheck = ref<any>
 const flowStoreKey = 'wiz-last-flow'
 const flowSaver = createSaver('编排草稿',
   async () => {
-    const d = await fapi.loadFlowStateRaw(flowId.value).catch((e: any) => { throw e.status ? e : new SaveRequestError('读取编排失败', e.status || 0) })
+    const d = await fapi.loadFlowStateRaw(flowId.value).catch((e: any) => { throw e instanceof SaveRequestError ? e : new SaveRequestError('读取编排失败', 0) })
     return { state: d.state, revision: d.revision }
   },
   async (working, baseRevision) => {
@@ -123,7 +145,7 @@ const formGuards = shallowRef<FormGuardInstance[]>([])
 const leaveDialog = ref(false)
 let leaveResolver: ((proceed: boolean) => void) | null = null
 const formEditing = computed(() => formGuards.value.length > 0)
-function dirtyGuards() { return formGuards.value.filter(g => g.isDirty()) }
+function dirtyGuards() { return formGuards.value.filter(g => { try { return g.isDirty() } catch { return false } }) }
 // 统一离开保护：未提交表单切换菜单/两区/本体/项目时，给“继续编辑 / 放弃本次修改并离开”。
 function requestLeave(): Promise<boolean> {
   if (leaveResolver) return Promise.resolve(false) // 已有一个离开确认在等待：直接拒绝新导航
@@ -206,10 +228,12 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
   if (v === view.value && !focus) { /* 同页重入不触发离开保护 */ }
   else if (!(await requestLeave())) return
   // R2：依赖项目的页面按需准备项目上下文；菜单、显式 hash 深链、跨区入口都走这一条路径。
-  // p-home 无项目也要能进（显示创建/选择入口），所以只在其他项目页阻断。
-  if (projectViews.includes(v)) {
+  // p-home 无项目也要能进（显示创建/选择入口），且不等挂起的读取——概览页自身会显示等待/失败态，
+  // 否则项目读取挂起时用户会停在原页面看不到任何项目区反馈。
+  if (v === 'p-home') { void ensureProjectContext() }
+  else if (projectViews.includes(v)) {
     const ready = await ensureProjectContext()
-    if (!ready && v !== 'p-home' && !projectState.value) {
+    if (!ready && !projectState.value) {
       const reason = projectListState.value === 'error' ? '项目列表加载失败：' + projectListError.value : projectLoadError.value ? '项目加载失败：' + projectLoadError.value : '请先在项目概览中选择或新建项目'
       return notify(reason, true)
     }
@@ -237,8 +261,10 @@ const menuProject = computed<Record<string, string>>(() => menuProjectOf(!!proje
 // 项目页眉 crumb 引用的本体名：按项目引用的本体 id 回查列表，回退显示 id。
 const refOntologyLabel = computed(() => { const oid = projectState.value?.ontologyId || ''; return ontologyList.value.find(o => o.id === oid)?.name || oid || '—' })
 // 项目区加载状态（R2）：「等待/失败」与「确实没有项目」分开反馈，不在懒加载未完成时抢先显示无项目空态。
-const projectAreaWaiting = computed(() => projectViews.includes(view.value) && !projectState.value && (projectListState.value !== 'ready' || projectLoading.value))
 const projectAreaFailed = computed(() => projectViews.includes(view.value) && !projectState.value && (projectListState.value === 'error' || !!projectLoadError.value))
+// 等待态与失败态互斥：失败时显示错误面板与重试，不能继续显示骨架
+const projectAreaWaiting = computed(() => projectViews.includes(view.value) && !projectState.value && !projectAreaFailed.value
+  && (projectListState.value === 'idle' || projectListState.value === 'loading' || projectLoading.value))
 // 顶栏面包屑文案（展示型 computed）：沿用原 header crumb 三分支逻辑，随单层顶栏搬迁，页面标题另见 pages[view]。
 const crumbPath = computed(() => flowViews.includes(view.value) ? `${flowState.value?.name || '未选择编排'} / 函数编排 · 项目映射` : space.value === 'project' ? `${projectState.value?.name || '未选择项目'} / 项目配置 · 引用 ${refOntologyLabel.value} ${projectState.value?.ontologyVersion || ''}` : `${ontologyName.value || '未创建本体'} / 抽象定义`)
 // 旧调用点迁移：openFunction/openProperties/openBindings/showKnowledge/showGraph → 新 view 名 + focus。
@@ -250,7 +276,7 @@ function showGraph(id: string) { navigate('objects', { type: id }) }
 
 // --- 变更入口：组件 emit('changed') → touch() 自动保存（900ms 合并）；撤销/重做 → commitNow() 立即产生新修订 ---
 function changed() { editGeneration.value++; ontologySaveErrors.value = []; validationReport.value = null; ontologySaver.touch(); if (message.value) { message.value = '内容已修改，之前的操作结果已过期；请重新校验。'; error.value = false } }
-function projectChanged() { projectEditGeneration.value++; projectSaveErrors.value = []; projectReport.value = null; projectSaver.touch() }
+function projectChanged() { projectEditGeneration.value++; projectSaveErrors.value = []; projectReport.value = null; projectValidateError.value = ''; projectSaver.touch() }
 function flowChanged() { flowEditGeneration.value++; flowSaveErrors.value = []; flowSaver.touch() }
 // counts() 读取普通数组不具响应性：依赖 editGeneration（每次 changed 递增）触发重算，沿用既有约定。
 // 编排页面位于项目空间：按当前视图（而非 space）路由到对应撤销栈与 Saver。
@@ -324,7 +350,9 @@ async function loadOntologies() { ontologyList.value = (await oapi.listOntologie
 // R2：项目数据按需加载。本体页面不再等待项目列表/完整项目状态/项目引用版本，只有确实进入
 // 项目区（菜单、显式 hash 深链、切区、恢复记忆项目）时才请求；未加载 ≠ 没有项目。
 const ontologyOptions = computed(() => ontologyList.value.map(o => ({ value: o.id, label: o.name })))
+const projectValidateError = ref('')   // G2：配置校验请求自身失败（不是业务问题，也不是校验通过）
 const projectListState = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
+const projectOriginBlocked = ref(false)
 const projectListError = ref('')
 const projectLoadError = ref('')
 const projectLoading = ref(false)
@@ -334,8 +362,8 @@ async function ensureProjectList(): Promise<boolean> {
   if (projectListJob) return projectListJob // 并发去重：同一份列表只请求一次
   projectListState.value = 'loading'; projectListError.value = ''
   projectListJob = (async () => {
-    try { projects.value = (await papi.listProjects()).items; projectListState.value = 'ready'; return true }
-    catch (e) { projectListState.value = 'error'; projectListError.value = (e as Error).message; return false }
+    try { projects.value = (await papi.listProjects()).items; projectListState.value = 'ready'; projectOriginBlocked.value = false; return true }
+    catch (e) { projectListState.value = 'error'; projectListError.value = (e as Error).message; projectOriginBlocked.value = isOriginRejected(e); return false }
     finally { projectListJob = null }
   })()
   return projectListJob
@@ -385,7 +413,7 @@ async function loadProject(id: string, force = false): Promise<boolean> {
       projectUndoArea.reset(); projectReport.value = null; projectLoadError.value = ''
       return true
     } catch (e) {
-      if (seq === projectLoadSeq) { projectId.value = previous; projectLoadError.value = (e as Error).message; notify((e as Error).message, true) }
+      if (seq === projectLoadSeq) { projectId.value = previous; projectLoadError.value = (e as Error).message; projectOriginBlocked.value = isOriginRejected(e); notify((e as Error).message, true) }
       return false
     } finally { if (seq === projectLoadSeq) { busy.value = false; projectLoading.value = false } }
   })()
@@ -427,7 +455,21 @@ async function saveProjectReference(target: { ontology: string; version: string 
   refState.value = nextRef
   migrationTodos.value = []
 }
-async function validateProject(showNav = true) { if (busy.value || !projectState.value) return; busy.value = true; try { const d = await projectApi('project-validate'); projectReport.value = d; if (showNav && view.value !== 'p-release') await navigate('p-release'); notify(d.errors.length ? `项目校验发现 ${d.errors.length} 个问题` : (d.warnings.length ? '配置校验通过（未执行验证），另有 ' + d.warnings.length + ' 条提示' : '配置校验通过（未执行验证）'), !!d.errors.length) } catch (e) { notify((e as Error).message, true) } finally { busy.value = false } }
+async function validateProject(showNav = true) {
+  if (busy.value || !projectState.value) return
+  busy.value = true; projectValidateError.value = ''
+  try {
+    const d = await projectApi('project-validate')
+    projectReport.value = d
+    if (showNav && view.value !== 'p-release') await navigate('p-release')
+    notify(d.errors.length ? `项目校验发现 ${d.errors.length} 个问题` : (d.warnings.length ? '配置校验通过（未执行验证），另有 ' + d.warnings.length + ' 条提示' : '配置校验通过（未执行验证）'), !!d.errors.length)
+  } catch (e) {
+    // G2：校验请求失败 ≠ 业务问题，也不保留「本次校验通过」假象；错误在校验页持续可见（不重复弹全局红条）
+    projectReport.value = null
+    projectValidateError.value = (e as Error).message || '未能完成校验'
+    if (view.value !== 'p-release') await navigate('p-release')
+  } finally { busy.value = false }
+}
 // 发布页回调：发布对话框与 API 都在页面组件内完成，App 只刷新相关数据。
 async function onOntologyPublished() { await loadVersionList(); await loadReleases() }
 async function onProjectPublished() { if (!projectState.value) return; await projectSaver.flush(); await loadProject(projectState.value.projectId, true) }
@@ -436,6 +478,29 @@ async function onProjectPublished() { if (!projectState.value) return; await pro
 const activeSaver = computed(() => onFlowView.value ? flowSaver : space.value === 'project' ? projectSaver : ontologySaver)
 const activeErrors = computed(() => onFlowView.value ? flowSaveErrors.value : space.value === 'project' ? projectSaveErrors.value : ontologySaveErrors.value)
 const activeReleaseView = computed(() => onFlowView.value ? 'f-editor' : space.value === 'project' ? 'p-release' : 'o-release')
+// G3（20260917 全局交互评审采纳）：顶栏文案由真实 guard dirty 与当前区域 Saver 状态派生。
+// 打开表单 ≠ 有未保存修改；有未提交输入时不再并列一个无范围的绿色「已保存」；
+// 保存失败／冲突优先，不被更轻的表单提示覆盖。
+const formDirty = computed(() => dirtyGuards().length > 0)
+// 写操作超时不自动中断（G1 §2.2）：只补充「响应较慢，正在等待结果」，不提前认定失败
+const saveSlow = ref(false)
+let saveSlowTimer: ReturnType<typeof setTimeout> | null = null
+const SAVE_SLOW_MS = 15000
+const saveState = computed<{ kind: string; text: string; hint: string }>(() => {
+  const s = activeSaver.value.status.value
+  if (s === 'saving') return { kind: 'saving', text: saveSlow.value ? '保存中…响应较慢，正在等待结果' : '保存中…请勿重复操作', hint: '正在写入服务端，完成前请勿重复提交；超过 15 秒仍未返回也不代表失败' }
+  if (s === 'error') return { kind: 'error', text: activeSaver.value.unknownOutcome.value ? '未收到保存结果，暂不能确认是否成功' : '保存失败', hint: activeSaver.value.error.value }
+  if (s === 'conflict') return { kind: 'conflict', text: '版本冲突', hint: activeSaver.value.error.value }
+  if (s === 'dirty') return { kind: 'dirty', text: formDirty.value ? '工作区草稿有未保存修改；表单修改尚未提交' : '未保存修改', hint: '修改会自动保存；表单里的输入需要点保存才提交' }
+  if (formDirty.value) return { kind: 'form', text: '表单有未保存修改', hint: '表单内容还没提交；保存成功前不会写入草稿' }
+  if (formEditing.value) return { kind: 'editing', text: '编辑表单 · 草稿已保存', hint: '表单已打开但没有修改；草稿内容已保存' }
+  return { kind: 'saved', text: '已保存', hint: '当前草稿已保存' }
+})
+watch(() => activeSaver.value.status.value, s => {
+  if (saveSlowTimer) { clearTimeout(saveSlowTimer); saveSlowTimer = null }
+  saveSlow.value = false
+  if (s === 'saving') saveSlowTimer = setTimeout(() => { if (activeSaver.value.status.value === 'saving') saveSlow.value = true }, SAVE_SLOW_MS)
+})
 async function retrySave() { try { await activeSaver.value.retry() } catch (e) { notify((e as Error).message, true) } }
 async function discardReload() { if (!(await appConfirm({ message: '放弃本地修改，重新加载服务端最新草稿？', danger: true, confirmLabel: '放弃重载' }))) return; try { await activeSaver.value.reload(); notify('已重新加载服务端草稿') } catch (e) { notify((e as Error).message, true) } }
 async function retryLocal() { if (!(await appConfirm({ message: '以当前屏幕内容重试保存：将覆盖服务端较新的草稿。确定？', danger: true, confirmLabel: '覆盖保存' }))) return; try { await activeSaver.value.retryFromLocal(); notify(activeSaver.value.status.value === 'saved' ? '已按当前内容保存' : '仍未保存，请查看保存状态', activeSaver.value.status.value !== 'saved') } catch (e) { notify((e as Error).message, true) } }
@@ -449,22 +514,55 @@ const areaLabel = computed(() => area.value === 'project' ? '项目空间' : '�
 function unloadGuard(e: BeforeUnloadEvent) { if (dirtyGuards().length) { e.preventDefault(); e.returnValue = '' } }
 
 onMounted(async () => {
+  bindGlobals()
+  await loadOntologyData()
+  normalizeLanding()
+  booting.value = false
+  await settleInitialView()
+})
+// 按记忆的工作空间落位（只用本地状态，不等项目数据）
+function normalizeLanding() {
+  if (space.value === 'project' && !projectSpaceViews.includes(view.value)) { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
+  else if (space.value === 'ontology' && projectSpaceViews.includes(view.value)) { view.value = hasOntology.value ? lastOntologyView.value : 'o-home'; history.replaceState(null, '', '#' + view.value) }
+}
+// 全局监听器只注册一次：重试读取不得重复注册（否则 keydown/hashchange 会成倍触发）。
+let globalsBound = false
+function bindGlobals() {
+  if (globalsBound) return
+  globalsBound = true
+  window.addEventListener('keydown', keydown); window.addEventListener('hashchange', hashChanged); window.addEventListener('beforeunload', unloadGuard)
+}
+// 本体必要读取（草稿 + 本体列表）：失败进 error 态并可重试；不渲染成「没有本体」。
+async function loadOntologyData() {
+  ontologyLoad.value = 'loading'; ontologyLoadError.value = ''; ontologyLoadFailure.value = ''
+  startSlowHint()
   try {
-    await ontologySaver.reload()
-    await loadOntologies()
+    // 草稿与本体列表都是必要读取：任一失败都进 error 态，但不能因为一个失败就完全不读另一个
+    // （否则会把「读取失败」渲染成「没有本体」）。
+    const [draft, list] = await Promise.allSettled([ontologySaver.reload(), loadOntologies()])
+    const failed = [draft, list].find(r => r.status === 'rejected') as PromiseRejectedResult | undefined
     const hit = ontologyList.value.find(o => o.id === ontologyId)
     ontologyName.value = hit?.name || ''
     document.title = (ontologyName.value || '本体工作台') + ' · 本体工作台'
-    window.addEventListener('keydown', keydown); window.addEventListener('hashchange', hashChanged); window.addEventListener('beforeunload', unloadGuard)
-    // 按记忆的工作空间落位（只用本地状态，不等项目数据）
-    if (space.value === 'project' && !projectSpaceViews.includes(view.value)) { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
-    if (space.value === 'ontology' && projectSpaceViews.includes(view.value)) { view.value = hasOntology.value ? lastOntologyView.value : 'o-home'; history.replaceState(null, '', '#' + view.value) }
-    // R2：本体必要数据就绪即结束启动等待，本体页不因项目列表/项目状态/引用版本而阻塞
-    booting.value = false
-    await settleInitialView()
-  } catch (e) { notify('加载失败：' + (e as Error).message, true) }
-  finally { booting.value = false }
-})
+    if (failed) {
+      const e: any = failed.reason
+      ontologyLoad.value = 'error'
+      ontologyLoadFailure.value = String(e?.failure || '')
+      ontologyOriginBlocked.value = isOriginRejected(e)
+      ontologyLoadError.value = (e as Error)?.message || '读取失败'
+    } else ontologyLoad.value = 'ready'
+  } finally { stopSlowHint() }
+}
+// 重试：只重新读取本体数据与必要的项目上下文，不刷新浏览器、不丢弃已编辑表单、不重复注册监听器。
+async function retryOntologyLoad() {
+  if (ontologyLoad.value === 'loading') return
+  booting.value = true
+  message.value = ''
+  await loadOntologyData()
+  normalizeLanding()
+  booting.value = false
+  await settleInitialView()
+}
 // 启动收尾（R2）：只有当前页面确实需要项目数据时才加载；等待期间用户已离开项目区就不再强行改视图。
 async function settleInitialView() {
   if (projectSpaceViews.includes(view.value)) {
@@ -487,31 +585,38 @@ async function settleInitialView() {
   if (view.value === 'p-release') await validateProject(false)
 }
 onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.removeEventListener('hashchange', hashChanged); window.removeEventListener('beforeunload', unloadGuard) })
+onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.removeEventListener('hashchange', hashChanged); window.removeEventListener('beforeunload', unloadGuard) })
 </script>
 
 <template>
 <div class="topbar" :inert="modalOpen"><div class="topbar-crumb"><span class="crumb-path">{{crumbPath}}</span><h1 class="topbar-title">{{pages[view]}}</h1></div><div class="topbar-status">
-<template v-if="booting"><span class="save-pill">加载中…</span></template>
-<template v-else-if="(space==='project'&&(projectState||(flowViews.includes(view)&&flowState)))||(space==='ontology'&&hasOntology)">
-<span v-if="formEditing" class="status-pill" title="存在打开的编辑表单；打字只改本地草稿，保存成功才落盘">✎ 正在编辑表单</span>
-<template v-if="activeSaver.status.value==='saved'"><span class="save-pill saved">已保存<template v-if="activeSaver.lastSavedAt.value"> · {{activeSaver.lastSavedAt.value}}</template></span><button v-if="activeErrors.length" class="save-issues" :title="activeErrors.join('；')" @click="navigate(activeReleaseView)">{{activeErrors.length}} 项待完善</button><span v-else-if="onFlowView&&flowCheck" :class="flowCheck.errors.length||flowCheck.warnings.length?'inline-warning':'inline-success'">{{flowCheck.errors.length?'配置有错误':(flowCheck.warnings.length?'已保存，配置待完善':'已保存，配置检查通过')}}</span></template>
-<span v-else-if="activeSaver.status.value==='saving'" class="save-pill saving">保存中…</span>
-<span v-else-if="activeSaver.status.value==='dirty'" class="save-pill dirty">● 未保存修改</span>
-<template v-else-if="activeSaver.status.value==='error'"><span class="save-pill error" :title="activeSaver.error.value">保存失败</span><button @click="retrySave">重试</button></template>
-<template v-else-if="activeSaver.status.value==='conflict'"><span class="save-pill conflict" :title="activeSaver.error.value">版本冲突</span><button @click="discardReload" title="放弃本地修改，重新加载服务端最新草稿">放弃本地并重新加载</button><button @click="retryLocal" title="以当前屏幕内容覆盖服务端较新草稿">以当前内容重试</button></template>
+<template v-if="booting||ontologyLoad==='loading'"><span class="save-pill">{{ontologySlow?'仍在加载，请稍候…':'加载中…'}}</span></template>
+<template v-else-if="(space==='project'&&((projectState||(flowViews.includes(view)&&flowState))))||(space==='ontology'&&hasOntology&&ontologyLoad==='ready')">
+<!-- G3：状态由真实 guard dirty + Saver 状态派生；摘要文案，完整错误在页面内持续可见 -->
+<span class="save-pill" :class="saveState.kind" :title="saveState.hint"><template v-if="saveState.kind==='form'">✎ </template>{{saveState.text}}<template v-if="saveState.kind==='saved'&&activeSaver.lastSavedAt.value"> · {{activeSaver.lastSavedAt.value}}</template></span>
+<button v-if="saveState.kind==='saved'&&activeErrors.length" class="save-issues" :title="activeErrors.join('；')" @click="navigate(activeReleaseView)">{{activeErrors.length}} 项待完善</button>
+<span v-else-if="saveState.kind==='saved'&&onFlowView&&flowCheck" :class="flowCheck.errors.length||flowCheck.warnings.length?'inline-warning':'inline-success'">{{flowCheck.errors.length?'配置有错误':(flowCheck.warnings.length?'已保存，配置待完善':'已保存，配置检查通过')}}</span>
+<button v-if="saveState.kind==='error'" @click="retrySave">{{activeSaver.unknownOutcome.value?'重试保存':'重试'}}</button>
+<template v-if="saveState.kind==='conflict'"><button @click="discardReload" title="放弃本地修改，重新加载服务端最新草稿">放弃本地并重新加载</button><button @click="retryLocal" title="以当前屏幕内容覆盖服务端较新草稿">以当前内容重试</button></template>
 </template>
-<template v-else><span v-if="space==='ontology'">尚未创建本体</span><span v-else-if="flowViews.includes(view)">未选择编排</span><span v-else>未选择项目</span></template>
+<template v-else><span v-if="ontologyLoad==='error'" class="save-pill error" :title="ontologyLoadError">本体读取失败</span><span v-else-if="space==='ontology'">尚未创建本体</span><span v-else-if="flowViews.includes(view)">未选择编排</span><span v-else>未选择项目</span></template>
 </div><div class="topbar-actions">
 <template v-if="(space==='project'&&(projectState||(flowViews.includes(view)&&flowState)))||(space==='ontology'&&hasOntology)"><button :disabled="!undoCount" title="撤销上一次修改" @click="undo">撤销</button><button :disabled="!redoCount" title="重做修改" @click="redo">重做</button></template>
 </div></div>
 <aside class="rail" :inert="modalOpen"><div class="brand">◇ <span>本体工作台</span><small>ONTOLOGY WORKSPACE</small></div><div class="ws-tabs" role="tablist" aria-label="切换工作区"><button role="tab" :class="{active:space==='ontology'}" :aria-selected="space==='ontology'" @click="switchSpace('ontology')">本体</button><button role="tab" :class="{active:space==='project'}" :aria-selected="space==='project'" @click="switchSpace('project')">项目</button></div><div class="space"><template v-if="booting"><div class="space-head"><div class="skeleton" style="height:13px;width:56px;margin:0"></div></div><div class="skeleton" style="height:42px"></div></template><template v-else-if="space==='ontology'"><div class="space-head"><label>当前本体</label><button type="button" class="space-new" @click="showOntologyDialog=true">＋ 新建</button></div><AppSelect :model-value="hasOntology?ontologyId:''" placeholder="未选择本体" :options="ontologyList.map(o=>({value:o.id,label:o.name}))" :disabled="busy||!ontologyList.length" aria-label="切换本体" @update:model-value="switchOntology"/></template>
 <template v-else><div class="space-head"><label>当前项目</label><button v-if="projectListState==='error'" type="button" class="space-new" @click="retryProjectContext">重试</button></div><p v-if="projectListState==='error'" class="space-error" role="alert">项目列表加载失败</p><template v-else-if="projectListState!=='ready'||(projectLoading&&!projectState)"><div class="skeleton" style="height:42px"></div><p class="space-note">正在加载项目…</p></template><AppSelect v-else :model-value="projectState?.projectId||''" placeholder="未选择项目" :options="projects.map(p=>({value:p.id,label:p.name}))" :disabled="busy" aria-label="切换项目" @update:model-value="$event&&loadProject($event)"/></template></div><nav aria-label="工作台导航"><template v-if="booting"><div v-for="n in 5" :key="n" class="nav-boot"><div class="skeleton" style="height:13px;width:64%"></div></div></template><template v-else-if="space==='ontology'"><template v-if="hasOntology"><button v-for="(label,key) in menuOntology" :key="key" :aria-current="view===key?'page':undefined" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><button :aria-current="view==='tools'?'page':undefined" :class="{active:view==='tools'}" @click="navigate('tools')"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons.tools||navIcons._default"/></svg>更多工具</button></template></template><template v-else><button v-for="(label,key) in menuProject" :aria-current="view===key?'page':undefined" :key="key" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><p v-if="!projectState" class="rail-hint">选择或新建项目后，可进行对象映射与项目校验；函数编排不依赖项目。</p></template></nav></aside>
 <div class="shell" :inert="modalOpen"><div v-if="message" id="feedback" :class="{error}" role="status">{{message}}</div>
-<main v-if="booting"><section class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:92%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:96%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:78%"></div></section></main>
-<main v-else-if="state">
+<main v-if="booting||ontologyLoad==='loading'"><section class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:92%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:96%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:78%"></div></section><p v-if="ontologySlow" class="muted" role="status">仍在加载，请稍候…（超过 {{ Math.round(READ_TIMEOUT_MS/1000) }} 秒仍未返回会给出重试入口）</p></main>
+<!-- G1/G2：本体必要读取失败——给出状态与恢复入口，不能渲染成「没有本体」 -->
+<main v-else-if="!state">
+<AppError :title="ontologyLoadFailure==='timeout'?'读取本体数据超时':'读取本体数据失败'" :reason="ontologyLoadError" :hint="ontologyFailureHint" retry-label="重试读取" :details="ontologyFailureDetails" @retry="retryOntologyLoad"/>
+</main>
+<main v-else>
+<!-- G2：本体数据重新读取失败（已展示的是上一次成功读取的内容） -->
+<AppError v-if="ontologyLoad==='error'" compact title="本体数据重新读取失败" :reason="ontologyLoadError" hint="当前显示的是上一次成功读取的内容；已保存的草稿不受影响，可重试读取。" retry-label="重试读取" @retry="retryOntologyLoad"/>
 <!-- 项目区加载中/失败（R2）：与「还没有项目」区分，等待或失败时都可返回本体 -->
 <section v-if="projectAreaWaiting" class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:88%"></div></section>
-<section v-else-if="projectAreaFailed" class="card"><div class="panelhead"><div><h2>项目数据加载失败</h2><p class="muted">{{ projectListError || projectLoadError }}</p></div></div><p class="muted">本体建模不受影响；可重试加载，或先回本体区继续工作。</p><div class="tools"><button class="primary" @click="retryProjectContext">重试</button><button @click="switchSpace('ontology')">返回本体</button></div></section>
+<AppError v-else-if="projectAreaFailed" :title="projectFailureTitle" :reason="projectListError||projectLoadError" :hint="projectOriginBlocked?'':'项目数据加载失败，本体建模可继续使用。修正后重试，或先回到本体区继续工作。'" :fix-href="projectOriginBlocked?localAccess:''" retry-label="重试" secondary-label="返回本体" @retry="retryProjectContext" @secondary="switchSpace('ontology')"/>
 <section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>
 <OntologyHome v-if="view==='o-home'" :state="state" @navigate="navigate"/>
@@ -525,7 +630,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <ProjectVersion v-if="view==='p-upgrade'&&projectState" :project-state="projectState" :ontology-options="ontologyOptions" :apply-reference="saveProjectReference" @navigate="navigate"/>
 <ProjectBinding v-if="view==='binding'&&projectState" :project-state="projectState" :ref-state="refState" :focus-type="bindingFocusType" :report="projectReport" @navigate="navigate" @open-ontology="openReferencedOntology" @before-change="pushProjectUndo" @changed="projectChanged"/>
 <QueryRuleManager v-if="view==='implements'&&projectState" :project-state="projectState" :ref-state="refState" :focus-impl="implFocus" @before-change="pushProjectUndo" @changed="projectChanged"/>
-<ProjectValidation :ref-state="refState" v-if="view==='p-release'&&projectState" :report="projectReport" :busy="busy" :project-state="projectState" @open-ontology="openReferencedOntology" @refresh="validateProject(false)" @navigate="navigate" @published="onProjectPublished"/>
+<ProjectValidation :ref-state="refState" v-if="view==='p-release'&&projectState" :report="projectReport" :validate-error="projectValidateError" :busy="busy" :project-state="projectState" @open-ontology="openReferencedOntology" @refresh="validateProject(false)" @navigate="navigate" @published="onProjectPublished"/>
 <FlowList v-if="view==='f-home'" @open="openFlow" @created="onFlowCreated" @deleted="onFlowDeleted"/>
 <FlowEditor v-if="view==='f-editor'&&flowState" :state="flowState" :check="flowCheck" :project-connections="projectConnections" @update:check="flowCheck=$event" @before-change="pushFlowUndo" @changed="flowChanged"/>
 <ToolsPage v-if="view==='tools'" @navigate="navigate"/>

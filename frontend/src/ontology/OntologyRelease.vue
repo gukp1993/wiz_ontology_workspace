@@ -22,6 +22,8 @@
 <script setup lang="ts">
 import {computed,inject,onMounted,ref} from 'vue'
 import AppSelect from '../shared/AppSelect.vue'
+import AppError from '../shared/AppError.vue'
+import { isOutcomeUnknown } from '../app/http'
 import type {FormGuardAPI} from '../app/formGuard'
 import {requestBody,decodeState} from './modelFormat'
 import {effectiveProperty} from './propertyModel'
@@ -121,6 +123,8 @@ onMounted(()=>{runChecks();loadLists()})
 const publishing=ref(false)
 const changeType=ref(''),changeNote=ref(''),reviewer=ref('')
 const publishErrors=ref<string[]>([]),publishError=ref(''),publishReasons=ref<string[]>([]),publishedInfo=ref<any>(null)
+// G2：结果未知（超时/网络中断）时不显示成功也不断言未写入；用现有版本清单核对
+const publishUnknown=ref(false),publishCheckNote=ref(''),publishBaseline=ref<string[]>([]),restoreError=ref('')
 const suggested=computed(()=>String(precheck.value?.suggested||''))
 const canCompatible=computed(()=>precheck.value?!!precheck.value.canCompatible:suggested.value!=='breaking')
 const changeTypeOptions=computed(()=>[
@@ -131,7 +135,8 @@ const changeTypeOptions=computed(()=>[
 async function doPublish(){
   if(publishing.value)return
   if(checking.value||checkError.value||!precheck.value||draftErrors.value.length)return // 阻断：草稿校验问题未清空
-  publishing.value=true;publishErrors.value=[];publishError.value='';publishReasons.value=[]
+  publishing.value=true;publishErrors.value=[];publishError.value='';publishReasons.value=[];publishUnknown.value=false;publishCheckNote.value=''
+  publishBaseline.value=versions.value.map((v:any)=>String(v.version||''))
   try{
     if(guardBlocked())return // 有未保存表单：不静默发布
     if(commitNow)await commitNow() // ① 未落盘修改先持久化，不借发布偷偷提交表单
@@ -150,7 +155,22 @@ async function doPublish(){
     changeType.value='';changeNote.value='';reviewer.value=''
     emit('published')
     await loadLists();await runChecks()
-  }catch(e){publishError.value=(e as Error).message}finally{publishing.value=false}
+  }catch(e:any){
+    publishUnknown.value=isOutcomeUnknown(e)
+    publishError.value=publishUnknown.value?'未收到发布结果，暂不能确认是否成功。':((e as Error).message||'发布失败')
+  }finally{publishing.value=false}
+}
+// 核对是否已产生新版本：只读版本清单，不覆盖草稿、不自动重发
+async function verifyPublished(){
+  if(publishing.value)return
+  const before=publishBaseline.value
+  await loadLists()
+  const now=versions.value.map((v:any)=>String(v.version||''))
+  const added=now.filter(v=>v&&!before.includes(v))
+  publishCheckNote.value=added.length
+    ? '服务端已有新版本 '+added.join('、')+'：本次发布很可能已经成功，请勿重复发布。'
+    : (versionError.value?'暂时无法读取版本清单：'+versionError.value:'服务端未发现新版本：本次发布很可能没有写入，可修正后重新发布。')
+  if(added.length)publishUnknown.value=false
 }
 
 // --- 历史快照恢复：confirm 后执行；成功 emit('published') 并整页刷新（见文件头说明）---
@@ -158,15 +178,15 @@ const restoring=ref('')
 async function restore(name:string){
   if(restoring.value)return
   if(!confirm('将此快照恢复为当前本体的草稿？现有已保存草稿会自动备份，其他本体不受影响。'))return
-  restoring.value=name
+  restoring.value=name;restoreError.value=''
   try{
-    if(guardApi?.hasDirty()){alert('还有打开的编辑表单未保存；请先保存或放弃本次修改，再恢复快照。');return}
+    if(guardApi?.hasDirty()){restoreError.value='还有打开的编辑表单未保存；请先保存或放弃本次修改，再恢复快照。';return}
     if(commitNow)await commitNow() // 先落当前草稿，保证恢复请求携带的 revision 与服务端一致
     const d=await loadStateRaw(ontologyId.value)
     await restoreServerState({state:d.state,revision:d.revision,release:name})
     emit('published')
     location.reload()
-  }catch(e){alert('恢复失败：'+(e as Error).message)}finally{restoring.value=''}
+  }catch(e){restoreError.value='恢复快照未完成：'+((e as Error).message||'未知原因')+'。当前草稿未被改动，可重试或先核对版本清单。'}finally{restoring.value=''}
 }
 </script>
 <template>
@@ -177,7 +197,7 @@ async function restore(name:string){
     <div class="panelhead"><div><h2>检查本体定义</h2>
       <p class="muted">只检查通用定义，不要求配置数据库。定义校验检查本体草稿的结构完整性；发布预检对比最新发布版本，给出变更分类建议与理由。两项均为只读检查，不会修改草稿。</p></div>
       <div class="tools"><button :disabled="checking" @click="runChecks">{{checking?'校验中…':'重新校验'}}</button></div></div>
-    <p v-if="checkError" class="inline-error">{{checkError}}</p>
+    <AppError v-if="checkError" title="未能完成校验" :reason="checkError" hint="这是检查请求本身失败（本地服务或网络问题），不代表定义有问题，也不代表校验通过；同时也未取得发布预检结果。" retry-label="重新校验" @retry="runChecks"/>
     <template v-else>
       <p v-if="!draftErrors.length" class="inline-success">定义校验通过：结构完整。仅覆盖定义结构完整性，未执行业务数据验证。</p>
       <template v-else><p class="inline-error">{{errorGroups.length}} 项定义尚未完成，共 {{draftErrors.length}} 处需要补充。请在下方处理后发布。</p>
@@ -225,7 +245,8 @@ async function restore(name:string){
     <label>业务验收记录<input v-model="reviewer" placeholder="例如：验收人／结论／日期（选填）"></label>
     <template v-if="publishErrors.length"><p class="inline-error">发布未通过校验，请修复后重试：</p>
       <p v-for="e in publishErrors" :key="e" class="property-feedback">{{friendly(e)}}</p></template>
-    <p v-if="publishError" class="inline-error">{{publishError}}</p>
+    <AppError v-if="publishError" :compact="true" :title="publishUnknown?'未收到发布结果，暂不能确认是否成功':'发布未完成'" :reason="publishError" :hint="publishUnknown?'发布请求可能已到达服务端。请先核对下方版本清单是否已产生新版本，再决定是否重新发布——不要重复发布。':'当前草稿不受影响；修正后可在上方重新校验并再次发布。'" retry-label="核对已发布版本" @retry="verifyPublished"/>
+    <p v-if="publishCheckNote" :class="publishCheckNote.startsWith('服务端已有')?'inline-warning':'muted'">{{publishCheckNote}}</p>
     <p v-for="r in publishReasons" :key="r" class="property-feedback">{{r}}</p>
     <div class="tools"><button class="primary" :disabled="publishing||checking||!!checkError||!precheck||!!draftErrors.length" @click="doPublish">{{publishing?'发布中…':'发布本体版本'}}</button></div>
   </div>
@@ -250,6 +271,7 @@ async function restore(name:string){
     </div>
     <details class="snapshot-details"><summary>历史快照（{{snapshots.length}}）</summary>
       <p class="muted">每次发布都会留一份完整快照。恢复会把快照写回当前草稿（现有草稿自动备份），不影响已发布版本。</p>
+      <AppError v-if="restoreError" :compact="true" title="恢复快照未完成" :reason="restoreError" hint="已发布版本与当前草稿都未被破坏；处理原因后可重试。" retry-label="知道了" @retry="restoreError=''"/>
       <template v-if="snapshots.length">
         <div v-for="s in snapshots" :key="s" class="issue-row"><span>{{s.replace('.zip','')}}</span>
           <button class="go-fix" :disabled="!!restoring" @click="restore(s)">{{restoring===s?'恢复中…':'恢复此快照'}}</button></div>

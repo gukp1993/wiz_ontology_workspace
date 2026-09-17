@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,inject,nextTick,onBeforeUnmount,ref,watch} from 'vue'
 import AppSelect from '../shared/AppSelect.vue'
+import RowMenu from '../shared/RowMenu.vue'
 import type {FormGuardAPI,FormGuardInstance,FormSaveAPI} from '../app/formGuard'
 import { connectionTest, connectionSecret, catalogRefresh } from './api'
 const props=defineProps<{projectState:any}>()
@@ -171,7 +172,7 @@ function deleteConnection(c:any){
  if(!c)return
  const refs=referencesOf(c.id)
  if(refs.length){notify('连接仍被以下位置引用，不能删除：'+refs.join('；'),'error');return}
- if(!confirm('删除连接「'+(c.name||c.id)+'」？对象数据来源将不能再用此连接，其表结构目录也会一并清除。'))return
+ if(!confirm('删除连接「'+(c.name||c.id)+'」？删除的是本工作台里的连接配置与已缓存的表结构目录，对象数据来源将不能再用此连接；不会删除或修改外部数据库中的任何数据。'))return
  mutate(()=>{
   const list=props.projectState.connections.connections
   list.splice(list.indexOf(c),1)
@@ -255,7 +256,8 @@ function catalogPreview(c:any):string{
     <div class="tools" v-if="!isLegacy(conn)">
       <button class="row-link" :disabled="quickBusy" @click="quickTest(conn)">{{quickResults[conn.id]?.status==='testing'?'测试中…':'测试'}}</button>
       <button class="row-link" @click="openEditor(conn.id)">配置</button>
-      <button class="row-link danger" @click="deleteConnection(conn)">删除</button>
+      <!-- G4：删除收进更多操作；表结构目录入口保持原位（下方折叠区） -->
+      <RowMenu :items="[{ id: 'delete', label: '删除连接', danger: true }]" :aria-label="'更多操作 · ' + (conn.name || conn.id)" @pick="deleteConnection(conn)"/>
     </div>
     <div class="tools" v-else><span class="muted">随演示数据提供</span></div>
   </div>

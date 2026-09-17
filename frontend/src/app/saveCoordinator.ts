@@ -14,6 +14,7 @@ export interface Saver {
   lastSavedAt: Ref<string>
   working: Ref<any>            // 当前工作副本（App 的 state/projectState 即此对象的 .value）
   revision: Ref<string>
+  unknownOutcome: Ref<boolean> // G2：失败是否属于「未收到结果、无法确认服务端是否完成」（超时/网络中断）
   commitNow(): Promise<void>   // 立即持久化当前 working（表单保存按钮/撤销重做/图操作结束调用；取消 pending debounce）
   touch(): void                // changed() 入口：dirty + debounce 900ms 自动保存（连续编辑合并）
   flush(): Promise<void>       // 切换本体/项目/版本前 await（保存中则等待完成）
@@ -33,6 +34,8 @@ export function createSaver(label: string, load: () => Promise<{ state: any; rev
   submit: (state: any, revision: string) => Promise<{ revision: string }>): Saver {
   const status = ref<SaveStatus>('saved'), error = ref(''), lastSavedAt = ref('')
   const working = ref<any>(null), revision = ref('')
+  // G2：区分「服务端明确拒绝」与「未收到结果」——后者不能显示成功，也不能断言未写入。
+  const unknownOutcome = ref(false)
   let gen = 0                          // 工作内容代数：touch/撤销/替换 working 都递增；用于“入队后内容又变了”判定
   let queue: QueueItem | null = null   // 待发送快照（连续编辑合并只留最后一项），携带入队瞬间的 working 深快照与当时 revision
   let lastFailed: QueueItem | null = null
@@ -60,6 +63,7 @@ export function createSaver(label: string, load: () => Promise<{ state: any; rev
         if (myEpoch !== epoch) return // 期间发生了重新载入：丢弃过期响应
         if (typeof data?.revision === 'string') revision.value = data.revision
         lastSavedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+        unknownOutcome.value = false
         if (gen !== item.gen && working.value) { // 入队后内容又有修改：以最新内容 + 已确认 revision 续存
           queue = { snapshot: clone(working.value), gen }
           status.value = 'dirty'
@@ -68,7 +72,12 @@ export function createSaver(label: string, load: () => Promise<{ state: any; rev
       } catch (err: any) {
         if (myEpoch !== epoch) return
         if (err?.status === 409) { conflictRevision = err.currentRevision ?? null; status.value = 'conflict'; error.value = err?.message || '此草稿已有新版本' }
-        else { lastFailed = item; status.value = 'error'; error.value = err?.message || '保存失败' } // 保留 working，可 retry
+        else {
+          lastFailed = item; status.value = 'error'
+          // 超时／网络中断：请求可能已到达服务端，不能显示成功也不能断言未写入（G2）
+          unknownOutcome.value = !(err instanceof SaveRequestError) || err.failure !== 'http'
+          error.value = unknownOutcome.value ? '未收到保存结果，暂不能确认是否成功' : (err?.message || '保存失败')
+        }
       } finally { inflight = null }
     })()
   }
@@ -114,7 +123,7 @@ export function createSaver(label: string, load: () => Promise<{ state: any; rev
     working.value = data.state
     revision.value = data.revision
     gen++
-    queue = null; lastFailed = null; conflictRevision = null
+    queue = null; lastFailed = null; conflictRevision = null; unknownOutcome.value = false
     if (timer) { clearTimeout(timer); timer = null }
     status.value = 'saved'; error.value = ''
   }
@@ -125,7 +134,7 @@ export function createSaver(label: string, load: () => Promise<{ state: any; rev
     // 失败后又编辑（内容与失败快照不一致）：重试最新确认内容，不静默把新内容换回旧失败快照（F3-⑤）
     const changed = working.value && JSON.stringify(working.value) !== JSON.stringify(failed.snapshot)
     queue = changed ? { snapshot: clone(working.value), gen } : failed
-    status.value = 'dirty'; error.value = ''
+    status.value = 'dirty'; error.value = ''; unknownOutcome.value = false
     if (timer) { clearTimeout(timer); timer = null }
     await drain(true) // error 状态下 drain 默认不续发；显式重试强制发送一次（F3-①）
   }
@@ -139,13 +148,13 @@ export function createSaver(label: string, load: () => Promise<{ state: any; rev
     if (conflictRevision) revision.value = conflictRevision
     else { await reload(); working.value = local; gen++ }
     conflictRevision = null
-    status.value = 'dirty'; error.value = ''
+    status.value = 'dirty'; error.value = ''; unknownOutcome.value = false
     queue = { snapshot: clone(local), gen }
     await drain(true)
   }
 
   function clearFailed() {
-    if (status.value === 'error') { lastFailed = null; queue = null; status.value = 'saved'; error.value = '' }
+    if (status.value === 'error') { lastFailed = null; queue = null; status.value = 'saved'; error.value = ''; unknownOutcome.value = false }
     // conflict 不在此复位：队列为空不会自动重提，由用户经状态栏显式处理
   }
 
@@ -155,5 +164,5 @@ export function createSaver(label: string, load: () => Promise<{ state: any; rev
     if (status.value !== 'saved') { e.preventDefault(); e.returnValue = '' }
   })
 
-  return { status, error, lastSavedAt, working, revision, commitNow, touch, flush, reload, retryFromLocal, retry, clearFailed }
+  return { status, error, lastSavedAt, working, revision, unknownOutcome, commitNow, touch, flush, reload, retryFromLocal, retry, clearFailed }
 }

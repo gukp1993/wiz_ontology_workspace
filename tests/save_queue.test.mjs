@@ -165,6 +165,49 @@ function harness() {
   assert('⑧ 过期响应未覆盖新载入状态', s.working.value.v === 100 && s.revision.value === 'fresh', `working=${JSON.stringify(s.working.value)} rev=${s.revision.value}`)
 }
 
+// ⑨ G2（20260917 全局交互评审采纳）：区分「服务端明确拒绝」与「未收到结果」。
+//    超时/网络中断时不得显示成功，也不得断言未写入；unknownOutcome 供顶栏显示中性文案。
+{
+  const h = harness()
+  const s = createSaver('t9', h.load, h.submit)
+  await s.reload()
+  s.working.value.v = 1
+  h.plan.push(d => d.reject(new SaveRequestError('网络异常，无法连接服务', 0, null, null, 'network')))
+  await s.commitNow()
+  assert('⑨a 网络中断：error 且标记结果未知', s.status.value === 'error' && s.unknownOutcome.value === true, `status=${s.status.value} unknown=${s.unknownOutcome.value}`)
+  assert('⑨b 未知结果不给「已保存」也不断言未写入', s.error.value === '未收到保存结果，暂不能确认是否成功', `error=${s.error.value}`)
+  h.plan.push(h.ok('r9'))
+  await s.retry()
+  assert('⑨c 重试成功后复位结果未知', s.status.value === 'saved' && s.unknownOutcome.value === false, `status=${s.status.value} unknown=${s.unknownOutcome.value}`)
+}
+
+// ⑩ G2：服务端明确拒绝（4xx/5xx）不是「结果未知」，保留服务端原因
+{
+  const h = harness()
+  const s = createSaver('t10', h.load, h.submit)
+  await s.reload()
+  s.working.value.v = 1
+  h.plan.push(d => d.reject(new SaveRequestError('草稿校验未通过', 422, null, { error: '草稿校验未通过' }, 'http')))
+  await s.commitNow()
+  assert('⑩ 服务端拒绝：保留原因且不算结果未知', s.status.value === 'error' && s.unknownOutcome.value === false && s.error.value === '草稿校验未通过', `status=${s.status.value} unknown=${s.unknownOutcome.value} error=${s.error.value}`)
+  h.plan.push(h.ok('r10'))
+  await s.retry()
+  assert('⑩b 重试成功后仍为已保存', s.status.value === 'saved' && s.unknownOutcome.value === false)
+}
+
+// ⑪ G2：结果未知期间不得自动重发（等用户决定）
+{
+  const h = harness()
+  const s = createSaver('t11', h.load, h.submit)
+  await s.reload()
+  s.working.value.v = 1
+  h.plan.push(d => d.reject(new SaveRequestError('读取超时', 0, null, null, 'timeout')))
+  await s.commitNow()
+  await sleep(30) // 给 debounce / drain 误触发的机会
+  assert('⑪ 结果未知后不自动重复提交', h.calls.length === 1, `calls=${h.calls.length}`)
+  assert('⑪b 保留 working，等用户核对或重试', s.working.value.v === 1 && s.status.value === 'error')
+}
+
 const failed = results.filter(r => !r.ok)
 console.log(`\n统计：${results.length - failed.length}/${results.length} 项通过`)
 if (failed.length) { console.log('未通过：' + failed.map(f => f.name).join('；')); process.exit(1) }

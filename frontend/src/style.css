@@ -78,6 +78,9 @@ body{font-size:14px}.tools{flex-wrap:wrap}.tools>span{font-size:12px;color:var(-
 .save-pill.saving{color:var(--blue);border-color:var(--blue-line);background:var(--blue-soft)}
 .save-pill.saving::before{width:9px;height:9px;background:transparent;border:2px solid currentColor;border-top-color:transparent;animation:save-spin .9s linear infinite}
 .save-pill.dirty{color:var(--muted);background:var(--paper-2)}
+/* G3：表单未保存 / 编辑中——静态琥珀色辅助区分（不只靠颜色：文案本身说明状态） */
+.save-pill.form{color:var(--warn);border-color:var(--warn-line);background:var(--warn-soft)}
+.save-pill.editing{color:var(--muted);background:var(--paper-2)}
 .save-pill.error{color:var(--danger);border-color:var(--danger-line);background:var(--danger-soft)}
 .save-pill.conflict{color:var(--warn);border-color:var(--warn-line);background:var(--warn-soft)}
 @keyframes save-spin{to{transform:rotate(360deg)}}
@@ -173,3 +176,36 @@ button:active:not(:disabled){transform:translateY(1px)}
 .ld-stacked.ld-detail-open .ld-list{display:none}
 .ld-stacked.ld-detail-open .ld-detail{display:block;height:var(--ld-h,560px)}
 .ld-stacked .ld-back{display:inline-block}
+
+/* ── G5（20260917 全局交互评审采纳）局部布局修复 ── */
+/* 面板头部操作区：短操作文案不被压成竖排；必要时操作区整体换行，不给整个页头强制 nowrap */
+.panelhead{flex-wrap:wrap;row-gap:8px}
+.panelhead .tools{flex-wrap:wrap;row-gap:8px}
+.panelhead .tools button{white-space:nowrap;flex:none}
+/* 画布连线阶段提示：跟随选择阶段更新，退出连线/只读预览时切换或移除 */
+.canvas-mode-note{display:flex;align-items:center;gap:8px;margin:-4px 0 12px;padding:8px 12px;border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--ink-2);border-radius:var(--r-sm);font-size:13px}
+.canvas-mode-note.readonly{border-color:var(--line-2);background:var(--paper-2);color:var(--muted)}
+/* 窄屏（≤620px，含 390px）：顶栏改为常规流，不再用固定左偏移被裁掉；
+   本体/项目切换、上下文选择、创建入口、保存状态与撤销重做保持可见 */
+@media(max-width:620px){
+  .topbar{position:static;left:auto;right:auto;top:auto;height:auto;min-height:52px;flex-wrap:wrap;gap:8px;padding:8px 12px}
+  .topbar-crumb{flex:1 1 100%;flex-wrap:wrap;row-gap:2px}
+  .topbar-title{white-space:normal;overflow-wrap:anywhere}
+  .topbar-status{flex-wrap:wrap}
+  .topbar-actions{margin-left:auto}
+  .shell{margin:0}
+  .rail{padding-top:10px}
+  .rail .brand{display:none}
+  /* 390px：当前本体/项目选择与新建入口必须可达（不再随 .brand 一起隐藏） */
+  .rail .space{display:block}
+  .rail .rail-hint{display:none}
+  .space .app-select button{min-height:38px}
+}
+/* G4：行内更多操作菜单（RowMenu）——常用操作留在行内，删除等低频操作置底并危险色区分 */
+.row-menu{position:relative;display:inline-block}
+.row-menu-trigger{white-space:nowrap}
+.row-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:20;min-width:158px;background:var(--paper);border:1px solid var(--line-2);border-radius:var(--r-sm);box-shadow:var(--shadow-2);padding:4px;display:flex;flex-direction:column}
+.row-menu-list button{border:0;background:none;text-align:left;padding:8px 10px;border-radius:var(--r-sm);font-size:13px;white-space:nowrap}
+.row-menu-list button:hover{background:var(--paper-2)}
+.row-menu-list button.danger{color:var(--danger);border-top:1px solid var(--line);margin-top:4px;padding-top:10px;border-radius:0 0 var(--r-sm) var(--r-sm)}
+.row-menu-list button:disabled{opacity:.5}
