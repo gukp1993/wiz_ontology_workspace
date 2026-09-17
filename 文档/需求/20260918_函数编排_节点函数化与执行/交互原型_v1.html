@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>函数编排 · 节点函数化与画布执行 · 交互原型 v1（2026-09-18）</title>
+<style>
+:root{
+  --paper:#f7f6f2; --paper-2:#efede6; --line:#dcd8cc; --ink:#2c3550; --muted:#8a8f9f;
+  --blue:#3978c5; --blue-soft:#e9f2ff; --blue-line:#bcd6f5; --blue-ink:#2a5a99;
+  --green:#35a167; --green-soft:#edf9f1; --red:#c4534d; --red-soft:#fdeeec;
+  --orange:#d9832b; --orange-soft:#fff2e5; --purple:#8464d8; --purple-soft:#f3f0ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--paper)}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 14px;color:var(--ink)}
+button:hover{background:var(--paper-2)}
+button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+button.primary:hover{opacity:.92}
+button.danger{color:var(--red);border-color:#e5b5b2}
+button.mini{padding:2px 9px;font-size:12px;border-radius:6px}
+button:disabled{opacity:.45;cursor:not-allowed}
+input,select,textarea{font:inherit;border:1px solid var(--line);border-radius:7px;padding:6px 9px;background:#fff;color:var(--ink);width:100%}
+label{display:block;font-size:12px;color:var(--muted);margin-top:10px}
+.scope{background:#fff8e6;border-bottom:1px solid #eadfb8;color:#8a6d1f;font-size:12px;padding:6px 16px}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:15px;margin-right:6px}
+header .spacer{flex:1}
+.status{font-size:12px;border-radius:6px;padding:4px 10px}
+.status.ok{background:var(--green-soft);color:var(--green)}
+.status.warn{background:var(--orange-soft);color:var(--orange)}
+.status.err{background:var(--red-soft);color:var(--red)}
+.status.muted{background:var(--paper-2);color:var(--muted)}
+.layout{display:grid;grid-template-columns:200px 1fr 380px;gap:12px;padding:12px 16px;height:calc(100vh - 96px);min-height:540px}
+.side{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;overflow:auto}
+.side .item{display:block;width:100%;text-align:left;border:1px solid transparent;background:transparent;padding:8px 10px;border-radius:7px;margin-bottom:3px}
+.side .item:hover{background:var(--paper-2)}
+.side .item.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
+.side .item strong{display:block;font-size:13px}
+.side .item small{color:var(--muted);font-size:11px}
+.side .actions{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.side .actions button{font-size:12px}
+/* canvas */
+.canvas{position:relative;background:var(--paper-2);border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  background-image:radial-gradient(#d8d4c8 1px,transparent 1px);background-size:20px 20px}
+.canvas svg.wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.node{position:absolute;width:190px;background:#fff;border:2px solid var(--line);border-radius:10px;padding:8px 10px 7px;cursor:grab;user-select:none;box-shadow:0 1px 4px rgba(60,60,40,.08)}
+.node.boundary{border-style:double;border-width:3px;border-color:var(--purple);background:var(--purple-soft);width:118px;text-align:center}
+.node.sql{background:var(--green-soft);border-color:var(--green)}
+.node.python{background:var(--blue-soft);border-color:var(--blue)}
+.node.redis{background:var(--orange-soft);border-color:var(--orange)}
+.node.selected{outline:3px solid rgba(57,120,197,.35)}
+.node .kind{font-size:10px;letter-spacing:.6px;color:var(--muted)}
+.node h4{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .sig{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-block;font-size:10px;border-radius:8px;padding:1px 8px;margin-left:4px;vertical-align:middle}
+.badge.idle{background:var(--paper-2);color:var(--muted)}
+.badge.running{background:var(--blue-soft);color:var(--blue)}
+.badge.success{background:var(--green-soft);color:var(--green)}
+.badge.failed{background:var(--red-soft);color:var(--red)}
+.badge.skipped{background:var(--paper-2);color:var(--muted);text-decoration:line-through}
+.node.failed{border-color:var(--red);box-shadow:0 0 0 2px var(--red-soft)}
+.node .view-out{margin-top:5px;font-size:11px;padding:2px 8px;border-radius:6px}
+.wire-label{position:absolute;transform:translate(-50%,-50%);background:#fff;border:1px solid var(--line);border-radius:9px;font-size:10px;color:var(--muted);padding:1px 7px;pointer-events:none;white-space:nowrap}
+.canvas-tools{position:absolute;top:10px;left:10px;display:flex;gap:6px;z-index:5}
+.canvas-tools button{font-size:12px;padding:4px 10px;background:#fffffff0}
+.canvas-tools button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue)}
+.hint{position:absolute;bottom:8px;left:12px;font-size:11px;color:var(--muted)}
+/* config */
+.config{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto}
+.config h3{font-size:13px;margin:16px 0 6px;color:var(--ink)}
+.config h3:first-child{margin-top:0}
+.config .muted{color:var(--muted);font-size:12px}
+.config .row{display:flex;gap:8px}
+.config .row>*{flex:1}
+.config textarea.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre;min-height:130px}
+.param-card{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;font-size:12px}
+.param-card b{font-size:12px}
+.check-box{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--ink)}
+.check-box input{width:auto}
+/* modal */
+.backdrop{position:fixed;inset:0;background:rgba(40,40,60,.35);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal{background:#fff;border-radius:12px;width:560px;max-width:92vw;max-height:84vh;overflow:auto;padding:18px 20px}
+.modal h2{font-size:15px;margin-bottom:4px}
+.modal .help{font-size:12px;color:var(--muted);margin-bottom:6px}
+.modal .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.json{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:var(--paper-2);border-radius:8px;padding:10px 12px;white-space:pre;overflow:auto;max-height:300px}
+.logs{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#20242e;color:#c8d0e0;border-radius:8px;padding:10px 12px;white-space:pre-wrap;max-height:180px;overflow:auto;margin-top:8px}
+.tabs{display:flex;gap:4px;margin:10px 0 6px}
+.tabs button{font-size:12px;padding:3px 12px;border-radius:6px}
+.tabs button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
+progress{width:100%;height:8px}
+</style>
+</head>
+<body>
+<div class="scope">⚠ 交互原型 v1：演示<b>节点函数化 + 画布运行</b>的目标交互。所有“运行结果/数据/耗时”均为前端模拟，正式实现才包含真实 Python 子进程 / MySQL / Redis 执行与配置检查；工具栏「模拟失败」开关仅存在于原型。</div>
+<header>
+  <h1>账户日终汇总编排</h1>
+  <span class="status muted" id="saveState">已保存 · 配置检查通过（未执行验证）</span>
+  <div class="spacer"></div>
+  <button class="mini" onclick="fakeCheck()">检查配置</button>
+  <button class="primary" id="runAllBtn" onclick="openRunForm()">▶ 运行全部</button>
+  <button class="mini" id="runOneBtn" onclick="runSelected()" disabled>运行选中节点</button>
+  <button class="mini" onclick="clearRun()">清除状态</button>
+  <label class="check-box" style="margin:0"><input type="checkbox" id="failSim"/> 模拟失败（演示跳过）</label>
+</header>
+<div class="layout">
+  <aside class="side" id="nodeList"></aside>
+  <div class="canvas" id="canvas">
+    <svg class="wires" id="wires"></svg>
+    <div class="canvas-tools">
+      <button onclick="alert('原型：整理布局为 breadthfirst（正式实现同一期 cytoscape 整理）')">整理</button>
+      <button onclick="alert('原型：全图适配（正式实现同一期）')">全图</button>
+    </div>
+    <span class="hint">连线从输入绑定派生（运行不产生持久连线）· 徽标为本次运行传递行数 · 拖动节点调整布局</span>
+  </div>
+  <aside class="config" id="config"><p class="muted">在左侧或画布选择节点查看配置。每个节点都是一个“函数”：声明输入参数与输出，运行时按拓扑序传值。</p></aside>
+</div>
+
+<!-- 试运行表单 -->
+<div class="backdrop" id="runForm" style="display:none">
+  <div class="modal">
+    <h2>填写编排入口参数</h2>
+    <p class="help">入口参数即函数入参，控件按声明类型自动生成（借鉴 Kestra 自动表单）。运行前配置检查 errors 必须为 0（运行前 gate）。</p>
+    <label>member_id · 文本 *</label><input id="p_member" value="A-1024"/>
+    <label>query_date · 日期时间 *</label><input id="p_date" type="date" value="2026-09-17"/>
+    <label>min_balance · 数值（可空）</label><input id="p_min" placeholder="留空 = null"/>
+    <div class="foot">
+      <button onclick="closeModal('runForm')">取消</button>
+      <button class="primary" onclick="startRun()">开始运行</button>
+    </div>
+  </div>
+</div>
+
+<!-- 输出检查器 -->
+<div class="backdrop" id="outView" style="display:none">
+  <div class="modal">
+    <h2 id="ovTitle">输出检查器</h2>
+    <p class="help">借鉴 Windmill 步骤结果面板：输出 JSON 与进程日志，仅随本次运行返回，不持久化。</p>
+    <div class="tabs">
+      <button class="active" id="tabOut" onclick="ovTab('out')">输出</button>
+      <button id="tabLog" onclick="ovTab('log')">日志 stdout/stderr</button>
+    </div>
+    <div class="json" id="ovJson"></div>
+    <div class="logs" id="ovLog" style="display:none"></div>
+    <div class="foot">
+      <button class="mini" onclick="copyOut()">复制 JSON</button>
+      <button onclick="closeModal('outView')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ---------- 原型状态（正式实现：state 结构与一期一致，运行结果为后端 /api/flow-run 返回） ----------
+const FLOW_INPUT='flow-input', FLOW_OUTPUT='flow-output';
+const TYPE_LABEL={text:'文本',number:'数值',boolean:'是/否',datetime:'日期时间',object:'对象',list:'列表'};
+const state={
+  nodes:[
+    {id:'nd_sql1',kind:'sql',name:'查询账户',pos:{x:150,y:70},
+      inputs:[{name:'status',label:'状态',type:{type:'text'},source:{kind:'flowInput',input:'status'}},
+              {name:'min_balance',label:'最低余额',type:{type:'number'},source:null}],
+      outputs:[{name:'rows',label:'账户行',type:{type:'list',elementType:{type:'object'}}}],
+      impl:{sql:"SELECT id, name, balance\nFROM t_account\nWHERE status = #{status}\n<if test=\"min_balance != null\"> AND balance &gt;= #{min_balance}</if>",
+            connection:'c1',allowWrite:false,timeout:30,maxRows:1000}},
+    {id:'nd_py1',kind:'python',name:'汇总计算',pos:{x:440,y:70},
+      inputs:[{name:'rows',label:'账户行',type:{type:'list'},source:{kind:'node',node:'nd_sql1',output:'rows'}}],
+      outputs:[{name:'summary',label:'汇总',type:{type:'object'}},{name:'count',label:'条数',type:{type:'number'}}],
+      impl:{code:"def main(rows):\n    total = sum(r.get('balance') or 0 for r in rows)\n    return {'summary': {'total': total}, 'count': len(rows)}\n",timeout:30}},
+    {id:'nd_redis1',kind:'redis',name:'读缓存标记',pos:{x:730,y:70},
+      inputs:[{name:'member_id',label:'成员',type:{type:'text'},source:{kind:'flowInput',input:'member_id'}},
+              {name:'count',label:'条数',type:{type:'number'},source:{kind:'node',node:'nd_py1',output:'count'}}],
+      outputs:[{name:'cache_flag',label:'缓存标记',type:{type:'text'}}],
+      impl:{command:'GET',key:'cache:summary:${member_id}',args:['count'],rowMode:false,timeout:10}},
+    {id:'nd_sql2',kind:'sql',name:'写汇总记录',pos:{x:730,y:250},
+      inputs:[{name:'summary',label:'汇总',type:{type:'object'},source:{kind:'node',node:'nd_py1',output:'summary'}},
+              {name:'query_date',label:'日期',type:{type:'datetime'},source:{kind:'flowInput',input:'query_date'}}],
+      outputs:[{name:'affected',label:'影响行数',type:{type:'number'}}],
+      impl:{sql:"<set>\n  balance_total = #{summary.total},\n  updated_at = NOW()\n</set>",connection:'c1',allowWrite:true,timeout:30,maxRows:1000}},
+  ],
+  outputs:[{name:'result',label:'运行结果',binding:{kind:'node',node:'nd_sql2',output:'affected'}}],
+  connections:[{id:'c1',name:'储能测试库（MySQL）',engine:'mysql'},{id:'c2',name:'缓存（Redis）',engine:'redis'}],
+};
+const runState={}; // nodeId -> {status, ms, output, rowCount, error, logs}
+let selectedId='', running=false;
+
+const nodeById=id=>state.nodes.find(n=>n.id===id);
+const kindLabel={sql:'SQL 节点',python:'PYTHON 节点',redis:'REDIS 节点'};
+function sigOf(n){
+  const i=(n.inputs||[]).map(x=>x.name).join(', ')||'';
+  const o=(n.outputs||[]).map(x=>`${x.name}:${TYPE_LABEL[x.type.type]||x.type.type}`).join(' · ')||'—';
+  return `(${i}) → ${o}`;
+}
+// 拓扑序（原型手工给线性顺序；正式实现由 flow_executor 按依赖图排序）
+const TOPO=['nd_sql1','nd_py1','nd_redis1','nd_sql2'];
+
+// ---------- 渲染 ----------
+const canvas=document.getElementById('canvas'), wires=document.getElementById('wires');
+function render(){
+  renderList(); renderNodes(); renderWires(); renderConfig(); syncHeader();
+}
+function renderList(){
+  const el=document.getElementById('nodeList');
+  const items=[{id:FLOW_INPUT,name:'编排输入',kind:'边界（函数入参）'},
+    ...state.nodes.map(n=>({id:n.id,name:n.name,kind:kindLabel[n.kind]})),
+    {id:FLOW_OUTPUT,name:'编排输出',kind:'边界（函数返回值）'}];
+  el.innerHTML=items.map(i=>`<button class="item ${selectedId===i.id?'active':''}" onclick="select('${i.id}')">
+    <strong>${i.name}</strong><small>${i.kind}${runState[i.id]?' · '+badgeHtml(i.id):''}</small></button>`).join('')
+    +`<div class="actions"><button onclick="alert('原型：新增节点弹类型选择，正式实现同一期＋execution 默认值')">＋ 节点</button></div>`;
+}
+function badgeHtml(id){
+  const r=runState[id]; if(!r) return '';
+  return {running:'<span class="badge running">运行中</span>',success:`<span class="badge success">成功 ${r.ms}ms</span>`,
+          failed:'<span class="badge failed">失败</span>',skipped:'<span class="badge skipped">跳过</span>'}[r.status]||'';
+}
+function renderNodes(){
+  canvas.querySelectorAll('.node').forEach(e=>e.remove());
+  const mk=(id,x,y,cls,inner)=>{
+    const d=document.createElement('div');
+    d.className=`node ${cls} ${selectedId===id?'selected':''} ${runState[id]?.status==='failed'?'failed':''}`;
+    d.style.left=x+'px'; d.style.top=y+'px'; d.dataset.id=id; d.innerHTML=inner;
+    canvas.appendChild(d);
+  };
+  mk(FLOW_INPUT,14,150,'boundary',`<h4>编排输入</h4><span class="sig">member_id · query_date · min_balance</span>`);
+  mk(FLOW_OUTPUT,760,410,'boundary',`<h4>编排输出</h4><span class="sig">result:数值</span>`);
+  for(const n of state.nodes){
+    const r=runState[n.id];
+    mk(n.id,n.pos.x,n.pos.y,n.kind,
+      `<span class="kind">${kindLabel[n.kind]}</span>${badgeHtml(n.id)}
+       <h4>${n.name}</h4><div class="sig">${sigOf(n)}</div>
+       ${r&&r.status==='success'?`<button class="mini view-out" onclick="event.stopPropagation();openOut('${n.id}')">查看输出（${r.rowCount ?? '—'}）</button>`:''}
+       ${r&&r.status==='failed'?`<button class="mini view-out" onclick="event.stopPropagation();openOut('${n.id}')">查看错误</button>`:''}`);
+  }
+  canvas.querySelectorAll('.node[data-id^="nd_"]').forEach(d=>{
+    d.addEventListener('mousedown',ev=>{
+      if(ev.target.tagName==='BUTTON')return;
+      select(d.dataset.id);
+      const sx=ev.clientX,sy=ev.clientY,ox=d.offsetLeft,oy=d.offsetTop;
+      const mv=e=>{d.style.left=ox+e.clientX-sx+'px';d.style.top=oy+e.clientY-sy+'px';renderWires()};
+      const up=()=>{const n=nodeById(d.dataset.id);n.pos.x=d.offsetLeft;n.pos.y=d.offsetTop;
+        document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+    });
+  });
+}
+function edges(){ // 原型静态边；正式实现由 flowModel.derivedEdges 从绑定派生
+  return [
+    {from:FLOW_INPUT,to:'nd_sql1',label:'status'},
+    {from:'nd_sql1',to:'nd_py1',label:'rows'},
+    {from:'nd_py1',to:'nd_redis1',label:'count'},
+    {from:'nd_py1',to:'nd_sql2',label:'summary'},
+    {from:'nd_sql2',to:FLOW_OUTPUT,label:'affected'},
+  ];
+}
+function renderWires(){
+  const svg=wires; svg.innerHTML='';
+  for(const e of edges()){
+    const a=canvas.querySelector(`.node[data-id="${e.from}"]`), b=canvas.querySelector(`.node[data-id="${e.to}"]`);
+    if(!a||!b)continue;
+    const x1=a.offsetLeft+a.offsetWidth, y1=a.offsetTop+a.offsetHeight/2;
+    const x2=b.offsetLeft, y2=b.offsetTop+b.offsetHeight/2;
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    const mx=Math.max((x2-x1)/2,40);
+    p.setAttribute('d',`M${x1},${y1} C${x1+mx},${y1} ${x2-mx},${y2} ${x2},${y2}`);
+    p.setAttribute('stroke',runState[e.to]?.status==='failed'?'var(--red)':'#9aa2b8');
+    p.setAttribute('stroke-width','2');p.setAttribute('fill','none');
+    svg.appendChild(p);
+    const r=runState[e.from];
+    if(r&&r.status==='success'){ // 边行数徽标（借鉴 n8n）
+      const lb=document.createElement('div');lb.className='wire-label';
+      lb.style.left=(x1+x2)/2+'px';lb.style.top=(y1+y2)/2+'px';
+      lb.textContent=`${e.label} · ${r.rowCount??'1'} 条`;
+      canvas.appendChild(lb);
+    }
+  }
+}
+function syncHeader(){
+  const el=document.getElementById('saveState');
+  if(running){el.className='status warn';el.textContent='运行中…（基于运行时快照，编辑不受影响）';}
+  else if(Object.values(runState).some(r=>r.status==='failed')){el.className='status err';el.textContent='本次运行失败：读缓存标记 执行出错';}
+  else if(Object.values(runState).some(r=>r.status==='success')){el.className='status ok';el.textContent='本次运行成功（原型模拟数据，未真实执行）';}
+  else {el.className='status muted';el.textContent='已保存 · 配置检查通过（未执行验证）';}
+  document.getElementById('runAllBtn').disabled=running;
+  document.getElementById('runOneBtn').disabled=running||!selectedId||selectedId.startsWith('flow-');
+}
+
+// ---------- 配置面板 ----------
+function renderConfig(){
+  const el=document.getElementById('config');
+  const n=nodeById(selectedId);
+  if(!n){
+    if(selectedId===FLOW_INPUT){el.innerHTML=`<h3>编排输入（函数入参）</h3>
+      <div class="param-card"><b>member_id</b> · 文本 · <span class="muted">必填</span></div>
+      <div class="param-card"><b>query_date</b> · 日期时间</div>
+      <div class="param-card"><b>min_balance</b> · 数值 · <span class="muted">可空</span></div>
+      <p class="muted" style="margin-top:8px">试运行表单按这些声明自动生成控件（借鉴 Kestra）。</p>`;return}
+    if(selectedId===FLOW_OUTPUT){el.innerHTML=`<h3>编排输出（函数返回值）</h3>
+      <div class="param-card"><b>result</b> · 数值 ← 「写汇总记录」.affected</div>
+      <p class="muted" style="margin-top:8px">来源绑定沿一期结构；运行后输出检查器可查看实际值。</p>`;return}
+    el.innerHTML='<p class="muted">在左侧或画布选择节点查看配置。</p>';return;
+  }
+  const exec=`<h3>执行参数（v2 新增，借鉴 DolphinScheduler 超时）</h3>
+    <div class="row"><label>超时（秒）</label>${n.kind==='sql'?'<label>行数上限</label>':''}</div>
+    <div class="row"><input type="number" value="${n.impl.timeout||30}"/>${n.kind==='sql'?`<input type="number" value="${n.impl.maxRows||1000}"/>`:''}</div>`;
+  const io=`<h3>输入参数（函数入参）</h3>${(n.inputs||[]).map(i=>`
+    <div class="param-card"><b>${i.name}</b> · ${TYPE_LABEL[i.type.type]||i.type.type}
+      <div class="muted">来源：${i.source?(i.source.kind==='flowInput'?'入口参数 · '+i.source.input:'「'+(nodeById(i.source.node)||{}).name+'」'):'<span style="color:var(--orange)">未绑定（运行时该参数缺失将失败）</span>'}</div>
+    </div>`).join('')}
+    <h3>输出（函数返回值契约）</h3>${(n.outputs||[]).map(o=>`
+    <div class="param-card"><b>${o.name}</b> · ${o.type.type==='list'?'列表<'+(o.type.elementType?TYPE_LABEL[o.type.elementType.type]:'?')+'>':(TYPE_LABEL[o.type.type]||o.type.type)}</div>`).join('')}`;
+  let body='';
+  if(n.kind==='sql'){
+    body=`<h3>SQL 模板（MyBatis 风格）</h3>
+    <p class="muted">#{参数} 预编译占位（旧 :参数 继续支持）；&lt;if test&gt; &lt;foreach&gt; 等动态标签按子集解析；${'{expr}'} 原文拼接将在配置检查提示注入风险。</p>
+    <textarea class="code" rows="8">${n.impl.sql.replace(/</g,'&lt;')}</textarea>
+    <label>数据连接（MySQL，仅引用；凭据在服务端 vault）</label>
+    <select>${state.connections.filter(c=>c.engine==='mysql').map(c=>`<option ${c.id===n.impl.connection?'selected':''}>${c.name}</option>`).join('')}</select>
+    <div class="check-box"><input type="checkbox" ${n.impl.allowWrite?'checked':''}/> 允许写（DML；默认只读会话，勾选后关闭）</div>`;
+  }else if(n.kind==='python'){
+    body=`<h3>Python 代码</h3>
+    <p class="muted">契约：def main(输入技术名…) → dict | None。子进程执行 + 超时杀进程；<b>本版不是安全沙箱</b>（仅本地可信场景），仅承诺标准库可用。</p>
+    <textarea class="code" rows="8">${n.impl.code.replace(/</g,'&lt;')}</textarea>`;
+  }else{
+    body=`<h3>Redis 命令</h3>
+    <p class="muted">白名单命令表驱动：命令 → 参数形态 → 返回映射（GET→文本，HGETALL→对象，INCR→数值…）。管理命令（KEYS/FLUSHDB 等）配置检查即报错。</p>
+    <label>命令</label><select>${['GET','TTL','HGETALL','HMGET','LRANGE','SET','SETEX','DEL','INCR','EXPIRE'].map(c=>`<option ${c===n.impl.command?'selected':''}>${c}</option>`).join('')}</select>
+    <label>Key 模板</label><input value="${n.impl.key}"/>
+    <label>参数（绑定输入技术名，逗号分隔）</label><input value="${(n.impl.args||[]).join(', ')}"/>
+    <div class="check-box"><input type="checkbox" ${n.impl.rowMode?'checked':''}/> 行模式（列表输入逐行执行，输出列表按序对应）</div>`;
+  }
+  el.innerHTML=`<h3>${kindLabel[n.kind]} · ${n.name}</h3>${io}${body}${exec}
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="primary" onclick="runSelected()" ${running?'disabled':''}>▶ 试运行本节点</button>
+      <button onclick="fakeCheck()">检查配置</button>
+    </div>
+    <p class="muted" style="margin-top:8px">试运行＝仅执行该节点：入参取 mock 或上次运行的 upstream 缓存（借鉴 n8n 单节点运行）。</p>`;
+}
+
+// ---------- 运行模拟 ----------
+let outViewer=null;
+function openRunForm(){ if(running)return; document.getElementById('runForm').style.display='flex'; }
+function closeModal(id){document.getElementById(id).style.display='none'}
+function startRun(){
+  closeModal('runForm');
+  TOPO.forEach(id=>delete runState[id]); running=true; render();
+  let i=0;
+  const step=()=>{
+    if(i>=TOPO.length){running=false;render();return}
+    const id=TOPO[i++]; runState[id]={status:'running'}; render();
+    setTimeout(()=>{
+      const failNow=document.getElementById('failSim').checked&&id==='nd_redis1';
+      if(failNow){
+        runState[id]={status:'failed',error:'Redis 命令 GET 失败：连接超时（原型模拟）',logs:'[stderr] redis.exceptions.TimeoutError: timeout on GET cache:summary:A-1024'};
+        for(const rest of TOPO.slice(i))runState[rest]={status:'skipped'}; // 失败传播：下游跳过
+        i=TOPO.length;
+      }else{
+        const fake={nd_sql1:{ms:86,rowCount:12,output:{rows:'[{id,name,balance} × 12 行]（原型模拟）'}},
+                    nd_py1:{ms:24,rowCount:1,output:{summary:{total:158230.75},count:12}},
+                    nd_sql2:{ms:41,rowCount:1,output:{affected:1}}}[id]||{ms:30,rowCount:0,output:{}};
+        runState[id]={status:'success',...fake,logs:'[stdout] ok（原型模拟日志）'};
+      }
+      render(); setTimeout(step,260);
+    },420);
+  };
+  step();
+}
+function runSelected(){
+  if(!selectedId||selectedId.startsWith('flow-')||running)return;
+  alert('原型：单节点试运行将弹出 mock 入参表单（未 mock 且上游未运行时明确报缺失），正式实现走 /api/flow-run {only, mock, upstream}。此处直接演示成功。');
+  runState[selectedId]={status:'running'};render();
+  setTimeout(()=>{runState[selectedId]={status:'success',ms:18,rowCount:1,output:{mock:'单节点模拟输出'},logs:'[stdout] ok'};render()},400);
+}
+function clearRun(){TOPO.forEach(id=>delete runState[id]);running=false;render()}
+function fakeCheck(){const el=document.getElementById('saveState');el.className='status warn';el.textContent='已检查：1 项待完善（nd_sql1 输入「最低余额」尚未绑定来源）';setTimeout(syncHeader,4000)}
+
+// ---------- 输出检查器 ----------
+function ovTab(t){
+  document.getElementById('ovJson').style.display=t==='out'?'block':'none';
+  document.getElementById('ovLog').style.display=t==='log'?'block':'none';
+  document.getElementById('tabOut').classList.toggle('active',t==='out');
+  document.getElementById('tabLog').classList.toggle('active',t==='log');
+}
+function openOut(id){
+  outViewer=runState[id]||{};
+  document.getElementById('ovTitle').textContent=`输出检查器 · ${(nodeById(id)||{}).name||id}`;
+  document.getElementById('ovJson').textContent=outViewer.error?('错误：'+outViewer.error):JSON.stringify(outViewer.output??{},null,2);
+  document.getElementById('ovLog').textContent=outViewer.logs||'（无日志）';
+  ovTab(outViewer.error?'log':'out');
+  document.getElementById('outView').style.display='flex';
+}
+function copyOut(){navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('ovJson').textContent)}
+
+function select(id){selectedId=id;render()}
+select('');
+</script>
+</body>
+</html>
