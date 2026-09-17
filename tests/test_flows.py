@@ -323,5 +323,52 @@ check(items[created7['id']]['configStatus'] == 'passed' and items[created10['id'
       '列表 configStatus 区分通过/待完善', items.get(created10['id']))
 check(items[created7['id']]['nodeCount'] == 1, '列表 nodeCount 正确')
 
+
+# 14) v2 节点校验：HTTP / 计算 / Python(LLM) / Redis 白名单 / 动态 SQL / 执行参数 ---------------
+v2 = flows.blank_flow('v2check', 'v2 节点校验')
+v2['nodes'] = [
+    {'id': 'nd_http', 'kind': 'http', 'name': '推送', 'inputs': [], 'outputs': [],
+     'implementation': {'language': 'http', 'method': 'GET', 'url': 'ftp://x/{undeclared}',
+                        'headers': {}, 'bodyMode': 'none', 'body': '', 'responsePath': 'a b'}},
+    {'id': 'nd_calc', 'kind': 'calc', 'name': '计算',
+     'inputs': [], 'outputs': [{'id': 'out_o', 'name': 'o', 'label': 'o', 'type': {'type': 'number'}}],
+     'implementation': {'language': 'calc', 'mode': 'formula', 'formulas': {}}},
+    {'id': 'nd_py', 'kind': 'python', 'name': '脚本', 'inputs': [], 'outputs': [],
+     'implementation': {'language': 'python', 'code': 'def not_main():\n    pass\n', 'providerId': 'llm-ghost'}},
+    {'id': 'nd_redis', 'kind': 'redis', 'name': '缓存', 'inputs': [], 'outputs': [],
+     'implementation': {'language': 'redis', 'connectionId': '', 'command': 'KEYS', 'keyTemplate': 'k:${p}', 'args': []}},
+    {'id': 'nd_sql', 'kind': 'sql', 'name': '查询', 'inputs': [], 'outputs': [],
+     'implementation': {'language': 'sql', 'connectionId': '', 'sql': 'SELECT <if test="a != null">1</ifhi>'}},
+]
+report = flows.check_flow(v2, [], [], None)
+errors = report['errors']
+for needle in ['http(s)', '未声明的输入参数', '提取路径', '缺少公式', 'main 函数', 'LLM 提供方不存在',
+               'KEYS', '无法解析']:
+    check(any(needle in e for e in errors), f'v2 校验报错含「{needle}」', errors)
+check(not any('循环依赖' in e for e in errors), '五节点无依赖不成环')
+v2['nodes'][0]['implementation'].update({'url': 'https://x/{p}', 'responsePath': 'a.b'})
+v2['nodes'][0]['inputs'] = []
+errors = flows.check_flow(v2, [], [], None)['errors']
+check(any('占位' in e and '{p}' in e for e in errors), 'URL 占位未声明报错', errors)
+v2['nodes'][1]['inputs'] = [{'id': 'in_x', 'name': 'x', 'label': 'x', 'type': {'type': 'object'}, 'source': None}]
+v2['nodes'][1]['outputs'] = [{'id': 'out_o', 'name': 'o', 'label': 'o', 'type': {'type': 'number'}}]
+v2['nodes'][1]['implementation']['formulas'] = {'o': '{x} + 1'}
+errors = flows.check_flow(v2, [], [], None)['errors']
+check(any('不支持引用' in e for e in errors), '公式引用对象类型输入报错', errors)
+v2['nodes'][2]['implementation']['code'] = 'def main():\n    return None\n'
+v2['nodes'][2]['implementation']['providerId'] = ''
+errors = flows.check_flow(v2, [], ['llm-ok'], None)['errors']
+check(not any('main' in e for e in errors), '合法 main 通过语法检查')
+v2['nodes'][4]['implementation']['sql'] = 'SELECT * FROM t WHERE a = #{a} <foreach collection="rows" item="x">#{x}</foreach>'
+v2['nodes'][4]['inputs'] = [{'id': 'in_a', 'name': 'a', 'label': 'a', 'type': {'type': 'text'}, 'source': None}]
+errors = flows.check_flow(v2, [], [], None)['errors']
+check(any('foreach 引用了未声明的集合' in e for e in errors), 'foreach 集合未声明报错', errors)
+v2['nodes'][4]['inputs'].append({'id': 'in_rows', 'name': 'rows', 'label': 'rows',
+                                 'type': {'type': 'list', 'elementType': {'type': 'text'}}, 'source': None})
+v2['nodes'][4]['execution'] = {'timeoutMs': 99999999, 'maxRows': 0, 'allowWrite': 'yes'}
+errors = flows.check_flow(v2, [], [], None)['errors']
+check(any('超时无效' in e for e in errors) and any('行数上限无效' in e for e in errors)
+      and any('允许写' in e for e in errors), '执行参数越界报错', errors)
+
 print(f'\n全部通过：{len(PASSED)} 项')
 shutil.rmtree(TMP, ignore_errors=True)

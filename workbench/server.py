@@ -40,6 +40,7 @@ GET_ROUTES = {
     '/api/api-credentials': project_routes.get_api_credentials,
     '/api/flows': flow_routes.get_flows,
     '/api/flow-state': flow_routes.get_flow_state,
+    '/api/llm-providers': flow_routes.get_llm_providers,
 }
 
 # POST 路由表：payload 为解析后的 JSON。白名单即本表键集合。
@@ -75,6 +76,10 @@ POST_ROUTES = {
     '/api/flow-check': flow_routes.post_flow_check,
     '/api/flow-copy': flow_routes.post_flow_copy,
     '/api/flow-delete': flow_routes.post_flow_delete,
+    '/api/flow-run': flow_routes.post_flow_run,
+    '/api/llm-provider-save': flow_routes.post_llm_provider_save,
+    '/api/llm-provider-delete': flow_routes.post_llm_provider_delete,
+    '/api/llm-provider-test': flow_routes.post_llm_provider_test,
     '/api/export': None,  # 二进制响应：do_POST 内专用分支处理
 }
 
