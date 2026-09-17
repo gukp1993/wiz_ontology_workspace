@@ -83,11 +83,24 @@ def _load_all():
 
 
 def list_metadata():
-    """元数据列表（无密钥），默认提供方排最前，其余按名称排序。"""
-    items = [{'id': p['id'], 'name': str(p.get('name') or p['id']),
-              'model': str(p.get('model') or ''), 'isDefault': bool(p.get('is_default')),
-              'keyConfigured': bool(p.get('api_key'))}
-             for p in _load_all()]
+    """元数据列表（无密钥），默认提供方排最前，其余按名称排序。
+    endpoint/timeout/temperature 一并回传供编辑回显；api_key 永不出现在元数据。"""
+    items = []
+    for p in _load_all():
+        try:
+            temperature = float(p.get('temperature')) if p.get('temperature') is not None else 0
+        except (TypeError, ValueError):
+            temperature = 0
+        try:
+            timeout = int(p.get('timeout')) if p.get('timeout') is not None else 60
+        except (TypeError, ValueError):
+            timeout = 60
+        items.append({'id': p['id'], 'name': str(p.get('name') or p['id']),
+                      'model': str(p.get('model') or ''),
+                      'endpoint': str(p.get('endpoint') or ''),
+                      'timeout': timeout, 'temperature': temperature,
+                      'isDefault': bool(p.get('is_default')),
+                      'keyConfigured': bool(p.get('api_key'))})
     items.sort(key=lambda x: (not x['isDefault'], x['name'], x['id']))
     return items
 

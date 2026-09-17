@@ -60,6 +60,8 @@ first = llm_providers.save(name='DeepSeek 主力', endpoint='https://api.deepsee
 check(first['keyConfigured'] and first['isDefault'], '首次保存成为默认')
 meta = llm_providers.list_metadata()
 check(all('api_key' not in item and 'apiKey' not in item for item in meta), '元数据绝不含密钥', meta)
+check(meta[0]['endpoint'] == 'https://api.deepseek.com/chat/completions' and meta[0]['timeout'] == 60
+      and meta[0]['temperature'] == 0, '元数据回显 endpoint/timeout/temperature（编辑用）', meta)
 stored = llm_providers.read(first['id'])
 check(stored.get('api_key') == 'sk-secret-1', 'read() 仅供服务端取密钥')
 
@@ -72,7 +74,10 @@ check(llm_providers.default_provider()['id'] == second['id'], '保存默认切�
 meta = llm_providers.list_metadata()
 check(sum(1 for m in meta if m['isDefault']) == 1, '默认提供方唯一', meta)
 edited = llm_providers.save(name='通义备用2', endpoint='https://dashscope.aliyuncs.com/x', model='qwen-plus',
-                            api_key='', is_default=True, provider_id=second['id'])
+                            api_key='', timeout=90, temperature=0.2, is_default=True, provider_id=second['id'])
+meta = {m['id']: m for m in llm_providers.list_metadata()}
+check(meta[second['id']]['timeout'] == 90 and meta[second['id']]['temperature'] == 0.2,
+      '超时与温度编辑后回显正确', meta[second['id']])
 check(llm_providers.read(second['id'])['api_key'] == 'sk-secret-2', '编辑留空沿用已存密钥')
 check(edited['keyConfigured'], '沿用后 keyConfigured 为真')
 llm_providers.clear(second['id'])

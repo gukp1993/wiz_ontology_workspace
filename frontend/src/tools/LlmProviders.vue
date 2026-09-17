@@ -30,7 +30,8 @@ function openCreate() {
 }
 function openEdit(item: any) {
   editingId.value = item.id
-  form.value = { name: item.name, endpoint: '', model: item.model, apiKey: '', timeout: 60, temperature: 0, isDefault: item.isDefault }
+  form.value = { name: item.name, endpoint: item.endpoint || '', model: item.model, apiKey: '',
+                 timeout: item.timeout || 60, temperature: item.temperature ?? 0, isDefault: item.isDefault }
   dialog.value = true
 }
 async function save() {
@@ -84,9 +85,9 @@ async function test(item: any) {
   <div v-if="dialog" class="modal-backdrop" @click.self="dialog=false">
     <section class="modal-card" role="dialog" aria-modal="true" aria-label="LLM 提供方">
       <h2>{{editingId?'编辑提供方':'新增提供方'}}</h2>
-      <p class="field-help">OpenAI 兼容 chat/completions 接口。密钥留空 = 沿用已保存密钥；接口地址不回显，编辑时请重填。</p>
+      <p class="field-help">OpenAI 兼容 chat/completions 接口。密钥留空 = 沿用已保存密钥（不回显）。</p>
       <label>名称 *<input v-model="form.name" maxlength="60" placeholder="如 DeepSeek 主力"/></label>
-      <label>接口地址（chat/completions 完整 URL）*<input v-model="form.endpoint" placeholder="https://api.deepseek.com/chat/completions"/></label>
+      <label>接口地址（chat/completions 完整 URL）*<input v-model="form.endpoint" placeholder="https://api.minimax.cn/v1/chat/completions"/></label>
       <label>模型 *<input v-model="form.model" placeholder="deepseek-chat"/></label>
       <label>API Key<input v-model="form.apiKey" type="password" :placeholder="editingId?'留空 = 沿用已保存密钥':'sk-…'"/></label>
       <div class="form-row">
