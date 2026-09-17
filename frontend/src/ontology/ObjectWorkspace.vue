@@ -632,9 +632,9 @@ function selectById(id: string) {
                 </tr>
               </tbody>
             </table>
+            <!-- 空态只做说明，操作入口统一在右上角（避免同一组按钮出现两处） -->
             <div v-else class="empty">
-              <p>给「{{ current['rdfs:label'] || '此对象' }}」添加第一个属性，例如名称、额定功率或 SOC。</p>
-              <div class="ow-head-actions"><button @click="openPropertyEditor(current['@id'], '')">＋ 新增属性</button><button @click="openLibraryEditor">从属性库添加</button></div>
+              <p>给「{{ current['rdfs:label'] || '此对象' }}」添加第一个属性，例如名称、额定功率或 SOC；用右上角的「＋ 新增属性」新建，或「从属性库添加」复用共享定义。</p>
             </div>
             <p class="field-help">属性值从哪里来（数据字段或计算结果）属于项目实现，在项目映射的「属性取值」中维护。</p>
           </template>
