@@ -49,6 +49,22 @@ const current = computed(() => objects.value.find((n: any) => n['@id'] === selec
 // 撤销/删除后选中项可能失效：回落到第一个对象；无对象时详情区显示引导空态。
 watch(objects, (list: any[]) => { if (!list.some((n: any) => n['@id'] === selected.value)) selected.value = list[0]?.['@id'] || '' }, { immediate: true })
 
+// 提示文案可读化：把校验/拦截消息里出现的稳定 ID 换成业务名称（用户看不到原始 mg:xxx）。
+// 先取最长 ID 优先替换，避免短 ID 命中长 ID 的一部分。
+const friendlyMessage = (text: string): string => {
+  const records: any[] = [...(graph.value || []), ...['functions', 'actions', 'interfaces'].flatMap(k => props.state?.workflow?.[k] || [])]
+  return [...records]
+    .filter((n: any) => n && (n['@id'] || n.id))
+    .sort((a: any, b: any) => String(b['@id'] || b.id).length - String(a['@id'] || a.id).length)
+    .reduce((out: string, n: any) => {
+      const id = String(n['@id'] || n.id)
+      if (!id || !out.includes(id)) return out
+      const merged: any = n['@type'] === 'mg:SharedProperty' ? n : effectiveProperty(n, graph.value)
+      const label = merged?.['rdfs:label'] || n['mg:apiName'] || n.name || ''
+      return label && label !== id ? out.split(id).join('「' + label + '」') : out
+    }, String(text || ''))
+}
+
 function typeName(id?: string) { const hit: any = objects.value.find((n: any) => n['@id'] === id); return hit?.['rdfs:label'] || id || '—' }
 
 type Tab = 'props' | 'links' | 'actions' | 'rules'
@@ -587,6 +603,7 @@ function selectById(id: string) {
               <span v-if="selectedHidden" class="ld-meta-warn">此对象不在当前筛选结果中，已保持选中<button type="button" class="row-link" @click="clearFilters">清除筛选</button></span>
             </div>
           </div>
+          <p v-if="message" class="inline-error ow-alert" role="alert">{{ friendlyMessage(message) }}</p>
           <!-- 四页签：属性 / 链接 / 动作 / 规则 -->
           <div class="ld-tabs" role="tablist" aria-label="对象详情内容">
             <button role="tab" :class="{ active: detailTab === 'props' }" :aria-selected="detailTab === 'props'" @click="detailTab = 'props'">属性 · {{ propRows.length }}</button>
@@ -682,7 +699,6 @@ function selectById(id: string) {
             <p class="field-help">一条规则可被多个对象类型引用；引用使用稳定标识，规则重命名后引用保持。规则的正文维护在「业务规则」页。</p>
           </template>
 
-          <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
           </div>
         </template>
       </section>
@@ -732,6 +748,8 @@ function selectById(id: string) {
 .ow-h2-def{margin:6px 0 0}
 .ow-head-side .danger{margin:0}
 .relation-sentence{margin:18px 0 0}
+/* 删除/引用拦截等提示：紧贴详情头，点击操作处即可看到 */
+.ow-alert{margin:12px 0 0}
 @media(max-width:1000px){
   .ow-toolbar .primary{margin-left:0}
 }
