@@ -10,8 +10,13 @@
 import {computed,onMounted,ref} from 'vue'
 import { listVersions, validateOntology } from './api'
 import { listProjects } from '../project/api'
+import OntologyImport from './OntologyImport.vue'
 const props=defineProps<{state:any}>()
 const emit=defineEmits<{navigate:[view:string,focus?:any]}>()
+// Excel 模板下载与导入（20260917 需求 §2）：入口在概览顶部；导入面板关闭后刷新统计/校验
+const importOpen=ref(false)
+const templateHref=()=>((import.meta as any).env?.BASE_URL||'/')+'templates/ontology-import-v1.xlsx'
+function onImported(){importOpen.value=false;void loadVersions();void checkDraft()}
 const graph=computed<any[]>(()=>props.state?.ontology?.['@graph']||[])
 const objects=computed(()=>graph.value.filter(n=>n['@type']==='owl:Class'))
 const properties=computed<any[]>(()=>graph.value.filter(n=>n['@type']==='owl:DatatypeProperty'))
@@ -74,9 +79,11 @@ const usageLine=computed(()=>{
 })
 </script>
 <template>
+<OntologyImport v-if="importOpen" :state="state" @close="importOpen=false" @navigate="v=>{importOpen=false;emit('navigate',v)}"/>
 <section class="card">
-  <div class="panelhead"><div><h2>从一个对象开始，把业务讲清楚</h2>
-  <p class="muted">先定义对象、属性与链接，再校验发布；属性的具体取值方式在项目映射中配置。</p></div></div>
+  <div class="panelhead"><div><h2>维护本体内容</h2>
+  <p class="muted">逐项建模，或通过 Excel 批量填写；先定义对象、属性与链接，再校验发布。</p></div>
+  <div class="tools"><a class="imp-dl" :href="templateHref()" download="本体模型填写模板.xlsx">下载 Excel 模板</a><button class="primary" @click="importOpen=true">导入 Excel</button></div></div>
   <!-- 任务清单式：整行可点击直达对应页面；原按钮动作上移到整行，右侧保留原按钮文案作为引导 -->
   <div class="step-list">
     <button v-for="s in steps" :key="s.view" type="button" class="step-row" :class="{ suggested: suggestion?.view === s.view }" @click="emit('navigate', s.view)">
@@ -114,4 +121,6 @@ const usageLine=computed(()=>{
 .next-step .go-fix{margin-left:10px}
 .readonly-line{padding:9px 12px;background:var(--bg);border:1px solid var(--line);border-radius:7px;overflow-wrap:anywhere;font-size:13px;color:var(--muted)}
 @media(max-width:640px){.step-row{flex-wrap:wrap}.step-go{flex-basis:100%;text-align:right}}
+/* 下载模板：与按钮同排的安静链接样式（不引入新一级入口） */
+.imp-dl{white-space:nowrap}
 </style>
