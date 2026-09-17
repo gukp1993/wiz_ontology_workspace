@@ -22,6 +22,7 @@ import Field from '../shared/EditorField.vue'
 import AppSelect from '../shared/AppSelect.vue'
 import BusinessRuleDialog from './BusinessRuleDialog.vue'
 import RulePicker from './RulePicker.vue'
+import PickerDialog, { type PickerRow } from './PickerDialog.vue'
 import { navIcons } from '../shared/icons'
 import { localProperties, effectiveProperty, propertyTypeLabel, valueShapeOf, copyAsPrivate, addReference, shapeConflict } from './propertyModel'
 import { appConfirm } from '../shared/appConfirm'
@@ -78,7 +79,6 @@ type Editor =
   | { kind: 'object'; isNew: boolean; id: string; draft: { label: string; comment: string }; original: string; returnTab: Tab }
   | { kind: 'property'; targetTypeId: string; propertyId: string; returnTab: Tab }
   | { kind: 'link'; isNew: boolean; id: string; draft: LinkDraft; original: string; returnTab: Tab }
-  | { kind: 'library'; targetTypeId: string }
 const editor = ref<Editor | null>(null)
 const editorError = ref(''), editorSaving = ref(false)
 const objectDraft = computed(() => editor.value?.kind === 'object' ? editor.value.draft : null)
@@ -205,30 +205,40 @@ function sharedRow(s: any) {
     conflict: !!current.value && !!shapeConflict(graph.value, s, current.value['@id'])
   }
 }
-function openLibraryEditor() {
-  if (!current.value) return
-  editor.value = { kind: 'library', targetTypeId: current.value['@id'] }
-  editorError.value = ''
-}
-async function pickShared(s: any, action: 'copy' | 'ref') {
-  const e = editor.value
-  if (!e || e.kind !== 'library' || editorSaving.value) return
+// 从属性库添加：统一走 PickerDialog（行内两个动作：复制为私有 / 引用共享）。
+const libraryOpen = ref(false), libraryError = ref('')
+const libraryItems = computed<PickerRow[]>(() => sharedDefs.value.map((s: any) => {
+  const row = sharedRow(s)
+  return {
+    id: row.id,
+    label: row.label + '（' + row.type + (row.unit ? ' · 单位 ' + row.unit : '') + '）',
+    note: (row.desc || '暂无业务定义') + ' · ' + row.usage + ' 处引用'
+      + (row.conflict ? ' · 已有同名但数据类型不同的属性，无法引用，可复制为私有' : ''),
+    actions: [{ label: '复制为私有', value: 'copy' }, { label: '引用共享', value: 'ref', disabled: row.conflict }],
+  }
+}))
+function openLibraryEditor() { if (!current.value) return; libraryError.value = ''; libraryOpen.value = true }
+async function pickShared(id: string, action: string) {
+  const target = current.value
+  const s: any = sharedDefs.value.find((x: any) => x['@id'] === id)
+  if (!target || !s || editorSaving.value) return
+  const typeId = target['@id']
   const name = s['rdfs:label'] || ''
-  const existing = localProperties(graph.value, e.targetTypeId)
-  if (action === 'ref' && shapeConflict(graph.value, s, e.targetTypeId)) { editorError.value = '「' + name + '」与已有同名属性的数据类型不同，无法引用同一份共享定义；可改用「复制为私有」。'; return }
-  if (action === 'ref' && existing.some((p: any) => p['mg:sharedProperty']?.['@id'] === s['@id'])) { editorError.value = '此对象已引用「' + name + '」。'; return }
-  if (existing.some((p: any) => effectiveProperty(p, graph.value)['rdfs:label'] === name)) { editorError.value = '「' + typeName(e.targetTypeId) + '」已有同名属性「' + name + '」；如需统一维护请先调整属性。'; return }
-  editorSaving.value = true; editorError.value = ''
+  const existing = localProperties(graph.value, typeId)
+  if (action === 'ref' && shapeConflict(graph.value, s, typeId)) { libraryError.value = '「' + name + '」与已有同名属性的数据类型不同，无法引用同一份共享定义；可改用「复制为私有」。'; return }
+  if (action === 'ref' && existing.some((p: any) => p['mg:sharedProperty']?.['@id'] === s['@id'])) { libraryError.value = '此对象已引用「' + name + '」。'; return }
+  if (existing.some((p: any) => effectiveProperty(p, graph.value)['rdfs:label'] === name)) { libraryError.value = '「' + typeName(typeId) + '」已有同名属性「' + name + '」；如需统一维护请先调整属性。'; return }
+  editorSaving.value = true; libraryError.value = ''
   let newId = ''
   const r = await formSave.submitForm('ontology', () => {
-    const before = new Set(localProperties(graph.value, e.targetTypeId).map((p: any) => p['@id']))
-    if (action === 'copy') copyAsPrivate(s, graph.value, e.targetTypeId)
-    else addReference(graph.value, s, e.targetTypeId)
-    newId = localProperties(graph.value, e.targetTypeId).find((p: any) => !before.has(p['@id']))?.['@id'] || ''
+    const before = new Set(localProperties(graph.value, typeId).map((p: any) => p['@id']))
+    if (action === 'copy') copyAsPrivate(s, graph.value, typeId)
+    else addReference(graph.value, s, typeId)
+    newId = localProperties(graph.value, typeId).find((p: any) => !before.has(p['@id']))?.['@id'] || ''
   })
   editorSaving.value = false
-  if (!r.ok) { editorError.value = r.message; return }
-  editor.value = null
+  if (!r.ok) { libraryError.value = r.message; return }
+  libraryOpen.value = false
   detailTab.value = 'props'
   locate(newId)
 }
@@ -366,28 +376,21 @@ const actionRows = computed(() => {
     return { actionId: r.actionId, name: a?.name || '', effect: a?.effect || '', desc: a?.description || '', missing: !a, legacy: a && a.definitionVersion !== 2 }
   })
 })
-const pickerOpen = ref(false), pickQuery = ref('')
-const chosen = ref(new Set<string>())
-const pickRows = computed(() => actionsOf(props.state)
-  .filter((a: any) => (a.name || '').includes(pickQuery.value.trim()))
-  .map((a: any) => ({ id: a.id, name: a.name || '未命名动作', desc: a.description || '', associated: actionRows.value.some(r => r.actionId === a.id) })))
-function openPicker() { pickerOpen.value = true; pickQuery.value = ''; chosen.value = new Set() }
-function cancelPick() { pickerOpen.value = false; chosen.value = new Set() }
-function togglePick(id: string, event: Event) {
-  const next = new Set(chosen.value)
-  ;(event.target as HTMLInputElement).checked ? next.add(id) : next.delete(id)
-  chosen.value = next
-}
-async function confirmPick() {
-  if (!chosen.value.size || !current.value) return
-  const add = [...chosen.value]
+// 添加动作：统一走 PickerDialog（多选 + 确认），已关联动作按禁用项列出，不重复关联。
+const pickerOpen = ref(false)
+const pickItems = computed<PickerRow[]>(() => actionsOf(props.state).map((a: any) => ({
+  id: a.id, label: a.name || '未命名动作', note: a.description || '',
+  disabled: actionRows.value.some(r => r.actionId === a.id),
+})))
+function openPicker() { pickerOpen.value = true }
+async function confirmPick(ids: string[]) {
+  if (!ids.length || !current.value) return
   const r = await formSave.submitForm('ontology', () => {
-    commitAssociations(props.state, [...associationsOf(props.state), ...add.map(id => ({ objectTypeId: current.value['@id'], actionId: id }))])
+    commitAssociations(props.state, [...associationsOf(props.state), ...ids.map(id => ({ objectTypeId: current.value['@id'], actionId: id }))])
   })
   if (!r.ok) { message.value = r.message; return }
   pickerOpen.value = false
-  chosen.value = new Set()
-  locate(add[0])
+  locate(ids[0])
 }
 async function removeAssociation(actionId: string) {
   if (!current.value) return
@@ -513,31 +516,7 @@ function selectById(id: string) {
         <span>只影响当前本体草稿；已发布版本不变。</span>
       </div>
     </section>
-    <section v-else-if="editor.kind === 'library'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
-      <div class="detail-heading"><div><span class="eyebrow">从属性库添加</span><h2>为「{{ typeName(editor.targetTypeId) }}」添加属性</h2></div></div>
-      <p class="fill-hint">复制生成私有定义（新属性标识，此后独立修改）；引用保留共享关联（名称、类型、单位跟随共享定义统一维护）。完成后返回原对象并定位新增属性。</p>
-      <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
-      <div v-if="sharedDefs.length">
-        <div v-for="row in sharedDefs.map(sharedRow)" :key="row.id" class="ow-pick-row">
-          <div class="row-main">
-            <strong>{{ row.label }}</strong>
-            <small>{{ row.type }}{{ row.unit ? ' · 单位 ' + row.unit : '' }} · {{ row.usage }} 处引用</small>
-            <small class="muted">{{ row.desc || '暂无业务定义' }}</small>
-            <small v-if="row.conflict" class="inline-warning">已有同名但数据类型不同的属性，无法引用；可复制为私有。</small>
-          </div>
-          <div class="ow-pick-actions">
-            <button type="button" :disabled="editorSaving" @click="pickShared(sharedDefs.find((s: any) => s['@id'] === row.id), 'copy')">复制为私有</button>
-            <button type="button" :disabled="editorSaving || row.conflict" @click="pickShared(sharedDefs.find((s: any) => s['@id'] === row.id), 'ref')">引用共享</button>
-          </div>
-        </div>
-      </div>
-      <div v-else class="empty">
-        <p>共享属性库为空。可先在对象中建立私有属性，再到「共享属性库」转为共享定义。</p>
-        <button type="button" @click="emit('navigate', 'library')">前往共享属性库 →</button>
-      </div>
-    </section>
-  </template>
+      </template>
   <!-- 浏览态：列表/详情骨架（20260917 原型）：左紧凑列表 + 右详情，两区独立滚动 -->
   <template v-else>
     <div class="ow-toolbar">
@@ -653,18 +632,6 @@ function selectById(id: string) {
           </template>
           <template v-else-if="detailTab === 'actions'">
             <div class="section-heading"><span class="muted">选择此类对象支持的动作；共享定义在动作库中维护，不复制为对象私有。</span><button @click="openPicker">＋ 添加动作</button></div>
-            <div v-if="pickerOpen" class="ow-action-picker">
-              <input type="search" v-model="pickQuery" placeholder="搜索动作名称" aria-label="搜索可关联动作">
-              <div class="ow-picker-list">
-                <label v-for="row in pickRows" :key="row.id" class="check-option ow-pick-option">
-                  <input type="checkbox" :disabled="row.associated" :checked="row.associated || chosen.has(row.id)" :aria-label="row.name" @change="togglePick(row.id, $event)">
-                  <span><strong>{{ row.name }}</strong><small class="muted" style="display:block">{{ row.desc || '暂无业务定义' }}</small><small v-if="row.associated" class="muted">已关联，不能重复添加</small></span>
-                </label>
-                <p v-if="!pickRows.length" class="muted">没有匹配动作。请先到「动作定义」创建。</p>
-              </div>
-              <div class="tools"><button :disabled="!chosen.size" @click="confirmPick">确认关联{{ chosen.size ? '（已选 ' + chosen.size + ' 项）' : '' }}</button><button @click="cancelPick">取消</button></div>
-              <p class="field-help">勾选尚未保存；点击「确认关联」一次保存，取消不变更已保存关联。</p>
-            </div>
             <table v-if="actionRows.length">
               <thead><tr><th>动作</th><th>业务效果</th><th></th></tr></thead>
               <tbody>
@@ -709,6 +676,16 @@ function selectById(id: string) {
     </div>
   </template>
   <!-- 规则引用弹窗：多选添加（仅可选未引用规则）+ 只读查看 -->
+  <PickerDialog v-if="pickerOpen" :title="'为「' + (current?.['rdfs:label'] || '此对象') + '」添加动作'"
+    hint="从动作库选择此类对象支持的操作；动作定义集中维护，不复制为对象私有。"
+    :items="pickItems" search-placeholder="搜索动作名称" confirm-label="确认关联" assign-label="动作"
+    empty-text="没有可添加的动作。" empty-hint="先到「动作定义」创建动作，再回到这里关联。"
+    @close="pickerOpen = false" @confirm="confirmPick"/>
+  <PickerDialog v-if="libraryOpen" title="从属性库添加"
+    hint="复制生成私有定义（此后独立修改）；引用保留共享关联（名称、类型、单位跟随共享定义统一维护）。"
+    :items="libraryItems" mode="action" :error="libraryError" search-placeholder="搜索共享属性名称" assign-label="共享属性"
+    empty-text="共享属性库为空。" empty-hint="先在对象中建立私有属性，再到「共享属性库」转为共享定义。"
+    @close="libraryOpen = false" @action="pickShared"/>
   <RulePicker v-if="rulePickerOpen" :rules="pickerAvailable" :object-name="current?.['rdfs:label'] || ''" @close="rulePickerOpen = false" @confirm="addRules"/>
   <BusinessRuleDialog v-if="ruleDetail" mode="detail" :rule="ruleDetail" :allow-edit="false" @close="ruleDetailId = ''"/>
 </div>
@@ -734,16 +711,16 @@ function selectById(id: string) {
 .ow-link-row .row-main{flex:1;min-width:0}
 .ow-link-row .row-main strong{display:block;font-size:14px;font-weight:600}
 .ow-link-row .row-main small{display:block;margin-top:3px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
-.ow-pick-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 4px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.ow-pick-row:last-child{border-bottom:0}
-.ow-pick-row .row-main{flex:1;min-width:0}
-.ow-pick-row .row-main strong{font-size:14px}
-.ow-pick-row .row-main small{display:block;margin-top:3px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+
+
+
+
+
 .ow-pick-actions{display:flex;gap:8px;flex:none;flex-wrap:wrap}
-.ow-action-picker{border:1px solid var(--line);border-radius:var(--r-md);padding:14px;margin-bottom:14px;background:var(--paper-2)}
-.ow-picker-list{max-height:260px;overflow:auto;margin:10px 0}
-.ow-pick-option{padding:8px 4px;border-bottom:1px solid var(--line)}
-.ow-pick-option:last-child{border-bottom:0}
+
+
+
+
 .ow-effect-cell{max-width:420px;white-space:pre-wrap;font-size:13px;color:var(--ink-2)}
 /* 详情头：名称+操作同一行，业务定义与元信息各自一行。 */
 .ow-head-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
