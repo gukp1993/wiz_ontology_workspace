@@ -14,6 +14,17 @@ cd frontend && npm run dev         # 开发模式（vite 热更新，/api 代理
 
 依赖极少：后端仅 PyYAML + rdflib；数据连接探测为可选依赖 PyMySQL + redis（未安装时真实测试返回"驱动未安装"提示，其余功能不受影响）；前端 Vue3 + cytoscape + vite，无路由/无状态库。start.sh 只管理 `.runtime/server.pid` 记录的自身进程（防误杀）。
 
+## Git 提交规则（2026-09-17）
+
+**每次任务结束都必须提交 git**，commit 信息写清"这次做的是什么功能/改动"，后续回退直接按 commit 回退，不要再依赖临时备份包。
+
+- **时机**：改完代码、`npm run build` 通过（改前端时）、相关测试通过、浏览器验收完成后提交。未验证的内容不得在信息里写成已验证。
+- **粒度**：一个可描述的功能/改动一个 commit，同一主题的多文件放同一 commit；无关改动不混进同一个 commit。
+- **信息格式**：首行 `类型(范围): 简述`，类型用 `feat` / `fix` / `refactor` / `docs` / `chore`；正文列关键改动点与验证方式（build、测试、浏览器实测），便于日后定位与回退。
+- **提交前先看 `git status`**：确认没有把不该入库的东西带进来。
+- **绝不提交**：`ontology/vault/`（连接密码 vault，已在 .gitignore）、`.runtime/`、`frontend/dist/`、`node_modules/`、`__pycache__/`。新增真实 ontology 业务数据是否入库由用户决定，默认不动 `ontology/` 下数据。
+- **回退方式**：`git log --oneline` 找到对应功能 commit，`git revert <sha>` 保留历史，或 `git reset --hard <sha>` 丢弃其后提交。注意：**代码回退不会还原 ontology/ 下的数据**，数据与代码分开处理。
+
 ## 目录
 
 - `workbench/` — 后端。`server.py`（安全边界+路由分派，业务在 `model_routes.py`/`project_routes.py`）；`paths.py`（CODE_ROOT/DATA_ROOT 唯一定义，核心模块不得从演示模块取路径）；`locking.py`（全局写锁唯一定义）；`projects.py`（项目存储/升级预检）+ `project_validation.py`（校验组织+分职责函数）+ `project_mapping.py`（共用纯辅助）；`model_format.py`（本体 JSON schema ↔ JSON-LD 双向转换）、`contracts.py`、`versions.py`、`workspaces.py`、`dbdrivers.py`（连接探测，仅固定只读操作）、`secrets.py`（0600 vault，位于 drafts/releases 之外）；`demo/`（演示执行器）
