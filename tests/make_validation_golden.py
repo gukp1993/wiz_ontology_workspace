@@ -995,8 +995,8 @@ ACTION_LEGACY = {'id': 'action.change_system', 'name': '调整所属系统', 'de
                  'status': 'active', 'implementation_ref': ''}
 
 
-def action_ontology(actions=None, assoc=None):
-    state = ontology_state()
+def action_ontology(actions=None, assoc=None, graph=None):
+    state = ontology_state(graph=graph)
     state['workflow']['actions'] = copy.deepcopy(actions if actions is not None else [ACTION_V2])
     state['workflow']['actionAssociations'] = copy.deepcopy(
         assoc if assoc is not None else [{'objectTypeId': 'mg:Station', 'actionId': 'act-stop'}])
@@ -1055,6 +1055,72 @@ sample('51_action_bindings_api_no_path', action_project(
 non_list = project(bindings=[binding()])
 non_list['bindings']['actionBindings'] = 'oops'
 sample('52_action_bindings_not_list', non_list, action_ontology())
+
+
+# --- 15. 动作 HTTP 接口配置（20260917 动作接口映射一期）------------------------------
+# 仅 implementation.schemaVersion=2 启用本期完整校验；无 schemaVersion 的历史 api 走旧规则（见例 51）。
+# 项目侧实例识别与「属性取值」决定 instanceId / property 来源是否可用；凭据目录为空时任何凭据引用都报错。
+def api_binding(method='POST', path='https://ems.example.com/api/storage/stop', **kw):
+    impl = {'kind': 'api', 'schemaVersion': 2, 'method': method, 'path': path, 'bodyFormat': 'json',
+            'description': '', 'parameters': [], 'auth': {'type': 'none'}}
+    impl.update(kw)
+    return action_binding(implementation=impl)
+
+
+def api_param(pid, name, where, value):
+    return {'id': pid, 'name': name, 'in': where, 'value': value}
+
+
+# 已配置来源的标量属性（station_name 有来源、rated_power 供“未配置来源”用例）；
+# sources 需显式声明，否则属性来源校验器会先报“数据来源不存在”。
+DEVICE_BINDING = binding(title_key='station_name', sources=[db_source('s_main')], properties={
+    'station_name': {'kind': 'field', 'source': 's_main', 'field': 'station_name'}})
+
+# 合法：完整地址 + 路径占位符 + 实例主键 + 数值 0／布尔 false 固定值 + 已配置来源的属性
+sample('53_action_v2_api_valid', action_project([
+    api_binding(path='https://ems.example.com/api/devices/{deviceId}/stop', parameters=[
+        api_param('p1', 'deviceId', 'path', {'from': 'instanceId'}),
+        api_param('p2', 'power', 'body', {'from': 'constant', 'type': 'number', 'value': 0}),
+        api_param('p3', 'force', 'body', {'from': 'constant', 'type': 'boolean', 'value': False}),
+        api_param('p4', 'code', 'header', {'from': 'property', 'propertyId': 'mg:station_name'}),
+    ])], object_bindings=[DEVICE_BINDING]), action_ontology())
+
+# 配置错误：相对地址、GET 带请求体、同位置重名（含请求头大小写）、数值固定值非法、占位符缺参数
+sample('54_action_v2_api_config_errors', action_project([
+    api_binding(method='GET', path='/api/stop', parameters=[
+        api_param('p1', 'power', 'body', {'from': 'constant', 'type': 'number', 'value': 'abc'}),
+        api_param('p2', 'power', 'body', {'from': 'constant', 'type': 'number', 'value': 0}),
+        api_param('p3', 'force', 'header', {'from': 'constant', 'type': 'boolean', 'value': True}),
+        api_param('p4', 'FORCE', 'header', {'from': 'constant', 'type': 'boolean', 'value': True}),
+    ]),
+    api_binding(path='https://ems.example.com/api/devices/{deviceId}/stop', parameters=[]),
+]), action_ontology())
+
+# 引用类错误：时间序列属性、未配置来源的属性、不在引用版本的属性、动作无输入、凭据不在项目；
+# 第二条同时覆盖 registered/database 身份缺失、API Key 名称必填与未知字段保留（roles/paramNotes/custom）
+TS_GRAPH = copy.deepcopy(GRAPH)
+TS_GRAPH.append({'@id': 'mg:soc_series', '@type': 'owl:DatatypeProperty', 'mg:apiName': 'soc_series',
+                 'rdfs:label': 'SOC 序列', 'rdfs:domain': {'@id': 'mg:Station'},
+                 'rdfs:range': {'@id': 'xsd:double'}, 'mg:valueShape': 'timeSeries'})
+sample('55_action_v2_api_reference_errors', action_project([
+    api_binding(path='https://ems.example.com/api/x', parameters=[
+        api_param('p1', 'series', 'body', {'from': 'property', 'propertyId': 'mg:soc_series'}),
+        api_param('p2', 'unmapped', 'body', {'from': 'property', 'propertyId': 'mg:rated_power'}),
+        api_param('p3', 'ghost', 'body', {'from': 'property', 'propertyId': 'mg:ghost'}),
+        api_param('p4', 'input', 'body', {'from': 'actionInput', 'inputId': 'in-1'}),
+    ], auth={'type': 'bearer', 'credentialId': 'cred-ghost'}),
+    api_binding(method='DELETE', path='https://ems.example.com/api/y/{id}', parameters=[
+        api_param('p1', 'id', 'query', {'from': 'instanceId'}),
+    ], auth={'type': 'apiKey', 'credentialId': '', 'in': 'query', 'name': ''},
+        roles='运维', paramNotes='deviceId ← 当前设备', custom={'nested': [1, 2]}),
+], object_bindings=[binding(title_key='station_name', primary_key='', properties={})]),
+    onto=action_ontology(graph=TS_GRAPH))
+
+# 未知字段保留：v2 实现里的 roles/paramNotes/custom 原样写进金样（新表单不丢旧字段）
+sample('56_action_v2_api_unknown_kept', action_project([
+    api_binding(path='https://ems.example.com/api/z', parameters=[],
+                roles='运维', paramNotes='p ← 固定值', custom={'nested': [1, 2]}),
+], object_bindings=[binding(title_key='station_name')]), action_ontology())
 
 
 def main():

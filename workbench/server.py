@@ -12,7 +12,8 @@ after an impact preflight.
 Data connections: /api/connection-test and /api/connection-catalog probe real
 MySQL/Redis services without holding the global write lock; /api/connection-secret
 stores passwords in the protected vault only — never in responses, logs or
-project state/snapshots.
+project state/snapshots. /api/api-credential 登记项目级 API 凭据（动作接口映射），
+独立命名空间 workbench/api_credentials，响应只含 id/name，密钥永不回传。
 """
 import json
 import os
@@ -36,6 +37,7 @@ GET_ROUTES = {
     '/api/project-state': project_routes.get_project_state,
     '/api/project-releases': project_routes.get_project_releases,
     '/api/project-config': project_routes.get_project_config,
+    '/api/api-credentials': project_routes.get_api_credentials,
     '/api/flows': flow_routes.get_flows,
     '/api/flow-state': flow_routes.get_flow_state,
 }
@@ -66,6 +68,7 @@ POST_ROUTES = {
     '/api/catalog-refresh': project_routes.post_catalog_refresh,
     '/api/calc-eval': project_routes.post_calc_eval,
     '/api/connection-secret': project_routes.post_connection_secret,
+    '/api/api-credential': project_routes.post_api_credential,
     '/api/project-property-preview': project_routes.post_property_preview,
     '/api/flows': flow_routes.post_create_flow,
     '/api/flow-save': flow_routes.post_flow_save,

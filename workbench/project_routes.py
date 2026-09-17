@@ -14,6 +14,7 @@ from workbench import projects, versions, workspaces, contracts
 from workbench import dbdrivers
 from workbench import project_property_reader
 from workbench import secrets as secrets_store
+from workbench import api_credentials
 from workbench import catalogs as catalog_store
 from workbench.locking import LOCK
 from workbench.paths import DATA_ROOT
@@ -63,6 +64,16 @@ def get_project_state(query):
 def get_project_releases(query):
     project_id = query.get('project', [''])[0]
     return {'items': projects.published_versions(project_id)}, 200
+
+
+def get_api_credentials(query):
+    """GET /api/api-credentials：项目级 API 凭据元数据列举（只读，绝不返回密钥）。
+
+    响应只有 id/name；密钥只存在于服务端 vault，客户端仅保存凭据 ID。
+    """
+    project_id = projects.clean_id(query.get('project', [''])[0])
+    projects.load(project_id)  # 项目不存在时抛 ProjectNotFound → 404
+    return {'items': api_credentials.list_metadata(project_id)}, 200
 
 
 def get_project_config(query):
@@ -185,6 +196,34 @@ def post_connection_secret(payload):
                 secrets_store.save(project_id, connection_id, payload.get('secret') or '')
                 return {'saved': True}, 200
             secrets_store.clear(project_id, connection_id)
+            return {'cleared': True}, 200
+        except ValueError as exc:
+            return {'error': str(exc)}, 400
+
+
+def post_api_credential(payload):
+    """/api/api-credential：项目级 API 凭据登记/清除（动作接口映射 P3）。
+
+    与数据库连接密码 vault（secrets.py）隔离的独立命名空间，只做配置存储。
+    密钥只写不读回：响应只含 id/name，任何情况下不写入日志、异常信息或响应。
+    """
+    try:
+        project_id = projects.clean_id(payload.get('projectId'))
+        action = payload.get('action')
+        credential_id = str(payload.get('credentialId') or '')
+    except ValueError as exc:
+        return {'error': str(exc)}, 400
+    if action not in ('set', 'clear'):
+        return {'error': '动作无效'}, 400
+    projects.load(project_id)  # 项目不存在时抛 ProjectNotFound → 404
+    with LOCK:  # 本地快写，短暂持锁
+        try:
+            if action == 'set':
+                saved = api_credentials.save(project_id, payload.get('name'), payload.get('secret'), credential_id)
+                return {'saved': True, 'credential': {'id': saved['id'], 'name': saved['name']}}, 200
+            if not credential_id:
+                raise ValueError('缺少凭据标识')
+            api_credentials.clear(project_id, credential_id)
             return {'cleared': True}, 200
         except ValueError as exc:
             return {'error': str(exc)}, 400

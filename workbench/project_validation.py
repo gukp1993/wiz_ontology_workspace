@@ -22,6 +22,7 @@ import re
 import zoneinfo
 
 from workbench.query_rules import is_query_rule, query_rule_errors, rule_input_errors, scan_sql_params, strip_sql_noise_mysql
+from workbench import action_http
 from workbench import calc_functions
 
 from workbench.contracts import is_contract
@@ -94,7 +95,7 @@ def validate_project(state, ontology_state):
     _check_property_sources(ctx, errors, warnings, items)
     _check_link_mappings(ctx, errors, warnings, items)
     _check_contract_coverage(ctx, errors, warnings)
-    _check_action_bindings(ctx, errors, items)
+    _check_action_bindings(ctx, errors, warnings, items)
     return {'errors': list(dict.fromkeys(errors)), 'warnings': list(dict.fromkeys(warnings)), 'items': items}
 
 
@@ -1153,13 +1154,81 @@ def _check_contract_coverage(ctx, errors, warnings):
             warnings.append(f'契约「{function.get("name") or fid}」被属性来源引用但尚无实现')
 
 
-def _check_action_bindings(ctx, errors, items):
+def _action_v2_inputs(actions, action_id):
+    """该动作在项目引用版本中真实存在的输入（宽容读取、零补写）。
+
+    仅接受 dict 且 name 非空且唯一的输入；有稳定 id 时一并带上（供 inputId 匹配）。
+    动作无输入或定义缺失一律返回空列表——校验据此报「没有输入参数」，
+    绝不凭空生成选项、也不回写本体定义。
+    """
+    action = actions.get(action_id) if isinstance(actions, dict) else None
+    raw = action.get('inputs') if isinstance(action, dict) else None
+    out, seen = [], set()
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get('name') or '').strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        entry = {'name': name}
+        identifier = str(item.get('id') or '').strip()
+        if identifier:
+            entry['id'] = identifier
+        out.append(entry)
+    return out
+
+
+def _action_v2_api_issues(ctx, object_id, action_id, actions, implementation):
+    """本期（schemaVersion=2）api 实现校验：组装引用版本＋项目映射上下文后交给 action_http。
+
+    引用版本数据（动作输入、对象属性）来自 ctx['ontology_state']；项目侧数据
+    （属性取值是否已配置、实例识别是否就绪、凭据目录）来自项目自身配置。
+    只读：不补写默认值、不迁移旧格式。
+    """
+    graph = ctx['graph']
+    type_id = 'mg:' + str(object_id or '').removeprefix('mg:')
+    properties = action_http.property_index(graph, type_id)
+    # 项目属性取值只按 apiName 匹配（与前端 hasConfiguredSource 的取值一致）；
+    # 对象类型按 bare 形式比较（绑定里是 bare，映射行同样）。
+    object_row = None
+    if str(object_id or '').strip():
+        for b in ctx.get('object_bindings') or []:
+            if isinstance(b, dict) and bare(b.get('object_type')) == bare(object_id):
+                object_row = b
+                break
+    configured = object_row.get('properties') if isinstance(object_row, dict) and isinstance(object_row.get('properties'), dict) else {}
+    for info in properties.values():
+        info['configured'] = action_http.configured_source(configured.get(info['api']))
+    credential_ids = None
+    try:
+        from workbench import api_credentials
+        credential_ids = api_credentials.ids(str(ctx['state'].get('projectId') or ''))
+    except Exception:
+        credential_ids = None  # 凭据目录不可读（或尚未就绪）时跳过该项检查，不阻断其余校验
+    return action_http.api_issues(
+        implementation,
+        action_inputs=_action_v2_inputs(actions, action_id),
+        properties=properties,
+        identity_ready=action_http.identity_ready(object_row),
+        credential_ids=credential_ids,
+    )
+
+
+def _check_action_bindings(ctx, errors, warnings, items):
     """项目动作绑定（20260917 需求）：按「项目＋对象类型＋动作」组合校验，只读、零删除。
 
     有效动作与关联只来自项目固定引用的已发布本体版本（ctx 里的 ontology_state 即
     versions.read_state 的结果）：显式 workflow.actionAssociations ∪ 历史动作 object_type 推导。
     未绑定动作不产生任何输出（不阻止发布）；失效绑定保留并报 error（阻止发布），
     由用户在项目草稿中确认移除。roles/paramNotes 是说明性文本，不做格式校验。
+
+    实现方式分支：`kind='api'` 且 `schemaVersion=2`（action_http.is_v2）走本期完整
+    HTTP 接口校验（action_http.api_issues，见 _action_v2_api_issues）；历史 api
+    （无 schemaVersion）只要求接口路径非空；`kind='flow'` 仍校验编排存在性；
+    其它 kind 报「实现方式无效」。旧格式一律原样保留，不自动升级。
     """
     from workbench.workflow import effective_action_associations
     rows = ctx['state'].get('bindings', {}).get('actionBindings', [])
@@ -1219,7 +1288,14 @@ def _check_action_bindings(ctx, errors, items):
         else:
             kind = implementation.get('kind')
             if kind == 'api':
-                if not str(implementation.get('path') or '').strip():
+                if action_http.is_v2(implementation):
+                    # 本期格式（schemaVersion=2）：完整配置校验，错误同样并入该绑定的 issues，
+                    # 由下方统一按既有「动作绑定 {name}：…」文案上报。
+                    v2_errors, v2_warnings = _action_v2_api_issues(ctx, object_id, action_id, actions, implementation)
+                    issues.extend(v2_errors)
+                    warnings.extend(f'动作绑定 {name}：{i}' for i in v2_warnings)
+                elif not str(implementation.get('path') or '').strip():
+                    # 历史 api 格式（无 schemaVersion）：行为原样，仅要求接口路径非空。
                     issues.append('项目接口路径未填写')
             elif kind == 'flow':
                 flow_id = implementation.get('flowId')

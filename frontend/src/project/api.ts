@@ -35,6 +35,11 @@ export const upgradeCheck = (state: any, revision: string, targetVersion: string
 export const connectionTest = (payload: { projectId: string; connection: any; password?: string; useSaved?: boolean }) => postJson('/api/connection-test', payload)
 export const connectionCatalog = (payload: { projectId: string; connection: any; password?: string; useSaved?: boolean }) => postJson('/api/connection-catalog', payload)
 export const connectionSecret = (payload: { projectId: string; connectionId: string; action: 'set' | 'clear'; secret?: string }) => postJson('/api/connection-secret', payload)
+
+/** 项目级 API 凭据（动作接口映射）：列举只返回 id/name 元数据；
+ * 登记/清除走独立命名空间 vault，密钥只写不读回，绝不进项目配置/快照。 */
+export const listApiCredentials = (projectId: string) => getJson('/api/api-credentials?project=' + encodeURIComponent(projectId))
+export const saveApiCredential = (payload: { projectId: string; action: 'set' | 'clear'; credentialId?: string; name?: string; secret?: string }) => postJson('/api/api-credential', payload)
 export const catalogRefresh = (projectId: string, connectionId: string) => postJson('/api/catalog-refresh', { projectId, connectionId })
 
 /** 只读关联取值预览（方案 §3.4/§5）：property 为空表示仅成员预览。

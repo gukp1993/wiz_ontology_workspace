@@ -43734,6 +43734,2146 @@
      }
     ]
    }
+  },
+  {
+   "name": "53_action_v2_api_valid",
+   "state": {
+    "projectId": "p1",
+    "name": "金样项目",
+    "ontologyId": "storage",
+    "ontologyVersion": "1",
+    "connections": {
+     "connections": [
+      {
+       "id": "mysql_main",
+       "name": "主数据库",
+       "engine": "mysql",
+       "host": "127.0.0.1",
+       "port": 3306,
+       "database": "demo"
+      },
+      {
+       "id": "redis_main",
+       "name": "缓存",
+       "engine": "redis",
+       "host": "127.0.0.1",
+       "port": 6379
+      }
+     ]
+    },
+    "bindings": {
+     "notice": "",
+     "object_bindings": [
+      {
+       "object_type": "Station",
+       "connection": "mysql_main",
+       "table": "station",
+       "primary_key": "id",
+       "title_key": "station_name",
+       "properties": {
+        "station_name": {
+         "kind": "field",
+         "source": "s_main",
+         "field": "station_name"
+        }
+       },
+       "relations": [],
+       "sources": [
+        {
+         "id": "s_main",
+         "name": "s_main",
+         "kind": "db",
+         "connection": "mysql_main",
+         "table": "battery",
+         "matchLeft": "id",
+         "matchRight": "station_id",
+         "cardinality": "one"
+        }
+       ],
+       "related_sources": []
+      }
+     ],
+     "observation_binding": {},
+     "source_candidates": [],
+     "catalogs": {
+      "mysql_main": {
+       "tables": [
+        {
+         "name": "station",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint",
+           "key": "pri"
+          },
+          {
+           "name": "station_name",
+           "dataType": "varchar"
+          },
+          {
+           "name": "rated_power",
+           "dataType": "double"
+          },
+          {
+           "name": "device_code",
+           "dataType": "varchar"
+          },
+          {
+           "name": "temp_avg",
+           "dataType": "double"
+          },
+          {
+           "name": "health",
+           "dataType": "double"
+          }
+         ]
+        },
+        {
+         "name": "battery",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint",
+           "key": "pri"
+          },
+          {
+           "name": "station_id",
+           "dataType": "bigint",
+           "key": "uni"
+          },
+          {
+           "name": "capacity",
+           "dataType": "double"
+          },
+          {
+           "name": "group_no",
+           "dataType": "int"
+          }
+         ]
+        },
+        {
+         "name": "telemetry",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint"
+          },
+          {
+           "name": "object_id",
+           "dataType": "bigint"
+          },
+          {
+           "name": "object_type",
+           "dataType": "varchar"
+          },
+          {
+           "name": "metric_code",
+           "dataType": "varchar"
+          },
+          {
+           "name": "value",
+           "dataType": "double"
+          },
+          {
+           "name": "value_str",
+           "dataType": "varchar"
+          },
+          {
+           "name": "seq",
+           "dataType": "int"
+          },
+          {
+           "name": "sampled_at",
+           "dataType": "datetime"
+          },
+          {
+           "name": "sampled_ts",
+           "dataType": "bigint"
+          },
+          {
+           "name": "group_no",
+           "dataType": "int"
+          }
+         ]
+        }
+       ]
+      },
+      "mysql_aux": {
+       "tables": [
+        {
+         "name": "ext_table",
+         "fields": [
+          {
+           "name": "station_ref",
+           "dataType": "bigint"
+          },
+          {
+           "name": "ext_value",
+           "dataType": "double"
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "actionBindings": [
+      {
+       "id": "bind-1",
+       "objectTypeId": "Station",
+       "actionId": "act-stop",
+       "implementation": {
+        "kind": "api",
+        "schemaVersion": 2,
+        "method": "POST",
+        "path": "https://ems.example.com/api/devices/{deviceId}/stop",
+        "bodyFormat": "json",
+        "description": "",
+        "parameters": [
+         {
+          "id": "p1",
+          "name": "deviceId",
+          "in": "path",
+          "value": {
+           "from": "instanceId"
+          }
+         },
+         {
+          "id": "p2",
+          "name": "power",
+          "in": "body",
+          "value": {
+           "from": "constant",
+           "type": "number",
+           "value": 0
+          }
+         },
+         {
+          "id": "p3",
+          "name": "force",
+          "in": "body",
+          "value": {
+           "from": "constant",
+           "type": "boolean",
+           "value": false
+          }
+         },
+         {
+          "id": "p4",
+          "name": "code",
+          "in": "header",
+          "value": {
+           "from": "property",
+           "propertyId": "mg:station_name"
+          }
+         }
+        ],
+        "auth": {
+         "type": "none"
+        }
+       }
+      }
+     ]
+    },
+    "implementations": [],
+    "parameters": {}
+   },
+   "ontology_state": {
+    "ontology": {
+     "@context": {},
+     "@graph": [
+      {
+       "@id": "mg:Station",
+       "@type": "owl:Class",
+       "rdfs:label": "储能单元"
+      },
+      {
+       "@id": "mg:Battery",
+       "@type": "owl:Class",
+       "rdfs:label": "电池包"
+      },
+      {
+       "@id": "mg:station_name",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "station_name",
+       "mg:apiName": "station_name",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:string"
+       },
+       "mg:sharedProperty": {
+        "@id": "mg:sharedTitle"
+       }
+      },
+      {
+       "@id": "mg:rated_power",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "rated_power",
+       "mg:apiName": "rated_power",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:soc",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "soc",
+       "mg:apiName": "soc",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       },
+       "mg:sharedProperty": {
+        "@id": "mg:sharedSeries"
+       }
+      },
+      {
+       "@id": "mg:device_code",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "device_code",
+       "mg:apiName": "device_code",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:string"
+       }
+      },
+      {
+       "@id": "mg:temp_avg",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "temp_avg",
+       "mg:apiName": "temp_avg",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:health",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "health",
+       "mg:apiName": {
+        "@value": "health"
+       },
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:capacity",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "capacity",
+       "mg:apiName": "capacity",
+       "rdfs:domain": {
+        "@id": "mg:Battery"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:sharedTitle",
+       "@type": "mg:SharedProperty",
+       "mg:isDisplayName": {
+        "@value": true
+       }
+      },
+      {
+       "@id": "mg:sharedSeries",
+       "@type": "mg:SharedProperty",
+       "mg:valueShape": "timeSeries"
+      },
+      {
+       "@id": "mg:hasBattery",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "含电池包",
+       "mg:cardinality": {
+        "@value": "many-to-one"
+       }
+      },
+      {
+       "@id": "mg:belongsToStation",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "所属单元",
+       "mg:cardinality": "one-to-many"
+      },
+      {
+       "@id": "mg:relatedUnit",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "关联单元"
+      }
+     ]
+    },
+    "workflow": {
+     "functions": [
+      {
+       "id": "fn-series",
+       "name": "序列取数",
+       "guide_version": 3,
+       "inputs": [
+        {
+         "id": "in1",
+         "name": "单元",
+         "ref": {
+          "kind": "object",
+          "id": "mg:Station"
+         }
+        }
+       ],
+       "outputs": [
+        {
+         "id": "series",
+         "name": "序列输出",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-health",
+       "name": "健康度计算",
+       "guide_version": 3,
+       "inputs": [
+        {
+         "id": "in1",
+         "name": "输入值",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ],
+       "outputs": [
+        {
+         "id": "health",
+         "name": "健康度",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-cross",
+       "name": "跨属性输出",
+       "guide_version": 3,
+       "inputs": [],
+       "outputs": [
+        {
+         "id": "out1",
+         "name": "输出",
+         "ref": {
+          "kind": "property",
+          "id": "mg:health"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-self",
+       "name": "自属性输出",
+       "guide_version": 3,
+       "inputs": [],
+       "outputs": [
+        {
+         "id": "out1",
+         "name": "输出",
+         "ref": {
+          "kind": "property",
+          "id": "mg:rated_power"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-legacy",
+       "name": "旧版函数",
+       "guide_version": 1,
+       "steps": []
+      }
+     ],
+     "actions": [
+      {
+       "id": "act-stop",
+       "name": "停止充放电",
+       "description": "请求目标对象停止充放电",
+       "effect": "目标功率为 0，以设备反馈确认完成",
+       "definitionVersion": 2,
+       "status": "experimental"
+      }
+     ],
+     "actionAssociations": [
+      {
+       "objectTypeId": "mg:Station",
+       "actionId": "act-stop"
+      }
+     ]
+    }
+   },
+   "report": {
+    "errors": [],
+    "warnings": [],
+    "items": [
+     {
+      "kind": "connection",
+      "id": "mysql_main",
+      "name": "数据连接 · 主数据库",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "connection",
+      "id": "redis_main",
+      "name": "数据连接 · 缓存",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "objectBinding",
+      "id": "Station",
+      "name": "对象映射 · Station",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "objectSource",
+      "id": "Station.s_main",
+      "name": "数据来源 · Station/s_main",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "propertySource",
+      "id": "Station.station_name",
+      "name": "属性来源 · Station.station_name",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "actionBinding",
+      "id": "bind-1",
+      "name": "动作绑定 · 储能单元 / 停止充放电",
+      "status": "valid",
+      "issues": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "54_action_v2_api_config_errors",
+   "state": {
+    "projectId": "p1",
+    "name": "金样项目",
+    "ontologyId": "storage",
+    "ontologyVersion": "1",
+    "connections": {
+     "connections": [
+      {
+       "id": "mysql_main",
+       "name": "主数据库",
+       "engine": "mysql",
+       "host": "127.0.0.1",
+       "port": 3306,
+       "database": "demo"
+      },
+      {
+       "id": "redis_main",
+       "name": "缓存",
+       "engine": "redis",
+       "host": "127.0.0.1",
+       "port": 6379
+      }
+     ]
+    },
+    "bindings": {
+     "notice": "",
+     "object_bindings": [],
+     "observation_binding": {},
+     "source_candidates": [],
+     "catalogs": {
+      "mysql_main": {
+       "tables": [
+        {
+         "name": "station",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint",
+           "key": "pri"
+          },
+          {
+           "name": "station_name",
+           "dataType": "varchar"
+          },
+          {
+           "name": "rated_power",
+           "dataType": "double"
+          },
+          {
+           "name": "device_code",
+           "dataType": "varchar"
+          },
+          {
+           "name": "temp_avg",
+           "dataType": "double"
+          },
+          {
+           "name": "health",
+           "dataType": "double"
+          }
+         ]
+        },
+        {
+         "name": "battery",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint",
+           "key": "pri"
+          },
+          {
+           "name": "station_id",
+           "dataType": "bigint",
+           "key": "uni"
+          },
+          {
+           "name": "capacity",
+           "dataType": "double"
+          },
+          {
+           "name": "group_no",
+           "dataType": "int"
+          }
+         ]
+        },
+        {
+         "name": "telemetry",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint"
+          },
+          {
+           "name": "object_id",
+           "dataType": "bigint"
+          },
+          {
+           "name": "object_type",
+           "dataType": "varchar"
+          },
+          {
+           "name": "metric_code",
+           "dataType": "varchar"
+          },
+          {
+           "name": "value",
+           "dataType": "double"
+          },
+          {
+           "name": "value_str",
+           "dataType": "varchar"
+          },
+          {
+           "name": "seq",
+           "dataType": "int"
+          },
+          {
+           "name": "sampled_at",
+           "dataType": "datetime"
+          },
+          {
+           "name": "sampled_ts",
+           "dataType": "bigint"
+          },
+          {
+           "name": "group_no",
+           "dataType": "int"
+          }
+         ]
+        }
+       ]
+      },
+      "mysql_aux": {
+       "tables": [
+        {
+         "name": "ext_table",
+         "fields": [
+          {
+           "name": "station_ref",
+           "dataType": "bigint"
+          },
+          {
+           "name": "ext_value",
+           "dataType": "double"
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "actionBindings": [
+      {
+       "id": "bind-1",
+       "objectTypeId": "Station",
+       "actionId": "act-stop",
+       "implementation": {
+        "kind": "api",
+        "schemaVersion": 2,
+        "method": "GET",
+        "path": "/api/stop",
+        "bodyFormat": "json",
+        "description": "",
+        "parameters": [
+         {
+          "id": "p1",
+          "name": "power",
+          "in": "body",
+          "value": {
+           "from": "constant",
+           "type": "number",
+           "value": "abc"
+          }
+         },
+         {
+          "id": "p2",
+          "name": "power",
+          "in": "body",
+          "value": {
+           "from": "constant",
+           "type": "number",
+           "value": 0
+          }
+         },
+         {
+          "id": "p3",
+          "name": "force",
+          "in": "header",
+          "value": {
+           "from": "constant",
+           "type": "boolean",
+           "value": true
+          }
+         },
+         {
+          "id": "p4",
+          "name": "FORCE",
+          "in": "header",
+          "value": {
+           "from": "constant",
+           "type": "boolean",
+           "value": true
+          }
+         }
+        ],
+        "auth": {
+         "type": "none"
+        }
+       }
+      },
+      {
+       "id": "bind-1",
+       "objectTypeId": "Station",
+       "actionId": "act-stop",
+       "implementation": {
+        "kind": "api",
+        "schemaVersion": 2,
+        "method": "POST",
+        "path": "https://ems.example.com/api/devices/{deviceId}/stop",
+        "bodyFormat": "json",
+        "description": "",
+        "parameters": [],
+        "auth": {
+         "type": "none"
+        }
+       }
+      }
+     ]
+    },
+    "implementations": [],
+    "parameters": {}
+   },
+   "ontology_state": {
+    "ontology": {
+     "@context": {},
+     "@graph": [
+      {
+       "@id": "mg:Station",
+       "@type": "owl:Class",
+       "rdfs:label": "储能单元"
+      },
+      {
+       "@id": "mg:Battery",
+       "@type": "owl:Class",
+       "rdfs:label": "电池包"
+      },
+      {
+       "@id": "mg:station_name",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "station_name",
+       "mg:apiName": "station_name",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:string"
+       },
+       "mg:sharedProperty": {
+        "@id": "mg:sharedTitle"
+       }
+      },
+      {
+       "@id": "mg:rated_power",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "rated_power",
+       "mg:apiName": "rated_power",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:soc",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "soc",
+       "mg:apiName": "soc",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       },
+       "mg:sharedProperty": {
+        "@id": "mg:sharedSeries"
+       }
+      },
+      {
+       "@id": "mg:device_code",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "device_code",
+       "mg:apiName": "device_code",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:string"
+       }
+      },
+      {
+       "@id": "mg:temp_avg",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "temp_avg",
+       "mg:apiName": "temp_avg",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:health",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "health",
+       "mg:apiName": {
+        "@value": "health"
+       },
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:capacity",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "capacity",
+       "mg:apiName": "capacity",
+       "rdfs:domain": {
+        "@id": "mg:Battery"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:sharedTitle",
+       "@type": "mg:SharedProperty",
+       "mg:isDisplayName": {
+        "@value": true
+       }
+      },
+      {
+       "@id": "mg:sharedSeries",
+       "@type": "mg:SharedProperty",
+       "mg:valueShape": "timeSeries"
+      },
+      {
+       "@id": "mg:hasBattery",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "含电池包",
+       "mg:cardinality": {
+        "@value": "many-to-one"
+       }
+      },
+      {
+       "@id": "mg:belongsToStation",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "所属单元",
+       "mg:cardinality": "one-to-many"
+      },
+      {
+       "@id": "mg:relatedUnit",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "关联单元"
+      }
+     ]
+    },
+    "workflow": {
+     "functions": [
+      {
+       "id": "fn-series",
+       "name": "序列取数",
+       "guide_version": 3,
+       "inputs": [
+        {
+         "id": "in1",
+         "name": "单元",
+         "ref": {
+          "kind": "object",
+          "id": "mg:Station"
+         }
+        }
+       ],
+       "outputs": [
+        {
+         "id": "series",
+         "name": "序列输出",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-health",
+       "name": "健康度计算",
+       "guide_version": 3,
+       "inputs": [
+        {
+         "id": "in1",
+         "name": "输入值",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ],
+       "outputs": [
+        {
+         "id": "health",
+         "name": "健康度",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-cross",
+       "name": "跨属性输出",
+       "guide_version": 3,
+       "inputs": [],
+       "outputs": [
+        {
+         "id": "out1",
+         "name": "输出",
+         "ref": {
+          "kind": "property",
+          "id": "mg:health"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-self",
+       "name": "自属性输出",
+       "guide_version": 3,
+       "inputs": [],
+       "outputs": [
+        {
+         "id": "out1",
+         "name": "输出",
+         "ref": {
+          "kind": "property",
+          "id": "mg:rated_power"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-legacy",
+       "name": "旧版函数",
+       "guide_version": 1,
+       "steps": []
+      }
+     ],
+     "actions": [
+      {
+       "id": "act-stop",
+       "name": "停止充放电",
+       "description": "请求目标对象停止充放电",
+       "effect": "目标功率为 0，以设备反馈确认完成",
+       "definitionVersion": 2,
+       "status": "experimental"
+      }
+     ],
+     "actionAssociations": [
+      {
+       "objectTypeId": "mg:Station",
+       "actionId": "act-stop"
+      }
+     ]
+    }
+   },
+   "report": {
+    "errors": [
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：接口地址必须是 http:// 或 https:// 开头的完整地址（一期没有项目 API 主机配置）。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：参数 1（power · 请求体）：请输入有效数值（0 也是有效固定值）。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：参数 2（power · 请求体）：同一位置的参数名重复（与参数 1（power · 请求体）冲突）。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：参数 4（FORCE · 请求头）：同一位置的参数名重复（与参数 3（force · 请求头）冲突）。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：GET 请求不允许请求体参数，请把参数改到 Query 或路径。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：同一对象类型与动作重复配置绑定"
+    ],
+    "warnings": [],
+    "items": [
+     {
+      "kind": "connection",
+      "id": "mysql_main",
+      "name": "数据连接 · 主数据库",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "connection",
+      "id": "redis_main",
+      "name": "数据连接 · 缓存",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "actionBinding",
+      "id": "bind-1",
+      "name": "动作绑定 · 储能单元 / 停止充放电",
+      "status": "invalid",
+      "issues": [
+       "接口地址必须是 http:// 或 https:// 开头的完整地址（一期没有项目 API 主机配置）。",
+       "参数 1（power · 请求体）：请输入有效数值（0 也是有效固定值）。",
+       "参数 2（power · 请求体）：同一位置的参数名重复（与参数 1（power · 请求体）冲突）。",
+       "参数 4（FORCE · 请求头）：同一位置的参数名重复（与参数 3（force · 请求头）冲突）。",
+       "GET 请求不允许请求体参数，请把参数改到 Query 或路径。"
+      ]
+     },
+     {
+      "kind": "actionBinding",
+      "id": "bind-1",
+      "name": "动作绑定 · 储能单元 / 停止充放电",
+      "status": "invalid",
+      "issues": [
+       "同一对象类型与动作重复配置绑定",
+       "路径占位符 {deviceId} 尚未配置对应的路径参数。"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "55_action_v2_api_reference_errors",
+   "state": {
+    "projectId": "p1",
+    "name": "金样项目",
+    "ontologyId": "storage",
+    "ontologyVersion": "1",
+    "connections": {
+     "connections": [
+      {
+       "id": "mysql_main",
+       "name": "主数据库",
+       "engine": "mysql",
+       "host": "127.0.0.1",
+       "port": 3306,
+       "database": "demo"
+      },
+      {
+       "id": "redis_main",
+       "name": "缓存",
+       "engine": "redis",
+       "host": "127.0.0.1",
+       "port": 6379
+      }
+     ]
+    },
+    "bindings": {
+     "notice": "",
+     "object_bindings": [
+      {
+       "object_type": "Station",
+       "connection": "mysql_main",
+       "table": "station",
+       "primary_key": "",
+       "title_key": "station_name",
+       "properties": {},
+       "relations": [],
+       "sources": [],
+       "related_sources": []
+      }
+     ],
+     "observation_binding": {},
+     "source_candidates": [],
+     "catalogs": {
+      "mysql_main": {
+       "tables": [
+        {
+         "name": "station",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint",
+           "key": "pri"
+          },
+          {
+           "name": "station_name",
+           "dataType": "varchar"
+          },
+          {
+           "name": "rated_power",
+           "dataType": "double"
+          },
+          {
+           "name": "device_code",
+           "dataType": "varchar"
+          },
+          {
+           "name": "temp_avg",
+           "dataType": "double"
+          },
+          {
+           "name": "health",
+           "dataType": "double"
+          }
+         ]
+        },
+        {
+         "name": "battery",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint",
+           "key": "pri"
+          },
+          {
+           "name": "station_id",
+           "dataType": "bigint",
+           "key": "uni"
+          },
+          {
+           "name": "capacity",
+           "dataType": "double"
+          },
+          {
+           "name": "group_no",
+           "dataType": "int"
+          }
+         ]
+        },
+        {
+         "name": "telemetry",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint"
+          },
+          {
+           "name": "object_id",
+           "dataType": "bigint"
+          },
+          {
+           "name": "object_type",
+           "dataType": "varchar"
+          },
+          {
+           "name": "metric_code",
+           "dataType": "varchar"
+          },
+          {
+           "name": "value",
+           "dataType": "double"
+          },
+          {
+           "name": "value_str",
+           "dataType": "varchar"
+          },
+          {
+           "name": "seq",
+           "dataType": "int"
+          },
+          {
+           "name": "sampled_at",
+           "dataType": "datetime"
+          },
+          {
+           "name": "sampled_ts",
+           "dataType": "bigint"
+          },
+          {
+           "name": "group_no",
+           "dataType": "int"
+          }
+         ]
+        }
+       ]
+      },
+      "mysql_aux": {
+       "tables": [
+        {
+         "name": "ext_table",
+         "fields": [
+          {
+           "name": "station_ref",
+           "dataType": "bigint"
+          },
+          {
+           "name": "ext_value",
+           "dataType": "double"
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "actionBindings": [
+      {
+       "id": "bind-1",
+       "objectTypeId": "Station",
+       "actionId": "act-stop",
+       "implementation": {
+        "kind": "api",
+        "schemaVersion": 2,
+        "method": "POST",
+        "path": "https://ems.example.com/api/x",
+        "bodyFormat": "json",
+        "description": "",
+        "parameters": [
+         {
+          "id": "p1",
+          "name": "series",
+          "in": "body",
+          "value": {
+           "from": "property",
+           "propertyId": "mg:soc_series"
+          }
+         },
+         {
+          "id": "p2",
+          "name": "unmapped",
+          "in": "body",
+          "value": {
+           "from": "property",
+           "propertyId": "mg:rated_power"
+          }
+         },
+         {
+          "id": "p3",
+          "name": "ghost",
+          "in": "body",
+          "value": {
+           "from": "property",
+           "propertyId": "mg:ghost"
+          }
+         },
+         {
+          "id": "p4",
+          "name": "input",
+          "in": "body",
+          "value": {
+           "from": "actionInput",
+           "inputId": "in-1"
+          }
+         }
+        ],
+        "auth": {
+         "type": "bearer",
+         "credentialId": "cred-ghost"
+        }
+       }
+      },
+      {
+       "id": "bind-1",
+       "objectTypeId": "Station",
+       "actionId": "act-stop",
+       "implementation": {
+        "kind": "api",
+        "schemaVersion": 2,
+        "method": "DELETE",
+        "path": "https://ems.example.com/api/y/{id}",
+        "bodyFormat": "json",
+        "description": "",
+        "parameters": [
+         {
+          "id": "p1",
+          "name": "id",
+          "in": "query",
+          "value": {
+           "from": "instanceId"
+          }
+         }
+        ],
+        "auth": {
+         "type": "apiKey",
+         "credentialId": "",
+         "in": "query",
+         "name": ""
+        },
+        "roles": "运维",
+        "paramNotes": "deviceId ← 当前设备",
+        "custom": {
+         "nested": [
+          1,
+          2
+         ]
+        }
+       }
+      }
+     ]
+    },
+    "implementations": [],
+    "parameters": {}
+   },
+   "ontology_state": {
+    "ontology": {
+     "@context": {},
+     "@graph": [
+      {
+       "@id": "mg:Station",
+       "@type": "owl:Class",
+       "rdfs:label": "储能单元"
+      },
+      {
+       "@id": "mg:Battery",
+       "@type": "owl:Class",
+       "rdfs:label": "电池包"
+      },
+      {
+       "@id": "mg:station_name",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "station_name",
+       "mg:apiName": "station_name",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:string"
+       },
+       "mg:sharedProperty": {
+        "@id": "mg:sharedTitle"
+       }
+      },
+      {
+       "@id": "mg:rated_power",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "rated_power",
+       "mg:apiName": "rated_power",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:soc",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "soc",
+       "mg:apiName": "soc",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       },
+       "mg:sharedProperty": {
+        "@id": "mg:sharedSeries"
+       }
+      },
+      {
+       "@id": "mg:device_code",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "device_code",
+       "mg:apiName": "device_code",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:string"
+       }
+      },
+      {
+       "@id": "mg:temp_avg",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "temp_avg",
+       "mg:apiName": "temp_avg",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:health",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "health",
+       "mg:apiName": {
+        "@value": "health"
+       },
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:capacity",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "capacity",
+       "mg:apiName": "capacity",
+       "rdfs:domain": {
+        "@id": "mg:Battery"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:sharedTitle",
+       "@type": "mg:SharedProperty",
+       "mg:isDisplayName": {
+        "@value": true
+       }
+      },
+      {
+       "@id": "mg:sharedSeries",
+       "@type": "mg:SharedProperty",
+       "mg:valueShape": "timeSeries"
+      },
+      {
+       "@id": "mg:hasBattery",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "含电池包",
+       "mg:cardinality": {
+        "@value": "many-to-one"
+       }
+      },
+      {
+       "@id": "mg:belongsToStation",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "所属单元",
+       "mg:cardinality": "one-to-many"
+      },
+      {
+       "@id": "mg:relatedUnit",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "关联单元"
+      },
+      {
+       "@id": "mg:soc_series",
+       "@type": "owl:DatatypeProperty",
+       "mg:apiName": "soc_series",
+       "rdfs:label": "SOC 序列",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       },
+       "mg:valueShape": "timeSeries"
+      }
+     ]
+    },
+    "workflow": {
+     "functions": [
+      {
+       "id": "fn-series",
+       "name": "序列取数",
+       "guide_version": 3,
+       "inputs": [
+        {
+         "id": "in1",
+         "name": "单元",
+         "ref": {
+          "kind": "object",
+          "id": "mg:Station"
+         }
+        }
+       ],
+       "outputs": [
+        {
+         "id": "series",
+         "name": "序列输出",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-health",
+       "name": "健康度计算",
+       "guide_version": 3,
+       "inputs": [
+        {
+         "id": "in1",
+         "name": "输入值",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ],
+       "outputs": [
+        {
+         "id": "health",
+         "name": "健康度",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-cross",
+       "name": "跨属性输出",
+       "guide_version": 3,
+       "inputs": [],
+       "outputs": [
+        {
+         "id": "out1",
+         "name": "输出",
+         "ref": {
+          "kind": "property",
+          "id": "mg:health"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-self",
+       "name": "自属性输出",
+       "guide_version": 3,
+       "inputs": [],
+       "outputs": [
+        {
+         "id": "out1",
+         "name": "输出",
+         "ref": {
+          "kind": "property",
+          "id": "mg:rated_power"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-legacy",
+       "name": "旧版函数",
+       "guide_version": 1,
+       "steps": []
+      }
+     ],
+     "actions": [
+      {
+       "id": "act-stop",
+       "name": "停止充放电",
+       "description": "请求目标对象停止充放电",
+       "effect": "目标功率为 0，以设备反馈确认完成",
+       "definitionVersion": 2,
+       "status": "experimental"
+      }
+     ],
+     "actionAssociations": [
+      {
+       "objectTypeId": "mg:Station",
+       "actionId": "act-stop"
+      }
+     ]
+    }
+   },
+   "report": {
+    "errors": [
+     "对象映射 Station：未配置实例主键字段",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：参数 1（series · 请求体）：时间序列属性不能作为本期的标量参数（如需要请改用其他属性）。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：参数 2（unmapped · 请求体）：该属性尚未在「属性取值」中配置来源，无法作为参数取值。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：参数 3（ghost · 请求体）：引用的对象属性不在项目引用版本中，请重新选择。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：参数 4（input · 请求体）：此动作在项目引用的本体版本中没有输入参数，请改用实例主键、对象属性或固定值。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：选择的 API 凭据不在当前项目中（可能已被清理），请重新选择或登记。",
+     "动作绑定 动作绑定 · 储能单元 / 停止充放电：同一对象类型与动作重复配置绑定"
+    ],
+    "warnings": [
+     "对象映射 Station：本体标记的显示名称属性尚未绑定数据字段，实例列表将显示为 ID"
+    ],
+    "items": [
+     {
+      "kind": "connection",
+      "id": "mysql_main",
+      "name": "数据连接 · 主数据库",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "connection",
+      "id": "redis_main",
+      "name": "数据连接 · 缓存",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "objectBinding",
+      "id": "Station",
+      "name": "对象映射 · Station",
+      "status": "unconfigured",
+      "issues": [
+       "未配置实例主键字段"
+      ]
+     },
+     {
+      "kind": "actionBinding",
+      "id": "bind-1",
+      "name": "动作绑定 · 储能单元 / 停止充放电",
+      "status": "invalid",
+      "issues": [
+       "参数 1（series · 请求体）：时间序列属性不能作为本期的标量参数（如需要请改用其他属性）。",
+       "参数 2（unmapped · 请求体）：该属性尚未在「属性取值」中配置来源，无法作为参数取值。",
+       "参数 3（ghost · 请求体）：引用的对象属性不在项目引用版本中，请重新选择。",
+       "参数 4（input · 请求体）：此动作在项目引用的本体版本中没有输入参数，请改用实例主键、对象属性或固定值。",
+       "选择的 API 凭据不在当前项目中（可能已被清理），请重新选择或登记。"
+      ]
+     },
+     {
+      "kind": "actionBinding",
+      "id": "bind-1",
+      "name": "动作绑定 · 储能单元 / 停止充放电",
+      "status": "invalid",
+      "issues": [
+       "同一对象类型与动作重复配置绑定",
+       "路径占位符 {id} 尚未配置对应的路径参数。",
+       "参数 1（id · Query）：当前对象尚未完成实例识别（主键）配置，请先在「实例识别」中配置后再选此来源。",
+       "请选择当前项目的 API 凭据引用。",
+       "请填写 API Key 的参数名称（例如 X-API-Key）。"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "56_action_v2_api_unknown_kept",
+   "state": {
+    "projectId": "p1",
+    "name": "金样项目",
+    "ontologyId": "storage",
+    "ontologyVersion": "1",
+    "connections": {
+     "connections": [
+      {
+       "id": "mysql_main",
+       "name": "主数据库",
+       "engine": "mysql",
+       "host": "127.0.0.1",
+       "port": 3306,
+       "database": "demo"
+      },
+      {
+       "id": "redis_main",
+       "name": "缓存",
+       "engine": "redis",
+       "host": "127.0.0.1",
+       "port": 6379
+      }
+     ]
+    },
+    "bindings": {
+     "notice": "",
+     "object_bindings": [
+      {
+       "object_type": "Station",
+       "connection": "mysql_main",
+       "table": "station",
+       "primary_key": "id",
+       "title_key": "station_name",
+       "properties": {},
+       "relations": [],
+       "sources": [],
+       "related_sources": []
+      }
+     ],
+     "observation_binding": {},
+     "source_candidates": [],
+     "catalogs": {
+      "mysql_main": {
+       "tables": [
+        {
+         "name": "station",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint",
+           "key": "pri"
+          },
+          {
+           "name": "station_name",
+           "dataType": "varchar"
+          },
+          {
+           "name": "rated_power",
+           "dataType": "double"
+          },
+          {
+           "name": "device_code",
+           "dataType": "varchar"
+          },
+          {
+           "name": "temp_avg",
+           "dataType": "double"
+          },
+          {
+           "name": "health",
+           "dataType": "double"
+          }
+         ]
+        },
+        {
+         "name": "battery",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint",
+           "key": "pri"
+          },
+          {
+           "name": "station_id",
+           "dataType": "bigint",
+           "key": "uni"
+          },
+          {
+           "name": "capacity",
+           "dataType": "double"
+          },
+          {
+           "name": "group_no",
+           "dataType": "int"
+          }
+         ]
+        },
+        {
+         "name": "telemetry",
+         "fields": [
+          {
+           "name": "id",
+           "dataType": "bigint"
+          },
+          {
+           "name": "object_id",
+           "dataType": "bigint"
+          },
+          {
+           "name": "object_type",
+           "dataType": "varchar"
+          },
+          {
+           "name": "metric_code",
+           "dataType": "varchar"
+          },
+          {
+           "name": "value",
+           "dataType": "double"
+          },
+          {
+           "name": "value_str",
+           "dataType": "varchar"
+          },
+          {
+           "name": "seq",
+           "dataType": "int"
+          },
+          {
+           "name": "sampled_at",
+           "dataType": "datetime"
+          },
+          {
+           "name": "sampled_ts",
+           "dataType": "bigint"
+          },
+          {
+           "name": "group_no",
+           "dataType": "int"
+          }
+         ]
+        }
+       ]
+      },
+      "mysql_aux": {
+       "tables": [
+        {
+         "name": "ext_table",
+         "fields": [
+          {
+           "name": "station_ref",
+           "dataType": "bigint"
+          },
+          {
+           "name": "ext_value",
+           "dataType": "double"
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "actionBindings": [
+      {
+       "id": "bind-1",
+       "objectTypeId": "Station",
+       "actionId": "act-stop",
+       "implementation": {
+        "kind": "api",
+        "schemaVersion": 2,
+        "method": "POST",
+        "path": "https://ems.example.com/api/z",
+        "bodyFormat": "json",
+        "description": "",
+        "parameters": [],
+        "auth": {
+         "type": "none"
+        },
+        "roles": "运维",
+        "paramNotes": "p ← 固定值",
+        "custom": {
+         "nested": [
+          1,
+          2
+         ]
+        }
+       }
+      }
+     ]
+    },
+    "implementations": [],
+    "parameters": {}
+   },
+   "ontology_state": {
+    "ontology": {
+     "@context": {},
+     "@graph": [
+      {
+       "@id": "mg:Station",
+       "@type": "owl:Class",
+       "rdfs:label": "储能单元"
+      },
+      {
+       "@id": "mg:Battery",
+       "@type": "owl:Class",
+       "rdfs:label": "电池包"
+      },
+      {
+       "@id": "mg:station_name",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "station_name",
+       "mg:apiName": "station_name",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:string"
+       },
+       "mg:sharedProperty": {
+        "@id": "mg:sharedTitle"
+       }
+      },
+      {
+       "@id": "mg:rated_power",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "rated_power",
+       "mg:apiName": "rated_power",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:soc",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "soc",
+       "mg:apiName": "soc",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       },
+       "mg:sharedProperty": {
+        "@id": "mg:sharedSeries"
+       }
+      },
+      {
+       "@id": "mg:device_code",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "device_code",
+       "mg:apiName": "device_code",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:string"
+       }
+      },
+      {
+       "@id": "mg:temp_avg",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "temp_avg",
+       "mg:apiName": "temp_avg",
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:health",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "health",
+       "mg:apiName": {
+        "@value": "health"
+       },
+       "rdfs:domain": {
+        "@id": "mg:Station"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:capacity",
+       "@type": "owl:DatatypeProperty",
+       "rdfs:label": "capacity",
+       "mg:apiName": "capacity",
+       "rdfs:domain": {
+        "@id": "mg:Battery"
+       },
+       "rdfs:range": {
+        "@id": "xsd:double"
+       }
+      },
+      {
+       "@id": "mg:sharedTitle",
+       "@type": "mg:SharedProperty",
+       "mg:isDisplayName": {
+        "@value": true
+       }
+      },
+      {
+       "@id": "mg:sharedSeries",
+       "@type": "mg:SharedProperty",
+       "mg:valueShape": "timeSeries"
+      },
+      {
+       "@id": "mg:hasBattery",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "含电池包",
+       "mg:cardinality": {
+        "@value": "many-to-one"
+       }
+      },
+      {
+       "@id": "mg:belongsToStation",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "所属单元",
+       "mg:cardinality": "one-to-many"
+      },
+      {
+       "@id": "mg:relatedUnit",
+       "@type": "owl:ObjectProperty",
+       "rdfs:label": "关联单元"
+      }
+     ]
+    },
+    "workflow": {
+     "functions": [
+      {
+       "id": "fn-series",
+       "name": "序列取数",
+       "guide_version": 3,
+       "inputs": [
+        {
+         "id": "in1",
+         "name": "单元",
+         "ref": {
+          "kind": "object",
+          "id": "mg:Station"
+         }
+        }
+       ],
+       "outputs": [
+        {
+         "id": "series",
+         "name": "序列输出",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-health",
+       "name": "健康度计算",
+       "guide_version": 3,
+       "inputs": [
+        {
+         "id": "in1",
+         "name": "输入值",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ],
+       "outputs": [
+        {
+         "id": "health",
+         "name": "健康度",
+         "ref": {
+          "kind": "base",
+          "dataType": "double"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-cross",
+       "name": "跨属性输出",
+       "guide_version": 3,
+       "inputs": [],
+       "outputs": [
+        {
+         "id": "out1",
+         "name": "输出",
+         "ref": {
+          "kind": "property",
+          "id": "mg:health"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-self",
+       "name": "自属性输出",
+       "guide_version": 3,
+       "inputs": [],
+       "outputs": [
+        {
+         "id": "out1",
+         "name": "输出",
+         "ref": {
+          "kind": "property",
+          "id": "mg:rated_power"
+         }
+        }
+       ]
+      },
+      {
+       "id": "fn-legacy",
+       "name": "旧版函数",
+       "guide_version": 1,
+       "steps": []
+      }
+     ],
+     "actions": [
+      {
+       "id": "act-stop",
+       "name": "停止充放电",
+       "description": "请求目标对象停止充放电",
+       "effect": "目标功率为 0，以设备反馈确认完成",
+       "definitionVersion": 2,
+       "status": "experimental"
+      }
+     ],
+     "actionAssociations": [
+      {
+       "objectTypeId": "mg:Station",
+       "actionId": "act-stop"
+      }
+     ]
+    }
+   },
+   "report": {
+    "errors": [],
+    "warnings": [
+     "对象映射 Station：本体标记的显示名称属性尚未绑定数据字段，实例列表将显示为 ID"
+    ],
+    "items": [
+     {
+      "kind": "connection",
+      "id": "mysql_main",
+      "name": "数据连接 · 主数据库",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "connection",
+      "id": "redis_main",
+      "name": "数据连接 · 缓存",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "objectBinding",
+      "id": "Station",
+      "name": "对象映射 · Station",
+      "status": "valid",
+      "issues": []
+     },
+     {
+      "kind": "actionBinding",
+      "id": "bind-1",
+      "name": "动作绑定 · 储能单元 / 停止充放电",
+      "status": "valid",
+      "issues": []
+     }
+    ]
+   }
   }
  ]
 }
