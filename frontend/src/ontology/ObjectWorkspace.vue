@@ -477,7 +477,7 @@ function selectById(id: string) {
   <template v-else-if="editor">
     <PropertyManager v-if="editor.kind === 'property'" :key="editor.propertyId || 'new'" :state="state" kind="property" :target-type-id="editor.targetTypeId" :property-id="editor.propertyId" @close="closeEditor" @saved="onPropertySaved"/>
     <section v-else-if="editor.kind === 'object'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button><small class="muted">{{ editor.isNew ? '' : current?.['rdfs:label'] || '' }}</small></div>
+      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
       <div class="detail-heading"><div><span class="eyebrow">对象类型</span><h2>{{ editor.isNew ? '新建对象类型' : '维护对象定义' }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
@@ -490,7 +490,7 @@ function selectById(id: string) {
       </div>
     </section>
     <section v-else-if="editor.kind === 'link'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button><small class="muted">{{ typeName(linkDraft?.from) }} → {{ linkDraft?.label || '链接名称' }} → {{ typeName(linkDraft?.to) }}</small></div>
+      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
       <div class="detail-heading"><div><span class="eyebrow">业务链接</span><h2>{{ editor.isNew ? '定义业务链接' : '维护 · ' + (linkDraft?.label || '未命名链接') }}</h2></div><span class="status-pill">同一链接正反两个阅读方向</span></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
@@ -514,7 +514,7 @@ function selectById(id: string) {
       </div>
     </section>
     <section v-else-if="editor.kind === 'library'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button><small class="muted">{{ typeName(editor.targetTypeId) }}</small></div>
+      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
       <div class="detail-heading"><div><span class="eyebrow">从属性库添加</span><h2>为「{{ typeName(editor.targetTypeId) }}」添加属性</h2></div></div>
       <p class="fill-hint">复制生成私有定义（新属性标识，此后独立修改）；引用保留共享关联（名称、类型、单位跟随共享定义统一维护）。完成后返回原对象并定位新增属性。</p>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
@@ -723,7 +723,6 @@ function selectById(id: string) {
 .ow-toolbar .ow-mode-tabs button{flex:none}
 .ow-toolbar .primary{margin-left:auto}
 .ow-editor-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
-.ow-editor-head small{font-size:12px;overflow-wrap:anywhere}
 .ow-editor :deep(.form-grid .editor-field.full){grid-column:1/-1}
 .ow-row-tools{white-space:nowrap;text-align:right}
 .ow-row-tools .row-link + .row-link{margin-left:12px}
