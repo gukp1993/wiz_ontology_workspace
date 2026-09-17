@@ -291,7 +291,7 @@ async function save(){if(saving.value)return
 <p v-if="error" class="inline-error" role="alert">{{error}}</p><div class="tools"><button class="primary" :disabled="saving" @click="save">{{saving?'保存中…':'保存取值规则'}}</button><button :disabled="saving" @click="close">取消</button></div>
 </section></template>
 <template v-else>
-<div class="manager-heading"><button class="primary" @click="newRule">＋ 新建查询规则</button><button @click="newCalc">＋ 新建计算函数</button><div><p>每种取值规则只维护一套流程。属性取值时选择规则、填写入参，SOC、温度、功率等属性可共用同一规则。</p></div></div>
+<div class="manager-heading"><button class="primary" @click="newRule">＋ 新建查询规则</button><button @click="newCalc">＋ 新建计算函数</button><div><h2>取值规则库</h2><p>每种取值规则只维护一套流程。属性取值时选择规则、填写入参，SOC、温度、功率等属性可共用同一规则。</p></div></div>
 <p v-if="saved" class="inline-success" role="status">{{saved}}</p>
 <section class="card">
 <div class="panelhead"><h2>查询规则（{{rules.length}}）</h2><span class="status-pill">{{rules.length?'已保存配置':'待配置'}}</span></div>

@@ -60,6 +60,7 @@ async function remove(item: any) {
 <section class="card">
   <div class="manager-heading">
     <div>
+      <h2>函数编排</h2>
       <p>把 Python 与 SQL 处理节点编排成可复用的取数与加工流程。第一期只做定义与配置检查，不执行代码或 SQL；与项目取值规则库相互独立。</p>
     </div>
     <button class="primary" @click="showCreate=true">＋ 新建编排</button>

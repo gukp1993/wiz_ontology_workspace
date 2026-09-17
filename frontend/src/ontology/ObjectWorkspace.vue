@@ -2,8 +2,7 @@
      挂载点：App.vue view==='objects'（旧 #model/#links/#graph/#properties 深链均 alias 到此页）。
      协议冻结（任务板 §2/§7，勿改）：props {state:any; focusType?; focusProperty?}；
      emits ['before-change','changed','navigate']。
-     浏览态（原型 objectWorkspace）：工具行（对象列表/关系画布 + ＋新建对象）Teleport 到页头操作区
-     （App 的 #page-actions，与原型 .pagehead .row 同位），下方为列表态提示行 .ld-hint；
+     浏览态（原型 objectWorkspace）：工具行（对象列表/关系画布 + ＋新建对象）在目录＋详情上方；
      左目录（157px）+ 右详情（名称/业务定义展示 + 「编辑定义」+ 属性/链接两页签）。
      编辑态（原型 render: ui.editor ? editorView() : pageView()）：主内容整体替换为一个完整表单，
      顶栏与主侧栏保留；表单上方「← 返回对象」，底部保存/取消。新建对象/编辑定义/新建属性/
@@ -462,15 +461,10 @@ function selectById(id: string) {
 <div class="object-workspace ow-root" :class="{ 'ow-canvas-grid': mode === 'canvas' }">
   <!-- 画布模式：复用 ObjectCanvas 内置工具条/目录/inspector，自动保存路径不动 -->
   <template v-if="mode === 'canvas'">
-    <!-- 模式页签 Teleport 到页头操作区（App 的 #page-actions）：与列表态同一位置；编辑态不显示 -->
-    <Teleport to="#page-actions">
-      <div class="ow-toolbar">
-        <div class="ow-mode-tabs ow-canvas-tabs" role="tablist" aria-label="对象建模模式">
-          <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
-          <button role="tab" class="active" :aria-selected="true">关系画布</button>
-        </div>
-      </div>
-    </Teleport>
+    <div class="ow-mode-tabs ow-canvas-tabs" role="tablist" aria-label="对象建模模式">
+      <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
+      <button role="tab" class="active" :aria-selected="true">关系画布</button>
+    </div>
     <ObjectCanvas ref="canvasRef" :state="state" @before-change="emit('before-change')" @changed="emit('changed')" @select="selectById"/>
   </template>
   <!-- 编辑态：主内容整体替换为一个完整表单（原型 ui.editor ? editorView() : pageView()） -->
@@ -540,17 +534,13 @@ function selectById(id: string) {
   </template>
   <!-- 浏览态：列表/详情骨架（20260917 原型）：左紧凑列表 + 右详情，两区独立滚动 -->
   <template v-else>
-    <!-- 浏览态工具行 Teleport 到页头操作区（App 的 #page-actions）：模式页签 + 新建对象主按钮 -->
-    <Teleport to="#page-actions">
-      <div class="ow-toolbar">
-        <div class="ow-mode-tabs" role="tablist" aria-label="对象建模模式">
-          <button role="tab" class="active" :aria-selected="true">对象列表</button>
-          <button role="tab" :aria-selected="false" @click="showCanvas">关系画布</button>
-        </div>
-        <button class="primary" @click="openObjectEditor(true)">＋ 新建对象</button>
+    <div class="ow-toolbar">
+      <div class="ow-mode-tabs" role="tablist" aria-label="对象建模模式">
+        <button role="tab" class="active" :aria-selected="true">对象列表</button>
+        <button role="tab" :aria-selected="false" @click="showCanvas">关系画布</button>
       </div>
-    </Teleport>
-    <p class="ld-hint">{{ isStacked ? '单栏模式 · 选择对象进入详情，返回后保留搜索与页码' : '并列模式 · 左侧定位对象，右侧维护详情；目录与内容分别滚动' }}</p>
+      <button class="primary" @click="openObjectEditor(true)">＋ 新建对象</button>
+    </div>
     <div ref="ldRef" class="ld" :class="{ 'ld-stacked': isStacked, 'ld-detail-open': stackedDetail }" :style="{ '--ld-h': ldH + 'px' }">
       <!-- 列表区：搜索覆盖全部对象；筛选不丢失选中；分页保留详情 -->
       <section class="ld-list" aria-label="对象类型列表">
@@ -614,10 +604,10 @@ function selectById(id: string) {
           </div>
           <!-- 四页签：属性 / 链接 / 动作 / 规则 -->
           <div class="ld-tabs" role="tablist" aria-label="对象详情内容">
-            <button role="tab" :class="{ active: detailTab === 'props' }" :aria-selected="detailTab === 'props'" @click="detailTab = 'props'">属性 <span>{{ propRows.length }}</span></button>
-            <button role="tab" :class="{ active: detailTab === 'links' }" :aria-selected="detailTab === 'links'" @click="detailTab = 'links'">链接 <span>{{ linkRows.length }}</span></button>
-            <button role="tab" :class="{ active: detailTab === 'actions' }" :aria-selected="detailTab === 'actions'" @click="detailTab = 'actions'">动作 <span>{{ actionRows.length }}</span></button>
-            <button role="tab" :class="{ active: detailTab === 'rules' }" :aria-selected="detailTab === 'rules'" @click="detailTab = 'rules'">规则 <span>{{ ruleRows.length }}</span></button>
+            <button role="tab" :class="{ active: detailTab === 'props' }" :aria-selected="detailTab === 'props'" @click="detailTab = 'props'">属性 · {{ propRows.length }}</button>
+            <button role="tab" :class="{ active: detailTab === 'links' }" :aria-selected="detailTab === 'links'" @click="detailTab = 'links'">链接 · {{ linkRows.length }}</button>
+            <button role="tab" :class="{ active: detailTab === 'actions' }" :aria-selected="detailTab === 'actions'" @click="detailTab = 'actions'">动作 · {{ actionRows.length }}</button>
+            <button role="tab" :class="{ active: detailTab === 'rules' }" :aria-selected="detailTab === 'rules'" @click="detailTab = 'rules'">规则 · {{ ruleRows.length }}</button>
           </div>
           <div class="ld-body" role="tabpanel" aria-label="对象详情内容">
           <template v-if="detailTab === 'props'">
@@ -736,7 +726,7 @@ function selectById(id: string) {
 /* 浏览态的列表/详情骨架在全局 .ld-*（style.css）：两区独立滚动，窄屏单栏。 */
 .ow-root{display:block}
 .ow-canvas-tabs{max-width:360px}
-.ow-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:0} /* Teleport 进页头操作区后不再需要下边距 */
+.ow-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .ow-toolbar .ow-mode-tabs{display:flex;gap:6px;margin-bottom:0}
 .ow-toolbar .ow-mode-tabs button{flex:none}
 .ow-toolbar .primary{margin-left:auto}
@@ -767,8 +757,7 @@ function selectById(id: string) {
 /* 详情头：名称+操作同一行，业务定义与元信息各自一行。 */
 .ow-head-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .ow-head-row .ow-h2-name{margin:0}
-/* 业务定义段：与原型 .description 对齐（标题大小与 .ld-detail-head 内边距由全局样式负责）。 */
-.ow-h2-def{margin:13px 0 0;font-size:13px;line-height:1.8;max-width:720px;color:var(--muted)}
+.ow-h2-def{margin:6px 0 0}
 .ow-head-side .danger{margin:0}
 .relation-sentence{margin:18px 0 0}
 @media(max-width:1000px){

@@ -242,7 +242,7 @@ function catalogPreview(c:any):string{
 <template><div>
 <!-- 列表态：原型 connectionsView —— 行＝名称+引擎 tag+地址摘要+测试状态，操作＝测试/配置/删除；折叠的表结构目录 -->
 <section v-if="mode==='list'" class="card">
-<div class="panelhead"><button class="primary" @click="openEditor()">＋ 新建连接</button></div>
+<div class="panelhead"><div><h2>项目数据连接</h2><p class="muted">连接统一配置，供属性、实例识别和计算实现选用。连接探测是真实网络请求；连接成功不代表业务数据接入完成。</p></div><button class="primary" @click="openEditor()">＋ 新建连接</button></div>
 <div class="conn-list">
   <div v-for="conn in connections" :key="conn.id" class="conn-row" :class="{'just-saved':focusId===conn.id}">
     <div class="conn-main">

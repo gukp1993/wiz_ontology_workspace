@@ -19,6 +19,7 @@ const tools = [
 
 <template>
 <section class="card">
+  <div class="panelhead"><div><h2>更多工具</h2><p class="muted">主导航只保留两条主流程；这里的辅助能力继续可用，旧链接会自动落到对应新页面。</p></div></div>
   <div class="tools-grid">
     <div v-for="t in tools" :key="t.view" class="tool-card card">
       <h3>{{t.name}}</h3>

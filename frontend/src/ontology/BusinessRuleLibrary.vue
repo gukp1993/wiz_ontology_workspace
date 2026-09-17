@@ -92,7 +92,9 @@ function goObject(objectTypeId: string) {
 </script>
 <template>
 <section class="card brl-card">
-  <div class="detail-heading"><button class="primary" @click="openEdit()">＋ 新建规则</button></div>
+  <div class="detail-heading"><div><h2>业务规则</h2>
+    <p class="muted">用自然语言维护通用业务规则；对象建模中引用，项目实现与执行不在本期范围。</p></div>
+    <button class="primary" @click="openEdit()">＋ 新建规则</button></div>
   <input type="search" v-model="query" class="brl-search" placeholder="搜索规则名称" aria-label="搜索规则名称">
   <div class="table-wrap">
     <table>

@@ -149,7 +149,7 @@ function convertLegacy(){const f=legacyItem.value;if(!f)return;emit('before-chan
 </template>
 <!-- 列表态：名称 + 输入→输出摘要 + 编辑入口 -->
 <template v-else>
-<div class="manager-heading"><div><p>说明一个业务能力需要提供什么、希望得到什么。具体实现放在项目映射中。</p></div><button class="primary" @click="newContract">＋ 新建契约</button></div>
+<div class="manager-heading"><div><h2>计算契约</h2><p>说明一个业务能力需要提供什么、希望得到什么。具体实现放在项目映射中。</p></div><button class="primary" @click="newContract">＋ 新建契约</button></div>
 <section class="card">
 <div class="panelhead list-head"><span class="muted">共 {{contractRows.length}} 项契约</span><input v-model="query" type="search" placeholder="搜索契约名称…" aria-label="搜索契约"></div>
 <div v-if="contractRows.length">

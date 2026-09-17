@@ -72,7 +72,7 @@ try{
  api.openEditor('history');assert.equal(api.draft.value.inputs.attr_name,'soc');api.setRuleInput('attr_name','temperature');api.closeEditor();assert.equal(b.properties.history.inputs.attr_name,'soc','取消不会改动已保存参数')
  const manager=await mount(await loadComponent('QueryRuleManager'));manager.api.open(rule);page=await manager.html();assert.match(page,/规则名称 \*/);assert.doesNotMatch(page,/保存时绑定属性|规则适用对象|规则名称（选填）/);assert.equal(manager.api.draft.value.schemaVersion,4);assert.equal(manager.api.draft.value.mode,'sqlSteps');assert.equal(rule.schemaVersion,1)
  b.properties.history={kind:'computed',implementation:rule.id,output:'series'};await manager.api.save();assert.equal(projectState.implementations.find(i=>i.id===rule.id).schemaVersion,4);assert.deepEqual(b.properties.history.inputs,{model_name:'m_storage_cluster_phase',attr_name:'soc',model_id:'{id}'})
- page=await manager.html();assert.match(page,/每种取值规则只维护一套流程/);assert.match(page,/采样值取值规则/);assert.match(page,/详情/);assert.doesNotMatch(page,/SQL 查询步骤|SQL 模板|规则实现|新建采样取值规则/,'规则库默认列表不展开实现详情')
+ page=await manager.html();assert.match(page,/取值规则库/);assert.match(page,/采样值取值规则/);assert.match(page,/详情/);assert.doesNotMatch(page,/SQL 查询步骤|SQL 模板|规则实现|新建采样取值规则/,'规则库默认列表不展开实现详情')
  manager.api.toggleDetail(rule.id);page=await manager.html();assert.match(page,/rule-detail/,'点「详情」后展开实现');manager.api.toggleDetail(rule.id);page=await manager.html();assert.doesNotMatch(page,/rule-detail/,'再点收起')
  const ruleCount=projectState.implementations.length;manager.api.openSampling();const fixedId=manager.api.draft.value.id;manager.api.close();manager.api.openSampling();assert.equal(manager.api.draft.value.id,fixedId);assert.equal(projectState.implementations.length,ruleCount,'再次配置复用规则，不新增记录');manager.api.close()
 

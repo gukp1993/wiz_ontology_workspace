@@ -30,7 +30,7 @@ import { decodeState, requestBody, type WorkbenchState } from './ontology/modelF
 import { shortcutAction } from './app/shortcuts'
 import { createSaver, SaveRequestError } from './app/saveCoordinator'
 import type { FormGuardInstance, FormGuardAPI, FormSaveAPI } from './app/formGuard'
-import { pages, normalizeView, projectViews, projectSpaceViews, flowViews, menuOntology, menuProjectOf, initialView, initialSpace } from './app/navigation'
+import { pages, normalizeView, projectViews, projectSpaceViews, flowViews, menuOntologyGroups, menuProjectOf, initialView, initialSpace } from './app/navigation'
 import { navIcons } from './shared/icons'
 import { appConfirm } from './shared/appConfirm'
 import { createUndoArea } from './app/workspace'
@@ -225,25 +225,6 @@ const menuProject = computed<Record<string, string>>(() => menuProjectOf(!!proje
 const refOntologyLabel = computed(() => { const oid = projectState.value?.ontologyId || ''; return ontologyList.value.find(o => o.id === oid)?.name || oid || '—' })
 // 顶栏面包屑文案（展示型 computed）：沿用原 header crumb 三分支逻辑，随单层顶栏搬迁，页面标题另见 pages[view]。
 const crumbPath = computed(() => flowViews.includes(view.value) ? `${flowState.value?.name || '未选择编排'} / 函数编排 · 项目映射` : space.value === 'project' ? `${projectState.value?.name || '未选择项目'} / 项目配置 · 引用 ${refOntologyLabel.value} ${projectState.value?.ontologyVersion || ''}` : `${ontologyName.value || '未创建本体'} / 抽象定义`)
-
-// --- 壳层展示（原型 20260917 壳层还原）：侧栏 .navlabel / 顶栏 .topbar-left 的上下文名与区域名、页头说明 ---
-// 上下文名：本体空间为当前本体；项目空间为当前项目，函数编排在未选项目时回落到编排名。
-const contextName = computed(() => space.value === 'ontology' ? (ontologyName.value || '未创建本体')
-  : (projectState.value?.name || (flowViews.includes(view.value) ? flowState.value?.name || '未选择编排' : '未选择项目')))
-// 区域名：顶栏「上下文名 / 区域名」的右半段（原型 chromeFull：本体建模 / 项目映射；编排页给函数编排）。
-const areaName = computed(() => space.value === 'ontology' ? '本体建模' : flowViews.includes(view.value) ? '函数编排' : '项目映射')
-// 页头说明：每页一句（15–25 字）；未列出的视图回退到区域级说明。
-const subtitles: Record<string, string> = {
-  'o-home': '本体建设进度与下一步入口', objects: '找到业务对象，维护它的属性、链接与动作',
-  library: '集中维护跨对象复用的属性定义', rules: '维护通用业务规则，对象按需引用',
-  actions: '集中定义动作，不指定对象与参数', 'o-release': '检查本体定义并发布不可变版本',
-  'p-home': '引用已发布本体，配置项目数据来源与实现', connections: '登记项目数据连接，供映射与规则选择',
-  binding: '把对象类型映射到项目的数据来源', implements: '维护项目自己的取值规则与实现',
-  'f-home': '用 SQL 或 Python 节点描述多步处理', 'f-editor': '用 SQL 或 Python 节点描述多步处理',
-  'p-release': '检查项目配置并发布项目版本', 'p-upgrade': '切换项目引用的本体版本',
-  tools: '保留辅助与历史入口，不加入必填流程',
-}
-function subtitleOf(v: string) { return subtitles[v] || (projectSpaceViews.includes(v) ? '引用已发布本体，配置具体项目的数据与实现' : '定义通用业务语义，与具体项目实现分离') }
 // 旧调用点迁移：openFunction/openProperties/openBindings/showKnowledge/showGraph → 新 view 名 + focus。
 function openFunction(id: string) { contractFocusId.value = id; navigate('contracts') }
 function openProperties(type: string, id = '') { propertyFocusType.value = type; propertyFocusId.value = id; navigate('objects') }
@@ -420,15 +401,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 </script>
 
 <template>
-<aside class="rail" :inert="modalOpen">
-<div class="brand"><span>本体工作台</span><small>ONTOLOGY WORKSPACE</small></div>
-<div class="space" role="tablist" aria-label="切换工作区"><button role="tab" :class="{active:space==='ontology'}" :aria-selected="space==='ontology'" @click="switchSpace('ontology')">本体</button><button role="tab" :class="{active:space==='project'}" :aria-selected="space==='project'" @click="switchSpace('project')">项目</button></div>
-<div class="context"><template v-if="space==='ontology'"><label>当前本体<AppSelect :model-value="hasOntology?ontologyId:''" :options="ontologyList.map(o=>({value:o.id,label:o.name}))" :disabled="busy||!ontologyList.length" aria-label="切换本体" @update:model-value="switchOntology"/></label></template><template v-else><label>当前项目<AppSelect :model-value="projectState?.projectId||''" :options="[{value:'',label:'未选择项目'},...projects.map(p=>({value:p.id,label:p.name}))]" :disabled="busy" aria-label="切换项目" @update:model-value="$event&&loadProject($event)"/></label></template></div>
-<div class="navlabel">{{contextName}}</div>
-<nav class="nav" aria-label="工作台导航"><template v-if="space==='ontology'"><template v-if="hasOntology"><button v-for="(label,key) in menuOntology" :key="key" :aria-current="view===key?'page':undefined" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><button :aria-current="view==='tools'?'page':undefined" :class="{active:view==='tools'}" @click="navigate('tools')"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons.tools||navIcons._default"/></svg>更多工具</button></template></template><template v-else><button v-for="(label,key) in menuProject" :key="key" :aria-current="view===key?'page':undefined" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><p v-if="!projectState" class="rail-hint">选择或新建项目后，可进行对象映射与项目校验；函数编排不依赖项目。</p></template></nav>
-<div class="rail-foot"><button class="ontology-create-link" v-if="space==='ontology'" @click="showOntologyDialog=true">＋ 新建本体</button><button class="ontology-create-link" v-else @click="navigate('p-home')">＋ 新建项目</button></div>
-</aside>
-<div class="shell" :inert="modalOpen"><header class="topbar"><div class="topbar-left"><strong>{{contextName}}</strong><span class="divider">/</span><span class="topbar-area">{{areaName}}</span></div><div class="topbar-right"><div class="topbar-status">
+<div class="topbar" :inert="modalOpen"><div class="brand">◇ <span>本体工作台</span></div><div class="ws-tabs" role="tablist" aria-label="切换工作区"><button role="tab" :class="{active:space==='ontology'}" :aria-selected="space==='ontology'" @click="switchSpace('ontology')">本体建设</button><button role="tab" :class="{active:space==='project'}" :aria-selected="space==='project'" @click="switchSpace('project')">项目映射</button></div><div class="topbar-crumb"><span class="crumb-path">{{crumbPath}}</span><h1 class="topbar-title">{{pages[view]}}</h1></div><div class="topbar-status">
 <template v-if="(space==='project'&&(projectState||(flowViews.includes(view)&&flowState)))||(space==='ontology'&&hasOntology)">
 <span v-if="formEditing" class="status-pill" title="存在打开的编辑表单；打字只改本地草稿，保存成功才落盘">✎ 正在编辑表单</span>
 <template v-if="activeSaver.status.value==='saved'"><span class="save-pill saved">已保存<template v-if="activeSaver.lastSavedAt.value"> · {{activeSaver.lastSavedAt.value}}</template></span><button v-if="activeErrors.length" class="save-issues" :title="activeErrors.join('；')" @click="navigate(activeReleaseView)">{{activeErrors.length}} 项待完善</button><span v-else-if="onFlowView&&flowCheck" :class="flowCheck.errors.length||flowCheck.warnings.length?'inline-warning':'inline-success'">{{flowCheck.errors.length?'配置有错误':(flowCheck.warnings.length?'已保存，配置待完善':'已保存，配置检查通过')}}</span></template>
@@ -440,9 +413,10 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <template v-else><span v-if="space==='ontology'">尚未创建本体</span><span v-else-if="flowViews.includes(view)">未选择编排</span><span v-else>未选择项目</span></template>
 </div><div class="topbar-actions">
 <template v-if="(space==='project'&&(projectState||(flowViews.includes(view)&&flowState)))||(space==='ontology'&&hasOntology)"><button :disabled="!undoCount" title="撤销上一次修改" @click="undo">撤销</button><button :disabled="!redoCount" title="重做修改" @click="redo">重做</button><button v-if="!onFlowView" class="primary" :title="space==='project'?'检查并发布项目配置，不发布本体定义':'检查并发布本体定义'" @click="navigate(activeReleaseView)">{{space==='project'?'项目校验与发布':'本体校验与发布'}}</button></template>
-</div></div></header>
-<div class="pagehead"><div><h1>{{pages[view]}}</h1><p class="pagehead-sub">{{subtitleOf(view)}}</p></div><div class="pagehead-actions" id="page-actions"></div></div>
-<div v-if="message" id="feedback" :class="{error}" role="status">{{message}}</div>
+</div></div>
+<aside class="rail" :inert="modalOpen"><div class="space"><template v-if="space==='ontology'"><label>当前本体<AppSelect :model-value="hasOntology?ontologyId:''" :options="ontologyList.map(o=>({value:o.id,label:o.name}))" :disabled="busy||!ontologyList.length" aria-label="切换本体" @update:model-value="switchOntology"/></label></template>
+<template v-else><label>当前项目<AppSelect :model-value="projectState?.projectId||''" :options="[{value:'',label:'未选择项目'},...projects.map(p=>({value:p.id,label:p.name}))]" :disabled="busy" aria-label="切换项目" @update:model-value="$event&&loadProject($event)"/></label></template></div><nav aria-label="工作台导航"><template v-if="space==='ontology'"><template v-if="hasOntology"><template v-for="group in menuOntologyGroups" :key="group.label"><div class="rail-group">{{group.label}}</div><button v-for="item in group.items" :key="item.key" :aria-current="view===item.key?'page':undefined" :class="{active:view===item.key}" @click="navigate(item.key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[item.key]||navIcons._default"/></svg>{{item.label}}</button></template><button :aria-current="view==='tools'?'page':undefined" :class="{active:view==='tools'}" @click="navigate('tools')"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons.tools||navIcons._default"/></svg>更多工具</button></template></template><template v-else><button v-for="(label,key) in menuProject" :aria-current="view===key?'page':undefined" :key="key" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><p v-if="!projectState" class="rail-hint">选择或新建项目后，可进行对象映射与项目校验；函数编排不依赖项目。</p></template></nav><div class="rail-bottom"><button class="ontology-create-link" v-if="space==='ontology'" @click="showOntologyDialog=true">＋ 新建本体</button><button class="ontology-create-link" v-else @click="navigate('p-home')">＋ 新建项目</button></div></aside>
+<div class="shell" :inert="modalOpen"><div v-if="message" id="feedback" :class="{error}" role="status">{{message}}</div>
 <main v-if="state">
 <section v-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>

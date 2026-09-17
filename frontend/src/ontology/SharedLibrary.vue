@@ -159,12 +159,10 @@ function distribute() {
 <!-- 编辑态：主内容整体替换为独立共享属性表单 -->
 <PropertyManager v-if="editor" :key="editor.id || 'new'" :state="state" kind="shared" :property-id="editor.id" @close="editor = null" @saved="onSaved"/>
 <template v-else>
+<section class="card library-head"><div class="panelhead"><div><h2>共享属性库</h2><p class="muted">集中维护跨对象复用的属性定义：一处修改，所有引用同步。复制后独立维护；引用时沿用共享定义。各项目的取值实现按对象分别配置。</p></div><button class="primary" @click="openEditor('')">＋ 新建共享属性</button></div></section>
 <div class="library-toolbar">
   <input v-model="query" type="search" placeholder="搜索名称或业务定义…" aria-label="搜索共享属性">
-  <div class="tools">
-    <span class="library-note">共 {{ definitions.length }} 项共享定义 · {{ totalUsages }} 处引用</span>
-    <button class="primary" @click="openEditor('')">＋ 新建共享属性</button>
-  </div>
+  <span class="library-note">共 {{ definitions.length }} 项共享定义 · {{ totalUsages }} 处引用</span>
 </div>
 <section v-if="filtered.length" class="card library-rows">
   <div v-for="s in filtered" :key="s['@id']" class="line-row" :class="{ 'lib-flash': highlightId === s['@id'] }" :data-lib-row="s['@id']">
@@ -250,6 +248,7 @@ function distribute() {
 </template>
 
 <style scoped>
+.library-head .panelhead{margin-bottom:0}
 .library-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0;flex-wrap:wrap}
 .library-toolbar input[type=search]{width:min(300px,100%);margin:0}
 .library-toolbar .library-note{margin:0}
