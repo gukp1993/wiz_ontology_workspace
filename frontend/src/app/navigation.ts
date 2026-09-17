@@ -24,14 +24,8 @@ export const flowViews = ['f-home', 'f-editor']
 /** 项目映射空间承载的页面（含函数编排；编排不依赖选中项目，故与 projectViews 分开维护）。 */
 export const projectSpaceViews = [...projectViews, ...flowViews]
 
+/** 本体区侧栏菜单（扁平顺序即渲染顺序）；「更多工具」不进表，由 App 单独渲染。 */
 export const menuOntology: Record<string, string> = { 'o-home': '工作概览', objects: '对象建模', library: '共享属性', rules: '业务规则', actions: '动作定义', 'o-release': '本体校验与发布' }
-/** 本体区侧栏分组（2026-09 壳层改版）：组顺序即渲染顺序；「更多工具」不进组，由 App 在组外单独渲染。
- *  上面的 menuOntology（平铺版）保留向后兼容，App 侧侧栏已改用分组渲染。 */
-export const menuOntologyGroups: { label: string; items: { key: string; label: string }[] }[] = [
-  { label: '建模', items: [{ key: 'o-home', label: '工作概览' }, { key: 'objects', label: '对象建模' }] },
-  { label: '资产', items: [{ key: 'library', label: '共享属性' }, { key: 'rules', label: '业务规则' }, { key: 'actions', label: '动作定义' }] },
-  { label: '校验', items: [{ key: 'o-release', label: '本体校验与发布' }] },
-]
 /** 字符图标（旧版侧栏）。2026-09 起侧栏改用 shared/icons.ts 的 SVG 线性图标，此处仅为向后兼容保留。 */
 export const navIcon: Record<string, string> = { 'o-home': '▤', objects: '▦', rules: '§', actions: '↯', contracts: '{ }', library: '≣', 'o-release': '⚑', 'p-home': '▤', connections: '⇄', binding: '▦', implements: '{ }', 'f-home': '⌥', 'f-editor': '✎', tools: '⋯' }
 
