@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed,inject,nextTick,onBeforeUnmount,ref,watch} from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import RowMenu from '../shared/RowMenu.vue'
 import type {FormGuardAPI,FormGuardInstance,FormSaveAPI} from '../app/formGuard'
@@ -168,11 +169,11 @@ async function locate(id:string){
  await nextTick()
  document.querySelector('.conn-row.just-saved')?.scrollIntoView({block:'nearest',behavior:'smooth'})
 }
-function deleteConnection(c:any){
+async function deleteConnection(c:any){
  if(!c)return
  const refs=referencesOf(c.id)
  if(refs.length){notify('连接仍被以下位置引用，不能删除：'+refs.join('；'),'error');return}
- if(!confirm('删除连接「'+(c.name||c.id)+'」？删除的是本工作台里的连接配置与已缓存的表结构目录，对象数据来源将不能再用此连接；不会删除或修改外部数据库中的任何数据。'))return
+ if(!(await appConfirm({ message: '删除连接「'+(c.name||c.id)+'」？删除的是本工作台里的连接配置与已缓存的表结构目录，对象数据来源将不能再用此连接；不会删除或修改外部数据库中的任何数据。', danger: true, confirmLabel: '删除连接' })))return
  mutate(()=>{
   const list=props.projectState.connections.connections
   list.splice(list.indexOf(c),1)
@@ -208,7 +209,7 @@ async function saveSecret(){
 }
 async function clearSecret(){
  if(!editingId.value||!hasSecret.value)return
- if(!confirm('清除已保存的密码？清除后此连接的测试与表结构读取将无法使用已保存凭据。'))return
+ if(!(await appConfirm({ message: '清除已保存的密码？清除后此连接的测试与表结构读取将无法使用已保存凭据。', danger: true, confirmLabel: '清除密码' })))return
  secretBusy.value=true
  try{
   await connectionSecret({projectId:props.projectState.projectId,connectionId:editingId.value,action:'clear'})

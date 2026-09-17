@@ -9,6 +9,7 @@ let lastBindingType=''
 // 离开保护统一接 T00：子编辑器自行注册表单守卫（菜单／两区／项目切换由 App 统一拦截），
 // 页内切对象／切页签由这里检查当前子编辑器 dirty 并确认丢弃；不能只保护链接表单。
 import {computed,nextTick,ref,watch} from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import ObjectSources from './ObjectSources.vue'
 import ReferenceNotice from './ReferenceNotice.vue'
 import PropertySources from './PropertySources.vue'
@@ -38,10 +39,10 @@ function activeChild():any{
   return linksEl
 }
 // 页内离开保护：当前子编辑器有未保存草稿时确认丢弃（App 级导航由 form-guard 统一拦截）。
-function guardUnsaved():boolean{
+async function guardUnsaved():Promise<boolean>{
   const el=activeChild()
   if(!el||typeof el.dirty!=='function'||!el.dirty())return true
-  if(!confirm('当前表单有未保存的修改，离开将放弃本次修改。继续吗？（确定=放弃并离开，取消=继续编辑）'))return false
+  if(!(await appConfirm({ message: '当前表单有未保存的修改，离开将放弃本次修改。继续吗？', confirmLabel: '放弃并离开', cancelLabel: '继续编辑' })))return false
   el.discard()
   return true
 }
@@ -79,7 +80,7 @@ async function enable(t:string){
   await nextTick()
   sourcesEl?.openIdentity?.()
 }
-function removeObject(b:any){if(!guardUnsaved())return;if(confirm('移除此对象的绑定？对象定义保留。'))mutate(()=>bindings.value.splice(bindings.value.indexOf(b),1))}
+async function removeObject(b:any){if(!(await guardUnsaved()))return;if(await appConfirm({ message: '移除此对象的绑定？对象定义保留。', danger: true }))mutate(()=>bindings.value.splice(bindings.value.indexOf(b),1))}
 // 链接映射「去配置」：目标对象的实例识别页签（链接草稿已在 LinkMappings 内暂存，返回时恢复）
 function onSetupEnd(t:string){
   if(!types.value.some(x=>x['@id']==='mg:'+t))return

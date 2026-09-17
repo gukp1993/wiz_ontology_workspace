@@ -14,6 +14,7 @@ function lmConsume(objectType:string):any|null{if(!lmPendingOf(objectType))retur
 // 两端缺来源时提供「去配置」入口：草稿先暂存到模块缓存，返回后恢复链接上下文。
 // 保存走 inject('form-save') 直通持久化，取消放弃；打开期间注册 T00 表单守卫。
 import {computed,inject,onBeforeUnmount,ref,watch} from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import {relationView,commitRelation,sourceById,dbSourcesOf,tableCatalog,fieldOptions,refreshCatalogOf,bindingIdentityOf,registeredInstancesOf,MEMBERSHIP_OPERATORS,MEMBERSHIP_SCOPES} from './bindingModel'
 import type {MembershipRuleView} from './bindingModel'
@@ -151,10 +152,10 @@ function normalizeMembershipDraft(){
 watch(registeredInstances,()=>{if(editingMembership.value)normalizeMembershipDraft()})
 function closeEditor(){draft.value=null;editIndex.value=-1;editingIsNew.value=false;message.value='';switchMsg.value='';saving.value=false}
 const SWITCH_CONFIRM='当前链接映射有未保存的修改，切换后将放弃这些修改。继续吗？（确定=放弃并切换，取消=继续编辑）'
-function edit(index:number){if(dirty()&&!confirm(SWITCH_CONFIRM))return;openEditor(index as number)}
-function addLink(r:any){if(!r)return;if(dirty()&&!confirm(SWITCH_CONFIRM))return;openNew(r)}
+async function edit(index:number){if(dirty()&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;openEditor(index as number)}
+async function addLink(r:any){if(!r)return;if(dirty()&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;openNew(r)}
 async function removeLink(i:number){
-  if(!confirm('移除此链接映射？'))return
+  if(!(await appConfirm({ message: '移除此链接映射？', danger: true })))return
   const r=await submit(()=>props.b.relations.splice(i as number,1))
   if(!r.ok){message.value='移除未完成：'+r.message;return}
   if(editIndex.value===i)closeEditor();else if(editIndex.value>(i as number))editIndex.value--

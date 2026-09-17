@@ -21,6 +21,7 @@
      让工作副本与 revision 跟进的唯一方式（原 App.vue 的 restoreRelease 同样 reload）。 -->
 <script setup lang="ts">
 import {computed,inject,onMounted,ref} from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import AppError from '../shared/AppError.vue'
 import { isOutcomeUnknown } from '../app/http'
@@ -177,7 +178,7 @@ async function verifyPublished(){
 const restoring=ref('')
 async function restore(name:string){
   if(restoring.value)return
-  if(!confirm('将此快照恢复为当前本体的草稿？现有已保存草稿会自动备份，其他本体不受影响。'))return
+  if(!(await appConfirm({ message: '将此快照恢复为当前本体的草稿？现有已保存草稿会自动备份，其他本体不受影响。' })))return
   restoring.value=name;restoreError.value=''
   try{
     if(guardApi?.hasDirty()){restoreError.value='还有打开的编辑表单未保存；请先保存或放弃本次修改，再恢复快照。';return}

@@ -6,6 +6,7 @@
      一期不提供删除、复制、分类、状态、依赖与执行。 -->
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import BusinessRuleDialog from './BusinessRuleDialog.vue'
 import { objectsOfRule, RULE_FIELDS, rulesOf } from './businessRuleModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
@@ -53,8 +54,8 @@ function openEdit(id = '') {
   fieldErrors.value = {}
   dialog.value = { kind: 'edit', id: id || 'rule_' + crypto.randomUUID().replaceAll('-', ''), isNew: !id }
 }
-function closeDialog() {
-  if (dialog.value?.kind === 'edit' && dirty.value && !confirm('放弃尚未保存的修改？')) return
+async function closeDialog() {
+  if (dialog.value?.kind === 'edit' && dirty.value && !(await appConfirm({ message: '放弃尚未保存的修改？' }))) return
   dialog.value = null
   draft.value = null
 }

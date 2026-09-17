@@ -13,6 +13,7 @@
      组件内提示（标识冲突、引用拦截等）走本地 notice 条，不依赖 App 的全局消息。 -->
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import cytoscape from 'cytoscape'
 import { shortcutAction } from '../app/shortcuts'
 import { graphReferences } from './editorModel'
@@ -45,11 +46,11 @@ function ruleRefCount(ids: Set<string>): number {
   const bare = (t: string) => String(t || '').replace(/^mg:/, '')
   return ruleAssociationsOf(props.state).filter((a: any) => [...ids].some(id => bare(a.objectTypeId) === bare(id))).length
 }
-function remove(id: string) {
+async function remove(id: string) {
   const refs = graphReferences(props.state, id); if (refs.length) return notifyCanvas('暂不能删除：请先处理引用（' + refs.join('、') + '）。')
   const ruleRefs = ruleRefCount(new Set([id])); if (ruleRefs) return notifyCanvas(`暂不能删除：此对象仍引用 ${ruleRefs} 条业务规则；请先移除规则引用。`)
   const assocCount = associationsOfObject(props.state, id).length
-  if (!confirm('删除这个定义？可通过撤销恢复。' + (assocCount ? `此对象有 ${assocCount} 条动作关联，将同时移除（动作定义与项目绑定保留）。` : ''))) return
+  if (!(await appConfirm({ message: '删除这个定义？可通过撤销恢复。' + (assocCount ? `此对象有 ${assocCount} 条动作关联，将同时移除（动作定义与项目绑定保留）。` : ''), danger: true }))) return
   emit('before-change'); props.state.ontology['@graph'] = graph.value.filter((n: any) => n['@id'] !== id); if (selected.value === id) { selected.value = ''; emit('select', '') }
   purgeAssociations(new Set([id]))
   sync(); emit('changed')
@@ -57,13 +58,13 @@ function remove(id: string) {
 function focusSelected() { const sel = cy?.nodes(':selected'); if (!sel?.length) return; cy.stop(); cy.animate({ center: { eles: sel[0] }, zoom: Math.min(4, cy.zoom() * 1.6), duration: 260 }); cy.nodes().removeClass('search-focus'); sel[0].addClass('search-focus') }
 function focusNode(id: string) { if (id) select(id); focusSelected() }
 function zoomOutSelected() { if (!cy?.nodes().length) return; const bb = cy.nodes().boundingBox(), fit = Math.min((cy.width() - 100) / bb.w, (cy.height() - 100) / bb.h), next = cy.zoom() / 1.6; if (next <= fit) return showAll(); const sel = cy.nodes(':selected'); cy.stop(); cy.animate(sel.length ? { center: { eles: sel[0] }, zoom: next, duration: 260 } : { zoom: next, duration: 260 }) }
-function deleteSelection() {
+async function deleteSelection() {
   if (readOnly.value) return
   const sel = cy?.elements(':selected'); if (!sel?.length) return notifyCanvas('请先选择节点或连线')
   const ids = new Set<string>(sel.map((e: any) => e.id()))
   const refs = [...new Set([...ids].flatMap((id: string) => graphReferences(props.state, id)))]; if (refs.length) return notifyCanvas('暂不能删除：请先处理引用（' + refs.join('、') + '）。')
   const ruleRefs = ruleRefCount(ids); if (ruleRefs) return notifyCanvas(`暂不能删除：选中对象仍引用 ${ruleRefs} 条业务规则；请先移除规则引用。`)
-  if (!confirm(`删除选中的 ${ids.size} 项定义？可通过撤销恢复。`)) return
+  if (!(await appConfirm({ message: `删除选中的 ${ids.size} 项定义？可通过撤销恢复。`, danger: true }))) return
   emit('before-change'); props.state.ontology['@graph'] = graph.value.filter((n: any) => !ids.has(n['@id'])); selected.value = ''; emit('select', ''); purgeAssociations(ids); sync(); emit('changed')
 }
 // 删除对象时只清理该对象草稿中的动作关联（需求 §5）；连线等其他定义不受影响。

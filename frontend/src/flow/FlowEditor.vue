@@ -4,6 +4,7 @@
      连线对话框取消不产生绑定；删除连线/节点先确认并说明受影响引用。 -->
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import FlowCanvas from './FlowCanvas.vue'
 import NodeConfig from './NodeConfig.vue'
 import BoundaryConfig from './BoundaryConfig.vue'
@@ -50,14 +51,14 @@ function addNode(kind: 'python' | 'sql' | 'redis') {
   selectedId.value = fresh.id
   nextTick(() => canvasRef.value?.sync())
 }
-function deleteNode(id: string) {
+async function deleteNode(id: string) {
   if (id === INPUT_NODE || id === OUTPUT_NODE) return warn('编排输入/编排输出是边界节点，不可删除')
   const target = props.state.nodes.find((n: any) => n.id === id)
   const impact = nodeRemovalImpact(props.state, id)
   const message = impact.length
     ? `删除节点「${target?.name || id}」？\n受影响的引用：\n${impact.join('\n')}\n\n删除后这些绑定将变为未绑定（不会静默改绑到其他来源）。`
     : `删除节点「${target?.name || id}」？`
-  if (!confirm(message)) return
+  if (!(await appConfirm({ message }))) return
   emit('before-change')
   for (const other of props.state.nodes) for (const input of other.inputs || []) {
     const src = input.source
@@ -116,7 +117,7 @@ function applyLinkDialog() {
 function closeLinkDialog() { linkDialog.value = null }
 
 // --- 删除连线：定位受影响绑定并确认（同两节点多绑定时逐条明确选择，不全部清除） ---
-function handleUnlink(edgeId: string) {
+async function handleUnlink(edgeId: string) {
   if (edgeId.startsWith('dep:')) {
     const targetNodeId = edgeId.slice(4).split(':')[0]
     const target = props.state.nodes.find((n: any) => n.id === targetNodeId)
@@ -124,7 +125,7 @@ function handleUnlink(edgeId: string) {
     if (!input) return
     const siblings = (target.inputs || []).filter((i: any) => i.source?.nodeId === input.source?.nodeId && i.source?.kind !== 'fixed' && i.source?.kind !== 'flowInput')
     const context = siblings.length > 1 ? `\n（这两个节点之间共 ${siblings.length} 条绑定，本次只删除下面这一条）` : ''
-    if (!confirm(`删除这条绑定？\n节点「${target.name}」的输入「${input.label || input.name}」← ${sourceSummary(props.state, input.source)}${context}`)) return
+    if (!(await appConfirm({ message: `删除这条绑定？\n节点「${target.name}」的输入「${input.label || input.name}」← ${sourceSummary(props.state, input.source)}${context}`, danger: true }))) return
     emit('before-change')
     input.source = null
     emit('changed')
@@ -132,7 +133,7 @@ function handleUnlink(edgeId: string) {
   } else if (edgeId.startsWith('out:')) {
     const out = props.state.outputs.find((o: any) => o.id === edgeId.slice(4))
     if (!out || !out.binding) return
-    if (!confirm(`删除编排输出「${out.label || out.name}」的来源绑定？`)) return
+    if (!(await appConfirm({ message: `删除编排输出「${out.label || out.name}」的来源绑定？`, danger: true }))) return
     emit('before-change')
     out.binding = null
     emit('changed')

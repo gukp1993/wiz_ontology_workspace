@@ -2,6 +2,7 @@
      （命名输出 + 绑定到节点输出/对象字段；类型可按来源推导或手动声明并校验相容）。 -->
 <script setup lang="ts">
 import { computed } from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import TypeEditor from './TypeEditor.vue'
 import { TYPE_LABELS, fieldOf, outputCandidates, flowInputRemovalImpact, resolveSourceType, sourceSummary, typesCompatible, uid } from './flowModel'
@@ -33,14 +34,14 @@ function addEntry() {
   else props.state.outputs.push({ id: uid(), name: '', label: '', type: { type: 'text' }, binding: null })
   emit('changed')
 }
-function removeEntry(list: 'inputs' | 'outputs', index: number) {
+async function removeEntry(list: 'inputs' | 'outputs', index: number) {
   const entry = props.state[list][index]
   const label = entry.label || entry.name || '未命名'
   const impact = list === 'inputs'
     ? flowInputRemovalImpact(props.state, entry.id)
     : (entry.binding ? [`编排输出「${label}」的来源绑定将一并清除`] : [])
-  if (impact.length && !confirm(`删除「${label}」？\n${impact.join('\n')}`)) return
-  if (!impact.length && !confirm(`删除「${label}」？`)) return
+  if (impact.length && !(await appConfirm({ message: `删除「${label}」？\n${impact.join('\n')}`, danger: true }))) return
+  if (!impact.length && !(await appConfirm({ message: `删除「${label}」？`, danger: true }))) return
   emit('before-change')
   if (list === 'inputs') {
     for (const node of props.state.nodes) for (const input of node.inputs || []) {

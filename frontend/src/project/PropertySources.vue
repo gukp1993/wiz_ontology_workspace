@@ -13,6 +13,7 @@ function psConsume(objectType:string){if(!psPendingOf(objectType))return null;co
 // 旧映射原样读入；切换来源只修改局部草稿，取消不改变已保存配置。
 // 计算实现页返回时恢复未保存的表单；持久化仍走 form-save 和 commitProperty。
 import {computed,inject,onBeforeUnmount,ref,watch} from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import {isQueryRule,isReusableRule,ruleInputErrors} from './queryRules'
 import {scanSqlParams,inlineSqlErrors,effectiveParams,blankInlineSql} from './inlineSql'
@@ -73,8 +74,8 @@ const aggregateLinkOptions=computed(()=>graph.value.filter((n:any)=>{
   return {value:n['@id'].slice(3),label:String(n['rdfs:label']||n['@id'].slice(3))+(dir==='in'?'（入向）':''),tid,ok,reason,dir}
 }))
 const aggregateUsable=computed(()=>aggregateLinkOptions.value.filter((o:any)=>o.ok))
-function gotoSetupTarget(tid:string){if(draftDirty.value&&!confirm(SWITCH_CONFIRM))return;emit('setup-end',tid)}
-function gotoTargetProperties(tid:string){if(draftDirty.value&&!confirm(SWITCH_CONFIRM))return;emit('goto-properties',tid)}
+async function gotoSetupTarget(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;emit('setup-end',tid)}
+async function gotoTargetProperties(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;emit('goto-properties',tid)}
 function gotoLinksTab(){emit('go-tab','links')}
 // 成员属性：成员端对象数值属性且已映射为身份表直接字段（字符串/field 直连；严格性由后端校验兜底）
 function memberPropertyOptions(relationId:string){
@@ -310,8 +311,8 @@ function openEditor(api:string){
 function closeEditor(){resetSaveState();configuring.value=false;selectedApi.value='';draft.value=null;editError.value='';switchMsg.value='';refreshMessage.value=''}
 // 返回属性清单前的确认保护；底部「取消」是明确的放弃动作，不二次确认。
 const SWITCH_CONFIRM='当前属性有未保存的修改，继续编辑或放弃？'
-function requestClose(){if(!draftDirty.value||confirm(SWITCH_CONFIRM))closeEditor()}
-function openProperty(api:string){if(!draftDirty.value||confirm(SWITCH_CONFIRM))openEditor(api)}
+async function requestClose(){if(!draftDirty.value||await appConfirm({ message: SWITCH_CONFIRM }))closeEditor()}
+async function openProperty(api:string){if(!draftDirty.value||await appConfirm({ message: SWITCH_CONFIRM }))openEditor(api)}
 // ---------- T00 表单守卫：表单打开注册、关闭注销；保存走 form-save ----------
 const formGuard=inject<FormGuardAPI|null>('form-guard',null)
 const formSave=inject<FormSaveAPI|null>('form-save',null)

@@ -6,6 +6,7 @@
 // 主键联动下拉；registered 隐藏数据库表单，挂载 RegisteredInstances 编辑实例草稿。
 // 局部草稿、保存走 inject('form-save') 直通持久化，取消放弃；打开期间注册 T00 表单守卫。
 import {computed,inject,onBeforeUnmount,ref,watch} from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import RegisteredInstances from './RegisteredInstances.vue'
 import {sourcesOf,commitSources,dropSource,propertyView,catalogOf,tableCatalog,tableOptions,fieldOptions,newSourceId,refreshCatalogOf,bindingIdentityOf,registeredInstancesOf,commitRegisteredIdentity,clearRegisteredIdentity,registeredBlockingItemsOf,databaseIdentityDependentsOf,dropRegisteredInstance} from './bindingModel'
@@ -134,7 +135,7 @@ function sourceUsed(id:string){
 }
 async function removeSource(s:any){
   if(sourceUsed(s.id)){removeMessage.value='此来源仍被属性或链接引用，请先调整';return}
-  if(!confirm('移除补充来源「'+(s.name||s.table||s.id)+'」？引用它的属性来源会被一并清除。'))return
+  if(!(await appConfirm({ message: '移除补充来源「'+(s.name||s.table||s.id)+'」？引用它的属性来源会被一并清除。', danger: true })))return
   removeMessage.value=''
   const r=await submit(()=>dropSource(props.b,s.id))
   if(!r.ok)removeMessage.value='移除未完成：'+r.message+'。可重试或取消。'

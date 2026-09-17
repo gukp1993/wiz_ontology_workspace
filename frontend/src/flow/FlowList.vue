@@ -2,6 +2,7 @@
      说明选填）、编辑、复制、删除（软删除，明确确认）。不依赖当前选中的本体或项目。 -->
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import { createFlow, copyFlow, deleteFlow, listFlows } from './api'
 import { formatTime } from './flowModel'
 const emit = defineEmits(['open', 'created', 'deleted', 'copied', 'navigate'])
@@ -46,7 +47,7 @@ async function copy(item: any) {
 }
 async function remove(item: any) {
   if (busy.value) return
-  if (!confirm(`删除编排「${item.name}」？\n采用软删除：修订历史保留，可由管理员恢复；列表默认不再显示。`)) return
+  if (!(await appConfirm({ message: `删除编排「${item.name}」？修订历史保留，可由管理员恢复；列表默认不再显示。`, danger: true }))) return
   busy.value = true
   try {
     await deleteFlow(item.id)

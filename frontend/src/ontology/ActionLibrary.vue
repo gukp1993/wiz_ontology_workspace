@@ -5,6 +5,7 @@
      编辑/删除走 T00：form-guard 离开保护 + form-save.submitForm 一次落盘。 -->
 <script setup lang="ts">
 import { ref, computed, watch, inject, onBeforeUnmount } from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import EditorLayout from '../shared/EditorLayout.vue'
 import Field from '../shared/EditorField.vue'
 import { actionsOf, isActionV2, objectsOfAction } from './actionModel'
@@ -45,7 +46,7 @@ const guard = { isDirty: () => dirty.value, discard: () => closeEditor() }
 watch(mode, m => { m === 'edit' ? guardApi.register(guard) : guardApi.unregister(guard) })
 onBeforeUnmount(() => guardApi.unregister(guard))
 
-function select(id: string) { if (dirty.value && !confirm('当前表单有未保存的修改，离开将放弃本次修改。继续吗？')) return; selected.value = id; mode.value = 'view'; message.value = '' }
+async function select(id: string) { if (dirty.value && !(await appConfirm({ message: '当前表单有未保存的修改，离开将放弃本次修改。继续吗？' }))) return; selected.value = id; mode.value = 'view'; message.value = '' }
 function closeEditor() { mode.value = 'view'; if (!rows.value.some((a: any) => a.id === selected.value)) selected.value = rows.value[0]?.id || '' }
 
 function openNew() {
@@ -65,10 +66,10 @@ function openEdit() {
   mode.value = 'edit'
   message.value = ''
 }
-function openConvert() {
+async function openConvert() {
   const a: any = item.value
   if (!a) return
-  if (!confirm('将此历史动作转换为新格式编辑？保存后旧格式的适用对象、输入参数、提交条件、权限与验收字段会被新结构替代并移除，且需重新发布后项目引用才会更新。继续吗？')) return
+  if (!(await appConfirm({ message: '将此历史动作转换为新格式编辑？保存后旧格式的适用对象、输入参数、提交条件、权限与验收字段会被新结构替代并移除，且需重新发布后项目引用才会更新。继续吗？' }))) return
   draft.value = { name: a.name || '', description: a.description || '', effect: a.effect || '' }
   baseline = JSON.stringify(draft.value)
   converting = true
@@ -114,7 +115,7 @@ async function remove() {
   if (isActionV2(a) && users.length) { message.value = '暂不能删除：此动作仍被 ' + users.map(typeName).join('、') + ' 引用；请先到对象建模移除关联。'; return }
   const refs = graphReferences(props.state, a.id)
   if (refs.length) { message.value = '暂不能删除：请先处理引用（' + refs.join('、') + '）。'; return }
-  if (!confirm('删除动作「' + (a.name || a.id) + '」？可通过撤销恢复。')) return
+  if (!(await appConfirm({ message: '删除动作「' + (a.name || a.id) + '」？可通过撤销恢复。', danger: true }))) return
   if (await submit(() => { const actions = props.state.workflow.actions; actions.splice(actions.indexOf(a), 1) })) message.value = '已删除动作定义。'
 }
 function goObject(objectTypeId: string) { emit('navigate', 'objects', { type: objectTypeId, tab: 'actions' }) }

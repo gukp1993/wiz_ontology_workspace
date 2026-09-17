@@ -16,6 +16,7 @@
      单值与序列不能引用同一份形态不兼容的共享定义（shapeConflict）。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import RowMenu from '../shared/RowMenu.vue'
 import PropertyManager from './PropertyManager.vue'
@@ -117,7 +118,7 @@ function onRowMenu(s: any, id: string) {
 }
 
 // ── 删除定义：契约/接口/项目映射直接引用时禁止；仅有本地属性引用时先解除引用并拷贝内容，防静默断链 ──
-function removeShared(s: any) {
+async function removeShared(s: any) {
   if (!s) return
   const external = externalReferencesOf(props.state, s['@id'])
   if (external.length) { feedback.value = '暂不能删除：此共享定义仍被契约、接口或项目映射直接引用，请先处理：' + external.join('、'); return }
@@ -126,7 +127,7 @@ function removeShared(s: any) {
   const tip = count
     ? `此共享定义被 ${count} 个对象属性引用。删除后会把这些引用转为各自对象的本地私有属性（复制名称、类型、单位等完整内容，此后不再跟随共享定义同步），再删除共享定义本身；可通过顶部撤销恢复。`
     : `删除共享定义「${s['rdfs:label'] || '未命名'}」？删除后各对象若仍需要该属性，只能改为本地私有属性单独维护；可通过顶部撤销恢复。`
-  if (!confirm(tip)) return
+  if (!(await appConfirm({ message: tip, danger: true }))) return
   mutate(() => {
     for (const p of usages) detachProperty(p, graph.value)
     props.state.ontology['@graph'] = graph.value.filter((n: any) => n['@id'] !== s['@id'])

@@ -3,6 +3,7 @@
      技术名修改若影响正文引用只提示检查代码，不自动重写。 -->
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import TypeEditor from './TypeEditor.vue'
 import BindingEditor from './BindingEditor.vue'
@@ -41,12 +42,12 @@ function removeInput(index: number) {
   props.node.inputs.splice(index, 1)
   emit('changed')
 }
-function removeOutput(index: number) {
+async function removeOutput(index: number) {
   const out = props.node.outputs[index]
   const impact = outputRemovalImpact(props.state, props.node.id, out.id)
   const label = out.label || out.name || '未命名输出'
-  if (impact.length && !confirm(`输出「${label}」正被引用：\n${impact.join('\n')}\n\n删除后这些引用将变为未绑定。确定删除？`)) return
-  if (!impact.length && !confirm(`删除输出「${label}」？`)) return
+  if (impact.length && !(await appConfirm({ message: `输出「${label}」正被引用：\n${impact.join('\n')}\n\n删除后这些引用将变为未绑定。`, danger: true, confirmLabel: '删除' }))) return
+  if (!impact.length && !(await appConfirm({ message: `删除输出「${label}」？`, danger: true }))) return
   emit('before-change')
   for (const other of props.state.nodes) for (const input of other.inputs || []) {
     const src = input.source

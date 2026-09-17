@@ -4,6 +4,7 @@
 // 编号即实例身份（v1 不可变）：编辑时禁改并提示“如需变更编号请新建实例并处理引用”；
 // 删除前检查 membership 规则引用（props.b 已保存态），被引用则阻止并列出链接名；未引用 confirm 后删。
 import {computed,ref} from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import {instanceMembershipReferencesOf,hasRegisteredPropertySources} from './bindingModel'
 import type {RegisteredInstanceView} from './bindingModel'
 const props=defineProps<{b:any;refState?:any;instances:RegisteredInstanceView[]}>()
@@ -30,11 +31,11 @@ function commitRow(){
   setInstances(next)
   editing.value=null;message.value=''
 }
-function remove(i:number){
+async function remove(i:number){
   const inst=props.instances[i];if(!inst)return
   const refs=memberRefs(inst.id)
   if(refs.length){message.value='实例「'+inst.id+'」仍被成员规则引用（'+refs.map(relationLabel).join('、')+'），请先到「链接映射」移除对应规则后再删除。';return}
-  if(!confirm('删除登记实例「'+inst.id+(inst.label?'（'+inst.label+'）':'')+'」？删除需保存表单后才落盘。'))return
+  if(!(await appConfirm({ message: '删除登记实例「'+inst.id+(inst.label?'（'+inst.label+'）':'')+'」？删除需保存表单后才落盘。', danger: true })))return
   message.value=''
   setInstances(props.instances.filter((_,x)=>x!==i))
 }

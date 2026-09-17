@@ -21,9 +21,18 @@ const props=defineProps<{defaultOntologyId:string;ontologyOptions:{value:string;
 const emit=defineEmits(['created','navigate','select','reference','upgrade','open-implementations','open-connections','open-binding','before-change','changed'])
 const guardApi=inject<FormGuardAPI>('form-guard')!
 const formSave=inject<FormSaveAPI>('form-save')!
-const creating=ref(false),newName=ref(''),busy=ref(false),message=ref('')
+const showCreateDialog=ref(false),newName=ref(''),busy=ref(false),message=ref('')
 const newProjectOntology=ref(''),newVersion=ref(''),npVersions=ref<any[]>([])
 const changeTypePill={breaking:'破坏性',compatible:'兼容候选',initial:'初始版本',pending:'待确认'}
+// 新建项目与新建本体同一交互：弹窗内填写，Esc/背板/取消关闭，成功后由 App 加载并跳对象映射
+function openCreateDialog(){
+  message.value='';newName.value=''
+  // 弹窗默认选中当前本体并预载其版本；与旧内联表单的 watch 行为一致（关闭再打开也要能重建选项）
+  newProjectOntology.value=props.defaultOntologyId&&props.ontologyOptions.some(o=>o.value===props.defaultOntologyId)?props.defaultOntologyId:(props.ontologyOptions[0]?.value||'')
+  if(newProjectOntology.value)loadNewVersions(newProjectOntology.value)
+  showCreateDialog.value=true
+}
+async function createProjectFromDialog(){await createProject();if(!message.value)showCreateDialog.value=false}
 watch(()=>props.defaultOntologyId,v=>{if(v&&props.ontologyOptions.some(o=>o.value===v)&&!newProjectOntology.value)newProjectOntology.value=v},{immediate:true})
 watch(()=>props.ontologyOptions,o=>{if(o.length===1&&!newProjectOntology.value)newProjectOntology.value=o[0].value},{immediate:true})
 async function loadNewVersions(id:string){if(!id){npVersions.value=[];return}
@@ -32,7 +41,7 @@ watch(newProjectOntology,id=>loadNewVersions(id))
 const ontoName=(id:string)=>props.ontologyOptions.find(o=>o.value===id)?.label||id||''
 async function createProject(){if(busy.value||!newName.value.trim())return;busy.value=true;try{
   const d=await apiCreateProject({name:newName.value.trim(),ontology:newProjectOntology.value,version:newProjectOntology.value?newVersion.value:''})
-  creating.value=false;newName.value='';emit('created',d.id);message.value=''
+  showCreateDialog.value=false;newName.value='';emit('created',d.id);message.value=''
 }catch(e){message.value=(e as Error).message}finally{busy.value=false}}
 
 // ─── 三步清单：真实计数 ───
@@ -137,22 +146,12 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
 <template><div class="project-home">
 <template v-if="!projectState">
 <section class="card">
-  <div v-if="!creating" class="empty-state">
+  <div class="empty-state">
     <div class="empty-state-ico">◇</div>
     <p>还没有项目。</p>
-    <button class="primary" @click="creating=true">新建项目</button>
+    <button class="primary" @click="openCreateDialog">新建项目</button>
   </div>
-  <template v-else>
-  <div class="panelhead"><div><h2>新建项目</h2><p class="muted">创建空白项目；可以先配置数据连接，之后再绑定已发布本体版本。</p></div></div>
-  <form class="sample-panel" @submit.prevent="createProject"><div class="form-grid">
-    <label>项目名称 *<input v-model="newName" required maxlength="80" placeholder="例如：创智园二期"></label>
-    <label>引用本体（可选，创建后可补选）<AppSelect v-model="newProjectOntology" aria-label="引用本体" :options="[{value:'',label:'暂不绑定，创建后选择'},...ontologyOptions]"/></label>
-  </div>
-  <div class="form-grid" v-if="newProjectOntology"><label>引用版本 *<AppSelect v-model="newVersion" aria-label="引用版本" :options="npVersions.map(v=>({value:v.version,label:v.version+' · '+(changeTypePill[v.changeType]||v.changeType)}))"/></label></div>
-  <p class="muted">项目标识自动生成；不复制本体定义，升级由项目主动发起。</p>
-  <div class="tools"><button type="submit" class="primary" :disabled="busy||!newName.trim()">{{busy?'创建中…':'创建项目'}}</button><button type="button" @click="creating=false">取消</button></div></form>
-  </template>
-  <p class="muted">已有项目请在左侧「当前项目」下拉中切换。</p>
+  <p class="muted">项目标识自动生成；不复制本体定义，升级由项目主动发起。已有项目请在左侧「当前项目」下拉中切换。</p>
 </section>
 </template>
 <template v-else>
@@ -161,13 +160,7 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
   <p class="muted">{{hasReference?('引用 '+ontoName(projectState.ontologyId)+' '+projectState.ontologyVersion+'；升级仅修改项目草稿'):'尚未绑定本体：可以先配置连接，对象映射与校验需要先绑定已发布版本'}}</p></div>
   <div class="tools"><span v-if="projectDirty" class="status-pill">未保存修改</span>
   <button class="primary" @click="emit('navigate','p-upgrade')">{{hasReference?'管理引用版本':'绑定本体版本'}}</button>
-  <button :disabled="busy" @click="creating=!creating">＋ 新建项目</button></div></div>
-  <form v-if="creating" class="sample-panel" @submit.prevent="createProject"><div class="form-grid">
-    <label>项目名称 *<input v-model="newName" required maxlength="80" placeholder="例如：园区三期"></label>
-    <label>引用本体（可选）<AppSelect v-model="newProjectOntology" aria-label="引用本体" :options="[{value:'',label:'暂不绑定，创建后选择'},...ontologyOptions]"/></label>
-  </div>
-  <div class="form-grid" v-if="newProjectOntology"><label>引用版本 *<AppSelect v-model="newVersion" aria-label="引用版本" :options="npVersions.map(v=>({value:v.version,label:v.version+' · '+(changeTypePill[v.changeType]||v.changeType)}))"/></label></div>
-  <div class="tools"><button type="submit" class="primary" :disabled="busy||!newName.trim()">{{busy?'创建中…':'创建项目'}}</button><button type="button" @click="creating=false">取消</button></div></form>
+  <button @click="openCreateDialog">＋ 新建项目</button></div></div>
 </section>
 
 <section class="card">
@@ -211,6 +204,19 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
 <div v-for="t in migrationTodos" :key="t.propertyId" class="sample-panel"><p><strong>{{t.propertyId}}</strong>（{{t.ownerType}}）→ 函数 {{t.functionId}}</p><p class="muted">输入说明：{{t.arguments||'（未填写）'}}</p></div></section>
 </template>
 <p v-if="message" class="inline-error" role="status">{{message}}</p>
+
+<!-- 新建项目弹窗：与「新建本体」同一套 modal-card 交互（Esc/背板/取消关闭） -->
+<div v-if="showCreateDialog" class="modal-backdrop" @click.self="showCreateDialog=false" @keydown.esc.stop="showCreateDialog=false">
+  <form class="modal-card" role="dialog" aria-modal="true" aria-label="新建项目" @submit.prevent="createProjectFromDialog">
+    <h2>新建项目</h2>
+    <p class="field-help">创建空白项目；可以先配置数据连接，之后再绑定已发布本体版本。项目标识自动生成，不复制本体定义。</p>
+    <label>项目名称<input v-model="newName" required maxlength="80" placeholder="例如：园区三期"></label>
+    <label>引用本体（可选，创建后可补选）<AppSelect v-model="newProjectOntology" aria-label="引用本体" :options="[{value:'',label:'暂不绑定，创建后选择'},...ontologyOptions]"/></label>
+    <label v-if="newProjectOntology">引用版本<AppSelect v-model="newVersion" aria-label="引用版本" :options="npVersions.map(v=>({value:v.version,label:v.version+' · '+(changeTypePill[v.changeType]||v.changeType)}))"/></label>
+    <p v-if="message" class="inline-error" role="alert">{{message}}</p>
+    <div class="dialogtools"><button type="button" @click="showCreateDialog=false">取消</button><button type="submit" class="primary" :disabled="busy||!newName.trim()">{{busy?'创建中…':'创建'}}</button></div>
+  </form>
+</div>
 </div></template>
 
 <style scoped>

@@ -2,6 +2,7 @@
 import {graphReferences,dataTypeOptionsFor,shortType} from '../ontology/editorModel'
 import { valueTypeCheck } from '../ontology/api'
 import {computed,ref,watch} from 'vue'
+import { appConfirm } from '../shared/appConfirm'
 import EditorLayout from '../shared/EditorLayout.vue'
 import Field from '../shared/EditorField.vue'
 import SourceReference from '../ontology/SourceReference.vue'
@@ -48,7 +49,7 @@ function before(){emit('before-change')}
 function changed(){result.value='';emit('changed')}
 function mutate(fn){before();fn();changed()}
 function create(){query.value='';before();const id=newId();graph.value.push({'@id':id,'@type':'mg:ValueType','rdfs:label':'新值类型','rdfs:comment':'','rdfs:range':{'@id':'xsd:double'},'mg:constraint':{'@type':'@json','@value':{kind:'none'}}});selected.value=id;changed()}
-function remove(){if(references.value.length){result.value='暂不能删除：'+references.value.join('、');return}if(!confirm('删除这个未被引用的值类型？'))return;mutate(()=>props.state.ontology['@graph']=graph.value.filter(n=>n['@id']!==selected.value))}
+async function remove(){if(references.value.length){result.value='暂不能删除：'+references.value.join('、');return}if(!(await appConfirm({ message: '删除这个未被引用的值类型？', danger: true })))return;mutate(()=>props.state.ontology['@graph']=graph.value.filter(n=>n['@id']!==selected.value))}
 function setKind(kind){node.value['mg:constraint']['@value']={kind,...(kind==='enum'?{values:'',caseSensitive:true}:kind==='range'?{minInclusive:true,maxInclusive:true}:kind==='regex'?{pattern:'',matchMode:'full',caseSensitive:true}:kind==='array'?{unique:false,elementValueType:''}:kind==='struct'?{fields:[]}:{})};changed()}
 function reset(){setKind(base.value==='xsd:array'?'array':base.value==='xsd:struct'?'struct':'none')}
 function setBase(value){if(references.value.length)return;node.value['rdfs:range']['@id']=value;reset()}
