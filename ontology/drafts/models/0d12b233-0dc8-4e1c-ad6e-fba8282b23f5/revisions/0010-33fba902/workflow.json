@@ -1,0 +1,48 @@
+{
+  "objective": {
+    "name": "储能本体",
+    "question": "",
+    "scope": "",
+    "acceptance": ""
+  },
+  "functions": [
+    {
+      "id": "50359d65-d8da-4a84-b522-98ecc901fdde",
+      "name": "查询储能簇的储能soc",
+      "description": "查询储能簇的储能soc",
+      "status": "experimental",
+      "guide_version": 3,
+      "no_inputs": false,
+      "inputs": [
+        {
+          "id": "in_daeb6b69-05d",
+          "name": "储能簇",
+          "ref": {
+            "kind": "object",
+            "id": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+          },
+          "description": ""
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out_827abba4-10e",
+          "name": "储能soc",
+          "ref": {
+            "kind": "property",
+            "id": "mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0"
+          },
+          "description": ""
+        }
+      ],
+      "conventions": "",
+      "applicable_objects": []
+    }
+  ],
+  "actions": [],
+  "interfaces": [],
+  "release": {
+    "note": "",
+    "reviewer": ""
+  }
+}

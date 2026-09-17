@@ -1,0 +1,7 @@
+version: v1
+projectId: 9803ea198cbc
+ontologyId: 0d12b233-0dc8-4e1c-ad6e-fba8282b23f5
+ontologyVersion: 1.0.0
+createdAt: '2026-09-10T16:01:51.299649+00:00'
+revision: b8c627a4a1225d9fdbb3134892044ee1ba4f2949e1d37e7421477512324eb6e4
+note: 项目配置快照；配置校验通过不等于已执行验证或上线

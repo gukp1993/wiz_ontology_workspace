@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "namespaces": {
+    "mg": "https://example.com/microgrid/",
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#"
+  },
+  "objectTypes": [
+    {
+      "id": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "displayName": "储能簇",
+      "description": "多个电池模组串联或并联组成的‌高压、大容量电池单元"
+    },
+    {
+      "id": "mg:object_06e387145e154b3a876bc050ba70be13",
+      "displayName": "储能设备",
+      "description": "通过特定介质或装置将能量储存起来，并在需要时释放利用的设备体系‌"
+    }
+  ],
+  "linkTypes": [
+    {
+      "id": "mg:link_23f7280b9b044793a60980a32be20d49",
+      "displayName": "所属于",
+      "description": "储能簇所属于储能设备",
+      "reverseDisplayName": "",
+      "cardinality": "many-to-one",
+      "sourceObjectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "targetObjectTypeId": "mg:object_06e387145e154b3a876bc050ba70be13"
+    }
+  ],
+  "properties": [
+    {
+      "id": "mg:p_481c28fcf52345fb87c60ea6e1027706",
+      "displayName": "储能soc",
+      "description": "电池的‌剩余电量百分比‌",
+      "apiName": "p_481c28fcf52345fb87c60ea6e1027706",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "0-100的数值，保留2位小数，加%"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_2607cb5bd6764ec2802294703356ded0",
+      "apiName": "p_2607cb5bd6764ec2802294703356ded0",
+      "sharedPropertyId": "mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0",
+      "objectTypeId": "mg:object_06e387145e154b3a876bc050ba70be13"
+    },
+    {
+      "id": "mg:p_12c90ee5e4844bada48a589f1fae67b4",
+      "apiName": "p_12c90ee5e4844bada48a589f1fae67b4",
+      "sharedPropertyId": "mg:p_1ee34237120e45e195b4a9f4d65438f7",
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+    },
+    {
+      "id": "mg:p_bb90e2314baf4081b2b5f0d55de2a539",
+      "apiName": "p_bb90e2314baf4081b2b5f0d55de2a539",
+      "sharedPropertyId": "mg:p_4f4d4c0cd8074d98bdd5be7dfa0595cd",
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+    },
+    {
+      "id": "mg:p_8409abcb05ec472f9b7e003cc3d7b661",
+      "displayName": "采样功率",
+      "description": "采样功率",
+      "apiName": "p_8409abcb05ec472f9b7e003cc3d7b661",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "单位是kW"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_0381c95798ef49d881f4182b7e436c9c",
+      "apiName": "p_0381c95798ef49d881f4182b7e436c9c",
+      "sharedPropertyId": "mg:p_c75894f49a44428cadd995177356c87f",
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+    },
+    {
+      "id": "mg:p_cd62f18ab06b4e068c5f691a02489807",
+      "apiName": "p_cd62f18ab06b4e068c5f691a02489807",
+      "sharedPropertyId": "mg:p_34b622ec2606419986bf7b4f32c8bbb9",
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+    },
+    {
+      "id": "mg:p_057cf3416ce04e7dabf57ebf2e6f0700",
+      "apiName": "p_057cf3416ce04e7dabf57ebf2e6f0700",
+      "sharedPropertyId": "mg:p_34b622ec2606419986bf7b4f32c8bbb9",
+      "objectTypeId": "mg:object_06e387145e154b3a876bc050ba70be13"
+    }
+  ],
+  "sharedProperties": [
+    {
+      "id": "mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0",
+      "displayName": "储能soc",
+      "description": "电池的‌剩余电量百分比‌",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "0-100的数值，保留2位小数，加%"
+      },
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_1ee34237120e45e195b4a9f4d65438f7",
+      "displayName": "额定功率",
+      "description": "额定功率",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "单位是kW"
+      },
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_4f4d4c0cd8074d98bdd5be7dfa0595cd",
+      "displayName": "额定容量",
+      "description": "额定容量",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "单位是kWh"
+      },
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_c75894f49a44428cadd995177356c87f",
+      "displayName": "实时功率",
+      "description": "功率",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "单位是kW"
+      },
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_34b622ec2606419986bf7b4f32c8bbb9",
+      "displayName": "显示名称",
+      "description": "对象实例显示名称",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "dataType": {
+        "type": "string"
+      }
+    }
+  ],
+  "valueTypes": [],
+  "metadata": [],
+  "definitionOrder": [
+    "mg:object_dd80b5fda9284760bb27570be1b637fc",
+    "mg:object_06e387145e154b3a876bc050ba70be13",
+    "mg:link_23f7280b9b044793a60980a32be20d49",
+    "mg:p_481c28fcf52345fb87c60ea6e1027706",
+    "mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0",
+    "mg:p_2607cb5bd6764ec2802294703356ded0",
+    "mg:p_12c90ee5e4844bada48a589f1fae67b4",
+    "mg:p_1ee34237120e45e195b4a9f4d65438f7",
+    "mg:p_bb90e2314baf4081b2b5f0d55de2a539",
+    "mg:p_4f4d4c0cd8074d98bdd5be7dfa0595cd",
+    "mg:p_8409abcb05ec472f9b7e003cc3d7b661",
+    "mg:p_0381c95798ef49d881f4182b7e436c9c",
+    "mg:p_c75894f49a44428cadd995177356c87f",
+    "mg:p_34b622ec2606419986bf7b4f32c8bbb9",
+    "mg:p_cd62f18ab06b4e068c5f691a02489807",
+    "mg:p_057cf3416ce04e7dabf57ebf2e6f0700"
+  ]
+}

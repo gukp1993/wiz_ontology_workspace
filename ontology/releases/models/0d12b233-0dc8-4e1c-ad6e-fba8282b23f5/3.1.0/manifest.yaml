@@ -1,0 +1,12 @@
+version: 3.1.0
+changeType: compatible
+changeNote: ''
+reviewer: ''
+createdAt: '2026-09-15T16:31:22.666350+00:00'
+revision: 1b8c38eed8c6e1f7e6d355e340676d52b3e5d233a38b4d14ffe8e5de236a8a1a
+parentVersion: 3.0.0
+reasons:
+- severity: compatible
+  area: linkTypes
+  id: mg:link_7d199cfc4a9b40fab926fd2fcb8c47bf
+  text: 新增链接类型 mg:link_7d199cfc4a9b40fab926fd2fcb8c47bf

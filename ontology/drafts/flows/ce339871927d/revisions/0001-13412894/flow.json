@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "flowId": "ce339871927d",
+  "name": "储能设备soc计算",
+  "description": "计算储能设备soc",
+  "status": "active",
+  "inputs": [],
+  "outputs": [],
+  "connections": [],
+  "nodes": [],
+  "layout": {
+    "positions": {},
+    "zoom": 1,
+    "pan": {
+      "x": 0,
+      "y": 0
+    }
+  }
+}

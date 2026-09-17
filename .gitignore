@@ -1,0 +1,7 @@
+__pycache__/
+.runtime/
+.venv/
+.runtime/
+node_modules/
+frontend/dist/
+.DS_Store

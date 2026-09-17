@@ -1,0 +1,36 @@
+notice: ''
+object_bindings:
+- object_type: object_06e387145e154b3a876bc050ba70be13
+  connection: ''
+  table: m_storage_phase
+  primary_key: id
+  title_key: ''
+  properties: {}
+  relations: []
+- object_type: object_dd80b5fda9284760bb27570be1b637fc
+  connection: conn-6e4bedfe447e
+  table: m_storage_cluster_phase
+  primary_key: id
+  title_key: ''
+  properties:
+    p_481c28fcf52345fb87c60ea6e1027706:
+      kind: computed
+      implementation: 91a13f8a-c593-47f6-8f4c-854cb370bd25
+      output: out_827abba4-10e
+    p_12c90ee5e4844bada48a589f1fae67b4: rated_power
+    p_bb90e2314baf4081b2b5f0d55de2a539: rated_capacity
+  relations:
+  - relation: link_23f7280b9b044793a60980a32be20d49
+    column: storage_id
+    target_type: object_06e387145e154b3a876bc050ba70be13
+  sources:
+  - id: src-6f79240bf25b
+    name: 储能簇测试
+    kind: db
+    connection: conn-6e4bedfe447e
+    table: m_storage_cluster
+    matchLeft: id
+    matchRight: id
+    cardinality: many
+observation_binding: {}
+source_candidates: []

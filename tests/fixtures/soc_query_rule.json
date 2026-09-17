@@ -1,0 +1,111 @@
+{
+  "id": "da14a505-e08e-4b57-af6a-246bca746544",
+  "kind": "queryRule",
+  "schemaVersion": 1,
+  "name": "查询储能簇 SOC 采样序列",
+  "objectType": "Station",
+  "connection": "mysql_main",
+  "steps": [
+    {
+      "id": "point",
+      "name": "定位测点",
+      "table": "s_attr_scada",
+      "cardinality": "one",
+      "where": [
+        {
+          "field": "model_name",
+          "op": "eq",
+          "value": "m_storage_cluster_phase"
+        },
+        {
+          "field": "attr_name",
+          "op": "eq",
+          "value": "soc"
+        },
+        {
+          "field": "model_id",
+          "op": "eq",
+          "value": "{{inputs.instanceId}}"
+        }
+      ],
+      "select": [
+        {
+          "as": "scadaTable",
+          "field": "scada_table"
+        },
+        {
+          "as": "scadaId",
+          "field": "scada_id"
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "name": "定位采样存储",
+      "table": "{{steps.point.scadaTable}}",
+      "cardinality": "one",
+      "where": [
+        {
+          "field": "id",
+          "op": "eq",
+          "value": "{{steps.point.scadaId}}"
+        }
+      ],
+      "select": [
+        {
+          "as": "sampleTable",
+          "field": "sample_table_name"
+        },
+        {
+          "as": "sampleField",
+          "field": "sample_field_name"
+        }
+      ]
+    },
+    {
+      "id": "samples",
+      "name": "读取采样记录",
+      "table": "{{steps.storage.sampleTable}}",
+      "cardinality": "many",
+      "where": [
+        {
+          "field": "record_time",
+          "op": "gte",
+          "value": "{{inputs.startTime}}"
+        },
+        {
+          "field": "record_time",
+          "op": "lt",
+          "value": "{{inputs.endTime}}"
+        }
+      ],
+      "select": [
+        {
+          "as": "timestamp",
+          "field": "record_time"
+        },
+        {
+          "as": "value",
+          "field": "{{steps.storage.sampleField}}"
+        }
+      ]
+    }
+  ],
+  "result": {
+    "type": "timeSeries",
+    "valueType": "double",
+    "step": "samples",
+    "timestamp": "timestamp",
+    "value": "value",
+    "order": "ascending"
+  },
+  "policies": {
+    "lookupMissing": "error",
+    "lookupMultiple": "error",
+    "emptySeries": "empty",
+    "nullValue": "preserve",
+    "identifiers": "connectionCatalog",
+    "timezone": "project",
+    "range": "[startTime,endTime)"
+  }
+}

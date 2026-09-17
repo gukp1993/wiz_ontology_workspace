@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "flowId": "ce339871927d",
+  "name": "储能设备soc计算",
+  "description": "计算储能设备soc",
+  "status": "active",
+  "inputs": [],
+  "outputs": [],
+  "connections": [],
+  "nodes": [
+    {
+      "id": "671a25c5-218c-4b08-8ab2-cb7584d8e860",
+      "kind": "sql",
+      "name": "ch",
+      "description": "",
+      "inputs": [],
+      "outputs": [],
+      "implementation": {
+        "language": "sql",
+        "sql": "",
+        "connectionId": ""
+      }
+    }
+  ],
+  "layout": {
+    "positions": {
+      "flow-input": {
+        "x": 30,
+        "y": 200
+      },
+      "flow-output": {
+        "x": 760,
+        "y": 200
+      },
+      "671a25c5-218c-4b08-8ab2-cb7584d8e860": {
+        "x": 370,
+        "y": 120
+      }
+    },
+    "zoom": 1,
+    "pan": {
+      "x": 0,
+      "y": 0
+    }
+  },
+  "_draft": {
+    "seq": 1,
+    "updatedAt": "2026-09-16T05:29:26.536374+00:00"
+  }
+}

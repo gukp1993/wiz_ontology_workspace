@@ -1,0 +1,7 @@
+<script setup lang="ts">
+interface ListItem {id:string;name:string;meta?:string;note?:string}
+withDefaults(defineProps<{title:string;subtitle?:string;items:ListItem[];selected:string;search:string;searchPlaceholder?:string;empty?:string;createLabel?:string}>(),{empty:'没有匹配内容',searchPlaceholder:'输入名称查找'})
+const emit=defineEmits(['select','create','update:search'])
+function changeSearch(event:Event){emit('update:search',(event.target as HTMLInputElement).value)}
+</script>
+<template><section class="manager-heading"><button v-if="createLabel" class="primary" @click="$emit('create')">＋ {{createLabel}}</button><slot name="actions" /></section><div class="manager-layout"><aside class="manager-list card"><label class="list-search"><span class="sr-only">搜索{{title}}</span><input type="search" :value="search" :aria-label="'搜索'+title" :placeholder="searchPlaceholder" @input="changeSearch"></label><div class="list-count">共 {{items.length}} 项 <span>选择一项维护详情</span></div><div class="manager-items"><button v-for="n in items" :key="n.id" class="manager-item" :class="{active:selected===n.id}" :aria-pressed="selected===n.id" @click="$emit('select',n.id)"><strong>{{n.name||'未命名 · 待填写'}}</strong><small v-if="n.meta">{{n.meta}}</small><span v-if="n.note" class="item-note">{{n.note}}</span></button><div v-if="!items.length" class="empty">{{empty}}</div></div><slot name="list-footer" /></aside><div class="manager-detail"><slot /></div></div></template>

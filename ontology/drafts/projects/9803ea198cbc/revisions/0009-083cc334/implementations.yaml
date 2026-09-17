@@ -1,0 +1,13 @@
+implementations:
+- id: 91a13f8a-c593-47f6-8f4c-854cb370bd25
+  contractId: 50359d65-d8da-4a84-b522-98ecc901fdde
+  connection: ''
+  rule: 查m_storage_cluster_phase-soc-{id}
+  parameters: {}
+  environment: ''
+  inputBindings:
+  - inputId: in_daeb6b69-05d
+    source:
+      kind: object
+      objectType: mg:object_dd80b5fda9284760bb27570be1b637fc
+  outputDeclarations: []

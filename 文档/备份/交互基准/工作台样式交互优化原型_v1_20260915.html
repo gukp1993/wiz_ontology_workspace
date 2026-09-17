@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本体工作台 · 管理后台样式优化原型 v1（2026-09-15）</title>
+<style>
+/* ═══ 设计令牌（借鉴 Tabler/AntPro/Arco/Vben，见交付说明） ═══
+   底色/卡片 #f3f5f9 / #ffffff；正文/辅助 #1f2733 / #697386；边框 #e5e8ef
+   主色 #245cdf；选中底 #eef3ff；成功/警告/危险 #2fbf71 / #f7a924 / #f0524f
+   侧栏 #16202c / #d3deeb；圆角 卡片8 控件6；间距 4/8 栅格 */
+:root{--bg:#f3f5f9;--card:#fff;--ink:#1f2733;--muted:#697386;--line:#e5e8ef;--blue:#245cdf;--blue-ink:#1d4fc0;--tint:#eef3ff;--green:#2fbf71;--green-bg:#e9f9f1;--amber:#b97d10;--amber-bg:#fdf3e0;--red:#f0524f;--red-bg:#fdeeee;--nav:#16202c;--nav2:#1c2836;--navtext:#d3deeb;--radius:8px;--r:6px;--shadow:0 1px 2px rgba(16,24,40,.05);--shadow-lg:0 8px 24px rgba(16,24,40,.14);--pad:20px}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg)}
+h1,h2,h3,h4,p{margin:0}h1{font-size:20px;font-weight:600}h2{font-size:16px;font-weight:600}h3{font-size:14px;font-weight:600}strong{font-weight:600}
+small{font-size:12px;color:var(--muted)}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:var(--r);padding:7px 13px;transition:all .15s}
+button:hover{border-color:var(--blue);color:var(--blue)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.primary{background:var(--blue);border-color:var(--blue);color:#fff}.primary:hover{background:var(--blue-ink);color:#fff}
+.danger-ghost{color:var(--red);border-color:transparent;background:none;padding:4px 8px}.danger-ghost:hover{background:var(--red-bg);border-color:transparent;color:var(--red)}
+.link-btn{border:0;background:none;color:var(--blue);padding:4px 6px}.link-btn:hover{background:var(--tint)}
+input,select,textarea{font:inherit;color:inherit;border:1px solid var(--line);border-radius:var(--r);background:var(--card);padding:7px 11px;width:100%}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid #b8ceff;outline-offset:0;border-color:var(--blue)}
+textarea{min-height:84px;resize:vertical}
+label{display:block}label>span{display:block;margin-bottom:6px;font-weight:500}
+.muted{color:var(--muted)}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+/* ═══ 外壳：顶栏 + 侧栏 + 主区（Vben/Arco 三段式） ═══ */
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
+.app.collapsed{grid-template-columns:64px minmax(0,1fr)}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:16px;height:52px;padding:0 16px 0 14px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50}
+.brand{display:flex;align-items:center;gap:9px;font-weight:650;letter-spacing:.3px}
+.brand .logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#245cdf,#4d8bff);color:#fff;display:grid;place-items:center;font-size:15px}
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:2px}
+.seg button{border:0;background:none;padding:5px 14px;border-radius:6px;color:var(--muted);font-weight:500}
+.seg button.active{background:var(--card);color:var(--blue);box-shadow:var(--shadow);font-weight:600}
+.top-search{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:5px 10px;width:230px;background:var(--bg);font-size:13px}
+.top-search kbd{margin-left:auto;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11px;background:#fff}
+.icon-btn{position:relative;border:0;background:none;padding:6px;border-radius:8px;color:var(--muted)}
+.icon-btn:hover{background:var(--bg);color:var(--ink)}
+.icon-btn .dot{position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--red)}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--tint);color:var(--blue);display:grid;place-items:center;font-size:12px;font-weight:600;border:1px solid #d4e0f7}
+/* 侧栏（深色，Arco 分组 + Vben 折叠） */
+.rail{background:var(--nav);color:var(--navtext);padding:14px 10px 12px;display:flex;flex-direction:column;gap:6px;position:sticky;top:52px;height:calc(100vh - 52px);overflow:auto}
+.ctx{background:var(--nav2);border:1px solid #2a3948;border-radius:8px;padding:9px 10px;margin-bottom:6px}
+.ctx small{color:#8fa2b8;display:block;margin-bottom:4px}
+.ctx select{background:#0f1722;border-color:#2a3948;color:var(--navtext);padding:6px 8px}
+.nav-group{font-size:11px;letter-spacing:1px;color:#7d90a7;padding:10px 10px 4px}
+.rail nav{display:flex;flex-direction:column;gap:2px}
+.rail nav button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:0;color:var(--navtext);border-radius:7px;padding:8px 10px;font-weight:500}
+.rail nav button .ni{width:18px;text-align:center;opacity:.75}
+.rail nav button:hover{background:#223146;color:#fff}
+.rail nav button.active{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(36,92,223,.4)}
+.rail nav button.active .ni{opacity:1}
+.rail .role{margin-top:auto;border-top:1px solid #263544;padding:12px 8px 2px;font-size:12px;color:#8fa2b8}
+.rail .role b{color:var(--navtext);display:block;font-size:12px}
+.collapsed .ctx,.collapsed .nav-group,.collapsed .role,.collapsed nav button span.tx{display:none}
+.collapsed nav button{justify-content:center;padding:10px 0}
+/* 主区 */
+.main{min-width:0;display:flex;flex-direction:column}
+.pagehead{background:var(--card);border-bottom:1px solid var(--line);padding:14px var(--pad) 13px}
+.crumb{font-size:12px;color:var(--muted);margin-bottom:3px}
+.crumb b{color:var(--ink);font-weight:500}
+.pagehead-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pagehead-row .desc{color:var(--muted);font-size:13px;margin-top:2px}
+.pagehead-actions{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.save-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;border-radius:20px;padding:3px 11px;border:1px solid var(--line);background:var(--bg);color:var(--muted)}
+.save-pill.ok{background:var(--green-bg);border-color:#bfe8d2;color:#1c8a54}
+.save-pill.dirty{background:#fff7e8;border-color:#f2ddb0;color:var(--amber)}
+.save-pill.editing{background:var(--tint);border-color:#c9d9f8;color:var(--blue)}
+.content{padding:var(--pad);max-width:1180px;width:100%;margin:0 auto}
+/* 卡片（Tabler card-header/body） */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:14px}
+.card-h{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card-h h2,.card-h h3{margin:0}
+.card-h .sub{color:var(--muted);font-size:12px}
+.card-h .acts{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap}
+.card-b{padding:16px}
+/* 统计卡（AntPro stat + trend） */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);cursor:pointer;transition:border .15s}
+.stat:hover{border-color:#b8ceff}
+.stat small{display:block}.stat .num{font-size:24px;font-weight:650;letter-spacing:-.5px;margin:2px 0}
+.stat .tr{font-size:12px;color:var(--green)}
+.stat .ico{float:right;width:30px;height:30px;border-radius:7px;background:var(--tint);color:var(--blue);display:grid;place-items:center;margin-top:-2px}
+/* 徽标/标签（Arco 状态点 + TDesign tag） */
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:12px;border-radius:5px;padding:2px 8px;background:var(--bg);border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.blue{background:var(--tint);border-color:#ccd9f5;color:var(--blue)}
+.tag.green{background:var(--green-bg);border-color:#bfe8d2;color:#1c8a54}
+.tag.amber{background:var(--amber-bg);border-color:#f2ddb0;color:var(--amber)}
+.tag.red{background:var(--red-bg);border-color:#f5c6c5;color:var(--red)}
+.tag .dt{width:6px;height:6px;border-radius:50%;background:currentColor}
+/* 表格（ProTable 密度 + 工具栏） */
+.tbl-bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.tbl-bar input[type=search]{width:220px;margin:0}
+.tbl-bar .sp{flex:1}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:12px;font-weight:500;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);background:#fafbfd}
+td{padding:10px;border-bottom:1px solid #eef1f6;vertical-align:middle}
+tbody tr{transition:background .1s}
+tbody tr:hover{background:#f8faff}
+tbody tr.click{cursor:pointer}
+td small{display:block;margin-top:2px}
+.row-acts{white-space:nowrap;text-align:right}
+.row-acts button{padding:4px 9px;font-size:12px;margin-left:5px}
+/* 目录 + 详情（对象/映射工作区） */
+.split{display:grid;grid-template-columns:180px minmax(0,1fr);gap:14px;align-items:start}
+.dir{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:8px;box-shadow:var(--shadow)}
+.dir .dh{font-size:12px;color:var(--muted);padding:6px 8px;display:flex;justify-content:space-between}
+.dir button.item{display:block;width:100%;text-align:left;border:0;background:none;border-radius:7px;padding:9px 10px;margin:1px 0}
+.dir button.item:hover{background:var(--bg)}
+.dir button.item.active{background:var(--tint);color:var(--blue)}
+.dir button.item small{display:block;margin-top:2px;color:var(--muted)}
+/* 页签 */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:14px 0 0;flex-wrap:wrap}
+.tabs button{border:0;background:none;border-bottom:2px solid transparent;border-radius:0;padding:8px 13px;color:var(--muted);font-weight:500}
+.tabs button.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.tabs button .cnt{font-size:11px;background:var(--bg);border-radius:8px;padding:1px 7px;margin-left:5px;color:var(--muted)}
+.tabs button.active .cnt{background:var(--tint)}
+/* 表单 */
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin:14px 0}
+.full{grid-column:1/-1}
+.fhint{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.6}
+details.fold{border-top:1px solid var(--line);margin-top:16px;padding-top:12px}
+details.fold summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;display:flex;align-items:center;gap:6px}
+details.fold summary::before{content:'▸';transition:.15s}
+details.fold[open] summary::before{transform:rotate(90deg)}
+.edit-foot{position:sticky;bottom:0;display:flex;gap:9px;align-items:center;background:linear-gradient(transparent,var(--card) 30%);padding:18px 0 4px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:18px}
+/* 编辑器外壳：替换主内容 */
+.editor-head{display:flex;align-items:center;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+.editor-head .back{border:0;background:none;color:var(--muted);padding:6px 10px 6px 0;font-size:13px}
+.editor-head .back:hover{color:var(--blue);background:none}
+/* 只读摘要（AntPro Descriptions） */
+.desc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.desc-grid>div{padding:11px 13px;border-bottom:1px solid #eef1f6;background:#fafbfd}
+.desc-grid>div:nth-last-child(-n+2){border-bottom:0}
+.desc-grid small{display:block}
+.desc-grid .v{font-weight:500;margin-top:2px}
+/* 步骤（AntPro Steps） */
+.steps{display:flex;gap:0;margin:16px 0 18px}
+.step{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px;padding:6px 14px;border-radius:8px}
+.step .n{width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:#fff;display:grid;place-items:center;font-size:12px}
+.step.active{background:var(--tint);color:var(--blue);font-weight:600}
+.step.active .n{background:var(--blue);border-color:var(--blue);color:#fff}
+.step.done{color:#1c8a54}.step.done .n{background:var(--green-bg);border-color:#bfe8d2;color:#1c8a54}
+.step-arrow{color:#c3ccd9;padding:0 2px}
+/* 选项卡（来源三卡） */
+.choices{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+.choices button{text-align:left;padding:13px;border-radius:var(--radius)}
+.choices button small{display:block;margin-top:4px}
+.choices button.active{border-color:var(--blue);background:var(--tint);color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+/* 抽屉（TDesign/AntPro Drawer） */
+.drawer-mask{position:fixed;inset:0;background:rgba(15,23,36,.35);z-index:90;display:flex;justify-content:flex-end}
+.drawer{width:min(430px,92vw);background:var(--card);height:100%;overflow:auto;box-shadow:var(--shadow-lg);padding:18px;animation:sl .18s}
+@keyframes sl{from{transform:translateX(30px);opacity:.4}}
+.drawer-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+/* 弹窗 */
+.modal-mask{position:fixed;inset:0;background:rgba(15,23,36,.4);z-index:95;display:grid;place-items:center;padding:16px}
+.modal{background:var(--card);border-radius:12px;box-shadow:var(--shadow-lg);width:min(460px,95vw);max-height:88vh;overflow:auto;padding:20px;animation:pop .16s}
+@keyframes pop{from{transform:scale(.96);opacity:.5}}
+.dialogtools{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}
+/* Toast */
+.toasts{position:fixed;top:60px;right:16px;z-index:120;display:flex;flex-direction:column;gap:8px}
+.toast{background:#fff;border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:8px;box-shadow:var(--shadow-lg);padding:10px 14px;font-size:13px;min-width:240px;max-width:360px;animation:tin .2s}
+.toast.ok{border-left-color:var(--green)}.toast.err{border-left-color:var(--red)}
+@keyframes tin{from{transform:translateX(20px);opacity:0}}
+/* 时间线（AntPro Timeline） */
+.tl{position:relative;padding-left:20px}
+.tl::before{content:'';position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.tl-i{position:relative;padding:0 0 16px}
+.tl-i::before{content:'';position:absolute;left:-19px;top:5px;width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid var(--blue)}
+.tl-i.old::before{border-color:#c3ccd9}
+/* 空态（Tabler） */
+.empty{text-align:center;padding:44px 16px;color:var(--muted)}
+.empty .eico{width:46px;height:46px;margin:0 auto 10px;border-radius:12px;background:var(--tint);color:var(--blue);display:grid;place-items:center;font-size:20px}
+.empty p{margin:4px 0 14px}
+/* 进度条 */
+.prog{height:6px;border-radius:4px;background:var(--bg);overflow:hidden}
+.prog>i{display:block;height:100%;background:var(--blue);border-radius:4px}
+/* 映射行 */
+.mapline{display:grid;grid-template-columns:1fr 30px 1fr;gap:8px;align-items:end;margin:10px 0}
+.mapline>span{text-align:center;color:var(--muted);padding-bottom:9px}
+.filterrow{display:grid;grid-template-columns:1.1fr 24px 1.2fr 30px;gap:7px;align-items:center;margin:8px 0}
+.filterrow>span{text-align:center;color:var(--muted)}
+.checkrow{display:flex;justify-content:space-between;gap:14px;padding:13px 2px;border-bottom:1px solid #eef1f6;align-items:center}
+.checkrow:last-child{border-bottom:0}
+.checkrow small{display:block;margin-top:3px}
+.chk{display:flex;gap:8px;align-items:center}
+.chk input{width:16px;height:16px;accent-color:var(--blue)}
+.num{display:inline-grid;place-items:center;width:26px;height:26px;background:var(--tint);color:var(--blue);border-radius:50%;margin-right:9px;font-size:13px}
+.readbox{padding:9px 12px;background:#f8fafd;border:1px solid var(--line);border-radius:var(--r);overflow-wrap:anywhere}
+.note{background:var(--tint);border:1px solid #d6e2fa;border-radius:var(--r);padding:10px 13px;color:var(--blue-ink);font-size:13px;margin:12px 0}
+.spacer{flex:1}
+.kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11px;background:#fff}
+@media(max-width:1080px){.stats{grid-template-columns:1fr 1fr}.app,.app.collapsed{grid-template-columns:64px minmax(0,1fr)}}
+@media(max-width:860px){.split{grid-template-columns:1fr}.dir{display:flex;gap:5px;overflow-x:auto}.dir .dh{display:none}.dir button.item{min-width:110px}.app,.app.collapsed{grid-template-columns:1fr}.rail{position:static;height:auto;flex-direction:row;align-items:center;overflow-x:auto;padding:8px}.rail nav{flex-direction:row}.rail .role,.ctx{display:none}.top-search{display:none}.stats{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.fgrid,.choices,.desc-grid{grid-template-columns:1fr}.stats{grid-template-columns:1fr}.seg button{padding:5px 9px}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toasts" id="toasts"></div>
+<script>
+(()=>{
+/* ═════════════ 演示数据（业务域：储能；仅原型内存，刷新重置） ═════════════ */
+const cp=x=>JSON.parse(JSON.stringify(x));
+let seq=40;const uid=p=>p+(++seq);
+const models={energy:{name:'储能本体',version:'1.0.0',dirty:false,
+ objects:[
+  {id:'sys',name:'储能系统',desc:'由储能设备及配套设施构成，作为整体提供能量存储与释放能力。'},
+  {id:'dev',name:'储能设备',desc:'由一个或多个储能簇构成、可独立管理的储能设备。'},
+  {id:'cluster',name:'储能簇',desc:'由电池模组组成、具有独立监测边界的电池集合。'}],
+ properties:[
+  {id:'cname',owner:'cluster',name:'名称',desc:'用于辨识和展示储能簇的业务名称。',type:'文本',shape:'scalar',display:true},
+  {id:'rated',owner:'cluster',name:'额定功率',desc:'额定条件下允许持续输出或吸收的功率。',type:'数值',shape:'scalar',unit:'kW'},
+  {id:'soc',owner:'cluster',name:'实时SOC',desc:'储能簇最新观测的荷电状态，按 0～100 百分数表达。',type:'数值',shape:'scalar',unit:'%'},
+  {id:'hist',owner:'cluster',name:'SOC采样序列',desc:'储能簇在不同采集时刻的荷电状态记录。',type:'数值',shape:'timeSeries',unit:'%'},
+  {id:'devname',owner:'dev',name:'名称',desc:'储能设备的业务名称。',type:'文本',shape:'scalar'}],
+ links:[
+  {id:'l1',from:'cluster',to:'dev',name:'所属设备',reverse:'包含储能簇',cardinality:'多对一'},
+  {id:'l2',from:'dev',to:'sys',name:'所属系统',reverse:'包含储能设备',cardinality:'多对一'}],
+ contracts:[{id:'c1',owner:'cluster',name:'查询储能簇实时SOC',desc:'获取指定储能簇最新的荷电状态。',inputs:[{n:'储能簇',t:'object'}],outputs:[{n:'储能SOC',t:'属性 · 实时SOC'}],convention:'无有效观测值时返回不可用，不能用 0 冒充有效 SOC。',status:'active'}],
+ library:[{id:'s1',name:'资产名称',desc:'资产在业务界面中的显示名称。',type:'文本',shape:'scalar',used:2},
+          {id:'s2',name:'SOC',desc:'当前剩余电量与参考容量的比值（0~100）。',type:'数值',shape:'scalar',unit:'%',used:1}]}};
+const releases={energy:{'1.0.0':{at:'09-10 16:02',note:'初始版本：对象、属性与链接定义',kind:'初始'}}};
+const projects={park:{name:'创智园二期',model:'energy',version:'1.0.0',dirty:false,released:'v1',
+ bindings:{cluster:{enabled:true,conn:'db',table:'m_storage_cluster_phase',pk:'id',props:{
+   cname:{kind:'db',conn:'db',table:'m_storage_cluster_phase',field:'name'},
+   rated:{kind:'db',conn:'db',table:'m_storage_cluster_phase',field:'rated_power'},
+   soc:{kind:'redis',conn:'redis',key:'m_storage_cluster-{id}-soc',param:'实例主键',conv:'数值'}}}},
+ linkMap:{l1:{fromTable:'m_storage_cluster_phase',toTable:'m_storage_phase',fromField:'storage_id',toField:'id'}},
+ connections:[{id:'db',name:'创智园测试库',engine:'MySQL',host:'192.168.1.38',database:'semp_dev_250',port:'3306',test:'ok',ms:38,tables:818},
+              {id:'redis',name:'实时数据缓存',engine:'Redis',host:'127.0.0.1',database:'0',port:'6379',test:'untest'}],
+ impls:{c1:{rule:'读取 Redis，Key 为 m_storage_cluster-{id}-soc；id 使用当前储能簇实例主键，结果转为数值。'}},
+ parameters:{timezone:'Asia/Shanghai',siteCode:'CZY-02'}}};
+const catalogs={'m_storage_cluster_phase':['id','name','company','storage_id','rated_power','capacity'],'telemetry_sample':['object_id','object_type','metric_code','sampled_at','value'],'cluster_power_sample':['cluster_id','sampled_at','power','soc'],'m_storage_phase':['id','name','system_id']};
+
+/* ═════════════ 状态 ═════════════ */
+const ui={space:'model',model:'energy',project:'park',page:'home',object:'cluster',tab:'properties',mode:'list',editor:null,step:0,toast:[],error:'',query:'',collapsed:false,leave:null,drawer:null};
+const model=()=>models[ui.model],project=()=>projects[ui.project],ctx=()=>ui.space==='model'?model():project();
+const objs=()=>ctx()?.objects||[],object=()=>ctx()?.objects.find(o=>o.id===ui.object);
+const props=()=>ctx()?.properties.filter(p=>p.owner===ui.object)||[];
+const ref=()=>releases[project().model]?.[project().version];
+const title=(id,m=ctx())=>m?.objects.find(o=>o.id===id)?.name||id||'—';
+const eff=p=>p.shared?{...model().library.find(s=>s.id===p.shared),id:p.id,owner:p.owner,shared:p.shared}:p;
+const shape=p=>p.shape==='timeSeries'?'时间序列':'单值';
+const touch=()=>{(ui.space==='model'?model():project()).dirty=true};
+/* ═════════════ 基础渲染件 ═════════════ */
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const btn=(l,a,v='',c='')=>`<button type="button" class="${c}" data-do="${a}" data-value="${esc(v)}">${l}</button>`;
+const tag=(t,k='')=>`<span class="tag ${k}">${t}</span>`;
+const statusTag=s=>({ok:'<span class="tag green"><i class="dt"></i>连接成功</span>',fail:'<span class="tag red"><i class="dt"></i>连接失败</span>',testing:'<span class="tag blue"><i class="dt"></i>测试中</span>'}[s]||'<span class="tag"><i class="dt"></i>未测试</span>');
+const opts=(arr,v)=>arr.map(x=>{const a=typeof x==='string'?{value:x,label:x}:x;return `<option value="${esc(a.value)}" ${String(v)===String(a.value)?'selected':''}>${esc(a.label)}</option>`}).join('');
+const sel=(k,arr,v)=>`<select data-field="${k}">${opts(arr.some(x=>String(typeof x==='string'?x:x.value)===String(v))?arr:[{value:'',label:'请选择'},...arr],v)}</select>`;
+const inp=(k,v,ph='')=>`<input data-field="${k}" value="${esc(v)}" placeholder="${esc(ph)}">`;
+const ta=(k,v,ph='')=>`<textarea data-field="${k}" placeholder="${esc(ph)}">${esc(v)}</textarea>`;
+const fd=(l,c,h='',f=false)=>`<label class="${f?'full':''}"><span>${l}</span>${c}${h?`<div class="fhint">${h}</div>`:''}</label>`;
+const foot=(a,l='保存到草稿',note='只影响当前草稿；已发布版本不变')=>`<div class="edit-foot">${btn(l,a,'','primary')}${btn('取消','cancel')}<small class="spacer"></small><small>${note}</small></div>`;
+function toast(t,kind=''){ui.toast.push({t,kind});render()}
+function announce(t,k='ok'){toast(t,k)}
+/* ═════════════ 外壳 ═════════════ */
+function rail(){
+ const menus=ui.space==='model'
+  ?[['概览',[['home','工作概览','▤']]],['建模',[['objects','对象建模','▦'],['contracts','计算契约','{ }'],['library','共享属性库','≣']]],['发布',[['release','校验与发布','⚑']]]]
+  :[['概览',[['home','项目概览','▤']]],['配置',[['connections','数据连接','⇄'],['objects','对象映射','▦'],['implements','计算实现','{ }']]],['发布',[['release','校验与发布','⚑'],['upgrade','版本引用','⇡']]]];
+ return `<aside class="rail">
+  <div class="ctx"><small>当前${ui.space==='model'?'本体':'项目'}</small><select data-context="${ui.space}">${opts(Object.entries(ui.space==='model'?models:projects).map(([k,v])=>({value:k,label:v.name})),ui.space==='model'?ui.model:ui.project)}</select></div>
+  ${menus.map(([g,items])=>`<div class="nav-group">${g}</div><nav>${items.map(([k,n,i])=>btn(`<span class="ni">${i}</span><span class="tx">${n}</span>`,'nav',k,ui.page===k?'active':'')).join('')}</nav>`).join('')}
+  <div class="role"><b>${ui.space==='model'?'业务专家':'开发 / 实施'}</b>${ui.space==='model'?'维护通用定义':'维护项目来源'}</div></aside>`}
+function topbar(){return `<header class="topbar">
+ <div class="brand"><span class="logo">◇</span>本体工作台</div>
+ <div class="seg">${btn('本体建设','space','model',ui.space==='model'?'active':'')}${btn('项目映射','space','project',ui.space==='project'?'active':'')}</div>
+ <div class="top-search">🔍 搜索对象、属性、契约…<kbd>⌘K</kbd></div>
+ ${btn('⇔','toggle-rail','','icon-btn')}
+ <button class="icon-btn" title="通知">🔔<span class="dot"></span></button>
+ <button class="icon-btn" title="帮助">?</button>
+ <span class="avatar">业</span></header>`}
+function saveState(){const c=ui.space==='model'?model():project();
+ return ui.editor?`<span class="save-pill editing">✎ 正在编辑表单</span>`:c.dirty?`<span class="save-pill dirty">● 草稿有修改</span>`:`<span class="save-pill ok">✓ 已保存</span>`}
+const pageNames={home:()=>ui.space==='model'?'工作概览':'项目概览',objects:()=>ui.space==='model'?'对象建模':'对象映射',contracts:()=>ui.space==='model'?'计算契约':'计算实现',library:()=>'共享属性库',connections:()=>'数据连接',release:()=>'校验与发布',upgrade:()=>'版本引用'};
+function render(){
+ const c=ui.space==='model'?model():project();
+ document.getElementById('app').innerHTML=`<div class="app ${ui.collapsed?'collapsed':''}">${topbar()}${rail()}<section class="main">
+ <div class="pagehead"><div class="crumb"><b>${esc(c.name)}</b> / ${ui.space==='model'?'抽象定义':'项目配置'}${ui.space==='project'&&c.version?` · 引用 ${esc(models[c.model].name)} ${esc(c.version)}`:''}</div>
+ <div class="pagehead-row"><div><h1>${(pageNames[ui.page]||(()=>'工作台'))()}</h1></div>
+ <div class="pagehead-actions">${saveState()}${btn('校验与发布','nav','release',ui.page==='release'?'':'primary')}</div></div></div>
+ <main class="content">${ui.leave?leaveView():ui.editor?editorView():pageView()}</main></section></div>`;
+ document.getElementById('toasts').innerHTML=ui.toast.map((t,i)=>`<div class="toast ${t.kind}">${esc(t.t)}<button class="danger-ghost" style="float:right" data-do="dismiss" data-value="${i}">×</button></div>`).join('');
+}
+function navigate(p){ui.page=p;ui.editor=null;ui.query='';ui.error='';render()}
+/* ═════════════ 页面视图 ═════════════ */
+function pageView(){
+ if(ui.page==='home')return home();
+ if(ui.page==='objects')return objectWorkspace();
+ if(ui.page==='contracts')return contractsView();
+ if(ui.page==='library')return libraryView();
+ if(ui.page==='connections')return connectionsView();
+ if(ui.page==='upgrade')return upgradeView();
+ if(ui.page==='release')return releaseView();
+ return ''}
+/* ── 工作概览（AntPro 统计卡 + 进度清单） ── */
+function home(){if(ui.space==='model'){const m=model();
+ return `<div class="stats">
+  ${[['对象类型',m.objects.length,'个','▦','objects'],['属性',m.properties.length,'项','≡','objects'],['计算契约',m.contracts.length,'个','{ }','contracts'],['发布版本',m.version||'—',m.version?'':'未发布','⚑','release']].map(([l,n,u,i,p])=>`<div class="stat" data-do="nav" data-value="${p}"><span class="ico">${i}</span><small>${l}</small><div class="num">${n}<small style="display:inline">${u}</small></div>${p==='release'&&m.version?`<span class="tr">最新 ${esc(m.version)}</span>`:''}</div>`).join('')}</div>
+ <div class="card"><div class="card-h"><h2>本体建设进度</h2><span class="sub">完成度 ${Math.round((m.objects.length?40:0)+(m.properties.length?25:0)+(m.contracts.length?15:0)+(m.version?20:0))}%</span><div class="acts">${btn('继续建模 →','nav','objects','primary')}</div></div>
+ <div class="card-b"><div class="prog"><i style="width:${Math.round((m.objects.length?40:0)+(m.properties.length?25:0)+(m.contracts.length?15:0)+(m.version?20:0))}%"></i></div>
+ <div style="margin-top:14px">
+ ${[['定义对象与属性',`${m.objects.length} 个对象 · ${m.properties.length} 项属性`,m.objects.length&&m.properties.length,'objects','继续'],
+    ['补充计算契约',m.contracts.length?`${m.contracts.length} 个契约`:'按需补充，读取字段不需要契约',m.contracts.length,'contracts','查看'],
+    ['校验并发布版本',m.version?`已发布 ${m.version}，项目固定引用`:'尚无发布版本，项目无法引用',!!m.version,'release','去发布']]
+  .map(([t,d,ok,p,a],i)=>`<div class="checkrow"><div><strong><span class="num" style="background:${ok?'var(--green-bg)':'var(--tint)'};color:${ok?'#1c8a54':'var(--blue)'}">${ok?'✓':i+1}</span>${t}</strong><small>${d}</small></div>${btn(a,'nav',p,ok?'':'primary')}</div>`).join('')}</div></div></div>
+ <div class="card"><div class="card-h"><h3>定义完成后，交给具体项目</h3><div class="acts">${btn('进入项目映射 →','space','project','primary')}</div></div>
+ <div class="card-b"><div class="readbox">${esc(m.name)} ${m.version||'未发布'} → 创智园二期 · 固定引用发布版本，升级由项目主动发起。</div></div></div>`}
+ const p=project(),r=ref();
+ const enabled=Object.values(p.bindings).filter(b=>b.enabled).length;
+ const cfg=Object.values(p.bindings.cluster.props).filter(Boolean).length;
+ return `<div class="stats">
+ ${[['数据连接',p.connections.length,'个','⇄','connections'],['启用对象',enabled,'个','▦','objects'],['已配置取值',cfg,'项','≡','objects'],['待处理问题',2,'项','⚑','release']].map(([l,n,u,i,pg])=>`<div class="stat" data-do="nav" data-value="${pg}"><span class="ico">${i}</span><small>${l}</small><div class="num">${n}<small style="display:inline">${u}</small></div></div>`).join('')}</div>
+ <div class="card"><div class="card-h"><h2>${esc(p.name)}</h2>${p.version?`<span class="sub">引用 ${esc(models[p.model].name)} ${esc(p.version)}</span>`:''}<div class="acts">${btn(p.version?'管理引用版本':'绑定本体版本','nav','upgrade')}</div></div>
+ <div class="card-b">${[['连接数据源',`${p.connections.length} 个连接可用`,p.connections.length,'connections','配置连接'],['映射业务对象',`启用 ${enabled} 个对象 · ${cfg} 项取值已配置`,enabled,'objects','继续映射'],['检查并发布','2 个配置项待处理（未执行业务验证）',false,'release','检查问题']].map(([t,d,ok,pg,a],i)=>`<div class="checkrow"><div><strong><span class="num" style="background:${ok?'var(--green-bg)':'var(--tint)'};color:${ok?'#1c8a54':'var(--blue)'}">${ok?'✓':i+1}</span>${t}</strong><small>${d}</small></div>${btn(a,'nav',pg,ok?'':'primary')}</div>`).join('')}</div></div>
+ <div class="card"><div class="card-h"><h3>项目参数</h3><div class="acts">${btn('维护参数','edit-parameters')}</div></div>
+ <div class="card-b"><div class="desc-grid"><div><small>默认时区</small><div class="v">${esc(p.parameters.timezone)}</div></div><div><small>站点编码</small><div class="v">${esc(p.parameters.siteCode)}</div></div></div></div></div>`}
+/* ── 对象工作区（目录+详情+页签；项目态三页签） ── */
+function objectWorkspace(){
+ if(ui.space==='project'&&!ref())return `<div class="card"><div class="empty"><div class="eico">▤</div><h2>先绑定已发布本体</h2><p>对象映射需要一份已发布的本体版本；连接可提前配置。</p>${btn('绑定本体版本','nav','upgrade','primary')}</div></div>`;
+ if(!objs().length)return `<div class="card"><div class="empty"><div class="eico">▦</div><h2>从第一个对象开始</h2><p>只需名称和业务定义，属性与链接随后补充。</p>${btn('＋ 新建对象','add-object','','primary')}</div></div>`;
+ if(!object())ui.object=objs()[0].id;
+ const o=object(),b=ui.space==='project'?project().bindings[ui.object]:null;
+ return `<div class="tbl-bar">${ui.space==='model'?btn('☰ 列表','mode','list',ui.mode==='list'?'primary':'')+btn('⚄ 关系画布','mode','graph',ui.mode==='graph'?'primary':'')+`<span class="sp"></span>`+btn('＋ 新建对象','add-object'):'<small>先选对象，再配置实例识别、属性取值与链接映射。</small>'}</div>
+ ${ui.mode==='graph'&&ui.space==='model'?graphView():`<div class="split">
+ <aside class="dir"><div class="dh"><span>对象类型 · ${objs().length}</span><span>⚙</span></div>
+ ${objs().map(x=>btn(`<strong>${esc(x.name)}</strong><small>${ui.space==='model'?(ctx().properties.filter(p=>p.owner===x.id).length+' 项属性'):(project().bindings[x.id]?.enabled?'已启用':'未启用')}</small>`,'object',x.id,x.id===ui.object?'item active':'item')).join('')}</aside>
+ <div class="card" style="margin:0"><div class="card-h"><div><h2>${esc(o.name)}</h2><span class="sub">${esc(o.desc)}</span></div><div class="acts">${ui.space==='model'?btn('编辑定义','edit-object'):tag(b?.enabled?'项目映射':'未启用',b?.enabled?'blue':'')}</div></div>
+ <div class="card-b">
+ ${ui.space==='project'&&!b?.enabled?`<div class="empty"><div class="eico">▦</div><h3>这个项目需要使用${esc(o.name)}吗？</h3><p>按实际范围启用，无需映射本体中的所有对象。</p>${btn('启用并配置实例识别','enable-object','','primary')}</div>`:`
+ <div class="tabs">${(ui.space==='model'?[['properties','属性',props().length],['links','链接',ctx().links.filter(l=>l.from===ui.object||l.to===ui.object).length],['contracts','契约',ctx().contracts.filter(c=>c.owner===ui.object).length]]:[['identity','实例识别',null],['properties','属性取值',props().length],['links','链接映射',ctx().links.filter(l=>l.from===ui.object||l.to===ui.object).length]]).map(([k,n,c])=>btn(n+(c!=null?`<span class="cnt">${c}</span>`:''),'tab',k,ui.tab===k?'active':'')).join('')}</div>
+ ${ui.tab==='identity'?identityView():ui.tab==='links'?linksView():ui.tab==='contracts'?contractsList(ui.object):propertiesView()}`}</div></div></div>`}`}
+function graphView(){const node=id=>`<button class="item" style="border:1px solid var(--blue);border-radius:8px;padding:12px 14px;width:100%;text-align:left;background:#fff" data-do="graph-object" data-value="${id}"><strong>${esc(title(id))}</strong><small style="display:block;color:var(--muted);margin-top:3px">${ctx().properties.filter(p=>p.owner===id).length} 项属性 · 点击维护 →</small></button>`;
+ return `<div class="card" style="margin:0"><div class="card-h"><h2>对象与业务链接</h2><span class="sub">点击对象进入维护 · 属性保留在对象内</span></div><div class="card-b"><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">${ctx().links.map(l=>`<div style="text-align:center;background:var(--bg);border-radius:9px;padding:18px 14px">${node(l.from)}<div style="border-left:1px solid var(--blue);margin-left:110px;height:44px;display:flex;align-items:center;padding-left:14px;color:var(--muted);font-size:12px">${esc(l.name)} ↓</div>${node(l.to)}</div>`).join('')}<div style="text-align:center;background:var(--bg);border-radius:9px;padding:18px 14px">${node('sys')}</div></div></div></div>`}
+/* ── 属性页签（本体态清单 / 项目态取值清单） ── */
+function propertiesView(){const ps=props();
+ return `<div class="tbl-bar"><small>${ui.space==='model'?'定义属性的含义与结果形态':'每个属性配置一种生效来源'}</small><span class="sp"></span>${ui.space==='model'?btn('从属性库添加','pick-library')+btn('＋ 新增属性','add-property','','primary'):''}</div>
+ ${ps.length?`<table><thead><tr><th>属性</th><th>${ui.space==='model'?'类型 / 形态':'当前来源'}</th><th>${ui.space==='model'?'复用方式':'状态'}</th><th style="width:120px"></th></tr></thead><tbody>
+ ${ps.map(raw=>{const p=eff(raw),v=project().bindings[ui.object]?.props?.[p.id];
+ return `<tr><td><strong>${esc(p.name)}</strong>${p.display?' <span class="tag blue">显示名称</span>':''}<small>${p.unit?'单位 '+esc(p.unit):''}</small></td>
+ <td>${ui.space==='model'?esc(p.type)+' <small>'+shape(p)+'</small>':v?sourceSummary(v):'<span class="muted">尚未配置</span>'}</td>
+ <td>${ui.space==='model'?(raw.shared?tag('共享引用','blue'):tag('对象私有')):(v?'<span class="tag green"><i class="dt"></i>已配置</span>':'<span class="tag amber"><i class="dt"></i>待配置</span>')}</td>
+ <td class="row-acts">${btn(ui.space==='model'?'编辑':'map-property',ui.space==='model'?'edit-property':'map-property',p.id,ui.space==='model'?'':'primary')}</td></tr>`}).join('')}</tbody></table>`
+ :`<div class="empty"><div class="eico">≡</div><h3>给${esc(object().name)}添加第一个属性</h3><p>例如名称、额定功率或 SOC。</p>${ui.space==='model'?btn('＋ 新增属性','add-property','','primary'):''}</div>`}`}
+function sourceSummary(v){if(v.kind==='db')return `数据库 <small class="mono">${esc(v.table)} · ${esc(v.field)}${v.time?' + '+esc(v.time):''}</small>`;if(v.kind==='redis')return `Redis <small class="mono">${esc(v.key)}</small>`;return `函数结果 <small>${esc(v.impl||'待选实现')}</small>`}
+/* ── 实例识别（只读摘要 Descriptions + 表单编辑态） ── */
+function identityView(){const b=project().bindings[ui.object];const conn=project().connections.find(c=>c.id===b.conn);
+ return `<div class="tbl-bar"><small>识别有哪些对象实例，不限制属性可以从哪里获取。</small><span class="sp"></span>${btn(b.table?'修改':'配置','edit-identity','','primary')}</div>
+ <div class="desc-grid"><div><small>数据连接</small><div class="v">${esc(conn?.name||'未配置')}</div></div><div><small>身份表</small><div class="v mono">${esc(b.table||'未配置')}</div></div><div><small>实例主键</small><div class="v mono">${esc(b.pk||'未配置')}</div></div><div><small>已启用</small><div class="v">是 · 属性取值 ${Object.values(b.props||{}).filter(Boolean).length}/${props().length}</div></div></div>
+ <details class="fold" style="margin-top:16px"><summary>已登记补充来源（可选） · 1</summary><div class="fhint">用于复用关联路径或配置对象链接；属性选其他表时无需先登记。</div>
+ <div class="readbox" style="margin-top:8px">cluster_ext · m_storage_cluster_phase.id ＝ cluster_ext.cluster_id <span class="tag green" style="margin-left:6px">零或一条</span></div>${btn('登记补充表','add-source')}</details>
+ <div class="edit-foot" style="border:0">${btn('继续配置属性取值 →','tab','properties','primary')}</div>`}
+/* ── 链接（本体/项目共用，双向展示） ── */
+function linksView(){const ls=ctx().links.filter(l=>l.from===ui.object||l.to===ui.object);
+ return `<div class="tbl-bar"><small>${ui.space==='model'?'一份链接定义，正反两个阅读方向':'从两端对象已登记的表选择字段'}</small><span class="sp"></span>${ui.space==='model'?btn('＋ 新增链接','add-link','primary'):''}</div>
+ ${ls.map(l=>`<div class="checkrow"><div><strong>${esc(title(l.from))} <span class="muted">→</span> ${esc(l.name)} <span class="muted">→</span> ${esc(title(l.to))}</strong><small>${esc(l.cardinality)}${l.reverse?' · 反向：'+esc(l.reverse):''}${ui.space==='project'?' · '+(project().linkMap?.[l.id]?'<span style="color:#1c8a54">已配置</span>':'未配置（按需）'):''}</small></div>${btn(ui.space==='model'?'编辑':'配置',ui.space==='model'?'edit-link':'map-link',l.id)}</div>`).join('')||'<div class="empty">暂无与此对象关联的链接。</div>'}`}
+/* ── 契约 ── */
+function contractsList(owner){const cs=ctx()?.contracts.filter(c=>!owner||c.owner===owner)||[];
+ return cs.map(c=>`<div class="checkrow"><div><strong>${esc(c.name)}</strong> ${c.status==='active'?tag('生效','green'):tag('草稿')}<small>${esc((c.inputs||[]).map(i=>i.n).join('、')||'无输入')} → ${esc((c.outputs||[]).map(o=>o.n).join('、'))}</small></div><div class="row-acts">${ui.space==='model'?btn('查看与编辑','edit-contract',c.id):(project().impls[c.id]?btn('维护实现','edit-impl',c.id):btn('配置实现','edit-impl',c.id,'primary'))}</div></div>`).join('')||`<div class="empty"><div class="eico">{ }</div><h3>按业务需要定义计算能力</h3><p>直接读取一个字段不要求先创建计算契约。</p>${ui.space==='model'?btn('新建计算契约','add-contract'):''}</div>`}
+function contractsView(){return `<div class="card" style="margin:0"><div class="card-h"><div><h2>${ui.space==='model'?'约定需要什么输入、返回什么结果':'让通用契约在当前项目中实现'}</h2><span class="sub">${ui.space==='model'?'定义业务能力，取值规则在项目中维护。':'参数从哪里取、Redis 怎么查，在实现内填写。'}</span></div><div class="acts"><input type="search" placeholder="搜索契约…" style="width:200px;margin:0">${ui.space==='model'?btn('＋ 新建契约','add-contract','','primary'):''}</div></div>
+ <div class="card-b">${contractsList()}</div></div>`}
+/* ── 共享属性库 ── */
+function libraryView(pick=false){const lib=model().library;
+ return `<div class="card" style="margin:0"><div class="card-h"><div><h2>${pick?'为「'+esc(object()?.name||'')+'」添加属性':'共享属性库'}</h2><span class="sub">复制后独立维护；引用时沿用共享定义。</span></div><div class="acts">${pick?btn('← 返回对象','cancel'):btn('＋ 新建共享属性','add-shared','','primary')}</div></div>
+ <div class="card-b">${lib.map(s=>`<div class="checkrow"><div><strong>${esc(s.name)}</strong> ${tag(s.type)} ${tag(shape(s))}${s.unit?' '+tag('单位 '+s.unit,'blue'):''}<small>${esc(s.desc)}</small></div>
+ <div class="row-acts">${pick?btn('复制为私有','copy-property',s.id)+btn('引用共享','ref-property',s.id,'primary'):btn('维护定义','edit-shared',s.id)+btn(`引用 ${s.used}`,'usages',s.id)}</div></div>`).join('')||'<div class="empty">尚无共享属性，可先在对象中建立私有属性。</div>'}</div></div>`}
+/* ── 数据连接（表格 + 状态徽标 + 测试） ── */
+function connectionsView(){const p=project();
+ return `<div class="card" style="margin:0"><div class="card-h"><h2>项目数据连接</h2><span class="sub">统一配置，供属性、实例识别与实现选用</span><div class="acts">${btn('＋ 新建连接','add-connection','','primary')}</div></div>
+ <div class="card-b"><table><thead><tr><th>名称</th><th>类型</th><th>地址</th><th>测试状态</th><th>表目录</th><th style="width:190px"></th></tr></thead><tbody>
+ ${p.connections.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td>${tag(c.engine,c.engine==='MySQL'?'blue':'')}</td><td class="mono">${esc(c.host)}:${esc(c.port)} · ${esc(c.database)}</td>
+ <td>${statusTag(c.test)}${c.test==='ok'?`<small>${c.ms}ms</small>`:''}</td><td>${c.tables?c.tables+' 张表':c.tables===0?'—':'<span class="muted">—</span>'}</td>
+ <td class="row-acts">${btn(c.test==='ok'?'重测':'测试','test',c.id)}${btn('配置','edit-connection',c.id,'primary')}</td></tr>`).join('')}</tbody></table>
+ <details class="fold"><summary>表结构目录（已缓存 818 张表）</summary><div class="fhint">目录来自连接真实读取；搜索选表在属性取值向导中进行。</div>
+ ${Object.keys(catalogs).slice(0,4).map(t=>`<div class="checkrow"><span class="mono">${t}</span><small>${catalogs[t].length} 个字段 · ${catalogs[t].slice(0,4).join('、')}…</small></div>`).join('')}</details></div></div>`}
+/* ── 版本引用（先比较后确认） ── */
+function upgradeView(){const p=project();
+ return `<div class="card" style="margin:0"><div class="card-h"><h2>${p.version?'管理引用版本':'绑定本体版本'}</h2><span class="sub">先看变化，再决定是否切换项目草稿；已发布快照不变</span></div>
+ <div class="card-b">${p.version?`<div class="desc-grid" style="margin-bottom:14px"><div><small>当前固定引用</small><div class="v">${esc(models[p.model].name)} ${esc(p.version)}</div></div><div><small>最新版本</small><div class="v">1.0.0 <span class="tag green">已是最新</span></div></div></div>`:'<div class="note">尚未绑定本体。只有发布过的版本可以被项目引用。</div>'}
+ <div class="fgrid">${fd('本体',sel('model',Object.entries(models).filter(([id])=>Object.keys(releases[id]).length).map(([id,m])=>({value:id,label:m.name})),p.model))}${fd('目标版本',sel('version',Object.keys(releases[p.model]).reverse(),p.version))}</div>
+ <div class="edit-foot">${btn('比较版本与配置影响','compare','','primary')}${btn('返回项目概览','nav','home')}<span class="spacer"></span></div><div id="compare-out"></div></div></div>`}
+/* ── 校验与发布（三区块 + 时间线） ── */
+function releaseView(){const isModel=ui.space==='model';const errors=isModel?[]:[{text:'储能设备：尚未配置实例识别',go:{page:'objects',object:'dev',tab:'identity'}},{text:'SOC采样序列：尚未配置取值来源',go:{page:'objects',object:'cluster',tab:'properties'}}];
+ return `<div class="card"><div class="card-h"><h2>检查${isModel?'本体定义':'项目配置'}</h2>${errors.length?tag(errors.length+' 项待处理','amber'):tag('配置项齐全','green')}<div class="acts">${btn('重新检查','recheck')}</div></div>
+ <div class="card-b">${errors.map((e,i)=>`<div class="checkrow"><div><span class="tag amber"><i class="dt"></i>待处理</span>　${esc(e.text)}</div>${btn('去处理 →','issue',i,'link-btn')}</div>`).join('')||'<div class="note">检查通过：结构完整。配置校验通过 ≠ 已执行业务数据验证。</div>'}
+ ${!isModel?`<details class="fold"><summary>本项目属性使用范围（只读）</summary><div class="fhint">属性排除功能暂未实现：暂不使用的属性保持来源未配置即可，校验会如实提示。</div><div class="checkrow"><div><strong>储能簇 · 名称 / 额定功率 / 实时SOC</strong><small>已配置取值来源</small></div><span class="tag green"><i class="dt"></i>使用中</span></div><div class="checkrow"><div><strong>储能簇 · SOC采样序列</strong><small>尚未配置来源，不参与取值</small></div><span class="tag">未配置</span></div></details>`:''}</div></div>
+ <div class="card"><div class="card-h"><h3>发布${isModel?'本体版本':'项目配置快照'}</h3></div><div class="card-b">${errors.length?'<p class="muted">先处理上方问题，再发布当前草稿。</p>':`<div class="fgrid" style="margin:0">${fd('变更说明',ta('note','','本次调整了什么，例如补充 SOC 采样序列映射'),'',true)}${isModel?fd('变更类型',sel('kind',[{value:'minor',label:'兼容补充 · 次版本（推荐）'},{value:'major',label:'口径 / 类型变化 · 主版本'}],'minor'),'系统将按差异校验分类'):''}</div><div class="edit-foot" style="border:0;padding-top:12px">${btn('确认发布','publish','','primary')}<small>发布后项目仍引用原版本，由项目主动升级。</small></div>`}</div></div>
+ <div class="card"><div class="card-h"><h3>已发布版本</h3><div class="acts">${isModel?btn('在项目中使用 →','space','project'):btn('管理引用的本体版本 →','nav','upgrade')}</div></div>
+ <div class="card-b"><div class="tl">${isModel?Object.entries(releases[ui.model]).map(([v,r])=>`<div class="tl-i ${v===model().version?'':'old'}"><strong>${v}</strong> ${tag(r.kind,v==='1.0.0'?'blue':'green')}<small>${esc(r.note)} · ${r.at}</small></div>`).join(''):`<div class="tl-i"><strong>v1</strong> ${tag('项目快照','blue')}<small>引用 储能本体 1.0.0 · 09-10 16:02</small></div>`}</div></div></div>`}
+/* ═════════════ 编辑态（整体替换主内容） ═════════════ */
+function leaveView(){return `<div class="card" style="max-width:520px;margin:40px auto"><div class="card-b"><h2>当前表单还有未保存的修改</h2><p class="fhint">工作区已有草稿不会丢失；离开只会放弃本次表单修改。</p>
+ <div class="edit-foot" style="border:0">${btn('继续编辑','keep-editing','','primary')}${btn('放弃本次修改并离开','discard-editing')}</div></div></div>`}
+function editorView(){const e=ui.editor;if(e.kind==='library')return libraryView(true);if(e.kind==='map')return mappingEditor();
+ let inner='',t='',back='← 返回'+(ui.space==='model'?'列表':'配置');
+ if(e.kind==='property'||e.kind==='shared'){const d=e.draft;t=(e.isNew?'新增属性':'维护 · '+d.name);
+ inner=`${d.shared?`<div class="note">此属性引用共享定义，修改会影响全部引用对象；也可解除为私有。</div><div class="acts" style="margin-bottom:12px">${btn('打开共享定义','edit-shared-open')}${btn('解除为私有','detach')}</div>`:''}
+ <fieldset ${d.shared?'disabled style="border:0;padding:0;margin:0"':'style="border:0;padding:0;margin:0"'}><div class="fgrid">
+ ${fd('名称 *',inp('name',d.name,'例如：额定功率'))}${fd('数据类型 *',sel('type',['文本','数值','是／否','日期'],d.type))}
+ ${fd('业务定义 *',ta('desc',d.desc,'用一句话说明这个属性描述什么。'),'',true)}
+ ${fd('结果形态 *',sel('shape',[{value:'scalar',label:'单值'},{value:'timeSeries',label:'时间序列'}],d.shape),'单值可不断更新；时间序列包含每个时刻和值。')}
+ </fieldset></fieldset>
+ <details class="fold"><summary>更多设置（选填）</summary><div class="fgrid" style="margin-top:12px">${fd('单位',inp('unit',d.unit,'% / kW / kWh'))}${fd('小数位数',inp('places',d.places||'','0～8'))}</div></details>${foot('save-property')}`}
+ if(e.kind==='object'){t=e.isNew?'新建对象类型':'维护对象定义';
+ inner=`<div class="fgrid">${fd('对象名称 *',inp('name',d.name,'例如：储能簇'),'',true)}${fd('业务定义 *',ta('desc',d.desc,'说明它是什么，用什么业务边界区分。'),'',true)}</div>${foot('save-object')}`}
+ if(e.kind==='link'){t='定义业务链接';const d=e.draft;
+ inner=`<div class="fgrid">${fd('起点对象 *',sel('from',objs().map(o=>({value:o.id,label:o.name})),d.from))}${fd('终点对象 *',sel('to',objs().map(o=>({value:o.id,label:o.name})),d.to))}${fd('正向名称 *',inp('name',d.name,'所属设备'))}${fd('数量关系 *',sel('cardinality',['一对一','一对多','多对一','多对多'],d.cardinality))}</div>
+ <details class="fold"><summary>反向阅读名称（选填）</summary><div class="fgrid" style="margin-top:10px">${fd('反向名称',inp('reverse',d.reverse,'包含储能簇'),'同一条链接的反向表达，不重复建立另一条。')}</div></details>
+ <div class="note">${esc(title(d.from))} → ${esc(d.name||'链接名称')} → ${esc(title(d.to))}</div>${foot('save-link')}`}
+ if(e.kind==='identity'||e.kind==='source'){t=e.kind==='identity'?'配置实例识别':'登记补充来源';const d=e.draft;
+ inner=`${e.kind==='identity'?'<div class="note">识别“有哪些实例”，不限制属性从哪里获取。</div>':''}<div class="fgrid">
+ ${fd('数据连接 *',sel('conn',project().connections.filter(c=>c.engine==='MySQL').map(c=>({value:c.id,label:c.name})),d.conn))}
+ ${fd('来源表 *',sel('table',Object.keys(catalogs),d.table),'可选目录中的任何表，支持搜索。')}
+ ${e.kind==='identity'?fd('实例主键 *',sel('pk',catalogs[d.table]||[],d.pk)):fd('匹配数量',sel('card',['零或一条','零或多条'],d.card))}
+ ${e.kind==='source'?fd('身份表字段',sel('left',catalogs[project().bindings[ui.object]?.table]||[],d.left))+fd('补充表字段',sel('right',catalogs[d.table]||[],d.right)):''}</div>${foot(e.kind==='identity'?'save-identity':'save-source')}`}
+ if(e.kind==='map-link'){t='配置链接映射';const d=e.draft;
+ inner=`<div class="note">${esc(title(d.from))} → ${esc(d.name)} → ${esc(title(d.to))}</div>
+ <div class="fgrid">${fd('起点来源表',sel('fromTable',['m_storage_cluster_phase','cluster_ext'],d.fromTable))}${fd('终点来源表',sel('toTable',['m_storage_phase'],d.toTable))}${fd('起点字段 *',sel('fromField',catalogs[d.fromTable]||[],d.fromField))}${fd('终点字段 *',sel('toField',catalogs[d.toTable]||[],d.toField))}</div>
+ <p class="fhint">只选两端对象已登记的表；不手填表名。</p>${foot('save-map-link')}`}
+ if(e.kind==='contract'){t=e.isNew?'新建计算契约':'维护计算契约';const d=e.draft;
+ inner=`<div class="fgrid">${fd('名称 *',inp('name',d.name,'查询储能簇实时 SOC'),'',true)}${fd('业务说明 *',ta('desc',d.desc,'说明这个能力做什么、口径是什么。'),'',true)}</div>
+ <h3 style="margin:14px 0 8px">输入</h3>${(d.inputs||[]).map((i,x)=>`<div class="mapline">${fd('名称',inp('in-name-'+x,i.n,'储能簇'))}<span></span>${fd('类型',sel('in-type-'+x,[{value:'object',label:'对象'},{value:'property',label:'属性'},{value:'base',label:'基础类型'}],i.t))}${btn('×','rm-input',x,'danger-ghost')}</div>`).join('')}${btn('＋ 添加输入','add-input')}
+ <h3 style="margin:14px 0 8px">输出</h3>${(d.outputs||[]).map((o,x)=>`<div class="mapline">${fd('名称',inp('out-name-'+x,o.n,'储能SOC'))}<span></span>${fd('类型',sel('out-type-'+x,[{value:'property',label:'属性'},{value:'base',label:'基础类型'}],o.t))}${btn('×','rm-output',x,'danger-ghost')}</div>`).join('')}${btn('＋ 添加输出','add-output')}
+ <details class="fold"><summary>通用业务约定（选填）</summary><div style="margin-top:10px">${ta('convention',d.convention,'各项目都应满足的业务口径。')}</div></details>${foot('save-contract')}`}
+ if(e.kind==='impl'){const c=ctx().contracts.find(c=>c.id===e.id);t='实现 · '+c.name;const d=e.draft;
+ inner=`<div class="desc-grid"><div><small>契约</small><div class="v">${esc(c.name)}</div></div><div><small>输出</small><div class="v">${esc(c.outputs[0].n)} · 单值</div></div></div>
+ <div style="margin-top:14px">${fd('处理规则 *',ta('rule',d.rule,'例如：读取 Redis，Key 为 m_storage_cluster-{id}-soc；id 用实例主键，结果转为数值。'),'用自然语言说明来源、步骤和返回结果；不执行。',true)}</div>
+ <div class="note">当前维护实现说明与绑定，不执行 Redis 或函数。</div>${foot('save-impl')}`}
+ if(e.kind==='connection'){t=e.isNew?'新建数据连接':'配置数据连接';const d=e.draft;
+ inner=`<div class="fgrid">${fd('连接名称 *',inp('name',d.name,'例如：生产业务库'))}${fd('连接类型 *',sel('engine',['MySQL','Redis'],d.engine))}${fd('主机 *',inp('host',d.host,'192.168.1.38'))}${fd('端口 *',inp('port',d.port))}${fd(d.engine==='Redis'?'DB 索引 *':'数据库 *',inp('database',d.database))}${fd('用户名',inp('user',d.user,'root'))}</div>
+ <div class="note">密码由本机受保护存储管理，不回显、不入项目文件。</div>
+ <div class="tbl-bar" style="margin-top:12px">${btn('测试连接（模拟）','test-in-editor')}${statusTag('untest')}<span class="spacer"></span><small>技术配置变化后测试结果失效</small></div>${foot('save-connection')}`}
+ if(e.kind==='parameters'){t='维护项目参数';const d=e.draft;
+ inner=`<div class="fgrid">${fd('默认时区',sel('timezone',['Asia/Shanghai','UTC'],d.timezone))}${fd('站点编码',inp('siteCode',d.siteCode,'CZY-02'))}</div>
+ ${btn('＋ 添加参数','add-param')}${foot('save-parameters')}`}
+ if(e.kind==='context'){t='新建'+(ui.space==='model'?'本体':'项目');
+ inner=`${fd('名称 *',inp('name','','例如：光伏本体'),'',true)}<div class="note">${ui.space==='model'?'创建空白本体，不复制现有内容。':'创建后可先配置连接，稍后绑定已发布本体版本。'}</div>${foot('save-context','创建并进入')}`}
+ return `<div class="card" style="margin:0"><div class="card-b" style="padding-top:12px">
+ <div class="editor-head">${btn(back,'cancel')}<small>${esc(object()?.name||(pageNames[ui.page]||(()=>''))())}</small></div>
+ <h2 style="margin:6px 0 4px">${esc(t)}</h2>${ui.error?`<p style="color:var(--red);font-size:13px" role="alert">${esc(ui.error)}</p>`:''}${inner}</div></div>`}
+/* ── 属性取值三步向导 ── */
+function mappingEditor(){const e=ui.editor,d=e.draft,p=eff(props().find(x=>x.id===e.id));const fields=catalogs[d.table]||[];let part='';
+ if(ui.step===0)part=`<h3>从哪里获取${esc(p.name)}？</h3><div class="choices">${[['db','数据库取值','选择表或视图中的字段'],['redis','Redis 查询','按 Key 读取一个值'],['computed','函数结果','引用项目的计算实现']].map(([k,n,h])=>btn(`<strong>${n}</strong><small>${h}</small>`,'source-kind',k,d.kind===k?'active':'')).join('')}</div>
+ ${d.kind==='db'?`<div class="fgrid">${fd('数据连接 *',sel('conn',project().connections.filter(c=>c.engine==='MySQL').map(c=>({value:c.id,label:c.name})),d.conn))}${fd('搜索表／视图',`<input data-search="table" value="${esc(ui.query)}" placeholder="输入 sample 搜索采样表">`)}${fd('来源表 *',sel('table',Object.keys(catalogs),d.table),'可选目录中的任何表，无需登记为对象来源。',true)}</div>
+ <div class="tbl-bar">${btn('使用实例来源表','use-identity')}${btn('示例：公共采样表','use-sample')}</div>`
+ :d.kind==='redis'?`<div class="fgrid">${fd('Redis 连接 *',sel('conn',project().connections.filter(c=>c.engine==='Redis').map(c=>({value:c.id,label:c.name})),d.conn))}${fd('读取方式',sel('command',['GET','HGET'],d.command||'GET'))}</div>${p.shape==='timeSeries'?'<p style="color:var(--red);font-size:13px">普通 GET／HGET 标量不能作为时间序列，请选数据库或函数输出。</p>':''}`
+ :`<div style="max-width:420px">${fd('项目计算实现 *',sel('impl',[{value:'',label:'请选择已有实现'},...ctx().contracts.filter(c=>project().impls[c.id]).map(c=>({value:c.id,label:c.name}))],d.impl))}${btn('去维护计算实现 →','nav','implements')}</div><p class="fhint">规则在实现页维护，此处只引用结果。</p>`}`;
+ if(ui.step===1)part=d.kind==='db'?`<h3>如何找到当前${esc(object().name)}的记录？</h3>
+ ${d.table===project().bindings[ui.object]?.table?'<div class="note">已按实例主键 <b>id</b> 自动定位身份表当前记录。</div>':`<div class="mapline">${fd('来源表匹配字段 *',sel('idField',fields,d.idField))}<span>＝</span>${fd('当前对象标识',sel('param',['实例主键','身份表字段 asset_code'],d.param||'实例主键'))}</div>`}
+ <h3 style="margin:16px 0 8px">同时满足的筛选条件</h3>
+ ${(d.filters||[]).map((f,i)=>`<div class="filterrow"><select data-filter="${i}" data-part="field">${opts(fields,f.field)}</select><span>＝</span><input data-filter="${i}" data-part="value" value="${esc(f.value)}" placeholder="固定值，如 soc">${btn('×','remove-filter',i,'danger-ghost')}</div>`).join('')}
+ ${btn('＋ 添加筛选条件','add-filter')}<p class="fhint">例如 object_type = storage_cluster、metric_code = soc，用于区分公共表中的对象与指标。</p>`
+ :d.kind==='redis'?`<h3>如何找到当前实例的 Key？</h3><div class="fgrid">${fd('Key 模板 *',inp('key',d.key,'m_storage_cluster-{id}-soc'),'',true)}${fd('参数 {id} 使用',sel('param',['实例主键','身份表字段 asset_code'],d.param||'实例主键'))}${d.command==='HGET'?fd('Hash 字段 *',inp('hashField',d.hashField,'soc')):''}</div>
+ <div class="readbox mono">示例实例 123 → GET m_storage_cluster-123-soc</div><p class="fhint">仅展开模板，不读取 Redis。</p>`
+ :`<h3>输入按项目实现绑定</h3><div class="readbox">当前对象：${esc(object().name)}（实现内解析主键或资产编码）</div>`;
+ if(ui.step===2)part=`<h3>结果需要是${shape(p)} · ${esc(p.type)}</h3>
+ ${d.kind==='db'?`<div class="fgrid">${fd('值字段 *',sel('field',[{value:'',label:'请选择值字段'},...fields],d.field))}${p.shape==='timeSeries'?fd('时间字段 *',sel('time',[{value:'',label:'请选择时间字段'},...fields],d.time),'每条观测必须同时有时间和值。'):fd('匹配多条时',sel('selection',['零或一条','按时间取最新','求和','求平均'],d.selection||'零或一条'))}${p.shape==='timeSeries'?fd('时间编码 *',sel('timeEnc',['日期时间','Unix 秒','Unix 毫秒'],d.timeEnc||'日期时间'))+fd('来源时区',sel('tz',['Asia/Shanghai','UTC'],d.tz||'Asia/Shanghai')):''}</div>${p.shape==='timeSeries'?'<div class="readbox">时间范围由调用方传入 startTime / endTime；返回按时间升序的 [时间, 值]。</div>':''}`
+ :d.kind==='redis'?`<div style="max-width:420px">${fd('返回值转换为',sel('conv',['数值','文本','是／否','日期'],d.conv||p.type))}</div>`
+ :`<div style="max-width:420px">${fd('契约输出',`<div class="readbox">${esc(ctx().contracts.find(c=>c.id===d.impl)?.name||'尚未选择实现')}</div>`)}<p class="fhint">输出必须与属性类型及结果形态一致。</p></div>`}
+ <details class="fold"><summary>缺失与异常处理（默认）</summary><p class="fhint">无记录：${p.shape==='timeSeries'?'返回空序列':'返回无数据'}；转换失败报错；缺失不补零。</p></details>
+ <div class="note">${esc(p.name)} ← ${d.kind==='db'?esc(d.table)+'.'+esc(d.field||'值字段')+(p.shape==='timeSeries'?' + '+esc(d.time||'时间字段'):''):d.kind==='redis'?esc(d.key):'项目函数输出'}</div>`;
+ return `<div class="card" style="margin:0"><div class="card-b" style="padding-top:12px">
+ <div class="editor-head">${btn('← 返回属性清单','cancel')}<small>当前对象 · ${esc(object().name)}</small></div>
+ <div class="editor-head" style="margin-top:6px"><div><h2>配置 · ${esc(p.name)}</h2><span class="sub">${esc(p.desc)}</span></div><span class="spacer"></span>${tag(p.type+' · '+shape(p)+(p.unit?' · '+p.unit:''),'blue')}</div>
+ <div class="steps">${['选择来源','定位记录','映射结果'].map((n,i)=>`<span class="step ${ui.step===i?'active':ui.step>i?'done':''}"><span class="n">${ui.step>i?'✓':i+1}</span>${n}</span>${i<2?'<span class="step-arrow">›</span>':''}`).join('')}</div>
+ ${ui.error?`<p style="color:var(--red);font-size:13px">${esc(ui.error)}</p>`:''}${part}
+ <div class="edit-foot">${ui.step?btn('上一步','map-prev'):''}<span class="spacer"></span>${btn('取消','cancel')}${btn(ui.step===2?'保存来源配置':'下一步',ui.step===2?'save-mapping':'map-next','','primary')}</div></div></div>`}
+/* ═════════════ 事件 ═════════════ */
+function edit(kind,draft,isNew=false,id=''){ui.editor={kind,draft:cp(draft),original:JSON.stringify(draft),isNew,id:id||draft.id};ui.leave=null;ui.error='';ui.query='';ui.step=0;render()}
+function saveEditor(){ui.editor=null;touch();announce('已保存到草稿');render()}
+const newMap=p=>({kind:'db',conn:'db',table:project().bindings[ui.object]?.table||'',field:'',idField:'object_id',filters:[],time:'',param:'实例主键',selection:'零或一条',key:'m_storage_cluster-{id}-soc',conv:p.type,impl:''});
+function mapValid(final=false){const d=ui.editor.draft,p=eff(props().find(x=>x.id===ui.editor.id));
+ if(!d.conn&&d.kind!=='computed')return '请选择数据连接。';if(d.kind==='db'&&!d.table)return '请选择来源表。';
+ if(d.kind==='redis'&&p.shape==='timeSeries')return '普通 Redis 标量读取不能返回时间序列。';
+ if(d.kind==='computed'&&!d.impl)return '请选择一个已有项目实现。';
+ if(ui.step>=1||final){if(d.kind==='db'&&d.table!==project().bindings[ui.object]?.table&&!d.idField)return '请绑定当前实例的匹配字段。';if(d.kind==='redis'&&(!d.key||!d.key.includes('{id}')))return '请使用包含 {id} 的 Key 模板。'}
+ if(final&&d.kind==='db'&&!d.field)return '请选择值字段。';if(final&&p.shape==='timeSeries'&&!d.time)return '请选择时间字段。';return ''}
+document.getElementById('app').addEventListener('click',ev=>{const el=ev.target.closest('[data-do]');if(!el)return;const a=el.dataset.do,v=el.dataset.value;const e=ui.editor,d=e?.draft;
+ if(a==='dismiss'){ui.toast.splice(+v,1);render();return}
+ if(a==='toggle-rail'){ui.collapsed=!ui.collapsed;render();return}
+ if(a==='keep-editing'){ui.leave=null;render();return}
+ if(a==='discard-editing'){const dest=ui.leave;ui.leave=null;ui.editor=null;if(dest.context){navigate('home');return}const n=document.createElement('button');n.dataset.do=dest.action;n.dataset.value=dest.value;n.hidden=true;document.getElementById('app').append(n);n.click();n.remove();return}
+ if(e&&['nav','space','object','cancel','graph-object','tab'].includes(a)&&JSON.stringify(d)!==e.original){ui.leave={action:a,value:v};render();return}
+ if(a==='nav'){navigate(v);return}
+ if(a==='space'){ui.space=v;ui.editor=null;ui.tab=ui.space==='model'?'properties':'identity';navigate('home');return}
+ if(a==='object'||a==='graph-object'){ui.object=v;ui.editor=null;ui.tab=ui.space==='model'?'properties':'identity';if(a==='graph-object')ui.mode='list';render();return}
+ if(a==='tab'){ui.tab=v;render();return}
+ if(a==='mode'){ui.mode=v;render();return}
+ if(a==='add-object'||a==='edit-object'){edit('object',a==='add-object'?{id:uid('o-'),name:'',desc:''}:object(),a==='add-object');return}
+ if(a==='save-object'){if(!d.name.trim()||!d.desc.trim()){ui.error='请填写对象名称和业务定义。';render();return}if(e.isNew)model().objects.push(cp(d));else Object.assign(model().objects.find(o=>o.id===d.id),d);ui.object=d.id;saveEditor();return}
+ if(a==='add-property'){edit('property',{id:uid('p-'),owner:ui.object,name:'',desc:'',type:'数值',shape:'scalar'},true);return}
+ if(a==='edit-property'){edit('property',eff(props().find(x=>x.id===v)));return}
+ if(a==='save-property'||a==='save-shared'){if(!d.name.trim()||!d.desc.trim()){ui.error='请填写名称和业务定义。';render();return}const list=a==='save-shared'?model().library:model().properties;if(e.isNew)list.push(cp(d));else Object.assign(list.find(x=>x.id===d.id),d);if(d.display)model().properties.forEach(o=>{if(o.owner===d.owner&&o.id!==d.id)o.display=false});saveEditor();return}
+ if(a==='pick-library'){edit('library',{});return}
+ if(a==='copy-property'||a==='ref-property'){const s=model().library.find(x=>x.id===v);const q={...cp(s),id:uid('p-'),owner:ui.object};if(a==='ref-property')q.shared=v;model().properties.push(q);saveEditor();return}
+ if(a==='add-shared'){edit('shared',{id:uid('s-'),name:'',desc:'',type:'数值',shape:'scalar'},true);return}
+ if(a==='edit-shared'||a==='edit-shared-open'){edit('shared',model().library.find(x=>x.id===v)||d.shared);return}
+ if(a==='detach'){delete d.shared;render();return}
+ if(a==='usages'){toast('引用于：储能簇 / SOC、储能设备 / 名称','');return}
+ if(a==='add-link'||a==='edit-link'){edit('link',a==='add-link'?{id:uid('l-'),from:ui.object,to:objs().find(o=>o.id!==ui.object)?.id,name:'',reverse:'',cardinality:'多对一'}:ctx().links.find(l=>l.id===v),a==='add-link');return}
+ if(a==='save-link'){if(!d.name.trim()){ui.error='请填写正向名称。';render();return}if(e.isNew)model().links.push(cp(d));else Object.assign(model().links.find(l=>l.id===d.id),d);saveEditor();return}
+ if(a==='enable-object'){project().bindings[ui.object]={enabled:true,props:{}};touch();ui.tab='identity';edit('identity',{conn:'db',table:'m_storage_cluster_phase',pk:'id'});return}
+ if(a==='edit-identity'){edit('identity',{conn:project().bindings[ui.object].conn,table:project().bindings[ui.object].table,pk:project().bindings[ui.object].pk});return}
+ if(a==='save-identity'){if(!d.table||!d.pk){ui.error='请选择来源表和实例主键。';render();return}Object.assign(project().bindings[ui.object],d);saveEditor();return}
+ if(a==='add-source'){edit('source',{conn:'db',table:'cluster_ext',left:'id',right:'cluster_id',card:'零或一条'});return}
+ if(a==='save-source'){saveEditor();return}
+ if(a==='map-property'){const p=eff(props().find(x=>x.id===v));edit('map',project().bindings[ui.object].props?.[v]||newMap(p),false,v);return}
+ if(a==='source-kind'){const f=newMap(eff(props().find(x=>x.id===e.id)));f.kind=v;f.conn=v==='redis'?'redis':'db';e.draft=f;ui.error='';render();return}
+ if(a==='use-identity'){d.table=project().bindings[ui.object].table;d.filters=[];d.field='';ui.query='';render();return}
+ if(a==='use-sample'){d.table='telemetry_sample';d.idField='object_id';d.filters=[{field:'object_type',value:'storage_cluster'},{field:'metric_code',value:'soc'}];d.field='';d.time='';ui.query='';render();return}
+ if(a==='add-filter'){d.filters=d.filters||[];d.filters.push({field:(catalogs[d.table]||[])[0],value:''});render();return}
+ if(a==='remove-filter'){d.filters.splice(+v,1);render();return}
+ if(a==='map-step'||a==='map-next'||a==='map-prev'){const dest=a==='map-step'?+v:ui.step+(a==='map-next'?1:-1);if(dest>ui.step){ui.error=mapValid();if(ui.error){render();return}}ui.step=dest;ui.error='';render();return}
+ if(a==='save-mapping'){ui.error=mapValid(true);if(ui.error){render();return}project().bindings[ui.object].props[e.id]=cp(d);saveEditor();return}
+ if(a==='map-link'){const l=ctx().links.find(l=>l.id===v);edit('map-link',{...l,...(project().linkMap?.[v]||{fromField:'storage_id',toField:'id'})},false,v);return}
+ if(a==='save-map-link'){project().linkMap=project().linkMap||{};project().linkMap[e.id]=cp(d);saveEditor();return}
+ if(a==='add-contract'||a==='edit-contract'){edit('contract',a==='add-contract'?{id:uid('c-'),owner:ui.object,name:'',desc:'',inputs:[{n:'储能簇',t:'object'}],outputs:[{n:'储能SOC',t:'属性'}],convention:''}:model().contracts.find(c=>c.id===v),a==='add-contract');return}
+ if(a==='save-contract'){if(!d.name.trim()||!d.desc.trim()){ui.error='请填写名称和业务说明。';render();return}if(e.isNew)model().contracts.push(cp(d));else Object.assign(model().contracts.find(c=>c.id===d.id),d);saveEditor();return}
+ if(a==='add-input'){d.inputs=d.inputs||[];d.inputs.push({n:'',t:'base'});render();return}
+ if(a==='rm-input'){d.inputs.splice(+v,1);render();return}
+ if(a==='add-output'){d.outputs=d.outputs||[];d.outputs.push({n:'',t:'base'});render();return}
+ if(a==='rm-output'){d.outputs.splice(+v,1);render();return}
+ if(a==='edit-impl'){edit('impl',project().impls[v]||{rule:''},false,v);return}
+ if(a==='save-impl'){if(!d.rule?.trim()){ui.error='请说明项目的处理规则。';render();return}project().impls[e.id]=cp(d);saveEditor();return}
+ if(a==='add-connection'||a==='edit-connection'){edit('connection',a==='add-connection'?{id:uid('conn-'),name:'',engine:'MySQL',host:'',port:'3306',database:'',user:''}:cp(project().connections.find(c=>c.id===v)),a==='add-connection');return}
+ if(a==='save-connection'){if(!d.name.trim()||!d.host.trim()||!d.database.trim()){ui.error='请填写连接名称、主机和数据库／DB 索引。';render();return}if(e.isNew)project().connections.push(cp(d));else Object.assign(project().connections.find(c=>c.id===d.id),d);saveEditor();return}
+ if(a==='test'){const c=project().connections.find(c=>c.id===v);c.test='testing';render();setTimeout(()=>{c.test='ok';c.ms=30+Math.round(Math.random()*40);toast(`「${c.name}」连接成功（${c.ms}ms，模拟）`);render()},700);return}
+ if(a==='test-in-editor'){toast('模拟连接测试成功；正式页走真实探测','ok');return}
+ if(a==='edit-parameters'){edit('parameters',cp(project().parameters));return}
+ if(a==='add-param'){d['']='';render();return}
+ if(a==='save-parameters'){project().parameters=cp(d);saveEditor();return}
+ if(a==='new-context'){edit('context',{name:''},true);return}
+ if(a==='save-context'){if(!d.name.trim()){ui.error='请填写名称。';render();return}const id=uid('m-');if(ui.space==='model'){models[id]={name:d.name,version:null,dirty:false,objects:[],properties:[],links:[],contracts:[],library:[]};releases[id]={};ui.model=id}else{projects[id]={name:d.name,model:'energy',version:null,dirty:false,bindings:{},linkMap:{},connections:[],impls:{},parameters:{timezone:'Asia/Shanghai',siteCode:''}};ui.project=id}ui.editor=null;navigate('home');return}
+ if(a==='issue'){const iss=(ui.space==='model'?[]:[{text:'',go:{page:'objects',object:'dev',tab:'identity'}},{text:'',go:{page:'objects',object:'cluster',tab:'properties'}}])[+v];ui.object=iss.go.object;ui.tab=iss.go.tab;navigate(iss.go.page);return}
+ if(a==='recheck'){toast('已重新检查（模拟）：2 项待处理','');return}
+ if(a==='publish'){if(ui.space==='model'){const m=model();const parts=(m.version||'1.0.0').split('.').map(Number);m.version=`${parts[0]}.${parts[1]+1}.0`;m.dirty=false;releases[ui.model][m.version]={at:'刚刚',note:'（演示）新发布',kind:'兼容'};announce('已发布 '+m.version+'；项目仍引用原版本')}else{const p=project();p.released='v'+((+((p.released||'v1').slice(1)))+1);p.dirty=false;announce('已发布配置 '+p.released+'（未执行业务验证）')}render();return}
+ if(a==='compare'){document.getElementById('compare-out').innerHTML=`<div class="note">目标：储能本体 1.0.0（当前引用相同）<br>新增 0 个属性；定义变化 0 个。原型仅演示对比入口。</div>${btn('切换项目草稿引用','apply-upgrade','','primary')}`;return}
+ if(a==='apply-upgrade'){announce('项目草稿已引用目标版本；已发布快照不变');navigate('home');return}
+});
+document.getElementById('app').addEventListener('input',ev=>{const el=ev.target;
+ if(el.matches('[data-field]')&&ui.editor){const k=el.dataset.field,m=k.match(/^(in|out)-(name|type)-(\d+)$/);if(m){const list=m[1]==='in'?ui.editor.draft.inputs:ui.editor.draft.outputs;if(m[2]==='name')list[+m[3]].n=el.value;else list[+m[3]].t=el.value}else ui.editor.draft[k]=el.value}
+ if(el.matches('[data-filter]')&&ui.editor){ui.editor.draft.filters[+el.dataset.filter][el.dataset.part]=el.value}
+ if(el.matches('[data-search="table"]')){ui.query=el.value}});
+document.getElementById('app').addEventListener('change',ev=>{const el=ev.target;
+ if(el.dataset?.context){if(el.dataset.context==='model')ui.model=el.value;else ui.project=el.value;ui.editor=null;ui.object=Object.keys(ctx().objects||{}).length?ctx().objects[0].id:'';navigate('home');return}
+ if(!ui.editor||!el.dataset?.field)return;const d=ui.editor.draft,k=el.dataset.field;d[k]=el.value;
+ if(k==='table'){d.field='';d.time='';d.pk='';d.filters=[];d.idField=''}
+ if(k==='conn'){d.table='';d.field=''}
+ if(k==='engine'){d.port=d.engine==='Redis'?'6379':'3306';d.database=d.engine==='Redis'?'0':''}
+ if(k==='fromTable')d.fromField='';if(k==='toTable')d.toField='';
+ if(el.tagName==='SELECT')render()});
+render();
+})();
+</script>
+</body>
+</html>

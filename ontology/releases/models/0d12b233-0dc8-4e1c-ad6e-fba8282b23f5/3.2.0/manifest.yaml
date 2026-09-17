@@ -1,0 +1,32 @@
+version: 3.2.0
+changeType: compatible
+changeNote: ''
+reviewer: ''
+createdAt: '2026-09-16T01:52:58.064244+00:00'
+revision: 207b6d19eb3211f7a870e397b37b2ca24958d9f077dc5d2647b6746dbaee72ba
+parentVersion: 3.1.0
+reasons:
+- severity: compatible
+  area: objectTypes
+  id: mg:object_434aa4f93a6b430cbaf35aba54d4d03f
+  text: 新增对象类型 mg:object_434aa4f93a6b430cbaf35aba54d4d03f
+- severity: compatible
+  area: linkTypes
+  id: mg:link_79c7bb344cd244f9be04c3a5b6b3fd89
+  text: 新增链接类型 mg:link_79c7bb344cd244f9be04c3a5b6b3fd89
+- severity: compatible
+  area: properties
+  id: mg:p_3903a9b24aac4f65a407bec7f2e0d2e9
+  text: 新增属性 mg:p_3903a9b24aac4f65a407bec7f2e0d2e9
+- severity: compatible
+  area: properties
+  id: mg:p_5a6fcfa0d76b4491a69251b665b2d181
+  text: 新增属性 mg:p_5a6fcfa0d76b4491a69251b665b2d181
+- severity: compatible
+  area: properties
+  id: mg:p_9c0708a4771643559d22195d08a29baf
+  text: 新增属性 mg:p_9c0708a4771643559d22195d08a29baf
+- severity: compatible
+  area: properties
+  id: mg:p_a7835c3c57b94a248678321d51586b87
+  text: 新增属性 mg:p_a7835c3c57b94a248678321d51586b87

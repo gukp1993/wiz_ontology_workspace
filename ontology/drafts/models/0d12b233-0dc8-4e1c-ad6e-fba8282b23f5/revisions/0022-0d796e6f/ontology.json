@@ -1,0 +1,651 @@
+{
+  "schemaVersion": 1,
+  "namespaces": {
+    "mg": "https://example.com/microgrid/",
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#"
+  },
+  "objectTypes": [
+    {
+      "id": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "displayName": "储能簇",
+      "description": "多个电池模组串联或并联组成的‌高压、大容量电池单元"
+    },
+    {
+      "id": "mg:object_06e387145e154b3a876bc050ba70be13",
+      "displayName": "储能设备",
+      "description": "通过特定介质或装置将能量储存起来，并在需要时释放利用的设备体系‌"
+    }
+  ],
+  "linkTypes": [
+    {
+      "id": "mg:link_23f7280b9b044793a60980a32be20d49",
+      "displayName": "所属于",
+      "description": "储能簇所属于储能设备",
+      "reverseDisplayName": "",
+      "cardinality": "many-to-one",
+      "sourceObjectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "targetObjectTypeId": "mg:object_06e387145e154b3a876bc050ba70be13"
+    }
+  ],
+  "properties": [
+    {
+      "id": "mg:p_481c28fcf52345fb87c60ea6e1027706",
+      "apiName": "p_481c28fcf52345fb87c60ea6e1027706",
+      "sharedPropertyId": "mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0",
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+    },
+    {
+      "id": "mg:p_2607cb5bd6764ec2802294703356ded0",
+      "apiName": "p_2607cb5bd6764ec2802294703356ded0",
+      "sharedPropertyId": "mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0",
+      "objectTypeId": "mg:object_06e387145e154b3a876bc050ba70be13"
+    },
+    {
+      "id": "mg:p_12c90ee5e4844bada48a589f1fae67b4",
+      "apiName": "p_12c90ee5e4844bada48a589f1fae67b4",
+      "sharedPropertyId": "mg:p_1ee34237120e45e195b4a9f4d65438f7",
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+    },
+    {
+      "id": "mg:p_bb90e2314baf4081b2b5f0d55de2a539",
+      "apiName": "p_bb90e2314baf4081b2b5f0d55de2a539",
+      "sharedPropertyId": "mg:p_4f4d4c0cd8074d98bdd5be7dfa0595cd",
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+    },
+    {
+      "id": "mg:p_8409abcb05ec472f9b7e003cc3d7b661",
+      "displayName": "采样功率",
+      "description": "采样功率",
+      "apiName": "p_8409abcb05ec472f9b7e003cc3d7b661",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "单位是kW"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_0381c95798ef49d881f4182b7e436c9c",
+      "apiName": "p_0381c95798ef49d881f4182b7e436c9c",
+      "sharedPropertyId": "mg:p_c75894f49a44428cadd995177356c87f",
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+    },
+    {
+      "id": "mg:p_cd62f18ab06b4e068c5f691a02489807",
+      "apiName": "p_cd62f18ab06b4e068c5f691a02489807",
+      "sharedPropertyId": "mg:p_34b622ec2606419986bf7b4f32c8bbb9",
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc"
+    },
+    {
+      "id": "mg:p_057cf3416ce04e7dabf57ebf2e6f0700",
+      "apiName": "p_057cf3416ce04e7dabf57ebf2e6f0700",
+      "sharedPropertyId": "mg:p_34b622ec2606419986bf7b4f32c8bbb9",
+      "objectTypeId": "mg:object_06e387145e154b3a876bc050ba70be13"
+    },
+    {
+      "id": "mg:p_d8a28b0025a4404180e95cfe3f8cbda7",
+      "displayName": "别名",
+      "description": "储能簇在业务使用中的别称或简称，可用于辅助识别，与正式显示名称区分。",
+      "apiName": "p_d8a28b0025a4404180e95cfe3f8cbda7",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "按原文本显示，不转换编码、不删除前导零。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "string"
+      }
+    },
+    {
+      "id": "mg:p_74cf10920bbc47639030c6debc296018",
+      "displayName": "资产编码",
+      "description": "用于业务资产管理和识别储能簇的编码；不等同于数据库内部主键，编码中的前导零应保留。",
+      "apiName": "p_74cf10920bbc47639030c6debc296018",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "按原文本显示，不转换编码、不删除前导零。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "string"
+      }
+    },
+    {
+      "id": "mg:p_ab86b5bacb904642a2193d4ed751267c",
+      "displayName": "实时三相总有功功率",
+      "description": "储能簇关联计量边界的三相有功功率合计。待确认计量点、功率正负方向及其与簇直流侧功率的区别。 返回最新有效观测的单个数值；数据时效要求由业务约定及项目实现落实。",
+      "apiName": "p_ab86b5bacb904642a2193d4ed751267c",
+      "visibility": "normal",
+      "valueSuffix": "kW",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "kW",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 kW；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_38baaf0503e648aea968837f6affad82",
+      "displayName": "三相总有功功率采样序列",
+      "description": "储能簇关联计量边界的三相有功功率合计。待确认计量点、功率正负方向及其与簇直流侧功率的区别。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_38baaf0503e648aea968837f6affad82",
+      "visibility": "normal",
+      "valueSuffix": "kW",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "kW",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 kW；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_035d355d23ab4bec8d6cbcdb83ffc42c",
+      "displayName": "实时温度",
+      "description": "储能簇相关测点的温度。待确认测点位置及是否为单点、平均值或极值；与环境温度分别维护。 返回最新有效观测的单个数值；数据时效要求由业务约定及项目实现落实。",
+      "apiName": "p_035d355d23ab4bec8d6cbcdb83ffc42c",
+      "visibility": "normal",
+      "valueSuffix": "℃",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "℃",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 ℃；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_42af73e82ccb4e1781485e9ae29a8537",
+      "displayName": "温度采样序列",
+      "description": "储能簇相关测点的温度。待确认测点位置及是否为单点、平均值或极值；与环境温度分别维护。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_42af73e82ccb4e1781485e9ae29a8537",
+      "visibility": "normal",
+      "valueSuffix": "℃",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "℃",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 ℃；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_aaba87642c2f4e9ea7484d3690c4631a",
+      "displayName": "实时湿度",
+      "description": "储能簇相关测点的湿度。待确认测点位置、相对或绝对湿度口径及单位。 返回最新有效观测的单个数值；数据时效要求由业务约定及项目实现落实。",
+      "apiName": "p_aaba87642c2f4e9ea7484d3690c4631a",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_12e610280a0543c8b02ab36c0bff6116",
+      "displayName": "湿度采样序列",
+      "description": "储能簇相关测点的湿度。待确认测点位置、相对或绝对湿度口径及单位。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_12e610280a0543c8b02ab36c0bff6116",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_08ebaacde3ef4ec586331868dea81afc",
+      "displayName": "SOC采样序列",
+      "description": "储能簇剩余可用电荷量相对于参照容量的百分比，采用 0～100 的百分数口径。异常值应保留用于质量检查，不通过格式化截断。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_08ebaacde3ef4ec586331868dea81afc",
+      "visibility": "normal",
+      "valueSuffix": "%",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "%",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 %；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_e2d9eff8771143f6a238eb86319e6d8a",
+      "displayName": "实时循环充电次数",
+      "description": "按约定计数口径记录的储能簇充电循环次数。待确认实际充电次数或等效完整循环次数，以及累计起点、重置规则。 返回最新有效观测的单个数值；数据时效要求由业务约定及项目实现落实。",
+      "apiName": "p_e2d9eff8771143f6a238eb86319e6d8a",
+      "visibility": "normal",
+      "valueSuffix": "次",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "次",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 次；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_84384c65f4254555be261865592ba4f5",
+      "displayName": "循环充电次数采样序列",
+      "description": "按约定计数口径记录的储能簇充电循环次数。待确认实际充电次数或等效完整循环次数，以及累计起点、重置规则。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_84384c65f4254555be261865592ba4f5",
+      "visibility": "normal",
+      "valueSuffix": "次",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "次",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 次；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_b2f4f8b4e3674e8bab5e964406d9892c",
+      "displayName": "实时环境温度",
+      "description": "储能簇所处环境的温度。待确认环境测点位置及多测点汇总口径。 返回最新有效观测的单个数值；数据时效要求由业务约定及项目实现落实。",
+      "apiName": "p_b2f4f8b4e3674e8bab5e964406d9892c",
+      "visibility": "normal",
+      "valueSuffix": "℃",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "℃",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 ℃；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_db46b844c5c34db2b7730a500765090e",
+      "displayName": "环境温度采样序列",
+      "description": "储能簇所处环境的温度。待确认环境测点位置及多测点汇总口径。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_db46b844c5c34db2b7730a500765090e",
+      "visibility": "normal",
+      "valueSuffix": "℃",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "℃",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 ℃；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_a3bd9b495e0244a4a67f1d75b5633a4e",
+      "displayName": "实时充电电量",
+      "description": "在约定计量边界及累计或统计周期内，向储能簇充入的电能。待确认累计起点、重置规则和统计周期，不默认解释为每个采样间隔的增量。 返回最新有效观测的单个数值；数据时效要求由业务约定及项目实现落实。",
+      "apiName": "p_a3bd9b495e0244a4a67f1d75b5633a4e",
+      "visibility": "normal",
+      "valueSuffix": "kWh",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "kWh",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 kWh；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_cda540fb0dfa460f9f4626a19cf89258",
+      "displayName": "充电电量采样序列",
+      "description": "在约定计量边界及累计或统计周期内，向储能簇充入的电能。待确认累计起点、重置规则和统计周期，不默认解释为每个采样间隔的增量。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_cda540fb0dfa460f9f4626a19cf89258",
+      "visibility": "normal",
+      "valueSuffix": "kWh",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "kWh",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 kWh；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_dc818c00ef7545f89e4553946b3e28e1",
+      "displayName": "实时放电电量",
+      "description": "在约定计量边界及累计或统计周期内，储能簇向外释放的电能。待确认累计起点、重置规则和统计周期，不默认解释为每个采样间隔的增量。 返回最新有效观测的单个数值；数据时效要求由业务约定及项目实现落实。",
+      "apiName": "p_dc818c00ef7545f89e4553946b3e28e1",
+      "visibility": "normal",
+      "valueSuffix": "kWh",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "kWh",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 kWh；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_929833186d4b472a95f1326940698101",
+      "displayName": "放电电量采样序列",
+      "description": "在约定计量边界及累计或统计周期内，储能簇向外释放的电能。待确认累计起点、重置规则和统计周期，不默认解释为每个采样间隔的增量。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_929833186d4b472a95f1326940698101",
+      "visibility": "normal",
+      "valueSuffix": "kWh",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "kWh",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 kWh；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_5a8aaf7dbb324efeb913ba8753835bbc",
+      "displayName": "实时温度偏差",
+      "description": "按约定比较基准和算法得到的储能簇温度差异。待确认是否为最高与最低温差、相对参照值偏差或其他口径，不预设计算公式。 返回最新有效观测的单个数值；数据时效要求由业务约定及项目实现落实。",
+      "apiName": "p_5a8aaf7dbb324efeb913ba8753835bbc",
+      "visibility": "normal",
+      "valueSuffix": "℃",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "℃",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 ℃；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_c874decf0df94b789809c31c74163ebd",
+      "displayName": "温度偏差采样序列",
+      "description": "按约定比较基准和算法得到的储能簇温度差异。待确认是否为最高与最低温差、相对参照值偏差或其他口径，不预设计算公式。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_c874decf0df94b789809c31c74163ebd",
+      "visibility": "normal",
+      "valueSuffix": "℃",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "℃",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数，末尾添加 ℃；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_6b867c1f61c7483a81ff2de48d3a58c4",
+      "displayName": "实时电压偏差",
+      "description": "按约定比较基准和算法得到的储能簇电压偏离量。待确认比较对象、公式、绝对差或相对偏差及单位，不预设为最大最小电压差。 返回最新有效观测的单个数值；数据时效要求由业务约定及项目实现落实。",
+      "apiName": "p_6b867c1f61c7483a81ff2de48d3a58c4",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_71f31377360449689ec3b64de3a41aa5",
+      "displayName": "电压偏差采样序列",
+      "description": "按约定比较基准和算法得到的储能簇电压偏离量。待确认比较对象、公式、绝对差或相对偏差及单位，不预设为最大最小电压差。 按观测时间组织为时标和值的序列；采样周期、时标字段和数据来源在项目中配置。",
+      "apiName": "p_71f31377360449689ec3b64de3a41aa5",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "valueShape": "timeSeries",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "保留最多两位小数；空值显示为 —，不填零、不裁剪异常值、不修改原始数值。"
+      },
+      "objectTypeId": "mg:object_dd80b5fda9284760bb27570be1b637fc",
+      "dataType": {
+        "type": "double"
+      }
+    }
+  ],
+  "sharedProperties": [
+    {
+      "id": "mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0",
+      "displayName": "储能soc",
+      "description": "电池的‌剩余电量百分比‌",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "0-100的数值，保留2位小数，加%"
+      },
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_1ee34237120e45e195b4a9f4d65438f7",
+      "displayName": "额定功率",
+      "description": "额定功率",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "单位是kW"
+      },
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_4f4d4c0cd8074d98bdd5be7dfa0595cd",
+      "displayName": "额定容量",
+      "description": "额定容量",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "单位是kWh"
+      },
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_c75894f49a44428cadd995177356c87f",
+      "displayName": "实时功率",
+      "description": "功率",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "formatting": {
+        "mode": "natural",
+        "style": "standard",
+        "suffix": "",
+        "minDecimals": 0,
+        "maxDecimals": 2,
+        "instruction": "单位是kW"
+      },
+      "dataType": {
+        "type": "double"
+      }
+    },
+    {
+      "id": "mg:p_34b622ec2606419986bf7b4f32c8bbb9",
+      "displayName": "显示名称",
+      "description": "对象实例显示名称",
+      "visibility": "normal",
+      "valueSuffix": "",
+      "dataType": {
+        "type": "string"
+      }
+    }
+  ],
+  "valueTypes": [],
+  "metadata": [],
+  "definitionOrder": [
+    "mg:object_dd80b5fda9284760bb27570be1b637fc",
+    "mg:object_06e387145e154b3a876bc050ba70be13",
+    "mg:link_23f7280b9b044793a60980a32be20d49",
+    "mg:p_481c28fcf52345fb87c60ea6e1027706",
+    "mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0",
+    "mg:p_2607cb5bd6764ec2802294703356ded0",
+    "mg:p_12c90ee5e4844bada48a589f1fae67b4",
+    "mg:p_1ee34237120e45e195b4a9f4d65438f7",
+    "mg:p_bb90e2314baf4081b2b5f0d55de2a539",
+    "mg:p_4f4d4c0cd8074d98bdd5be7dfa0595cd",
+    "mg:p_8409abcb05ec472f9b7e003cc3d7b661",
+    "mg:p_0381c95798ef49d881f4182b7e436c9c",
+    "mg:p_c75894f49a44428cadd995177356c87f",
+    "mg:p_34b622ec2606419986bf7b4f32c8bbb9",
+    "mg:p_cd62f18ab06b4e068c5f691a02489807",
+    "mg:p_057cf3416ce04e7dabf57ebf2e6f0700",
+    "mg:p_d8a28b0025a4404180e95cfe3f8cbda7",
+    "mg:p_74cf10920bbc47639030c6debc296018",
+    "mg:p_ab86b5bacb904642a2193d4ed751267c",
+    "mg:p_38baaf0503e648aea968837f6affad82",
+    "mg:p_035d355d23ab4bec8d6cbcdb83ffc42c",
+    "mg:p_42af73e82ccb4e1781485e9ae29a8537",
+    "mg:p_aaba87642c2f4e9ea7484d3690c4631a",
+    "mg:p_12e610280a0543c8b02ab36c0bff6116",
+    "mg:p_08ebaacde3ef4ec586331868dea81afc",
+    "mg:p_e2d9eff8771143f6a238eb86319e6d8a",
+    "mg:p_84384c65f4254555be261865592ba4f5",
+    "mg:p_b2f4f8b4e3674e8bab5e964406d9892c",
+    "mg:p_db46b844c5c34db2b7730a500765090e",
+    "mg:p_a3bd9b495e0244a4a67f1d75b5633a4e",
+    "mg:p_cda540fb0dfa460f9f4626a19cf89258",
+    "mg:p_dc818c00ef7545f89e4553946b3e28e1",
+    "mg:p_929833186d4b472a95f1326940698101",
+    "mg:p_5a8aaf7dbb324efeb913ba8753835bbc",
+    "mg:p_c874decf0df94b789809c31c74163ebd",
+    "mg:p_6b867c1f61c7483a81ff2de48d3a58c4",
+    "mg:p_71f31377360449689ec3b64de3a41aa5"
+  ]
+}

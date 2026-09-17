@@ -1,0 +1,20 @@
+notice: ''
+object_bindings:
+- object_type: object_06e387145e154b3a876bc050ba70be13
+  connection: ''
+  table: m_storage_phase
+  primary_key: id
+  title_key: ''
+  properties: {}
+  relations: []
+- object_type: object_dd80b5fda9284760bb27570be1b637fc
+  connection: conn-6e4bedfe447e
+  table: m_storage_cluster_phase
+  primary_key: id
+  title_key: ''
+  properties:
+    p_cd62f18ab06b4e068c5f691a02489807: name
+  relations: []
+  sources: []
+observation_binding: {}
+source_candidates: []

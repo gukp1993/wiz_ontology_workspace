@@ -1,0 +1,10 @@
+connections:
+- id: conn-6e4bedfe447e
+  credentialRef: local-vault
+  engine: mysql
+  name: 创智园测试库
+  host: 192.168.1.38
+  port: 3306
+  username: root
+  tls: none
+  database: semp_dev_250

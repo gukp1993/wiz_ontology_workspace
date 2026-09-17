@@ -1,0 +1,70 @@
+notice: ''
+object_bindings:
+- object_type: object_06e387145e154b3a876bc050ba70be13
+  connection: conn-6e4bedfe447e
+  table: m_storage_phase
+  primary_key: id
+  title_key: ''
+  properties:
+    p_b8f26c60c9bb4cf1a1883b58c6417547: rated_power
+  relations: []
+- object_type: object_dd80b5fda9284760bb27570be1b637fc
+  connection: conn-6e4bedfe447e
+  table: m_storage_cluster_phase
+  primary_key: id
+  title_key: ''
+  properties:
+    p_cd62f18ab06b4e068c5f691a02489807: name
+    p_bb90e2314baf4081b2b5f0d55de2a539: capacity
+    p_12c90ee5e4844bada48a589f1fae67b4: rated_power
+    p_481c28fcf52345fb87c60ea6e1027706:
+      kind: redis
+      command: GET
+      key: m_storage_cluster_phase-{id}-ptotal
+      params:
+        id:
+          from: primary
+      hashField: ''
+      conversion: number
+      missing: 'null'
+      connection: conn-1c55e0c38920
+    p_4a441976a29445f99c444f4b2e7e695c:
+      kind: computed
+      implementation: 2ec06dc3-ac5b-4774-a13d-4003b3a11504
+      output: series
+      inputs:
+        model_name: m_storage_cluster_phase
+        attr_name: soc
+        model_id: '{id}'
+    p_98b3e2b2f8394bf6803333b3694d0f0b:
+      kind: redis
+      command: GET
+      key: m_storage_cluster_phase-{id}-soc
+      params:
+        id:
+          from: primary
+      hashField: ''
+      conversion: number
+      missing: 'null'
+      connection: conn-1c55e0c38920
+    p_4e3899514877452fa0ce72b4cfa37243:
+      kind: redis
+      command: GET
+      key: m_storage_cluster-{id}-ptotal
+      params:
+        id:
+          from: primary
+      hashField: ''
+      conversion: number
+      missing: 'null'
+      connection: conn-1c55e0c38920
+  relations:
+  - relation: link_23f7280b9b044793a60980a32be20d49
+    target_type: object_06e387145e154b3a876bc050ba70be13
+    sourceId: ''
+    field: storage_id
+    targetSourceId: ''
+    targetField: id
+  sources: []
+observation_binding: {}
+source_candidates: []

@@ -1,0 +1,120 @@
+version: 3.0.0
+changeType: breaking
+changeNote: ''
+reviewer: ''
+createdAt: '2026-09-15T14:26:12.473054+00:00'
+revision: 9b507c07c98553ab65ca4f43eb2410d931e172962367e86bd69dd45ddb565611
+parentVersion: 2.0.0
+reasons:
+- severity: compatible
+  area: objectTypes
+  id: mg:object_fc59f6be740d4f849a43fbe9f92a907d
+  text: 新增对象类型 mg:object_fc59f6be740d4f849a43fbe9f92a907d
+- severity: breaking
+  area: properties
+  id: mg:p_057cf3416ce04e7dabf57ebf2e6f0700
+  text: 删除属性 mg:p_057cf3416ce04e7dabf57ebf2e6f0700
+- severity: breaking
+  area: properties
+  id: mg:p_481c28fcf52345fb87c60ea6e1027706
+  text: 删除属性 mg:p_481c28fcf52345fb87c60ea6e1027706
+- severity: compatible
+  area: properties
+  id: mg:p_2aef88138370406e94c6bb1ab47aa682
+  text: 新增属性 mg:p_2aef88138370406e94c6bb1ab47aa682
+- severity: compatible
+  area: properties
+  id: mg:p_4e3899514877452fa0ce72b4cfa37243
+  text: 新增属性 mg:p_4e3899514877452fa0ce72b4cfa37243
+- severity: compatible
+  area: properties
+  id: mg:p_50b1ae137eaa40a0bdda0d85a9b4f727
+  text: 新增属性 mg:p_50b1ae137eaa40a0bdda0d85a9b4f727
+- severity: compatible
+  area: properties
+  id: mg:p_56ef0140d2084af78b922cafab740d2f
+  text: 新增属性 mg:p_56ef0140d2084af78b922cafab740d2f
+- severity: compatible
+  area: properties
+  id: mg:p_5e4b58e04a1e407db0fe9d42f65d5bd0
+  text: 新增属性 mg:p_5e4b58e04a1e407db0fe9d42f65d5bd0
+- severity: compatible
+  area: properties
+  id: mg:p_5f38b7d7deac491e963825695b6fcaaf
+  text: 新增属性 mg:p_5f38b7d7deac491e963825695b6fcaaf
+- severity: compatible
+  area: properties
+  id: mg:p_98b3e2b2f8394bf6803333b3694d0f0b
+  text: 新增属性 mg:p_98b3e2b2f8394bf6803333b3694d0f0b
+- severity: compatible
+  area: properties
+  id: mg:p_b8f26c60c9bb4cf1a1883b58c6417547
+  text: 新增属性 mg:p_b8f26c60c9bb4cf1a1883b58c6417547
+- severity: compatible
+  area: properties
+  id: mg:p_bed9428c01e34043868f2acf8a6b1433
+  text: 新增属性 mg:p_bed9428c01e34043868f2acf8a6b1433
+- severity: compatible
+  area: properties
+  id: mg:p_bf5f131f28d34fc69f01372810e5b627
+  text: 新增属性 mg:p_bf5f131f28d34fc69f01372810e5b627
+- severity: compatible
+  area: properties
+  id: mg:p_d23b4c8e41ce413b8810ade2222d17de
+  text: 新增属性 mg:p_d23b4c8e41ce413b8810ade2222d17de
+- severity: compatible
+  area: properties
+  id: mg:p_ecffeccdf1814a34b587b6213a8766ef
+  text: 新增属性 mg:p_ecffeccdf1814a34b587b6213a8766ef
+- severity: compatible
+  area: properties
+  id: mg:p_fc515530ed53488db97b7cc5e3ff30a0
+  text: 新增属性 mg:p_fc515530ed53488db97b7cc5e3ff30a0
+- severity: breaking
+  area: properties
+  id: mg:p_12c90ee5e4844bada48a589f1fae67b4
+  text: 属性 mg:p_12c90ee5e4844bada48a589f1fae67b4 的数据类型、共享定义发生变化
+- severity: breaking
+  area: properties
+  id: mg:p_4a441976a29445f99c444f4b2e7e695c
+  text: 属性 mg:p_4a441976a29445f99c444f4b2e7e695c 的数据类型、共享定义发生变化
+- severity: breaking
+  area: properties
+  id: mg:p_bb90e2314baf4081b2b5f0d55de2a539
+  text: 属性 mg:p_bb90e2314baf4081b2b5f0d55de2a539 的数据类型、共享定义发生变化
+- severity: breaking
+  area: properties
+  id: mg:p_cd62f18ab06b4e068c5f691a02489807
+  text: 属性 mg:p_cd62f18ab06b4e068c5f691a02489807 的数据类型、共享定义发生变化
+- severity: breaking
+  area: sharedProperties
+  id: mg:p_1ee34237120e45e195b4a9f4d65438f7
+  text: 删除共享属性 mg:p_1ee34237120e45e195b4a9f4d65438f7
+- severity: breaking
+  area: sharedProperties
+  id: mg:p_34b622ec2606419986bf7b4f32c8bbb9
+  text: 删除共享属性 mg:p_34b622ec2606419986bf7b4f32c8bbb9
+- severity: breaking
+  area: sharedProperties
+  id: mg:p_4f4d4c0cd8074d98bdd5be7dfa0595cd
+  text: 删除共享属性 mg:p_4f4d4c0cd8074d98bdd5be7dfa0595cd
+- severity: compatible
+  area: sharedProperties
+  id: mg:p_3cb6e7b7571946de83f39f2069e4cacf
+  text: 新增共享属性 mg:p_3cb6e7b7571946de83f39f2069e4cacf
+- severity: compatible
+  area: sharedProperties
+  id: mg:p_73f455671e1445a2989a481b56da57a5
+  text: 新增共享属性 mg:p_73f455671e1445a2989a481b56da57a5
+- severity: compatible
+  area: sharedProperties
+  id: mg:p_adf6c3a65cbf4f06a67da5d8bd5c7a65
+  text: 新增共享属性 mg:p_adf6c3a65cbf4f06a67da5d8bd5c7a65
+- severity: compatible
+  area: sharedProperties
+  id: mg:p_dcfb00c8d294461c9debbfd4fbb2731a
+  text: 新增共享属性 mg:p_dcfb00c8d294461c9debbfd4fbb2731a
+- severity: compatible
+  area: sharedProperties
+  id: mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0
+  text: 共享属性 mg:p_e04bf9aa560c4cc1a81dbe9c6c2113d0 仅调整名称或说明
