@@ -231,15 +231,14 @@ try {
     check('R6 画布工具文案与只读详情出口', () => assert.equal(0, 0))
   }
 
-  // ── R4：对象/链接表单宽度收敛，且不缩窄画布与数据表 ──
+  // ── R4（按用户 2026-09-17 追加要求调整）：对象/链接表单撑满右侧工作区，不设宽度上限；
+  //    画布与数据表宽度不受影响 ──
   {
     const src = readFileSync(resolve('frontend/src/ontology/ObjectWorkspace.vue'), 'utf8')
-    const width = src.match(/\.ow-editor\{max-width:(\d+)px\}/)
-    assert.ok(width, '缺少 .ow-editor 宽度声明')
-    const px = Number(width[1])
-    assert.ok(px >= 720 && px <= 800, '.ow-editor 宽度应在 720–800px：' + px)
-    assert.ok(!/\.ld-detail\{[^}]*max-width/.test(src), '不得缩窄详情/数据表')
-    check('R4 表单宽度约 760px 且不限制画布与数据表', () => assert.equal(0, 0))
+    assert.ok(!/\.ow-editor\s*\{[^}]*max-width/.test(src), '对象/链接表单不得再设宽度上限')
+    assert.ok(!/\.ld-detail\s*\{[^}]*max-width/.test(src), '不得缩窄详情/数据表')
+    assert.ok(!/\.graph-workspace\s*\{[^}]*max-width/.test(src), '不得缩窄画布')
+    check('R4 表单撑满右侧工作区且不限制画布与数据表', () => assert.equal(0, 0))
   }
 
   // ── R5/R6：详情不重复数量行、动作说明不常驻堆叠 ──

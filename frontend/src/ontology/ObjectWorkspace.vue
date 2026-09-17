@@ -16,7 +16,7 @@
      自动保存（emit('before-change')/'changed' 路径不动）；浏览态删除仍走撤销快照 + changed。
      20260917 交互评审采纳：列表与画布共用同一套对象/链接表单（origin 只决定返回位置，
      画布编辑期间画布仅隐藏不卸载，视口与选中项保留）；删除对象收进「更多操作」；
-     表单内容区约 760px；详情不再重复数量行，共享复用可点开只读来源；空态与画布文案精简。 -->
+     表单撑满右侧工作区，详情不再重复数量行，共享复用可点开只读来源；空态与画布文案精简。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
 import ObjectCanvas from './ObjectCanvas.vue'
@@ -849,8 +849,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
 .ow-more-menu button:hover{background:var(--paper-2)}
 .ow-more-menu .danger{color:var(--danger)}
 .relation-sentence{margin:18px 0 0}
-/* 对象/链接独立编辑表单：内容区约 760px 并随可用宽度自适应（R4），不改画布与数据表宽度 */
-.ow-editor{max-width:760px}
+/* 对象/链接独立编辑表单：沿用原有版式，撑满右侧工作区（不设宽度上限，也不缩窄画布与数据表） */
 .ow-canvas-wrap{display:block}
 .shared-def{margin-top:4px}
 /* 删除/引用拦截等提示：紧贴详情头，点击操作处即可看到；
