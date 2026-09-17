@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>函数编排 · 节点函数化与画布执行 · 交互原型 v2（2026-09-18）</title>
+<style>
+:root{
+  --paper:#f7f6f2; --paper-2:#efede6; --line:#dcd8cc; --ink:#2c3550; --muted:#8a8f9f;
+  --blue:#3978c5; --blue-soft:#e9f2ff; --blue-line:#bcd6f5; --blue-ink:#2a5a99;
+  --green:#35a167; --green-soft:#edf9f1; --red:#c4534d; --red-soft:#fdeeec;
+  --orange:#d9832b; --orange-soft:#fff2e5; --purple:#8464d8; --purple-soft:#f3f0ff;
+  --teal:#2b9db0; --teal-soft:#e6f6f8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--paper)}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 14px;color:var(--ink)}
+button:hover{background:var(--paper-2)}
+button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+button.primary:hover{opacity:.92}
+button.mini{padding:2px 9px;font-size:12px;border-radius:6px}
+button:disabled{opacity:.45;cursor:not-allowed}
+input,select,textarea{font:inherit;border:1px solid var(--line);border-radius:7px;padding:6px 9px;background:#fff;color:var(--ink);width:100%}
+label{display:block;font-size:12px;color:var(--muted);margin-top:10px}
+.scope{background:#fff8e6;border-bottom:1px solid #eadfb8;color:#8a6d1f;font-size:12px;padding:6px 16px}
+header{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:15px;margin-right:4px}
+header .spacer{flex:1}
+.status{font-size:12px;border-radius:6px;padding:4px 10px}
+.status.ok{background:var(--green-soft);color:var(--green)}
+.status.warn{background:var(--orange-soft);color:var(--orange)}
+.status.err{background:var(--red-soft);color:var(--red)}
+.status.muted{background:var(--paper-2);color:var(--muted)}
+.layout{display:grid;grid-template-columns:210px 1fr 400px;gap:12px;padding:12px 16px;height:calc(100vh - 96px);min-height:540px}
+.side{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;overflow:auto}
+.side .item{display:block;width:100%;text-align:left;border:1px solid transparent;background:transparent;padding:8px 10px;border-radius:7px;margin-bottom:3px}
+.side .item:hover{background:var(--paper-2)}
+.side .item.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
+.side .item.inchain{box-shadow:inset 0 0 0 2px var(--teal)}
+.side .item strong{display:block;font-size:13px}
+.side .item small{color:var(--muted);font-size:11px}
+.side .actions{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.side .actions button{font-size:12px}
+/* canvas */
+.canvas{position:relative;background:var(--paper-2);border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  background-image:radial-gradient(#d8d4c8 1px,transparent 1px);background-size:20px 20px}
+.canvas svg.wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.node{position:absolute;width:196px;background:#fff;border:2px solid var(--line);border-radius:10px;padding:8px 10px 7px;cursor:grab;user-select:none;box-shadow:0 1px 4px rgba(60,60,40,.08)}
+.node.boundary{border-style:double;border-width:3px;border-color:var(--purple);background:var(--purple-soft);width:118px;text-align:center}
+.node.sql{background:var(--green-soft);border-color:var(--green)}
+.node.python{background:var(--blue-soft);border-color:var(--blue)}
+.node.redis{background:var(--orange-soft);border-color:var(--orange)}
+.node.http{background:var(--teal-soft);border-color:var(--teal)}
+.node.calc{background:#fdf0f6;border-color:#c9566e}
+.node.selected{outline:3px solid rgba(57,120,197,.35)}
+.node.inchain{outline:3px dashed var(--teal)}
+.node .kind{font-size:10px;letter-spacing:.6px;color:var(--muted)}
+.node h4{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node .sig{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-block;font-size:10px;border-radius:8px;padding:1px 8px;margin-left:4px;vertical-align:middle}
+.badge.idle{background:var(--paper-2);color:var(--muted)}
+.badge.running{background:var(--blue-soft);color:var(--blue)}
+.badge.success{background:var(--green-soft);color:var(--green)}
+.badge.failed{background:var(--red-soft);color:var(--red)}
+.badge.skipped{background:var(--paper-2);color:var(--muted);text-decoration:line-through}
+.node.failed{border-color:var(--red);box-shadow:0 0 0 2px var(--red-soft)}
+.node .view-out{margin-top:5px;font-size:11px;padding:2px 8px;border-radius:6px}
+.wire-label{position:absolute;transform:translate(-50%,-50%);background:#fff;border:1px solid var(--line);border-radius:9px;font-size:10px;color:var(--muted);padding:1px 7px;pointer-events:none;white-space:nowrap}
+.canvas-tools{position:absolute;top:10px;left:10px;display:flex;gap:6px;z-index:5;flex-wrap:wrap;max-width:70%}
+.canvas-tools button{font-size:12px;padding:4px 10px;background:#fffffff0}
+.canvas-tools button.active{background:var(--teal-soft);border-color:var(--teal);color:var(--teal)}
+.hint{position:absolute;bottom:8px;left:12px;font-size:11px;color:var(--muted)}
+/* config */
+.config{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto}
+.config h3{font-size:13px;margin:16px 0 6px;color:var(--ink)}
+.config h3:first-child{margin-top:0}
+.config .muted{color:var(--muted);font-size:12px}
+.config .row{display:flex;gap:8px}
+.config .row>*{flex:1}
+.config textarea.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre;min-height:120px}
+.param-card{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;font-size:12px}
+.param-card b{font-size:12px}
+.check-box{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--ink)}
+.check-box input{width:auto}
+.mode-seg{display:flex;gap:0;margin-top:8px}
+.mode-seg button{flex:1;border-radius:0;font-size:12px}
+.mode-seg button:first-child{border-radius:7px 0 0 7px}
+.mode-seg button:last-child{border-radius:0 7px 7px 0}
+.mode-seg button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
+/* modal */
+.backdrop{position:fixed;inset:0;background:rgba(40,40,60,.35);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal{background:#fff;border-radius:12px;width:580px;max-width:94vw;max-height:86vh;overflow:auto;padding:18px 20px}
+.modal h2{font-size:15px;margin-bottom:4px}
+.modal .help{font-size:12px;color:var(--muted);margin-bottom:6px}
+.modal .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.modal .foot.left{justify-content:flex-start}
+.json{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:var(--paper-2);border-radius:8px;padding:10px 12px;white-space:pre;overflow:auto;max-height:280px}
+.logs{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#20242e;color:#c8d0e0;border-radius:8px;padding:10px 12px;white-space:pre-wrap;max-height:180px;overflow:auto;margin-top:8px}
+.tabs{display:flex;gap:4px;margin:10px 0 6px}
+.tabs button{font-size:12px;padding:3px 12px;border-radius:6px}
+.tabs button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
+.prov-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:6px 0;font-size:13px}
+.prov-row .grow{flex:1}
+.pill{font-size:10px;border-radius:8px;padding:1px 8px;background:var(--blue-soft);color:var(--blue-ink)}
+.chain-box{background:var(--teal-soft);border:1px solid var(--teal);border-radius:8px;padding:8px 12px;font-size:12px;color:#1d6e7a;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="scope">⚠ 交互原型 v2：演示<b>五类节点（SQL/计算/Python/Redis/HTTP）+ 节点测试 + 链测试 + LLM 配置</b>的目标交互。所有“运行结果”为前端模拟；正式实现才包含真实执行。Python/计算节点的 LLM 代执行、HTTP 出站调用均为正式行为，原型仅演示形态。</div>
+<header>
+  <h1>账户评分编排</h1>
+  <span class="status muted" id="saveState">已保存 · 配置检查通过（未执行验证）</span>
+  <div class="spacer"></div>
+  <button class="mini" onclick="fakeCheck()">检查配置</button>
+  <button class="primary" id="runAllBtn" onclick="openRunForm()">▶ 运行全部</button>
+  <button class="mini" id="testSelBtn" onclick="testSelection()" disabled>测试选中（<span id="selCount">0</span>）</button>
+  <button class="mini" onclick="clearRun()">清除状态</button>
+  <button class="mini" onclick="openLlm()">⚙ LLM 配置</button>
+</header>
+<div class="layout">
+  <aside class="side" id="nodeList"></aside>
+  <div class="canvas" id="canvas">
+    <svg class="wires" id="wires"></svg>
+    <div class="canvas-tools">
+      <button onclick="alert('原型：整理布局（正式实现同一期 cytoscape）')">整理</button>
+      <button onclick="alert('原型：全图适配')">全图</button>
+      <button id="chainModeBtn" onclick="toggleChainMode()">⛓ 链选择：关</button>
+    </div>
+    <span class="hint" id="canvasHint">单击选中 · ⛓链选择模式下逐个点选多个<b>连续</b>节点做链测试 · 徽标为本次运行行数</span>
+  </div>
+  <aside class="config" id="config"><p class="muted">在左侧或画布选择节点。每个节点都是一个“函数”：声明输入参数与输出，可单独测试（指定输入→返回输出），也可编入链与全图运行。</p></aside>
+</div>
+
+<!-- 全图运行：入口参数表单 -->
+<div class="backdrop" id="runForm" style="display:none">
+  <div class="modal">
+    <h2>填写编排入口参数</h2>
+    <p class="help">控件按声明类型自动生成（借鉴 Kestra）。运行前配置检查 errors 必须为 0（运行前 gate）。</p>
+    <label>member_id · 文本 *</label><input id="p_member" value="A-1024"/>
+    <label>query_date · 日期时间 *</label><input id="p_date" type="date" value="2026-09-17"/>
+    <label>min_balance · 数值（可空）</label><input id="p_min" placeholder="留空 = null"/>
+    <div class="foot"><button onclick="closeModal('runForm')">取消</button>
+    <button class="primary" onclick="startRun()">开始运行</button></div>
+  </div>
+</div>
+
+<!-- 节点/链测试表单 -->
+<div class="backdrop" id="testForm" style="display:none">
+  <div class="modal">
+    <h2 id="tfTitle">节点测试</h2>
+    <div class="chain-box" id="tfChain" style="display:none"></div>
+    <p class="help" id="tfHelp"></p>
+    <div id="tfFields"></div>
+    <div class="foot"><button onclick="closeModal('testForm')">取消</button>
+    <button class="primary" onclick="startTest()">开始测试</button></div>
+  </div>
+</div>
+
+<!-- 输出检查器 -->
+<div class="backdrop" id="outView" style="display:none">
+  <div class="modal">
+    <h2 id="ovTitle">输出检查器</h2>
+    <p class="help">输出 JSON 与执行日志（LLM 节点保留提示与响应摘要，供核查非确定性结果）。仅随本次运行返回，不持久化。</p>
+    <div class="tabs">
+      <button class="active" id="tabOut" onclick="ovTab('out')">输出</button>
+      <button id="tabLog" onclick="ovTab('log')">日志</button>
+    </div>
+    <div class="json" id="ovJson"></div>
+    <div class="logs" id="ovLog" style="display:none"></div>
+    <div class="foot"><button class="mini" onclick="copyOut()">复制 JSON</button>
+    <button onclick="closeModal('outView')">关闭</button></div>
+  </div>
+</div>
+
+<!-- LLM 配置 -->
+<div class="backdrop" id="llmView" style="display:none">
+  <div class="modal" style="width:640px">
+    <h2>LLM 配置</h2>
+    <p class="help">OpenAI 兼容 chat/completions 接口。供 Python / 计算（LLM 模式）节点代执行使用。密钥只写不读回（对齐项目 API 凭据的 vault 边界）；测试连通为轻量探测，不持全局锁。</p>
+    <div id="provList"></div>
+    <div class="foot left">
+      <button onclick="provEdit(null)">＋ 新增提供方</button>
+      <div class="spacer" style="flex:1"></div>
+      <button onclick="closeModal('llmView')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- LLM 提供方编辑 -->
+<div class="backdrop" id="provEdit" style="display:none">
+  <div class="modal">
+    <h2 id="peTitle">新增 LLM 提供方</h2>
+    <label>名称 *</label><input id="pe_name" placeholder="如 DeepSeek 主力"/>
+    <label>接口地址（chat/completions 完整 URL）*</label><input id="pe_url" placeholder="https://api.deepseek.com/chat/completions"/>
+    <label>模型 *</label><input id="pe_model" placeholder="deepseek-chat"/>
+    <label>API Key（只写不读回；留空表示沿用已保存密钥）</label><input id="pe_key" type="password" placeholder="sk-…"/>
+    <div class="row"><label>超时（秒）</label><label>温度（求值类建议 0）</label></div>
+    <div class="row"><input id="pe_timeout" type="number" value="60"/><input id="pe_temp" type="number" value="0" step="0.1"/></div>
+    <div class="check-box"><input type="checkbox" id="pe_default"/> 设为默认提供方</div>
+    <div class="foot">
+      <button onclick="provTest()">测试连通</button>
+      <div class="spacer" style="flex:1"></div>
+      <button onclick="closeModal('provEdit')">取消</button>
+      <button class="primary" onclick="provSave()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ---------- 原型状态（正式实现：state 与一期同构，运行/测试结果来自 /api/flow-run） ----------
+const FLOW_INPUT='flow-input', FLOW_OUTPUT='flow-output';
+const TYPE_LABEL={text:'文本',number:'数值',boolean:'是/否',datetime:'日期时间',object:'对象',list:'列表'};
+const KIND={sql:'SQL 节点',python:'PYTHON 节点',redis:'REDIS 节点',http:'HTTP 节点',calc:'计算节点'};
+const PROVIDERS=[
+  {id:'llm_1',name:'DeepSeek 主力',url:'https://api.deepseek.com/chat/completions',model:'deepseek-chat',timeout:60,temp:0,def:true,keySet:true},
+  {id:'llm_2',name:'通义备用',url:'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',model:'qwen-plus',timeout:40,temp:0,def:false,keySet:true},
+];
+const state={
+  nodes:[
+    {id:'nd_sql1',kind:'sql',name:'查询账户',pos:{x:130,y:60},
+      inputs:[{name:'status',label:'状态',type:{type:'text'},source:{kind:'flowInput',input:'status'}},
+              {name:'min_balance',label:'最低余额',type:{type:'number'},source:{kind:'flowInput',input:'min_balance'}}],
+      outputs:[{name:'rows',label:'账户行',type:{type:'list',elementType:{type:'object'}}}],
+      impl:{sql:"SELECT id, name, balance\nFROM t_account\nWHERE status = #{status}\n<if test=\"min_balance != null\"> AND balance &gt;= #{min_balance}</if>",
+            connection:'c1',allowWrite:false,timeout:30,maxRows:1000}},
+    {id:'nd_py1',kind:'python',name:'汇总计算',pos:{x:420,y:60},
+      inputs:[{name:'rows',label:'账户行',type:{type:'list'},source:{kind:'node',node:'nd_sql1',output:'rows'}}],
+      outputs:[{name:'total',label:'总额',type:{type:'number'}},{name:'count',label:'条数',type:{type:'number'}}],
+      impl:{code:"def main(rows):\n    return {'total': sum(r.get('balance') or 0 for r in rows), 'count': len(rows)}\n",
+            provider:'llm_1',timeout:60}},
+    {id:'nd_calc1',kind:'calc',name:'风险评分',pos:{x:710,y:60},
+      inputs:[{name:'total',label:'总额',type:{type:'number'},source:{kind:'nodeField',node:'nd_py1',output:'total',fieldPath:['total']}},
+              {name:'count',label:'条数',type:{type:'number'},source:{kind:'node',node:'nd_py1',output:'count'}}],
+      outputs:[{name:'score',label:'评分',type:{type:'number'}}],
+      impl:{mode:'formula',formulas:{score:'ROUND(MIN({total}/10000, 100), 0)'},llmInstruction:'',provider:'llm_1',timeout:30}},
+    {id:'nd_http1',kind:'http',name:'推送评分',pos:{x:710,y:250},
+      inputs:[{name:'member_id',label:'成员',type:{type:'text'},source:{kind:'flowInput',input:'member_id'}},
+              {name:'score',label:'评分',type:{type:'number'},source:{kind:'node',node:'nd_calc1',output:'score'}}],
+      outputs:[{name:'reply',label:'响应',type:{type:'object'}}],
+      impl:{method:'POST',url:'https://hooks.example.com/score/{member_id}',headers:{'Content-Type':'application/json'},
+            bodyMode:'json',body:'{\n  "memberId": "{member_id}",\n  "score": {score}\n}',
+            credential:'',responsePath:'data',timeout:15}},
+    {id:'nd_redis1',kind:'redis',name:'写缓存',pos:{x:420,y:250},
+      inputs:[{name:'member_id',label:'成员',type:{type:'text'},source:{kind:'flowInput',input:'member_id'}},
+              {name:'score',label:'评分',type:{type:'number'},source:{kind:'node',node:'nd_calc1',output:'score'}}],
+      outputs:[{name:'ok',label:'成功标记',type:{type:'text'}}],
+      impl:{command:'SETEX',key:'score:${member_id}',args:['score','86400'],rowMode:false,timeout:10}},
+  ],
+  outputs:[{name:'result',label:'推送结果',binding:{kind:'node',node:'nd_http1',output:'reply'}}],
+  connections:[{id:'c1',name:'储能测试库（MySQL）',engine:'mysql'},{id:'c2',name:'缓存（Redis）',engine:'redis'}],
+};
+const runState={};
+let selectedId='', chainMode=false, chainSet=new Set(), running=false, pendingTest=null;
+
+const nodeById=id=>state.nodes.find(n=>n.id===id);
+function sigOf(n){
+  const i=(n.inputs||[]).map(x=>x.name).join(', ')||'';
+  const o=(n.outputs||[]).map(x=>`${x.name}:${TYPE_LABEL[x.type.type]||x.type.type}`).join(' · ')||'—';
+  return `(${i}) → ${o}`;
+}
+// 拓扑序（原型手工给定；正式实现由执行器按依赖图排序）
+const TOPO=['nd_sql1','nd_py1','nd_calc1','nd_redis1','nd_http1'];
+
+const canvas=document.getElementById('canvas'), wires=document.getElementById('wires');
+function render(){renderList();renderNodes();renderWires();renderConfig();syncHeader()}
+function renderList(){
+  const el=document.getElementById('nodeList');
+  const items=[{id:FLOW_INPUT,name:'编排输入',kind:'边界（函数入参）'},
+    ...state.nodes.map(n=>({id:n.id,name:n.name,kind:KIND[n.kind]})),
+    {id:FLOW_OUTPUT,name:'编排输出',kind:'边界（函数返回值）'}];
+  el.innerHTML=items.map(i=>`<button class="item ${selectedId===i.id?'active':''} ${chainSet.has(i.id)?'inchain':''}" onclick="clickItem('${i.id}',event)">
+    <strong>${i.name}</strong><small>${i.kind}${runState[i.id]?' · '+badgeHtml(i.id):''}</small></button>`).join('')
+    +`<div class="actions"><button onclick="alert('原型：新增节点弹类型选择（SQL/计算/Python/Redis/HTTP）')">＋ 节点</button></div>`;
+}
+function badgeHtml(id){
+  const r=runState[id]; if(!r) return '';
+  return {running:'<span class="badge running">运行中</span>',success:`<span class="badge success">成功 ${r.ms}ms</span>`,
+          failed:'<span class="badge failed">失败</span>',skipped:'<span class="badge skipped">跳过</span>'}[r.status]||'';
+}
+function renderNodes(){
+  canvas.querySelectorAll('.node,.wire-label').forEach(e=>e.remove());
+  const mk=(id,x,y,cls,inner)=>{
+    const d=document.createElement('div');
+    d.className=`node ${cls} ${selectedId===id?'selected':''} ${chainSet.has(id)?'inchain':''} ${runState[id]?.status==='failed'?'failed':''}`;
+    d.style.left=x+'px';d.style.top=y+'px';d.dataset.id=id;d.innerHTML=inner;canvas.appendChild(d);
+  };
+  mk(FLOW_INPUT,14,160,'boundary',`<h4>编排输入</h4><span class="sig">member_id · query_date · min_balance</span>`);
+  mk(FLOW_OUTPUT,780,430,'boundary',`<h4>编排输出</h4><span class="sig">result:对象</span>`);
+  for(const n of state.nodes){
+    const r=runState[n.id];
+    mk(n.id,n.pos.x,n.pos.y,n.kind,
+      `<span class="kind">${KIND[n.kind]}</span>${badgeHtml(n.id)}
+       <h4>${n.name}</h4><div class="sig">${sigOf(n)}</div>
+       ${r&&(r.status==='success'||r.status==='failed')?`<button class="mini view-out" onclick="event.stopPropagation();openOut('${n.id}')">${r.status==='success'?'查看输出':'查看错误'}</button>`:''}`);
+  }
+  canvas.querySelectorAll('.node[data-id^="nd_"]').forEach(d=>{
+    d.addEventListener('mousedown',ev=>{
+      if(ev.target.tagName==='BUTTON')return;
+      const id=d.dataset.id;
+      if(chainMode){toggleChain(id);return}
+      select(id);
+      const sx=ev.clientX,sy=ev.clientY,ox=d.offsetLeft,oy=d.offsetTop;
+      const mv=e=>{d.style.left=ox+e.clientX-sx+'px';d.style.top=oy+e.clientY-sy+'px';renderWires()};
+      const up=()=>{const n=nodeById(id);n.pos.x=d.offsetLeft;n.pos.y=d.offsetTop;
+        document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+    });
+  });
+}
+function edges(){
+  return [
+    {from:FLOW_INPUT,to:'nd_sql1',label:'status'},
+    {from:'nd_sql1',to:'nd_py1',label:'rows'},
+    {from:'nd_py1',to:'nd_calc1',label:'total'},
+    {from:'nd_calc1',to:'nd_http1',label:'score'},
+    {from:'nd_calc1',to:'nd_redis1',label:'score'},
+  ];
+}
+function renderWires(){
+  wires.innerHTML='';
+  for(const e of edges()){
+    const a=canvas.querySelector(`.node[data-id="${e.from}"]`), b=canvas.querySelector(`.node[data-id="${e.to}"]`);
+    if(!a||!b)continue;
+    const x1=a.offsetLeft+a.offsetWidth, y1=a.offsetTop+a.offsetHeight/2;
+    const x2=b.offsetLeft, y2=b.offsetTop+b.offsetHeight/2;
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    const mx=Math.max((x2-x1)/2,40);
+    p.setAttribute('d',`M${x1},${y1} C${x1+mx},${y1} ${x2-mx},${y2} ${x2},${y2}`);
+    p.setAttribute('stroke',runState[e.to]?.status==='failed'?'var(--red)':'#9aa2b8');
+    p.setAttribute('stroke-width','2');p.setAttribute('fill','none');
+    wires.appendChild(p);
+    const r=runState[e.from];
+    if(r&&r.status==='success'){
+      const lb=document.createElement('div');lb.className='wire-label';
+      lb.style.left=(x1+x2)/2+'px';lb.style.top=(y1+y2)/2+'px';
+      lb.textContent=`${e.label} · ${r.rowCount??'1'} 条`;canvas.appendChild(lb);
+    }
+  }
+}
+function syncHeader(){
+  const el=document.getElementById('saveState');
+  const failed=Object.values(runState).some(r=>r.status==='failed');
+  if(running){el.className='status warn';el.textContent='运行中…（基于运行时快照）';}
+  else if(failed){el.className='status err';el.textContent='本次执行失败（详情见失败节点）';}
+  else if(Object.keys(runState).length){el.className='status ok';el.textContent='本次执行成功（原型模拟数据）';}
+  else{el.className='status muted';el.textContent='已保存 · 配置检查通过（未执行验证）';}
+  document.getElementById('runAllBtn').disabled=running;
+  document.getElementById('selCount').textContent=chainSet.size;
+  document.getElementById('testSelBtn').disabled=running||chainSet.size===0;
+}
+// ---------- 配置面板 ----------
+function renderConfig(){
+  const el=document.getElementById('config');
+  const n=nodeById(selectedId);
+  if(!n){
+    if(selectedId===FLOW_INPUT){el.innerHTML=`<h3>编排输入（函数入参）</h3>
+      <div class="param-card"><b>member_id</b> · 文本</div>
+      <div class="param-card"><b>query_date</b> · 日期时间</div>
+      <div class="param-card"><b>min_balance</b> · 数值 · 可空</div>
+      <p class="muted" style="margin-top:8px">全图运行与测试表单均按这些声明自动生成控件。</p>`;return}
+    if(selectedId===FLOW_OUTPUT){el.innerHTML=`<h3>编排输出（函数返回值）</h3>
+      <div class="param-card"><b>result</b> · 对象 ← 「推送评分」.reply</div>`;return}
+    el.innerHTML='<p class="muted">在左侧或画布选择节点查看配置与测试入口。</p>';return;
+  }
+  const testBtn=`<div style="margin-top:14px;display:flex;gap:8px">
+      <button class="primary" onclick="testSingle('${n.id}')" ${running?'disabled':''}>▶ 测试本节点（指定输入）</button>
+      <button onclick="fakeCheck()">检查配置</button></div>
+    <p class="muted" style="margin-top:8px">测试＝单函数调用：给定全部输入值，立即返回输出（正式实现走 /api/flow-run {targets}）。</p>`;
+  const io=`<h3>输入参数</h3>${(n.inputs||[]).map(i=>`
+    <div class="param-card"><b>${i.name}</b> · ${TYPE_LABEL[i.type.type]||i.type.type}
+      <div class="muted">来源：${i.source?(i.source.kind==='flowInput'?'入口参数 · '+i.source.input:'「'+(nodeById(i.source.node)||{}).name+'」'):'<span style="color:var(--orange)">未绑定</span>'}</div></div>`).join('')}
+    <h3>输出（函数返回值契约）</h3>${(n.outputs||[]).map(o=>`
+    <div class="param-card"><b>${o.name}</b> · ${o.type.type==='list'?'列表<'+(o.type.elementType?TYPE_LABEL[o.type.elementType.type]:'?')+'>':(TYPE_LABEL[o.type.type]||o.type.type)}</div>`).join('')}`;
+  const exec=`<h3>执行参数</h3><div class="row"><label>超时（秒）</label>${n.kind==='sql'?'<label>行数上限</label>':''}</div>
+    <div class="row"><input type="number" value="${n.impl.timeout||30}"/>${n.kind==='sql'?`<input type="number" value="${n.impl.maxRows||1000}"/>`:''}</div>`;
+  const provSel=p=>`<label>LLM 提供方（留空＝默认）</label><select>${`<option value="">（默认：${(PROVIDERS.find(p=>p.def)||{}).name||'未配置'}）</option>`}${PROVIDERS.map(x=>`<option value="${x.id}" ${x.id===p?'selected':''}>${x.name} · ${x.model}</option>`).join('')}</select>
+    <p class="muted">代码/公式不在本机执行：连同输入交给所选 LLM 代为求值并返回 JSON（temperature=0，保留请求与响应留痕）。<a href="#" onclick="openLlm();return false">⚙ 管理 LLM 配置</a></p>`;
+  let body='';
+  if(n.kind==='sql'){
+    body=`<h3>SQL 模板（MyBatis 风格）</h3>
+    <p class="muted">#{参数} 预编译（旧 :参数 兼容）；&lt;if test&gt; &lt;foreach&gt; 动态标签按子集解析；${'{expr}'} 原文拼接将在检查时提示注入风险。</p>
+    <textarea class="code" rows="7">${n.impl.sql.replace(/</g,'&lt;')}</textarea>
+    <label>数据连接（MySQL，凭据在服务端 vault）</label>
+    <select>${state.connections.filter(c=>c.engine==='mysql').map(c=>`<option ${c.id===n.impl.connection?'selected':''}>${c.name}</option>`).join('')}</select>
+    <div class="check-box"><input type="checkbox" ${n.impl.allowWrite?'checked':''}/> 允许写（DML；默认只读会话）</div>`;
+  }else if(n.kind==='python'){
+    body=`<h3>Python 代码（LLM 代执行，本机不运行）</h3>
+    <p class="muted">契约：def main(输入技术名…) → dict | None。静态检查仅校验语法与 main 存在（ast，不执行）；求值由 LLM 完成，结果具非确定性，日志保留提示与响应摘要。</p>
+    <textarea class="code" rows="7">${n.impl.code.replace(/</g,'&lt;')}</textarea>${provSel(n.impl.provider)}`;
+  }else if(n.kind==='calc'){
+    body=`<h3>计算定义</h3>
+    <div class="mode-seg">
+      <button class="${n.impl.mode==='formula'?'active':''}" onclick="setCalcMode('formula')">公式模式（确定性）</button>
+      <button class="${n.impl.mode==='llm'?'active':''}" onclick="setCalcMode('llm')">LLM 模式</button>
+    </div>`;
+    if(n.impl.mode==='formula'){
+      body+=`<p class="muted">复用工作台既有受限公式引擎 calc-expression-1（四则/比较/IF/MIN/MAX/ABS/ROUND/ERROR；{参数} 引用输入；后端静态类型检查 + 确定性求值，不执行任意代码）。</p>
+      ${(n.outputs||[]).map(o=>`<label>输出 ${o.name} 的公式</label><input value="${n.impl.formulas[o.name]||''}" placeholder="如 ROUND(MIN({total}/10000, 100), 0)"/>`).join('')}`;
+    }else{
+      body+=`<p class="muted">用自然语言描述计算规则，连同输入交给 LLM 计算（适合公式语言表达不了的逻辑；结果非确定性）。</p>
+      <label>计算规则（自然语言）</label><textarea rows="3" placeholder="如：按总额分档：&lt;1万 得 10 分，每满 1 万加 5 分，封顶 100">${n.impl.llmInstruction||''}</textarea>${provSel(n.impl.provider)}`;
+    }
+  }else if(n.kind==='http'){
+    body=`<h3>HTTP 接口</h3>
+    <div class="row"><label>方法</label><label>超时（秒）</label></div>
+    <div class="row"><select>${['GET','POST','PUT','DELETE'].map(m=>`<option ${m===n.impl.method?'selected':''}>${m}</option>`).join('')}</select><input type="number" value="${n.impl.timeout}"/></div>
+    <label>URL 模板（{参数名} 占位将 URL 编码替换；占位参数必须已声明）</label><input value="${n.impl.url}"/>
+    <label>请求头（静态 KV）</label><input value="${Object.entries(n.impl.headers||{}).map(([k,v])=>k+': '+v).join('; ')}" placeholder="Content-Type: application/json"/>
+    <label>请求体（JSON 模板，{参数名} 占位；GET 时忽略）</label><textarea class="code" rows="4">${n.impl.body||''}</textarea>
+    <label>认证凭据（可选；引用项目 API 凭据，密钥只写不读回）</label>
+    <select><option value="">（无认证）</option><option>风控推送 Token（Bearer）</option></select>
+    <label>响应提取路径（点路径，留空＝整个 JSON）→ 按输出声明承接</label><input value="${n.impl.responsePath||''}" placeholder="data"/>`;
+  }else{
+    body=`<h3>Redis 命令</h3>
+    <p class="muted">白名单命令表驱动；管理命令（KEYS/FLUSHDB 等）配置检查即报错。</p>
+    <div class="row"><label>命令</label><label>Key 模板</label></div>
+    <div class="row"><select>${['GET','TTL','HGETALL','SET','SETEX','DEL','INCR','EXPIRE'].map(c=>`<option ${c===n.impl.command?'selected':''}>${c}</option>`).join('')}</select><input value="${n.impl.key}"/></div>
+    <label>参数（绑定输入技术名或字面量，逗号分隔）</label><input value="${(n.impl.args||[]).join(', ')}"/>
+    <div class="check-box"><input type="checkbox" ${n.impl.rowMode?'checked':''}/> 行模式（列表输入逐行执行）</div>`;
+  }
+  el.innerHTML=`<h3>${KIND[n.kind]} · ${n.name}</h3>${io}${body}${exec}${testBtn}`;
+}
+function setCalcMode(m){const n=nodeById(selectedId);n.impl.mode=m;render()}
+// ---------- 链选择 ----------
+function toggleChainMode(){
+  chainMode=!chainMode; chainSet.clear();
+  document.getElementById('chainModeBtn').textContent='⛓ 链选择：'+(chainMode?'开':'关');
+  document.getElementById('chainModeBtn').classList.toggle('active',chainMode);
+  document.getElementById('canvasHint').innerHTML=chainMode
+    ?'链选择模式：<b>逐个点选</b>按执行顺序的多个节点（要求构成连续链），完成后点顶部「测试选中」'
+    :'单击选中 · ⛓链选择模式下逐个点选多个<b>连续</b>节点做链测试 · 徽标为本次运行行数';
+  render();
+}
+function toggleChain(id){
+  if(chainSet.has(id))chainSet.delete(id);
+  else{
+    // 连续性预检：节点来源必须落在已选集合或边界内（正式实现同样校验并给出明确报错）
+    const n=nodeById(id);
+    const missing=(n.inputs||[]).filter(i=>i.source&&i.source.kind!=='flowInput'&&!chainSet.has(i.source.node));
+    if(chainSet.size&&missing.length){alert(`「${n.name}」依赖未选中的上游：${[...new Set(missing.map(i=>nodeById(i.source.node).name))].join('、')}。请按执行顺序连续选择。`);return}
+    chainSet.add(id);
+  }
+  render();
+}
+function clickItem(id,ev){
+  if(chainMode&&state.nodes.some(n=>n.id===id))toggleChain(id);else select(id);
+}
+function select(id){selectedId=id;render()}
+// ---------- 测试（单节点 / 链） ----------
+function externalInputs(ids){
+  // 链/节点的“外部输入”：来源不在被测集合内的输入（fixed 自动带值；未绑定必须填）
+  const set=new Set(ids), rows=[];
+  for(const id of ids){
+    const n=nodeById(id); if(!n)continue;
+    for(const i of n.inputs||[]){
+      if(i.source&&i.source.kind==='fixed'){rows.push({...i,fixedValue:i.source.value,owner:n});continue}
+      const inside=i.source&&i.source.kind==='node'&&set.has(i.source.node);
+      if(!inside)rows.push({...i,owner:n});
+    }
+  }
+  return rows;
+}
+function testSingle(id){openTestForm([id])}
+function testSelection(){
+  if(!chainSet.size)return;
+  const ids=TOPO.filter(id=>chainSet.has(id));
+  openTestForm(ids);
+}
+function openTestForm(ids){
+  const ext=externalInputs(ids);
+  pendingTest={ids,ext,values:{}};
+  document.getElementById('tfTitle').textContent=ids.length===1?`节点测试 · ${nodeById(ids[0]).name}`:`链测试 · ${ids.length} 个节点`;
+  document.getElementById('tfHelp').textContent='按声明类型填写全部输入，测试不落盘、不影响草稿。';
+  const box=document.getElementById('tfChain');
+  if(ids.length>1){box.style.display='block';box.textContent='执行顺序：'+ids.map(id=>nodeById(id).name).join(' → ')}
+  else box.style.display='none';
+  document.getElementById('tfFields').innerHTML=ext.length?ext.map(i=>`
+    <label>${i.owner.name} · ${i.name} · ${TYPE_LABEL[i.type.type]||i.type.type}${i.source?'':'（未绑定，测试必填）'}</label>
+    ${i.fixedValue!==undefined?`<input value="${i.fixedValue}" disabled/>`:
+      i.type.type==='number'?`<input type="number" oninput="pendingTest.values['${i.owner.id}.${i.name}']=this.value"/>`:
+      i.type.type==='boolean'?`<select onchange="pendingTest.values['${i.owner.id}.${i.name}']=this.value"><option value="true">是</option><option value="false">否</option></select>`:
+      `<input oninput="pendingTest.values['${i.owner.id}.${i.name}']=this.value"/>`}`).join('')
+    :'<p class="muted">该节点/链没有外部输入，直接开始测试。</p>';
+  document.getElementById('testForm').style.display='flex';
+};
+function startTest(){
+  closeModal('testForm');
+  const ids=pendingTest.ids;
+  for(const id of ids)delete runState[id];
+  running=true;render();
+  let i=0;
+  const step=()=>{
+    if(i>=ids.length){running=false;render();return}
+    const id=ids[i++];runState[id]={status:'running'};render();
+    setTimeout(()=>{
+      const fake={
+        nd_sql1:{ms:86,rowCount:12,output:{rows:'[{id,name,balance} × 12 行]'}},
+        nd_py1:{ms:2100,rowCount:1,output:{total:158230.75,count:12},logs:'[LLM] provider=DeepSeek 主力 model=deepseek-chat temperature=0 耗时 2.1s\n[LLM 请求摘要] def main(rows): … inputs={rows:"[12 行]"}\n[LLM 响应摘要] {"total":158230.75,"count":12}（解析成功）'},
+        nd_calc1:{ms:3,rowCount:1,output:{score:16},logs:'[calc-expression-1] ROUND(MIN(158230.75/10000,100),0) = 16（确定性求值）'},
+        nd_redis1:{ms:9,rowCount:1,output:{ok:'OK'},logs:'[redis] SETEX score:A-1024 86400 16 → OK'},
+        nd_http1:{ms:143,rowCount:1,output:{reply:{code:0,msg:'accepted'}},logs:'[http] POST hooks.example.com/score/A-1024 → 200（143ms，871B）'},
+      }[id]||{ms:30,rowCount:0,output:{}};
+      runState[id]={status:'success',...fake,logs:fake.logs||'[stdout] ok'};
+      render();setTimeout(step,240);
+    },420);
+  };
+  step();
+}
+// ---------- 全图运行 ----------
+function openRunForm(){if(!running)document.getElementById('runForm').style.display='flex'}
+function closeModal(id){document.getElementById(id).style.display='none'}
+function startRun(){
+  closeModal('runForm');
+  TOPO.forEach(id=>delete runState[id]);running=true;render();
+  let i=0;const step=()=>{
+    if(i>=TOPO.length){running=false;render();return}
+    const id=TOPO[i++];runState[id]={status:'running'};render();
+    setTimeout(()=>{
+      const fake={
+        nd_sql1:{ms:86,rowCount:12,output:{rows:'[{id,name,balance} × 12 行]'}},
+        nd_py1:{ms:2100,rowCount:1,output:{total:158230.75,count:12},logs:'[LLM] provider=DeepSeek 主力 model=deepseek-chat temperature=0 耗时 2.1s\n[LLM 响应摘要] {"total":158230.75,"count":12}'},
+        nd_calc1:{ms:3,rowCount:1,output:{score:16},logs:'[calc-expression-1] = 16（确定性求值）'},
+        nd_redis1:{ms:9,rowCount:1,output:{ok:'OK'},logs:'[redis] SETEX → OK'},
+        nd_http1:{ms:143,rowCount:1,output:{reply:{code:0,msg:'accepted'}},logs:'[http] POST → 200'},
+      }[id]||{ms:30,rowCount:0,output:{}};
+      runState[id]={status:'success',...fake,logs:fake.logs||'[ok]'};
+      render();setTimeout(step,240);
+    },420);
+  };
+  step();
+}
+function clearRun(){TOPO.forEach(id=>delete runState[id]);running=false;render()}
+function fakeCheck(){const el=document.getElementById('saveState');el.className='status warn';el.textContent='已检查：配置通过（LLM 提供方 2 个，默认 DeepSeek 主力）';setTimeout(syncHeader,4000)}
+// ---------- 输出检查器 ----------
+function ovTab(t){
+  document.getElementById('ovJson').style.display=t==='out'?'block':'none';
+  document.getElementById('ovLog').style.display=t==='log'?'block':'none';
+  document.getElementById('tabOut').classList.toggle('active',t==='out');
+  document.getElementById('tabLog').classList.toggle('active',t==='log');
+}
+function openOut(id){
+  const r=runState[id]||{};
+  document.getElementById('ovTitle').textContent=`输出检查器 · ${(nodeById(id)||{}).name||id}`;
+  document.getElementById('ovJson').textContent=r.error?('错误：'+r.error):JSON.stringify(r.output??{},null,2);
+  document.getElementById('ovLog').textContent=r.logs||'（无日志）';
+  ovTab(r.error?'log':'out');
+  document.getElementById('outView').style.display='flex';
+}
+function copyOut(){navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('ovJson').textContent)}
+// ---------- LLM 配置 ----------
+let provEditing=null;
+function openLlm(){renderProv();document.getElementById('llmView').style.display='flex'}
+function renderProv(){
+  document.getElementById('provList').innerHTML=PROVIDERS.map(p=>`
+    <div class="prov-row"><span class="grow"><b>${p.name}</b> · ${p.model}<div class="muted" style="font-size:11px">${p.url}</div></span>
+      ${p.def?'<span class="pill">默认</span>':''}
+      <span class="muted" style="font-size:11px">${p.keySet?'密钥已配置':'未配置密钥'}</span>
+      <button class="mini" onclick="provTestId('${p.id}')">测试</button>
+      <button class="mini" onclick="provEdit('${p.id}')">编辑</button></div>`).join('')
+    ||'<p class="muted">尚未配置任何 LLM 提供方。Python / 计算（LLM 模式）节点在检查时报错。</p>';
+}
+function provEdit(id){
+  provEditing=id?PROVIDERS.find(p=>p.id===id):null;
+  document.getElementById('peTitle').textContent=id?'编辑 LLM 提供方':'新增 LLM 提供方';
+  document.getElementById('pe_name').value=provEditing?provEditing.name:'';
+  document.getElementById('pe_url').value=provEditing?provEditing.url:'';
+  document.getElementById('pe_model').value=provEditing?provEditing.model:'';
+  document.getElementById('pe_key').value='';
+  document.getElementById('pe_timeout').value=provEditing?provEditing.timeout:60;
+  document.getElementById('pe_temp').value=provEditing?provEditing.temp:0;
+  document.getElementById('pe_default').checked=provEditing?!!provEditing.def:false;
+  closeModal('llmView');document.getElementById('provEdit').style.display='flex';
+}
+function provTest(){alert('原型：发送 minuscule 探测请求（如 "ping"，max_tokens=1）验证地址/密钥/模型可用。正式实现不持全局锁、密钥不出服务端。')}
+function provTestId(id){alert(`原型：测试「${PROVIDERS.find(p=>p.id===id).name}」连通性（探测请求，~300ms 返回可用/失败原因）。`)}
+function provSave(){
+  const name=document.getElementById('pe_name').value.trim();
+  if(!name)return alert('请填写名称');
+  const fields={name,url:document.getElementById('pe_url').value.trim(),model:document.getElementById('pe_model').value.trim(),
+    timeout:+document.getElementById('pe_timeout').value||60,temp:+document.getElementById('pe_temp').value||0};
+  let target;
+  if(provEditing){Object.assign(provEditing,fields);if(document.getElementById('pe_key').value)provEditing.keySet=true;target=provEditing.id}
+  else{const fresh={id:'llm_'+(PROVIDERS.length+1),...fields,keySet:!!document.getElementById('pe_key').value,def:false};PROVIDERS.push(fresh);target=fresh.id}
+  if(document.getElementById('pe_default').checked)PROVIDERS.forEach(p=>p.def=p.id===target);
+  closeModal('provEdit');openLlm();render();
+}
+select('');
+</script>
+</body>
+</html>
