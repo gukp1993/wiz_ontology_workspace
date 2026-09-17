@@ -13,7 +13,10 @@
      保存约定（T00 契约，app/formGuard.ts）：对象/链接表单注册 form-guard 离开保护，
      保存走 form-save.submitForm('ontology', mutate) 一次落盘，取消直接丢弃草稿；
      属性表单由 PropertyManager 自带同一契约。画布模式保留 ObjectCanvas 既有能力与
-     自动保存（emit('before-change')/'changed' 路径不动）；浏览态删除仍走撤销快照 + changed。 -->
+     自动保存（emit('before-change')/'changed' 路径不动）；浏览态删除仍走撤销快照 + changed。
+     20260917 交互评审采纳：列表与画布共用同一套对象/链接表单（origin 只决定返回位置，
+     画布编辑期间画布仅隐藏不卸载，视口与选中项保留）；删除对象收进「更多操作」；
+     表单内容区约 760px；详情不再重复数量行，共享复用可点开只读来源；空态与画布文案精简。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
 import ObjectCanvas from './ObjectCanvas.vue'
@@ -39,9 +42,6 @@ const formSave = inject<FormSaveAPI>('form-save')!
 
 const mode = ref<'list' | 'canvas'>('list'), selected = ref(''), message = ref('')
 const canvasRef = ref<any>(null)
-// ObjectCanvas 挂载时会主动 select 首个对象类型（画布初始化，非用户点击），
-// 用 booting 标记吞掉这一次以及「在画布查看」的程序性 select，避免刚进画布就被弹回列表模式。
-let canvasBooting = false
 
 const graph = computed(() => props.state?.ontology?.['@graph'] || [])
 const objects = computed(() => graph.value.filter((n: any) => n['@type'] === 'owl:Class'))
@@ -74,11 +74,13 @@ const detailTab = ref<Tab>('props')
 watch(() => props.initialTab, t => { if (t === 'props' || t === 'links' || t === 'actions' || t === 'rules') detailTab.value = t }, { immediate: true })
 
 // ─── 编辑态（原型 editorView）：kind 决定挂载哪种表单；带 draft 的由本组件注册 form-guard ───
+// origin（R1）：列表与画布进入的是同一套表单，只有「保存/取消后回到哪里」不同。
+type Origin = 'list' | 'canvas'
 type LinkDraft = { label: string; from: string; to: string; cardinality: string; reverseLabel: string; comment: string }
 type Editor =
-  | { kind: 'object'; isNew: boolean; id: string; draft: { label: string; comment: string }; original: string; returnTab: Tab }
+  | { kind: 'object'; isNew: boolean; id: string; draft: { label: string; comment: string }; original: string; returnTab: Tab; origin: Origin }
   | { kind: 'property'; targetTypeId: string; propertyId: string; returnTab: Tab }
-  | { kind: 'link'; isNew: boolean; id: string; draft: LinkDraft; original: string; returnTab: Tab }
+  | { kind: 'link'; isNew: boolean; id: string; draft: LinkDraft; original: string; returnTab: Tab; origin: Origin }
 const editor = ref<Editor | null>(null)
 const editorError = ref(''), editorSaving = ref(false)
 const objectDraft = computed(() => editor.value?.kind === 'object' ? editor.value.draft : null)
@@ -93,7 +95,24 @@ const wsGuard = { isDirty: () => { const e = editor.value; return !!e && 'draft'
 watch(() => { const e = editor.value; return !!e && (e.kind === 'object' || e.kind === 'link') }, open => { open ? guardApi.register(wsGuard) : guardApi.unregister(wsGuard) }, { immediate: true })
 onBeforeUnmount(() => guardApi.unregister(wsGuard))
 
-function closeEditor() { editor.value = null; editorError.value = '' }
+function closeEditor() {
+  const e = editor.value
+  editor.value = null; editorError.value = ''
+  if (!(e && 'origin' in e && e.origin === 'canvas')) restoreListScroll()
+}
+
+// 列表滚动位置：表单会替换整个主内容导致列表卸载，返回时按原位置还原（R1 §3.2）。
+let listScrollTop = 0
+function captureListScroll() { listScrollTop = document.querySelector<HTMLElement>('.ld-items')?.scrollTop || 0 }
+function restoreListScroll() { void nextTick(() => { const el = document.querySelector<HTMLElement>('.ld-items'); if (el) el.scrollTop = listScrollTop }) }
+// 画布来源的表单保存/取消后回到画布：画布组件始终挂载（编辑期间仅隐藏），视口与选中项自然保留；
+// 新对象保存后放到可见区域并选中，既有对象改名不移动视口、不重新布局（R1 §3.2）。
+async function backToCanvas(id: string, isNew: boolean) {
+  await nextTick()
+  await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+  canvasRef.value?.sync?.()
+  if (isNew) canvasRef.value?.focusNode?.(id)
+}
 
 // 保存成功/取消后返回原对象与原页签，并定位（闪烁 + 滚动到可见）条目。
 const highlightId = ref('')
@@ -117,11 +136,12 @@ async function locate(id: string) {
 }
 
 // ─── 对象定义表单（D03：新建不再 prompt、不预建占位；名称+业务定义必填） ───
-function openObjectEditor(isNew: boolean) {
+function openObjectEditor(isNew: boolean, origin: Origin = 'list') {
   const n: any = isNew ? null : current.value
   if (!isNew && !n) return
+  if (origin === 'list') captureListScroll()
   const draft = { label: n?.['rdfs:label'] || '', comment: n?.['rdfs:comment'] || '' }
-  editor.value = { kind: 'object', isNew, id: isNew ? 'mg:object_' + crypto.randomUUID().replaceAll('-', '') : n['@id'], draft, original: JSON.stringify(draft), returnTab: detailTab.value }
+  editor.value = { kind: 'object', isNew, id: isNew ? 'mg:object_' + crypto.randomUUID().replaceAll('-', '') : n['@id'], draft, original: JSON.stringify(draft), returnTab: detailTab.value, origin }
   editorError.value = ''
 }
 async function saveObject() {
@@ -140,11 +160,13 @@ async function saveObject() {
   editor.value = null
   selected.value = e.id
   detailTab.value = e.isNew ? 'props' : e.returnTab
-  locate(e.id)
+  if (e.origin === 'canvas') await backToCanvas(e.id, e.isNew)
+  else { locate(e.id); restoreListScroll() }
 }
 
 // ─── 属性表单：整体替换主内容，挂载无目录的独立表单 PropertyManager ───
 function openPropertyEditor(typeId: string, propertyId: string) {
+  captureListScroll()
   selected.value = typeId
   editor.value = { kind: 'property', targetTypeId: typeId, propertyId, returnTab: detailTab.value }
   editorError.value = ''
@@ -161,13 +183,16 @@ function onPropertySaved(payload: { id: string; targetTypeId?: string }) {
 const CARDINALITY: Record<string, string> = { 'one-to-one': '一对一', 'one-to-many': '一对多', 'many-to-one': '多对一', 'many-to-many': '多对多' }
 const linkTargetOptions = computed(() => objects.value.map((o: any) => ({ value: o['@id'], label: o['rdfs:label'] || o['@id'] })))
 const cardinalityOptions = Object.entries(CARDINALITY).map(([value, label]) => ({ value, label }))
-function openLinkEditor(id = '') {
-  if (!current.value) return
+// id：编辑既有链接；preset：画布连线模式已选好的起点/终点（R1）。
+function openLinkEditor(id = '', preset: { from?: string; to?: string } = {}, origin: Origin = 'list') {
   const n: any = id ? graph.value.find(x => x['@id'] === id) : null
+  const fallbackFrom = preset.from || current.value?.['@id'] || objects.value[0]?.['@id'] || ''
+  if (!n && !fallbackFrom) return
+  if (origin === 'list') captureListScroll()
   const draft: LinkDraft = n
-    ? { label: n['rdfs:label'] || '', from: n['rdfs:domain']?.['@id'] || current.value['@id'], to: n['rdfs:range']?.['@id'] || '', cardinality: n['mg:cardinality'] || 'many-to-one', reverseLabel: n['mg:reverseLabel'] || '', comment: n['rdfs:comment'] || '' }
-    : { label: '', from: current.value['@id'], to: objects.value.find(o => o['@id'] !== current.value?.['@id'])?.['@id'] || current.value['@id'], cardinality: 'many-to-one', reverseLabel: '', comment: '' }
-  editor.value = { kind: 'link', isNew: !id, id: id || 'mg:link_' + crypto.randomUUID().replaceAll('-', ''), draft, original: JSON.stringify(draft), returnTab: detailTab.value === 'links' ? 'links' : detailTab.value }
+    ? { label: n['rdfs:label'] || '', from: n['rdfs:domain']?.['@id'] || fallbackFrom, to: n['rdfs:range']?.['@id'] || '', cardinality: n['mg:cardinality'] || 'many-to-one', reverseLabel: n['mg:reverseLabel'] || '', comment: n['rdfs:comment'] || '' }
+    : { label: '', from: fallbackFrom, to: preset.to || objects.value.find(o => o['@id'] !== fallbackFrom)?.['@id'] || fallbackFrom, cardinality: 'many-to-one', reverseLabel: '', comment: '' }
+  editor.value = { kind: 'link', isNew: !id, id: id || 'mg:link_' + crypto.randomUUID().replaceAll('-', ''), draft, original: JSON.stringify(draft), returnTab: detailTab.value === 'links' ? 'links' : detailTab.value, origin }
   editorError.value = ''
 }
 async function saveLink() {
@@ -191,7 +216,8 @@ async function saveLink() {
   if (!r.ok) { editorError.value = r.message; return }
   editor.value = null
   detailTab.value = e.returnTab
-  locate(e.id)
+  if (e.origin === 'canvas') await backToCanvas(e.id, e.isNew)
+  else { locate(e.id); restoreListScroll() }
 }
 
 // ─── 从属性库添加（D05：原型 libraryView(true) 挑选态，不再跳库页重选对象） ───
@@ -305,10 +331,11 @@ function syncHeight() {
 onMounted(() => {
   stackMq = window.matchMedia(STACK_MQ); syncStacked(); stackMq.addEventListener('change', syncStacked)
   window.addEventListener('resize', syncHeight)
+  document.addEventListener('click', onDocumentClick)
   nextTick(syncHeight)
 })
-onBeforeUnmount(() => { stackMq?.removeEventListener('change', syncStacked); window.removeEventListener('resize', syncHeight) })
-watch([mode, editor, message, current], () => nextTick(syncHeight))
+onBeforeUnmount(() => { stackMq?.removeEventListener('change', syncStacked); window.removeEventListener('resize', syncHeight); document.removeEventListener('click', onDocumentClick) })
+watch([mode, editor, message, current], () => { closeMoreMenu(false); nextTick(syncHeight) })
 
 function backToList() {
   stackedDetail.value = false
@@ -349,15 +376,39 @@ watch(() => [props.focusType, props.focusProperty], ([t, p]: any[]) => {
 }, { immediate: true })
 
 // ─── 浏览态数据 ───
-// 属性行：共享引用属性按生效定义展示名称、统一数据类型和单位。
+// 属性行：共享引用属性按生效定义展示名称、统一数据类型和单位；复用方式只标「共享/私有」（R5）。
 const propRows = computed(() => {
   if (!current.value) return []
   return localProperties(graph.value, current.value['@id']).map((p: any) => {
     const m = effectiveProperty(p, graph.value)
-    const shared = !!p['mg:sharedProperty']
-    return { id: p['@id'], label: m['rdfs:label'] || '', type: propertyTypeLabel(p, graph.value), unit: m['mg:valueSuffix'] || '', isDisplayName: m['mg:isDisplayName']?.['@value'] === true, reuse: shared ? '共享引用 · ' + (m['rdfs:label'] || '') : '对象私有' }
+    const sharedId = String(p['mg:sharedProperty']?.['@id'] || '')
+    return { id: p['@id'], label: m['rdfs:label'] || '', type: propertyTypeLabel(p, graph.value), unit: m['mg:valueSuffix'] || '', isDisplayName: m['mg:isDisplayName']?.['@value'] === true, sharedId }
   })
 })
+// 共享来源详情（R5）：按稳定 ID 解析（重名不串联）；引用失效时只说明「共享定义不存在」，
+// 不回填、不转为私有、不提供编辑入口。
+const sharedDetailId = ref('')
+const sharedCard = ref<HTMLElement | null>(null)
+let sharedTrigger: HTMLElement | null = null
+const sharedDetail = computed(() => {
+  const id = sharedDetailId.value
+  const def: any = graph.value.find((n: any) => n['@id'] === id && n['@type'] === 'mg:SharedProperty')
+  if (!def) return { missing: true, id, name: '', comment: '', type: '', unit: '', usage: 0 }
+  return {
+    missing: false, id,
+    name: def['rdfs:label'] || '未命名共享属性',
+    comment: def['rdfs:comment'] || '暂无业务定义',
+    type: propertyTypeLabel(def, graph.value),
+    unit: String(def['mg:valueSuffix'] || ''),
+    usage: graph.value.filter((n: any) => n['@type'] === 'owl:DatatypeProperty' && n['mg:sharedProperty']?.['@id'] === id).length,
+  }
+})
+function openShared(id: string, event?: MouseEvent) {
+  sharedTrigger = (event?.currentTarget as HTMLElement) || null
+  sharedDetailId.value = id
+  void nextTick(() => sharedCard.value?.querySelector<HTMLElement>('button')?.focus())
+}
+function closeShared() { sharedDetailId.value = ''; sharedTrigger?.focus?.(); sharedTrigger = null }
 // 链接行（D06）：当前对象作为起点或终点的链接都展示；同一链接只维护一份，从任一端编辑同一节点。
 const linkRows = computed(() => {
   if (!current.value) return []
@@ -366,6 +417,31 @@ const linkRows = computed(() => {
     .map((n: any) => ({ id: n['@id'], label: n['rdfs:label'] || '未命名链接', from: typeName(n['rdfs:domain']?.['@id']), to: typeName(n['rdfs:range']?.['@id']), card: CARDINALITY[n['mg:cardinality']] || n['mg:cardinality'] || '', reverse: n['mg:reverseLabel'] || '' }))
 })
 function pick(id: string) { selected.value = id; message.value = ''; openDetailIfStacked() }
+
+// ─── 详情头「更多操作」（R3）：删除对象收进菜单；键盘可用、Escape 关闭并归还焦点 ───
+const moreOpen = ref(false)
+const moreWrap = ref<HTMLElement | null>(null)
+const moreTrigger = ref<HTMLButtonElement | null>(null)
+function openMoreMenu() {
+  moreOpen.value = true
+  void nextTick(() => moreWrap.value?.querySelector<HTMLElement>('[role="menuitem"]')?.focus())
+}
+function closeMoreMenu(refocus = false) { if (!moreOpen.value) return; moreOpen.value = false; if (refocus) moreTrigger.value?.focus() }
+// 菜单内上下键巡航（原生按钮 + roving focus），Enter/Space 由按钮原生行为触发。
+function moreKeydown(e: KeyboardEvent) {
+  const items = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="menuitem"]')]
+  const i = items.indexOf(document.activeElement as HTMLElement)
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus() }
+  else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus() }
+  else if (e.key === 'End') { e.preventDefault(); items[items.length - 1]?.focus() }
+  else if (e.key === 'Escape') { e.preventDefault(); closeMoreMenu(true) }
+}
+function onDocumentClick(e: MouseEvent) { if (moreOpen.value && !moreWrap.value?.contains(e.target as Node)) closeMoreMenu(false) }
+async function moreRemove() {
+  const target = current.value
+  closeMoreMenu(false)
+  if (target) await removeNode(target['@id'], target['rdfs:label'])
+}
 
 // ─── 动作页签（20260917 需求 §3.2）：可搜索多选关联，确认才保存，移除不删动作定义 ───
 const actionById = computed(() => new Map(actionsOf(props.state).map((a: any) => [a.id, a])))
@@ -450,37 +526,47 @@ async function removeNode(id: string, label: string) {
 }
 
 // ─── 模式切换与画布联动 ───
-function showCanvas() { mode.value = 'canvas'; canvasBooting = true }
+function showCanvas() { mode.value = 'canvas' }
 async function showInCanvas() {
   const id = selected.value
-  mode.value = 'canvas'; canvasBooting = true
+  mode.value = 'canvas'
   await nextTick()
-  canvasBooting = true // 挂载初始化的 select 已被消费；focusNode 引发的 select 同样不切列表
   canvasRef.value?.focusNode?.(id)
 }
-// 画布点击节点：只对对象类型生效（连线属链接类型，留在画布 inspector 查看），切回列表模式定位。
+// 画布点击节点：只同步当前选中对象，不再切回列表模式（R1：画布就地只读查看，编辑走「编辑定义」）。
 function selectById(id: string) {
-  if (canvasBooting) { canvasBooting = false; if (id && objects.value.some((n: any) => n['@id'] === id)) selected.value = id; return }
-  if (!id || !objects.value.some((n: any) => n['@id'] === id)) return
-  selected.value = id; mode.value = 'list'
+  if (id && objects.value.some((n: any) => n['@id'] === id)) selected.value = id
 }
+// 画布语义事件 → 共用表单（R1）：新建对象、编辑定义、连线模式选好两端后建链接。
+function createFromCanvas() { editor.value = null; openObjectEditor(true, 'canvas') }
+function editFromCanvas(id: string) {
+  const n: any = graph.value.find(x => x['@id'] === id)
+  if (!n) return
+  if (n['@type'] === 'owl:ObjectProperty') { openLinkEditor(id, {}, 'canvas'); return }
+  if (n['@type'] !== 'owl:Class') return
+  selected.value = id
+  openObjectEditor(false, 'canvas')
+}
+function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor('', payload, 'canvas') }
 </script>
 
 <template>
 <div class="object-workspace ow-root" :class="{ 'ow-canvas-grid': mode === 'canvas' }">
-  <!-- 画布模式：复用 ObjectCanvas 内置工具条/目录/inspector，自动保存路径不动 -->
-  <template v-if="mode === 'canvas'">
+  <!-- 画布模式：复用 ObjectCanvas 内置工具条/目录/inspector；自动保存路径不动。
+       编辑期间只隐藏（v-show）不卸载：返回时缩放/平移/选中项原样保留（R1）。 -->
+  <div v-if="mode === 'canvas'" v-show="!editor" class="ow-canvas-wrap">
     <div class="ow-mode-tabs ow-canvas-tabs" role="tablist" aria-label="对象建模模式">
       <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
       <button role="tab" class="active" :aria-selected="true">关系画布</button>
     </div>
-    <ObjectCanvas ref="canvasRef" :state="state" @before-change="emit('before-change')" @changed="emit('changed')" @select="selectById"/>
-  </template>
-  <!-- 编辑态：主内容整体替换为一个完整表单（原型 ui.editor ? editorView() : pageView()） -->
-  <template v-else-if="editor">
+    <ObjectCanvas ref="canvasRef" :state="state" @before-change="emit('before-change')" @changed="emit('changed')" @select="selectById"
+      @create-object="createFromCanvas" @edit-definition="editFromCanvas" @create-link="linkFromCanvas"/>
+  </div>
+  <!-- 编辑态：主内容整体替换为一个完整表单（原型 ui.editor ? editorView() : pageView()）；列表与画布共用同一套 -->
+  <template v-if="editor">
     <PropertyManager v-if="editor.kind === 'property'" :key="editor.propertyId || 'new'" :state="state" kind="property" :target-type-id="editor.targetTypeId" :property-id="editor.propertyId" @close="closeEditor" @saved="onPropertySaved"/>
     <section v-else-if="editor.kind === 'object'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
+      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回{{ editor.origin === 'canvas' ? '画布' : '对象' }}</button></div>
       <div class="detail-heading"><div><span class="eyebrow">对象类型</span><h2>{{ editor.isNew ? '新建对象类型' : '维护对象定义' }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
@@ -493,8 +579,8 @@ function selectById(id: string) {
       </div>
     </section>
     <section v-else-if="editor.kind === 'link'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
-      <div class="detail-heading"><div><span class="eyebrow">业务链接</span><h2>{{ editor.isNew ? '定义业务链接' : '维护 · ' + (linkDraft?.label || '未命名链接') }}</h2></div><span class="status-pill">同一链接正反两个阅读方向</span></div>
+      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回{{ editor.origin === 'canvas' ? '画布' : '对象' }}</button></div>
+      <div class="detail-heading"><div><span class="eyebrow">业务链接</span><h2>{{ editor.isNew ? '定义业务链接' : '维护 · ' + (linkDraft?.label || '未命名链接') }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
         <label>起点对象 *<AppSelect :model-value="linkDraft?.from || ''" aria-label="起点对象" :options="linkTargetOptions" @update:model-value="linkDraft && (linkDraft.from = $event)"/></label>
@@ -516,9 +602,9 @@ function selectById(id: string) {
         <span>只影响当前本体草稿；已发布版本不变。</span>
       </div>
     </section>
-      </template>
+  </template>
   <!-- 浏览态：列表/详情骨架（20260917 原型）：左紧凑列表 + 右详情，两区独立滚动 -->
-  <template v-else>
+  <template v-else-if="mode === 'list'">
     <div class="ow-toolbar">
       <div class="ow-mode-tabs" role="tablist" aria-label="对象建模模式">
         <button role="tab" class="active" :aria-selected="true">对象列表</button>
@@ -577,14 +663,18 @@ function selectById(id: string) {
                 <button type="button" :aria-pressed="starred" :title="starred ? '取消收藏（仅保存在本机浏览器，不写入本体）' : '收藏（仅保存在本机浏览器，不写入本体）'" @click="toggleStar(current['@id'])">{{ starred ? '★ 已收藏' : '☆ 收藏' }}</button>
                 <button type="button" @click="showInCanvas" title="在关系画布中定位此对象">在画布查看</button>
                 <button type="button" @click="openObjectEditor(false)">编辑定义</button>
-                <button type="button" class="danger" @click="removeNode(current['@id'], current['rdfs:label'])">删除对象</button>
+                <!-- R3：删除等破坏性操作收进「更多操作」，避免与常用动作并列误点 -->
+                <div ref="moreWrap" class="ow-more" @keydown="moreKeydown">
+                  <button ref="moreTrigger" type="button" class="ow-more-trigger" aria-haspopup="menu" :aria-expanded="moreOpen" aria-label="更多操作" @click="moreOpen ? closeMoreMenu(true) : openMoreMenu()">更多操作 ⌄</button>
+                  <div v-if="moreOpen" class="ow-more-menu" role="menu" aria-label="对象更多操作" @keydown.tab="closeMoreMenu(false)">
+                    <button type="button" role="menuitem" class="danger" @click="moreRemove">删除对象</button>
+                  </div>
+                </div>
               </div>
             </div>
             <p class="ow-h2-def">{{ current['rdfs:comment'] || '暂无业务定义。' }}</p>
-            <div class="ld-meta">
-              <span>属性 {{ propRows.length }}</span><span>链接 {{ linkRows.length }}</span><span>动作 {{ actionRows.length }}</span><span>规则 {{ ruleRows.length }}</span>
-              <span v-if="selectedHidden" class="ld-meta-warn">此对象不在当前筛选结果中，已保持选中<button type="button" class="row-link" @click="clearFilters">清除筛选</button></span>
-            </div>
+            <!-- 数量只在页签上出现一次（R5），此处仅保留筛选态提示 -->
+            <p v-if="selectedHidden" class="ld-meta-warn">此对象不在当前筛选结果中，已保持选中<button type="button" class="row-link" @click="clearFilters">清除筛选</button></p>
           </div>
           <p v-if="message" class="inline-error ow-alert" role="alert">{{ friendlyMessage(message) }}</p>
           <!-- 四页签：属性 / 链接 / 动作 / 规则 -->
@@ -603,7 +693,10 @@ function selectById(id: string) {
                 <tr v-for="p in propRows" :key="p.id" :data-row="p.id" :class="{ 'ow-flash-row': highlightId === p.id }">
                   <td><strong>{{ p.label || '未命名属性' }}</strong><small v-if="p.isDisplayName || p.unit" class="muted" style="display:block">{{ [p.isDisplayName ? '显示名称' : '', p.unit ? '单位 ' + p.unit : ''].filter(Boolean).join(' · ') }}</small></td>
                   <td>{{ p.type }}</td>
-                  <td>{{ p.reuse }}</td>
+                  <td>
+                    <button v-if="p.sharedId" type="button" class="row-link" :title="'查看共享属性「' + (p.label || '') + '」的来源定义'" @click="openShared(p.sharedId, $event)">共享</button>
+                    <span v-else class="muted">私有</span>
+                  </td>
                   <td class="ow-row-tools">
                     <button class="row-link" @click="openPropertyEditor(current['@id'], p.id)">编辑</button>
                     <button class="row-link danger" @click="removeNode(p.id, p.label)">删除</button>
@@ -613,7 +706,7 @@ function selectById(id: string) {
             </table>
             <!-- 空态只做说明，操作入口统一在右上角（避免同一组按钮出现两处） -->
             <div v-else class="empty">
-              <p>给「{{ current['rdfs:label'] || '此对象' }}」添加第一个属性，例如名称、额定功率或 SOC；用右上角的「＋ 新增属性」新建，或「从属性库添加」复用共享定义。</p>
+              <p>还没有属性。用右上角「＋ 新增属性」新建，或「从属性库添加」复用共享定义。</p>
             </div>
             <p class="field-help">属性值从哪里来（数据字段或计算结果）属于项目实现，在项目映射的「属性取值」中维护。</p>
           </template>
@@ -628,10 +721,12 @@ function selectById(id: string) {
                 <div class="ow-row-tools"><button class="row-link" @click="openLinkEditor(l.id)">编辑</button><button class="row-link danger" @click="removeNode(l.id, l.label)">删除</button></div>
               </div>
             </div>
-            <p v-else class="muted">暂无与「{{ current['rdfs:label'] || '此对象' }}」关联的链接。点击「＋ 新增链接」，或在关系画布中用连线模式创建。</p>
+            <div v-else class="empty">
+              <p>还没有链接。用右上角「＋ 新增链接」添加，或在关系画布中用连线模式创建。</p>
+            </div>
           </template>
           <template v-else-if="detailTab === 'actions'">
-            <div class="section-heading"><span class="muted">选择此类对象支持的动作；共享定义在动作库中维护，不复制为对象私有。</span><button @click="openPicker">＋ 添加动作</button></div>
+            <div class="section-heading"><span class="muted">此类对象支持的动作</span><button @click="openPicker">＋ 添加动作</button></div>
             <table v-if="actionRows.length">
               <thead><tr><th>动作</th><th>业务效果</th><th></th></tr></thead>
               <tbody>
@@ -646,9 +741,8 @@ function selectById(id: string) {
               </tbody>
             </table>
             <div v-else class="empty">
-              <p>尚未关联动作。点击「＋ 添加动作」从动作库选择此类对象支持的操作。</p>
+              <p>尚未添加动作，可从动作库选择此对象支持的动作。</p>
             </div>
-            <p class="field-help">多对象关联表示一个动作可分别作用于这些类型，不表示批量执行。项目实现在「对象映射 → 动作绑定」中按对象分别配置。</p>
           </template>
           <template v-else-if="detailTab === 'rules'">
             <div class="section-heading"><span class="muted">引用规则库中的通用业务规则；移除引用不会删除规则。</span><button @click="rulePickerOpen = true">＋ 添加规则</button></div>
@@ -688,6 +782,27 @@ function selectById(id: string) {
     @close="libraryOpen = false" @action="pickShared"/>
   <RulePicker v-if="rulePickerOpen" :rules="pickerAvailable" :object-name="current?.['rdfs:label'] || ''" @close="rulePickerOpen = false" @confirm="addRules"/>
   <BusinessRuleDialog v-if="ruleDetail" mode="detail" :rule="ruleDetail" :allow-edit="false" @close="ruleDetailId = ''"/>
+  <!-- 共享属性来源（R5）：只读详情，按稳定 ID 解析；引用失效时只说明，不回填也不转为私有 -->
+  <div v-if="sharedDetailId" class="modal-backdrop" @click.self="closeShared" @keydown.esc.stop="closeShared">
+    <section ref="sharedCard" class="modal-card dialog-md" role="dialog" aria-modal="true" aria-label="共享属性来源定义" @keydown.esc.stop="closeShared">
+      <div class="panelhead"><h2>共享属性来源</h2><button type="button" aria-label="关闭" @click="closeShared">×</button></div>
+      <template v-if="sharedDetail.missing">
+        <p class="inline-warning">共享定义不存在（引用失效）。该引用不会被回填或转为对象私有属性；可删除此属性后重新建立。</p>
+        <p class="muted">引用标识：{{ sharedDetail.id }}</p>
+      </template>
+      <template v-else>
+        <dl class="definition-list shared-def">
+          <dt>名称</dt><dd>{{ sharedDetail.name }}</dd>
+          <dt>业务定义</dt><dd>{{ sharedDetail.comment }}</dd>
+          <dt>数据类型</dt><dd>{{ sharedDetail.type }}</dd>
+          <dt v-if="sharedDetail.unit">单位</dt><dd v-if="sharedDetail.unit">{{ sharedDetail.unit }}</dd>
+          <dt>引用情况</dt><dd>{{ sharedDetail.usage }} 个对象属性引用</dd>
+        </dl>
+        <p class="field-help">名称、数据类型与单位随共享定义统一维护；本对象只保留引用关系。需要独立修改请改用「复制为私有」。</p>
+      </template>
+      <div class="dialogtools"><button type="button" class="primary" @click="closeShared">关闭</button></div>
+    </section>
+  </div>
 </div>
 </template>
 
@@ -722,12 +837,22 @@ function selectById(id: string) {
 
 
 .ow-effect-cell{max-width:420px;white-space:pre-wrap;font-size:13px;color:var(--ink-2)}
-/* 详情头：名称+操作同一行，业务定义与元信息各自一行。 */
+/* 详情头：名称+操作同一行，业务定义各自一行。 */
 .ow-head-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .ow-head-row .ow-h2-name{margin:0}
 .ow-h2-def{margin:6px 0 0}
 .ow-head-side .danger{margin:0}
+/* 更多操作（R3）：删除对象收进菜单，触发器与菜单项均可键盘操作 */
+.ow-more{position:relative;display:inline-block}
+.ow-more-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:20;min-width:150px;background:var(--paper);border:1px solid var(--line-2);border-radius:var(--r-sm);box-shadow:var(--shadow-2);padding:4px;display:flex;flex-direction:column}
+.ow-more-menu button{border:0;background:none;text-align:left;padding:8px 10px;border-radius:var(--r-sm);font-size:13px}
+.ow-more-menu button:hover{background:var(--paper-2)}
+.ow-more-menu .danger{color:var(--danger)}
 .relation-sentence{margin:18px 0 0}
+/* 对象/链接独立编辑表单：内容区约 760px 并随可用宽度自适应（R4），不改画布与数据表宽度 */
+.ow-editor{max-width:760px}
+.ow-canvas-wrap{display:block}
+.shared-def{margin-top:4px}
 /* 删除/引用拦截等提示：紧贴详情头，点击操作处即可看到；
    左右内边距与 .ld-detail-head/.ld-tabs/.ld-body 一致（24px），否则会顶到面板两侧且比正文左移 */
 .ow-alert{margin:12px 24px 0}

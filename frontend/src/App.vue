@@ -197,13 +197,23 @@ const objectDetailTab = ref('props') // 对象建模深链页签（动作库反�
 watch(space, s => { try { localStorage.setItem('wiz-space', s) } catch {}
   if (s === 'project') { if (!projectSpaceViews.includes(view.value)) navigate('p-home') }
   else if (projectSpaceViews.includes(view.value)) navigate(lastOntologyView.value) })
-async function switchSpace(s: 'ontology' | 'project') { if (s === space.value) return; if (!(await requestLeave())) return; space.value = s }
+async function switchSpace(s: 'ontology' | 'project') { if (s === space.value) return; if (!(await requestLeave())) return; space.value = s
+  // 进入项目区：侧栏需要项目列表；项目状态由 navigate 的主路径按需加载（等待中仍可切回本体）
+  if (s === 'project') void ensureProjectList() }
 
 async function navigate(v: string, focus?: { type?: string; property?: string; impl?: string; connection?: string; contract?: string; definition?: string; tab?: string }) {
   v = normalizeView(v); if (!(v in pages)) return
   if (v === view.value && !focus) { /* 同页重入不触发离开保护 */ }
   else if (!(await requestLeave())) return
-  if (projectViews.includes(v) && v !== 'p-home' && !projectState.value) return notify('请先在项目概览中选择或新建项目', true)
+  // R2：依赖项目的页面按需准备项目上下文；菜单、显式 hash 深链、跨区入口都走这一条路径。
+  // p-home 无项目也要能进（显示创建/选择入口），所以只在其他项目页阻断。
+  if (projectViews.includes(v)) {
+    const ready = await ensureProjectContext()
+    if (!ready && v !== 'p-home' && !projectState.value) {
+      const reason = projectListState.value === 'error' ? '项目列表加载失败：' + projectListError.value : projectLoadError.value ? '项目加载失败：' + projectLoadError.value : '请先在项目概览中选择或新建项目'
+      return notify(reason, true)
+    }
+  }
   if (v === 'f-editor' && !flowState.value) return notify('请先在编排列表中选择或新建编排', true)
   if (focus?.type) { propertyFocusType.value = focus.type; bindingFocusType.value = focus.type }
   if (focus?.property) propertyFocusId.value = focus.property
@@ -226,6 +236,9 @@ function hashChanged() { navigate(window.location.hash.slice(1)) }
 const menuProject = computed<Record<string, string>>(() => menuProjectOf(!!projectState.value))
 // 项目页眉 crumb 引用的本体名：按项目引用的本体 id 回查列表，回退显示 id。
 const refOntologyLabel = computed(() => { const oid = projectState.value?.ontologyId || ''; return ontologyList.value.find(o => o.id === oid)?.name || oid || '—' })
+// 项目区加载状态（R2）：「等待/失败」与「确实没有项目」分开反馈，不在懒加载未完成时抢先显示无项目空态。
+const projectAreaWaiting = computed(() => projectViews.includes(view.value) && !projectState.value && (projectListState.value !== 'ready' || projectLoading.value))
+const projectAreaFailed = computed(() => projectViews.includes(view.value) && !projectState.value && (projectListState.value === 'error' || !!projectLoadError.value))
 // 顶栏面包屑文案（展示型 computed）：沿用原 header crumb 三分支逻辑，随单层顶栏搬迁，页面标题另见 pages[view]。
 const crumbPath = computed(() => flowViews.includes(view.value) ? `${flowState.value?.name || '未选择编排'} / 函数编排 · 项目映射` : space.value === 'project' ? `${projectState.value?.name || '未选择项目'} / 项目配置 · 引用 ${refOntologyLabel.value} ${projectState.value?.ontologyVersion || ''}` : `${ontologyName.value || '未创建本体'} / 抽象定义`)
 // 旧调用点迁移：openFunction/openProperties/openBindings/showKnowledge/showGraph → 新 view 名 + focus。
@@ -308,25 +321,88 @@ async function createOntologyFromDialog() { await createOntology(); showOntology
 async function loadOntologies() { ontologyList.value = (await oapi.listOntologies()).items }
 
 // --- 项目加载/切换/引用/升级：切换前 flush（失败 confirm），成功后经 Saver.reload 采纳服务端最新 ---
+// R2：项目数据按需加载。本体页面不再等待项目列表/完整项目状态/项目引用版本，只有确实进入
+// 项目区（菜单、显式 hash 深链、切区、恢复记忆项目）时才请求；未加载 ≠ 没有项目。
 const ontologyOptions = computed(() => ontologyList.value.map(o => ({ value: o.id, label: o.name })))
-async function loadProjectList() { projects.value = (await papi.listProjects()).items }
-async function loadRefState(oid: string, version: string) { refState.value = null; try { refState.value = decodeState((await oapi.versionStateRaw(oid, version)).state) } catch (e) { notify((e as Error).message, true) } }
-async function loadProject(id: string, force = false) {
-  if (!id || busy.value) return
-  if (!force && !(await requestLeave())) return
-  busy.value = true; const previous = projectId.value
-  try {
-    if (!force && projectState.value) { await projectSaver.flush(); if (projectSaver.status.value !== 'saved' && !(await appConfirm({ message: '项目草稿自动保存未成功，切换将丢弃未保存修改。继续？', danger: true }))) return }
-    projectId.value = id
-    await projectSaver.reload()
-    try { localStorage.setItem(projectStoreKey, id) } catch {}
-    const d: any = projectState.value
-    if (d.ontologyId && d.ontologyVersion) { migrationTodos.value = projectLoadMeta?.migrationTodos || []; if (projectLoadMeta?.warning) notify(projectLoadMeta.warning, true); await loadRefState(d.ontologyId, d.ontologyVersion) }
-    else { migrationTodos.value = []; refState.value = null }
-    projectUndoArea.reset(); projectReport.value = null
-  } catch (e) { projectId.value = previous; notify((e as Error).message, true) } finally { busy.value = false }
+const projectListState = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
+const projectListError = ref('')
+const projectLoadError = ref('')
+const projectLoading = ref(false)
+let projectListJob: Promise<boolean> | null = null
+async function ensureProjectList(): Promise<boolean> {
+  if (projectListState.value === 'ready') return true
+  if (projectListJob) return projectListJob // 并发去重：同一份列表只请求一次
+  projectListState.value = 'loading'; projectListError.value = ''
+  projectListJob = (async () => {
+    try { projects.value = (await papi.listProjects()).items; projectListState.value = 'ready'; return true }
+    catch (e) { projectListState.value = 'error'; projectListError.value = (e as Error).message; return false }
+    finally { projectListJob = null }
+  })()
+  return projectListJob
 }
-async function createProjectDone(id: string) { await loadProjectList(); await loadProject(id, true); await navigate('binding') }
+// 失败重试：重新取列表，并补一次项目状态加载（首次失败可能发生在任一步）。
+async function retryProjectContext() {
+  if (projectListState.value === 'error' || projectListState.value === 'idle') { projectListState.value = 'idle'; projectListError.value = '' }
+  projectLoadError.value = ''
+  if (!(await ensureProjectList())) return notify('项目列表加载失败：' + projectListError.value, true)
+  if (!projectState.value) {
+    const ok = await ensureProjectContext()
+    if (!ok) notify(projectLoadError.value ? '项目加载失败：' + projectLoadError.value : '还没有项目，可在项目概览中新建。', !!projectLoadError.value)
+  }
+}
+// 返回项目引用版本的已发布本体定义（只读校验/绑定用）；返回 null 表示读取失败。
+async function loadRefState(oid: string, version: string) {
+  refState.value = null
+  try { return decodeState((await oapi.versionStateRaw(oid, version)).state) }
+  catch (e) { notify((e as Error).message, true); return null }
+}
+// 项目加载：序号保证旧响应不覆盖新项目；同一项目并发加载去重（A7）。
+// 不用全局 busy 拦截：正在加载 A 时用户改选 B 必须能真的切过去（A 的迟到响应由序号丢弃）。
+let projectLoadSeq = 0
+let projectJob: { id: string; promise: Promise<boolean> } | null = null
+async function loadProject(id: string, force = false): Promise<boolean> {
+  if (!id) return false
+  if (projectJob && projectJob.id === id) return projectJob.promise
+  if (!force && !(await requestLeave())) return false
+  const seq = ++projectLoadSeq, previous = projectId.value
+  const promise = (async () => {
+    busy.value = true; projectLoading.value = true
+    try {
+      if (!force && projectState.value) { await projectSaver.flush(); if (projectSaver.status.value !== 'saved' && !(await appConfirm({ message: '项目草稿自动保存未成功，切换将丢弃未保存修改。继续？', danger: true }))) return false }
+      if (seq !== projectLoadSeq) return false // 期间已有更新的加载：本次作废
+      projectId.value = id
+      await projectSaver.reload() // Saver 内部 epoch 丢弃在途旧响应
+      if (seq !== projectLoadSeq) return false // 旧响应不得覆盖后发起的新项目
+      try { localStorage.setItem(projectStoreKey, id) } catch {}
+      const d: any = projectState.value
+      if (d.ontologyId && d.ontologyVersion) {
+        migrationTodos.value = projectLoadMeta?.migrationTodos || []
+        if (projectLoadMeta?.warning) notify(projectLoadMeta.warning, true)
+        const nextRef = await loadRefState(d.ontologyId, d.ontologyVersion)
+        if (seq !== projectLoadSeq) return false
+        refState.value = nextRef
+      } else { migrationTodos.value = []; refState.value = null }
+      projectUndoArea.reset(); projectReport.value = null; projectLoadError.value = ''
+      return true
+    } catch (e) {
+      if (seq === projectLoadSeq) { projectId.value = previous; projectLoadError.value = (e as Error).message; notify((e as Error).message, true) }
+      return false
+    } finally { if (seq === projectLoadSeq) { busy.value = false; projectLoading.value = false } }
+  })()
+  projectJob = { id, promise }
+  void promise.finally(() => { if (projectJob?.promise === promise) projectJob = null })
+  return promise
+}
+// 进入依赖项目的页面时补齐项目上下文：列表 → 有效的记忆项目（否则沿用默认选择）→ 无项目时交给页面显示创建入口。
+async function ensureProjectContext(): Promise<boolean> {
+  if (!(await ensureProjectList())) return false
+  if (projectState.value && projectId.value) return true
+  const stored = localStorage.getItem(projectStoreKey)
+  const initial = stored && projects.value.some(p => p.id === stored) ? stored : (projects.value[0]?.id || '')
+  if (!initial) return false
+  return loadProject(initial, true)
+}
+async function createProjectDone(id: string) { await ensureProjectList(); await loadProject(id, true); await navigate('binding') }
 async function applyProjectReference(ref: { ontology: string; version: string }) {
   if (!projectState.value) return
   pushProjectUndo(); projectState.value.ontologyId = ref.ontology; projectState.value.ontologyVersion = ref.version; projectEditGeneration.value++
@@ -336,7 +412,7 @@ async function applyProjectReference(ref: { ontology: string; version: string })
 async function upgradeProject(target: string) {
   if (!projectState.value) return
   pushProjectUndo(); projectState.value.ontologyVersion = target; projectEditGeneration.value++; projectReport.value = null
-  await loadRefState(projectState.value.ontologyId, target)
+  refState.value = await loadRefState(projectState.value.ontologyId, target)
   await projectSaver.commitNow()
 }
 // 引用页等待真实保存结果；复用表单事务，失败恢复原引用而不是提前显示成功。
@@ -380,27 +456,36 @@ onMounted(async () => {
     ontologyName.value = hit?.name || ''
     document.title = (ontologyName.value || '本体工作台') + ' · 本体工作台'
     window.addEventListener('keydown', keydown); window.addEventListener('hashchange', hashChanged); window.addEventListener('beforeunload', unloadGuard)
-    try { await loadProjectList() } catch (e) { notify((e as Error).message, true) }
-    // 按记忆的工作空间落位：项目空间进项目区页面（函数编排属项目空间菜单）；本体空间停留在上次建模页（无本体时显示创建卡片）
+    // 按记忆的工作空间落位（只用本地状态，不等项目数据）
     if (space.value === 'project' && !projectSpaceViews.includes(view.value)) { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
     if (space.value === 'ontology' && projectSpaceViews.includes(view.value)) { view.value = hasOntology.value ? lastOntologyView.value : 'o-home'; history.replaceState(null, '', '#' + view.value) }
-    const stored = localStorage.getItem(projectStoreKey)
-    const initial = stored && projects.value.some(p => p.id === stored) ? stored : (projects.value[0]?.id || '')
-    if (initial) await loadProject(initial, true)
-    // 项目加载完成后再判定：仍无项目时把连接/映射/校验视图送回项目概览（函数编排页面不依赖项目，保留）
-    if (projectViews.includes(view.value) && view.value !== 'p-home' && !projectState.value) { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
+    // R2：本体必要数据就绪即结束启动等待，本体页不因项目列表/项目状态/引用版本而阻塞
+    booting.value = false
+    await settleInitialView()
+  } catch (e) { notify('加载失败：' + (e as Error).message, true) }
+  finally { booting.value = false }
+})
+// 启动收尾（R2）：只有当前页面确实需要项目数据时才加载；等待期间用户已离开项目区就不再强行改视图。
+async function settleInitialView() {
+  if (projectSpaceViews.includes(view.value)) {
+    if (projectViews.includes(view.value)) {
+      const ready = await ensureProjectContext()
+      if (!projectSpaceViews.includes(view.value)) return // 用户已返回本体区
+      // 显式项目深链：加载完成后再判断有没有项目，不能因懒加载未完成就提前退回概览
+      if (!projectState.value && (projectListState.value === 'error' || projectLoadError.value)) { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
+      else if (!ready && !projectState.value && projectListState.value === 'ready') { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
+    }
     // 函数编排：恢复上次打开的编排（编排页不依赖本体/项目状态）
     if (view.value === 'f-editor') {
       const storedFlow = localStorage.getItem(flowStoreKey)
       if (storedFlow) { try { await openFlow(storedFlow) } catch { view.value = 'f-home'; history.replaceState(null, '', '#f-home') } }
       else { view.value = 'f-home'; history.replaceState(null, '', '#f-home') }
     }
-    if (view.value === 'instances') await runPreview()
-    if (view.value === 'o-release') { await loadVersionList(); await loadReleases(); await checkWorkflow() }
-    if (view.value === 'p-release') await validateProject(false)
-  } catch (e) { notify('加载失败：' + (e as Error).message, true) }
-  finally { booting.value = false }
-})
+  }
+  if (view.value === 'instances') await runPreview()
+  if (view.value === 'o-release') { await loadVersionList(); await loadReleases(); await checkWorkflow() }
+  if (view.value === 'p-release') await validateProject(false)
+}
 onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.removeEventListener('hashchange', hashChanged); window.removeEventListener('beforeunload', unloadGuard) })
 </script>
 
@@ -420,11 +505,14 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <template v-if="(space==='project'&&(projectState||(flowViews.includes(view)&&flowState)))||(space==='ontology'&&hasOntology)"><button :disabled="!undoCount" title="撤销上一次修改" @click="undo">撤销</button><button :disabled="!redoCount" title="重做修改" @click="redo">重做</button></template>
 </div></div>
 <aside class="rail" :inert="modalOpen"><div class="brand">◇ <span>本体工作台</span><small>ONTOLOGY WORKSPACE</small></div><div class="ws-tabs" role="tablist" aria-label="切换工作区"><button role="tab" :class="{active:space==='ontology'}" :aria-selected="space==='ontology'" @click="switchSpace('ontology')">本体</button><button role="tab" :class="{active:space==='project'}" :aria-selected="space==='project'" @click="switchSpace('project')">项目</button></div><div class="space"><template v-if="booting"><div class="space-head"><div class="skeleton" style="height:13px;width:56px;margin:0"></div></div><div class="skeleton" style="height:42px"></div></template><template v-else-if="space==='ontology'"><div class="space-head"><label>当前本体</label><button type="button" class="space-new" @click="showOntologyDialog=true">＋ 新建</button></div><AppSelect :model-value="hasOntology?ontologyId:''" placeholder="未选择本体" :options="ontologyList.map(o=>({value:o.id,label:o.name}))" :disabled="busy||!ontologyList.length" aria-label="切换本体" @update:model-value="switchOntology"/></template>
-<template v-else><div class="space-head"><label>当前项目</label></div><AppSelect :model-value="projectState?.projectId||''" placeholder="未选择项目" :options="projects.map(p=>({value:p.id,label:p.name}))" :disabled="busy" aria-label="切换项目" @update:model-value="$event&&loadProject($event)"/></template></div><nav aria-label="工作台导航"><template v-if="booting"><div v-for="n in 5" :key="n" class="nav-boot"><div class="skeleton" style="height:13px;width:64%"></div></div></template><template v-else-if="space==='ontology'"><template v-if="hasOntology"><button v-for="(label,key) in menuOntology" :key="key" :aria-current="view===key?'page':undefined" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><button :aria-current="view==='tools'?'page':undefined" :class="{active:view==='tools'}" @click="navigate('tools')"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons.tools||navIcons._default"/></svg>更多工具</button></template></template><template v-else><button v-for="(label,key) in menuProject" :aria-current="view===key?'page':undefined" :key="key" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><p v-if="!projectState" class="rail-hint">选择或新建项目后，可进行对象映射与项目校验；函数编排不依赖项目。</p></template></nav></aside>
+<template v-else><div class="space-head"><label>当前项目</label><button v-if="projectListState==='error'" type="button" class="space-new" @click="retryProjectContext">重试</button></div><p v-if="projectListState==='error'" class="space-error" role="alert">项目列表加载失败</p><template v-else-if="projectListState!=='ready'||(projectLoading&&!projectState)"><div class="skeleton" style="height:42px"></div><p class="space-note">正在加载项目…</p></template><AppSelect v-else :model-value="projectState?.projectId||''" placeholder="未选择项目" :options="projects.map(p=>({value:p.id,label:p.name}))" :disabled="busy" aria-label="切换项目" @update:model-value="$event&&loadProject($event)"/></template></div><nav aria-label="工作台导航"><template v-if="booting"><div v-for="n in 5" :key="n" class="nav-boot"><div class="skeleton" style="height:13px;width:64%"></div></div></template><template v-else-if="space==='ontology'"><template v-if="hasOntology"><button v-for="(label,key) in menuOntology" :key="key" :aria-current="view===key?'page':undefined" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><button :aria-current="view==='tools'?'page':undefined" :class="{active:view==='tools'}" @click="navigate('tools')"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons.tools||navIcons._default"/></svg>更多工具</button></template></template><template v-else><button v-for="(label,key) in menuProject" :aria-current="view===key?'page':undefined" :key="key" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><p v-if="!projectState" class="rail-hint">选择或新建项目后，可进行对象映射与项目校验；函数编排不依赖项目。</p></template></nav></aside>
 <div class="shell" :inert="modalOpen"><div v-if="message" id="feedback" :class="{error}" role="status">{{message}}</div>
 <main v-if="booting"><section class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:92%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:96%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:78%"></div></section></main>
 <main v-else-if="state">
-<section v-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
+<!-- 项目区加载中/失败（R2）：与「还没有项目」区分，等待或失败时都可返回本体 -->
+<section v-if="projectAreaWaiting" class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:88%"></div></section>
+<section v-else-if="projectAreaFailed" class="card"><div class="panelhead"><div><h2>项目数据加载失败</h2><p class="muted">{{ projectListError || projectLoadError }}</p></div></div><p class="muted">本体建模不受影响；可重试加载，或先回本体区继续工作。</p><div class="tools"><button class="primary" @click="retryProjectContext">重试</button><button @click="switchSpace('ontology')">返回本体</button></div></section>
+<section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>
 <OntologyHome v-if="view==='o-home'" :state="state" @navigate="navigate"/>
 <ObjectWorkspace v-if="view==='objects'" :state="state" :focus-type="propertyFocusType" :focus-property="propertyFocusId" :initial-tab="objectDetailTab" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
