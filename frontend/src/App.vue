@@ -240,6 +240,7 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
       return notify(reason, true)
     }
   }
+  else if (projectSpaceViews.includes(v)) { void ensureProjectList() } // 函数编排等项目空间页面不依赖项目，但侧栏列表需后台加载（否则一直停在“正在加载项目”）
   if (v === 'f-editor' && !flowState.value) return notify('请先在编排列表中选择或新建编排', true)
   if (focus?.type) { propertyFocusType.value = focus.type; bindingFocusType.value = focus.type }
   if (focus?.property) propertyFocusId.value = focus.property
@@ -588,6 +589,7 @@ async function settleInitialView() {
       if (!projectState.value && (projectListState.value === 'error' || projectLoadError.value)) { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
       else if (!ready && !projectState.value && projectListState.value === 'ready') { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
     }
+    else { void ensureProjectList() } // 编排页等项目空间页面：侧栏项目列表后台加载，不阻塞页面
     // 函数编排：恢复上次打开的编排（编排页不依赖本体/项目状态）
     if (view.value === 'f-editor') {
       const storedFlow = localStorage.getItem(flowStoreKey)
