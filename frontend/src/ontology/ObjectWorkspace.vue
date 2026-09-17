@@ -84,6 +84,10 @@ const editorError = ref(''), editorSaving = ref(false)
 const objectDraft = computed(() => editor.value?.kind === 'object' ? editor.value.draft : null)
 const linkDraft = computed(() => editor.value?.kind === 'link' ? editor.value.draft : null)
 
+// 提示只对当前上下文有效：切换对象、切页签、切换列表/画布、进出编辑器都清空。
+// 否则「暂不能删除…」这类提示会在换对象甚至新建对象后继续挂着，与当前对象不再对应。
+watch([selected, detailTab, mode, editor], () => { if (message.value) message.value = '' })
+
 // T00 离开保护：仅对象/链接草稿注册（属性表单由 PropertyManager 自带；挑选态无本地草稿）。
 const wsGuard = { isDirty: () => { const e = editor.value; return !!e && 'draft' in e && JSON.stringify(e.draft) !== e.original }, discard: () => { editor.value = null } }
 watch(() => { const e = editor.value; return !!e && (e.kind === 'object' || e.kind === 'link') }, open => { open ? guardApi.register(wsGuard) : guardApi.unregister(wsGuard) }, { immediate: true })
