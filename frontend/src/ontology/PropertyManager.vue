@@ -93,7 +93,6 @@ const title = computed(() => {
   if (editingShared.value || props.kind === 'shared') return isNew.value && props.kind === 'shared' ? '新建共享属性' : '维护共享定义'
   return isNew.value ? '新增属性' : '维护 · ' + (draft.value?.['rdfs:label'] || '未命名属性')
 })
-const statusText = computed(() => readonly.value ? '共享引用' : (props.kind === 'shared' || editingShared.value) ? '共享定义' : (isNew.value ? '新建' : '对象私有'))
 
 // 引用影响：共享定义被多少对象属性引用（修改前如实展示，不靠解除引用规避检查）。
 const usageCount = computed(() => {
@@ -159,11 +158,9 @@ async function save() {
 <section class="card detail-card prop-form">
   <div class="prop-form-head">
     <button type="button" @click="emit('close')">← {{ kind === 'property' ? '返回对象' : '返回共享属性库' }}</button>
-    <small class="muted">{{ contextName }}</small>
   </div>
   <div class="detail-heading">
-    <div><span class="eyebrow">{{ kind === 'shared' || editingShared ? '共享属性定义' : '属性' }}</span><h2>{{ title }}</h2></div>
-    <span v-if="statusText" class="status-pill">{{ statusText }}</span>
+    <div><p class="prop-form-context">{{ kind === 'shared' || editingShared ? '共享属性库' : contextName }}</p><h2>{{ title }}</h2></div>
   </div>
   <p v-if="error" class="inline-error prop-error" role="alert">{{ error }}</p>
 
@@ -211,7 +208,7 @@ async function save() {
 
 <style scoped>
 .prop-form-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
-.prop-form-head small{font-size:12px}
+.prop-form-context{margin:0 0 3px;font-size:14px;font-weight:600;color:var(--ink-2)}
 .prop-error{margin:0 0 12px}
 .prop-fields{border:0;padding:0;margin:0;min-width:0}
 .prop-form :deep(.form-grid .editor-field.full){grid-column:1/-1}
