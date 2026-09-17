@@ -149,11 +149,24 @@ def _resolve_inputs(node, state, results, inputs):
                 raise NodeFailure(f'输入「{label}」引用了上游不存在的输出')
             value = outputs[output_name]
             if kind == 'nodeField':
+                # fieldPath 是上游输出声明里的字段稳定 ID：先按声明映射为字段技术名，再按名取值
+                # （SQL 节点的输出值按列名组织、Python/LLM 按返回键组织，都与声明技术名对应）
+                upstream_node = next((n for n in state.get('nodes', []) if isinstance(n, dict) and n.get('id') == src.get('nodeId')), None)
+                decl = next((o.get('type') for o in (upstream_node or {}).get('outputs', [])
+                             if isinstance(o, dict) and o.get('id') == src.get('outputId')), None)
+                if value is None:
+                    raise NodeFailure(f'输入「{label}」的上游输出值为空（可能没有查询到数据），无法按字段取值')
                 for fid in src.get('fieldPath') or []:
-                    if isinstance(value, dict) and fid in value:
-                        value = value[fid]
-                    else:
-                        raise NodeFailure(f'输入「{label}」引用的对象字段不存在于上游输出')
+                    match = next((f for f in (decl or {}).get('fields', [])
+                                  if isinstance(f, dict) and f.get('id') == fid), None) \
+                        if isinstance(decl, dict) and decl.get('type') == 'object' else None
+                    if match is None:
+                        raise NodeFailure(f'输入「{label}」引用的字段路径在输出声明中不存在')
+                    field_name = match['name']
+                    if not isinstance(value, dict) or field_name not in value:
+                        raise NodeFailure(f'输入「{label}」引用的对象字段「{field_name}」不存在于上游输出值')
+                    value = value[field_name]
+                    decl = match.get('type') or {}
             values[name] = value
             continue
         raise NodeFailure(f'输入「{label}」来源类型未知')

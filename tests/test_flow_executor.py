@@ -178,6 +178,7 @@ ctx = {'project_id': 'p1', 'connections': {'c1': {'id': 'c1', 'engine': 'mysql',
 os.environ['WIZ_SECRET_FOR_TEST'] = ''
 from workbench import secrets as secrets_store  # noqa: E402
 secrets_store.save('p1', 'c1', 'pass-123')
+
 result = flow_executor.run({'flowId': 'x', 'name': 'f', 'nodes': [sql_node], 'inputs': [], 'outputs': [],
                             'connections': [], 'schemaVersion': 1}, targets=['nd_查询'], ctx=ctx)
 entry = result['nodeResults'][0]
@@ -197,6 +198,76 @@ check(entry['status'] == 'success' and entry['outputs']['affected'] == 3, 'DML �
 check(all(sql.upper() != 'SET SESSION TRANSACTION READ ONLY' for sql, _ in captured['statements'][-2:]),
       '允许写时关闭只读会话')
 check(_FakeConn.committed >= 1, 'DML 提交事务')
+
+
+# 4.5) nodeField 绑定：字段稳定 ID → 按声明技术名映射到输出值（SQL 列名场景） ------------
+sql_src = node('sql', '取容量', inputs=[{'name': 'device_id', 'type': {'type': 'text'}, 'source': fixed('text', 'd1')}],
+               outputs=[{'id': 'out_info', 'name': 'info',
+                         'type': {'type': 'object', 'fields': [{'id': 'fld-uuid-id', 'name': 'id', 'label': '标识', 'type': {'type': 'number'}}]}}],
+               impl={'language': 'sql', 'connectionId': 'c1', 'sql': 'SELECT id FROM m WHERE d = #{device_id}'})
+calc_user = node('calc', '用容量', inputs=[{'name': 'cap', 'type': {'type': 'number'},
+                                           'source': {'kind': 'nodeField', 'nodeId': 'nd_取容量', 'outputId': 'out_info',
+                                                      'fieldPath': ['fld-uuid-id']}}],
+                 outputs=[{'name': 'double', 'type': {'type': 'number'}}],
+                 impl={'mode': 'formula', 'formulas': {'double': '{cap} * 2'}})
+result = flow_executor.run({'flowId': 'x', 'name': 'f', 'nodes': [sql_src, calc_user], 'inputs': [], 'outputs': [],
+                            'connections': [], 'schemaVersion': 1}, ctx=ctx)
+statuses = [r['status'] for r in result['nodeResults']]
+values = {r['nodeId']: r.get('outputs') for r in result['nodeResults']}
+check(statuses == ['success', 'success'] and values['nd_用容量'] == {'double': 2},
+      'nodeField 按声明映射列名取值（id=1 × 2）', result['nodeResults'])
+calc_user['inputs'][0]['source']['fieldPath'] = ['fld-uuid-missing']
+result = flow_executor.run({'flowId': 'x', 'name': 'f', 'nodes': [sql_src, calc_user], 'inputs': [], 'outputs': [],
+                            'connections': [], 'schemaVersion': 1}, ctx=ctx)
+check(result['nodeResults'][1]['status'] == 'failed' and '字段路径在输出声明中不存在' in result['nodeResults'][1].get('error', ''),
+      '声明中不存在的字段路径给可读错误', result['nodeResults'][1])
+calc_user['inputs'][0]['source']['fieldPath'] = ['fld-uuid-id']
+sql_src['outputs'][0]['type']['fields'][0]['name'] = 'capacity'
+result = flow_executor.run({'flowId': 'x', 'name': 'f', 'nodes': [sql_src, calc_user], 'inputs': [], 'outputs': [],
+                            'connections': [], 'schemaVersion': 1}, ctx=ctx)
+check(result['nodeResults'][1]['status'] == 'failed' and '不存在于上游输出值' in result['nodeResults'][1].get('error', ''),
+      '值里缺少声明字段（列名不匹配）给可读错误', result['nodeResults'][1])
+
+# 5) SQL 节点：桩 pymysql（只读会话 / 参数 / 行数上限 / DML 勾选） -------------------------
+captured = {}
+
+
+class _FakeCursor:
+    def __init__(self):
+        self.description = None
+        self.rowcount = -1
+
+    def execute(self, sql, args=None):
+        captured.setdefault('statements', []).append((sql, args))
+        if sql.upper().startswith('SELECT'):
+            self.description = [('id',), ('name',)]
+            self._rows = [(1, '甲'), (2, '乙'), (3, '丙')]
+        else:
+            self.description = None
+            self.rowcount = 3
+
+    def fetchmany(self, size):
+        return self._rows[:size]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _FakeConn:
+    committed = 0
+
+    def cursor(self):
+        return _FakeCursor()
+
+    def commit(self):
+        _FakeConn.committed += 1
+
+    def close(self):
+        pass
+
 
 # 6) Redis 节点：桩 redis（单键 / 行模式 / 返回映射） --------------------------------------
 class _FakeRedis:
