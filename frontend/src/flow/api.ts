@@ -13,3 +13,6 @@ export const checkFlow = (state: any, connections?: any[]) =>
   postJson('/api/flow-check', { state, ...(connections ? { connections } : {}) })
 export const copyFlow = (flowId: string, name?: string) => postJson('/api/flow-copy', { flowId, ...(name ? { name } : {}) })
 export const deleteFlow = (flowId: string) => postJson('/api/flow-delete', { flowId })
+/** 运行/测试：targets 省略 = 全图运行（需 revision + 入口参数）；targets = 单节点/链测试（不落盘）。 */
+export const runFlow = (payload: { state: any; revision?: string; projectId?: string; inputs?: Record<string, any>; targets?: string[] }) =>
+  postJson('/api/flow-run', payload)

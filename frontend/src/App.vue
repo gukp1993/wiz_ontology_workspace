@@ -27,6 +27,7 @@ import QueryRuleManager from './project/QueryRuleManager.vue'
 import ProjectVersion from './project/ProjectVersion.vue'
 import FlowList from './flow/FlowList.vue'
 import FlowEditor from './flow/FlowEditor.vue'
+import LlmProviders from './tools/LlmProviders.vue'
 import { decodeState, requestBody, type WorkbenchState } from './ontology/modelFormat'
 import { shortcutAction } from './app/shortcuts'
 import { READ_TIMEOUT_MS, SaveRequestError, isOriginRejected, localAccessUrl } from './app/http'
@@ -646,7 +647,8 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <QueryRuleManager v-if="view==='implements'&&projectState" :project-state="projectState" :ref-state="refState" :focus-impl="implFocus" @before-change="pushProjectUndo" @changed="projectChanged"/>
 <ProjectValidation :ref-state="refState" v-if="view==='p-release'&&projectState" :report="projectReport" :validate-error="projectValidateError" :busy="busy" :project-state="projectState" @open-ontology="openReferencedOntology" @refresh="validateProject(false)" @navigate="navigate" @published="onProjectPublished"/>
 <FlowList v-if="view==='f-home'" @open="openFlow" @created="onFlowCreated" @deleted="onFlowDeleted"/>
-<FlowEditor v-if="view==='f-editor'&&flowState" :state="flowState" :check="flowCheck" :project-connections="projectConnections" @update:check="flowCheck=$event" @before-change="pushFlowUndo" @changed="flowChanged"/>
+<FlowEditor v-if="view==='f-editor'&&flowState" :state="flowState" :check="flowCheck" :project-connections="projectConnections" :project-id="projectId" :revision="flowSaver.revision.value" @update:check="flowCheck=$event" @before-change="pushFlowUndo" @changed="flowChanged"/>
+<LlmProviders v-if="view==='llm'"/>
 <ToolsPage v-if="view==='tools'" @navigate="navigate"/>
 <OntologyDiscover v-if="view==='discover'" :state="state" @navigate="navigate" @graph="showKnowledge" @properties="openProperties"/>
 <KnowledgeExplorer v-if="view==='knowledge'" :state="state" :focus-id="knowledgeFocus" @navigate="navigate"/>

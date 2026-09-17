@@ -10,7 +10,39 @@ export const TYPE_OPTIONS = Object.entries(TYPE_LABELS).map(([value, label]) => 
 export const MAX_OBJECT_DEPTH = 3
 export const INPUT_NODE = 'flow-input'
 export const OUTPUT_NODE = 'flow-output'
-export const NODE_KIND_LABELS: Record<string, string> = { python: 'Python', sql: 'SQL', redis: 'Redis', input: '编排输入', output: '编排输出' }
+export const NODE_KIND_LABELS: Record<string, string> = { python: 'Python', sql: 'SQL', redis: 'Redis', http: 'HTTP', calc: '计算', input: '编排输入', output: '编排输出' }
+export const NODE_KINDS = ['python', 'sql', 'redis', 'http', 'calc']
+export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE']
+/** Redis 白名单命令表（与 flows.REDIS_COMMANDS 镜像）：命令 → (最少参数, 最多参数 null=不限, 返回类型)。 */
+export const REDIS_COMMANDS: Record<string, { min: number; max: number | null; returns: string }> = {
+  GET: { min: 1, max: 1, returns: '文本' }, MGET: { min: 1, max: null, returns: '列表' },
+  EXISTS: { min: 1, max: null, returns: '数值' }, TTL: { min: 1, max: 1, returns: '数值' },
+  TYPE: { min: 1, max: 1, returns: '文本' }, STRLEN: { min: 1, max: 1, returns: '数值' },
+  HGET: { min: 2, max: 2, returns: '文本' }, HGETALL: { min: 1, max: 1, returns: '对象' },
+  HMGET: { min: 2, max: null, returns: '列表' }, HKEYS: { min: 1, max: 1, returns: '列表' },
+  HVALS: { min: 1, max: 1, returns: '列表' }, HLEN: { min: 1, max: 1, returns: '数值' },
+  LRANGE: { min: 3, max: 3, returns: '列表' }, LLEN: { min: 1, max: 1, returns: '数值' },
+  SISMEMBER: { min: 2, max: 2, returns: '是/否' }, SMEMBERS: { min: 1, max: 1, returns: '列表' },
+  SCARD: { min: 1, max: 1, returns: '数值' }, ZSCORE: { min: 2, max: 2, returns: '数值' },
+  ZRANGE: { min: 3, max: 3, returns: '列表' }, ZCARD: { min: 1, max: 1, returns: '数值' },
+  SET: { min: 2, max: 3, returns: '文本' }, SETEX: { min: 3, max: 3, returns: '文本' },
+  SETNX: { min: 2, max: 2, returns: '数值' }, DEL: { min: 1, max: null, returns: '数值' },
+  INCR: { min: 1, max: 1, returns: '数值' }, DECR: { min: 1, max: 1, returns: '数值' },
+  HSET: { min: 3, max: null, returns: '数值' }, HMSET: { min: 2, max: null, returns: '文本' },
+  LPUSH: { min: 2, max: null, returns: '数值' }, RPUSH: { min: 2, max: null, returns: '数值' },
+  SADD: { min: 2, max: null, returns: '数值' }, ZADD: { min: 3, max: null, returns: '数值' },
+  EXPIRE: { min: 2, max: 2, returns: '数值' },
+}
+export const REDIS_COMMAND_OPTIONS = Object.entries(REDIS_COMMANDS).map(([value, spec]) => ({
+  value, label: `${value}（${spec.min}${spec.max ? '–' + spec.max : '+'} 参数 → ${spec.returns}）`,
+}))
+export const EXEC_MAX_TIMEOUT_MS = 300000
+export const SQL_MAX_ROWS_MAX = 10000
+export const EXEC_DEFAULT_TIMEOUT: Record<string, number> = { python: 60000, sql: 30000, redis: 30000, http: 15000, calc: 30000 }
+/** 流类型 → calc-expression 类型；null 表示不可进公式（datetime/object/list）。 */
+export const flowTypeToCalcType = (flowType?: string): string | null =>
+  flowType === 'number' ? 'number' : flowType === 'text' ? 'string' : flowType === 'boolean' ? 'boolean' : null
+export const CALC_TYPE_LABELS: Record<string, string> = { number: '数值', string: '文本', boolean: '是/否' }
 
 export const uid = (): string => crypto.randomUUID()
 export const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
@@ -28,28 +60,31 @@ export function typeSummary(decl: any): string {
   return TYPE_LABELS[decl.type] || decl.type
 }
 
-/** 新节点：仅创建时注入 Python 骨架；之后参数变化不回写正文。 */
-export function blankNode(kind: 'python' | 'sql'): any {
-  return {
-    id: uid(), kind,
-    name: kind === 'python' ? '新 Python 节点' : '新 SQL 节点',
-    description: '',
-    inputs: [], outputs: [],
-    implementation: kind === 'python'
-      ? { language: 'python', code: pythonSkeleton([], []) }
-      : { language: 'sql', sql: '', connectionId: '' },
-  }
+/** 新节点：按类型注入实现骨架；之后参数变化不回写正文。 */
+export function blankNode(kind: string): any {
+  const base = { id: uid(), kind, name: `${NODE_KIND_LABELS[kind] || kind}节点`, description: '', inputs: [], outputs: [] }
+  if (kind === 'python') return { ...base, name: '新 Python 节点', implementation: { language: 'python', code: pythonSkeleton([], []) } }
+  if (kind === 'sql') return { ...base, name: '新 SQL 节点', implementation: { language: 'sql', sql: '', connectionId: '' } }
+  if (kind === 'redis') return { ...base, name: '新 Redis 节点', implementation: { language: 'redis', connectionId: '', keyTemplate: '', command: '', args: [] } }
+  if (kind === 'http') return { ...base, name: '新 HTTP 节点', implementation: { language: 'http', method: 'GET', url: '', headers: {}, bodyMode: 'none', body: '', credentialId: '', responsePath: '' } }
+  return { ...base, name: '新计算节点', implementation: { language: 'calc', mode: 'formula', formulas: {}, llmInstruction: '', providerId: '' } }
 }
 
 export function pythonSkeleton(inputs: any[], outputs: any[]): string {
   const params = (inputs || []).map((i: any) => i.name).filter(Boolean).join(', ')
   const first = (outputs || []).map((o: any) => o.name).find(Boolean)
   const ret = first ? `{"${first}": None}` : 'None'
-  return `def main(${params}):\n    # 在此编写处理逻辑；本工作台只保存配置，不执行代码\n    return ${ret}\n`
+  return `def main(${params}):\n    # 本工作台不运行代码：保存后由所选 LLM 代为求值\n    return ${ret}\n`
 }
 
 export const processingNodes = (state: any): any[] =>
-  (state?.nodes || []).filter((n: any) => n && n.kind === 'python' || n && n.kind === 'sql')
+  (state?.nodes || []).filter((n: any) => n && NODE_KINDS.includes(n.kind))
+
+/** 计算节点公式模式：每个数值/文本/是否输出一条公式，引用输入用 {技术名}。 */
+export const calcFormulaHint = (state: any, node: any): string => {
+  const refs = (node?.inputs || []).filter((i: any) => flowTypeToCalcType(i.type?.type)).map((i: any) => `{${i.name}}`)
+  return refs.length ? `可用参数：${refs.join('、')}` : '（尚无数值/文本/是否类型的输入可引用）'
+}
 
 /** 对象声明内按稳定 ID 路径取字段类型；路径不存在返回 null。 */
 export function fieldOf(decl: any, path: string[]): any | null {
@@ -271,6 +306,63 @@ export function connectionRemovalImpact(state: any, connectionId: string): strin
 export function ensureLayout(state: any): void {
   if (!state.layout || typeof state.layout !== 'object') state.layout = {}
   if (!state.layout.positions || typeof state.layout.positions !== 'object') state.layout.positions = {}
+}
+
+// --- 节点/链测试（/api/flow-run {targets}）辅助 ---------------------------------
+
+/** 被测集合按依赖拓扑排序；集合不成链（依赖缺失）返回 null 并给出缺失项。 */
+export function chainOrder(state: any, ids: string[]): { order: string[]; missing: string[] } {
+  const nodes = new Map<string, any>((state?.nodes || []).map((n: any) => [n.id, n]))
+  const keep = new Set(ids.filter(id => nodes.has(id)))
+  const missing: string[] = []
+  for (const id of keep) {
+    const node = nodes.get(id)
+    for (const input of node?.inputs || []) {
+      const src = input?.source
+      if (src && (src.kind === 'node' || src.kind === 'nodeField') && src.nodeId && !keep.has(src.nodeId))
+        missing.push(`「${node.name || id}」依赖未选中的「${nodes.get(src.nodeId)?.name || src.nodeId}」`)
+    }
+  }
+  if (missing.length) return { order: [], missing: [...new Set(missing)] }
+  const deps = new Map<string, string[]>()
+  for (const id of keep) {
+    const node = nodes.get(id)
+    deps.set(id, (node?.inputs || []).flatMap((i: any) => {
+      const src = i?.source
+      return src && (src.kind === 'node' || src.kind === 'nodeField') && keep.has(src.nodeId) ? [src.nodeId] : []
+    }))
+  }
+  const order: string[] = []
+  const ready = [...keep].filter(id => !(deps.get(id) || []).length).sort()
+  const waiting = new Map([...keep].map(id => [id, new Set(deps.get(id))]))
+  while (ready.length) {
+    const id = ready.shift()!
+    order.push(id)
+    for (const [other, pending] of waiting) {
+      pending.delete(id)
+      if (!pending.size && !order.includes(other) && !ready.includes(other)) ready.push(other)
+    }
+  }
+  return { order: order.length === keep.size ? order : [...keep], missing: [] }
+}
+
+/** 链/节点的“外部输入”：来源不在被测集合内的输入（fixed 自动带值；其余需用户给值）。 */
+export function chainExternalInputs(state: any, ids: string[]): { nodeId: string; nodeName: string; input: any; key: string; fixedValue?: any }[] {
+  const rows: { nodeId: string; nodeName: string; input: any; key: string; fixedValue?: any }[] = []
+  for (const id of ids) {
+    const node = (state?.nodes || []).find((n: any) => n.id === id)
+    if (!node) continue
+    for (const input of node.inputs || []) {
+      const src = input?.source
+      if (src && src.kind === 'fixed') {
+        rows.push({ nodeId: id, nodeName: node.name, input, key: `${id}.${input.name}`, fixedValue: src.value })
+        continue
+      }
+      const inside = src && (src.kind === 'node' || src.kind === 'nodeField') && ids.includes(src.nodeId)
+      if (!inside) rows.push({ nodeId: id, nodeName: node.name, input, key: `${id}.${input.name}` })
+    }
+  }
+  return rows
 }
 
 /** 新节点的默认画布位置：按现有节点数排成网格，边界节点固定两端。 */

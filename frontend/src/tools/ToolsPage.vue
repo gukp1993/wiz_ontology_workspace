@@ -14,6 +14,7 @@ const tools = [
   { view: 'learning', name: '历史图谱导览', desc: '查看导入的历史图谱分类与教学材料。' },
   { view: 'mapping', name: '旧版映射入口', desc: '历史映射页签已并入“对象映射”，点击直达。' },
   { view: 'valuetypes', name: '值类型管理', desc: '维护值类型、约束与示例格式，供属性引用。' },
+  { view: 'llm', name: 'LLM 配置', desc: '管理函数编排 Python/计算节点 LLM 代执行所用的提供方（密钥只写不读回）。' },
 ]
 </script>
 

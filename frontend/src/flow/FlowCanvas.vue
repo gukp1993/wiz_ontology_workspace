@@ -3,19 +3,33 @@
      · 连线模式点击源→目标 → emit('link')，由编辑页打开绑定对话框（取消不产生绑定）；
      · 删除连线 → emit('unlink', edgeId)，编辑页解析受影响绑定并确认；
      · 拖动节点位置写 layout.positions（grab 时 before-change，dragfree changed）；
-     · 缩放/平移只写 layout.zoom/pan，绝不触发保存（A：布局与业务分开）。 -->
+     · 缩放/平移只写 layout.zoom/pan，绝不触发保存（A：布局与业务分开）。
+     v2：五类节点配色；运行/测试结果徽标（状态+耗时/边行数）由 results 驱动；
+     链选择模式下点选节点 emit('chain-tap')，选中高亮由 chainIds 驱动。 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import cytoscape from 'cytoscape'
 import { GRAPH_STYLE } from '../shared/graphStyle'
 import { INPUT_NODE, OUTPUT_NODE, defaultPosition, derivedEdges, ensureLayout, processingNodes } from './flowModel'
-const props = defineProps<{ state: any }>()
-const emit = defineEmits(['before-change', 'changed', 'select', 'link', 'unlink'])
+const props = defineProps<{ state: any; results?: Record<string, any>; chainIds?: string[]; chainMode?: boolean }>()
+const emit = defineEmits(['before-change', 'changed', 'select', 'link', 'unlink', 'chain-tap'])
 const canvas = ref<HTMLElement | null>(null)
 let cy: any = null, observer: ResizeObserver | null = null
 const linking = ref(false), linkSource = ref(''), notice = ref('')
 let noticeTimer: any = null
 function notify(text: string) { notice.value = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => notice.value = '', 3500) }
+
+const BADGES: Record<string, (r: any) => string> = {
+  running: () => '⏳ 运行中…',
+  success: r => `✓ 成功 ${r.durationMs ?? 0}ms`,
+  failed: () => '✗ 失败（点击查看）',
+  skipped: () => '⏹ 跳过',
+}
+function badgeText(id: string): string {
+  const r = props.results?.[id]
+  if (!r) return ''
+  return BADGES[r.status] ? '\n' + BADGES[r.status](r) : ''
+}
 
 function positionOf(id: string): { x: number; y: number } {
   ensureLayout(props.state)
@@ -27,29 +41,36 @@ function positionOf(id: string): { x: number; y: number } {
   return props.state.layout.positions[id]
 }
 function nodeElements() {
+  const chain = new Set(props.chainIds || [])
   const nodes = [{
-    data: { id: INPUT_NODE, name: '编排输入', w: 108, h: 52, type: 'input', locked: true },
+    data: { id: INPUT_NODE, name: '编排输入', label: '编排输入', w: 108, h: 52, type: 'input', locked: true },
     position: positionOf(INPUT_NODE), locked: true, classes: 'boundary',
   }, {
-    data: { id: OUTPUT_NODE, name: '编排输出', w: 108, h: 52, type: 'output', locked: true },
+    data: { id: OUTPUT_NODE, name: '编排输出', label: '编排输出', w: 108, h: 52, type: 'output', locked: true },
     position: positionOf(OUTPUT_NODE), locked: true, classes: 'boundary',
   }]
   for (const node of processingNodes(props.state)) {
+    const status = props.results?.[node.id]?.status
     nodes.push({
-      data: { id: node.id, name: node.name || '未命名', w: 118, h: 54, type: node.kind },
+      data: { id: node.id, name: node.name || '未命名', label: (node.name || '未命名') + badgeText(node.id), w: 118, h: 54, type: node.kind },
       position: positionOf(node.id), locked: false,
+      classes: [status === 'failed' ? 'run-failed' : '', status === 'running' ? 'run-running' : '', chain.has(node.id) ? 'chain-in' : ''].filter(Boolean).join(' '),
     } as any)
   }
   return nodes
 }
 function edgeElements() {
-  const edges = derivedEdges(props.state).map(e => ({
-    data: { id: e.id, source: e.source, target: e.target, relation: e.label },
-  }))
+  const edges = derivedEdges(props.state).map(e => {
+    const source = props.results?.[e.source]
+    const suffix = source && source.status === 'success' && source.rowCount != null ? ` · ${source.rowCount} 条` : ''
+    return { data: { id: e.id, source: e.source, target: e.target, relation: e.label + suffix } }
+  })
   for (const out of props.state?.outputs || []) {
     const binding = out.binding
     if (binding && (binding.kind === 'node' || binding.kind === 'nodeField') && binding.nodeId) {
-      edges.push({ data: { id: `out:${out.id}`, source: binding.nodeId, target: OUTPUT_NODE, relation: out.label || out.name || '输出' } } as any)
+      const source = props.results?.[binding.nodeId]
+      const suffix = source && source.status === 'success' && source.rowCount != null ? ` · ${source.rowCount} 条` : ''
+      edges.push({ data: { id: `out:${out.id}`, source: binding.nodeId, target: OUTPUT_NODE, relation: (out.label || out.name || '输出') + suffix } } as any)
     }
   }
   return edges
@@ -114,24 +135,32 @@ onMounted(() => {
     container: canvas.value,
     elements: [...nodeElements() as any, ...edgeElements() as any],
     style: [...GRAPH_STYLE,
+      { selector: 'node', style: { label: 'data(label)', 'font-weight': 600 } },
       { selector: '[type = "python"]', style: { 'background-color': '#e9f2ff', 'border-color': '#3978c5', shape: 'round-rectangle' } },
       { selector: '[type = "sql"]', style: { 'background-color': '#edf9f1', 'border-color': '#35a167', shape: 'round-rectangle' } },
       { selector: '[type = "redis"]', style: { 'background-color': '#fff2e5', 'border-color': '#d9832b', shape: 'round-rectangle' } },
+      { selector: '[type = "http"]', style: { 'background-color': '#e6f6f8', 'border-color': '#2b9db0', shape: 'round-rectangle' } },
+      { selector: '[type = "calc"]', style: { 'background-color': '#fdf0f6', 'border-color': '#c9566e', shape: 'round-rectangle' } },
       { selector: '[type = "input"],[type = "output"]', style: { 'background-color': '#f3f0ff', 'border-color': '#8464d8', shape: 'round-tag' } },
       { selector: 'node.boundary', style: { 'border-style': 'double', 'border-width': 4 } },
+      { selector: 'node.run-failed', style: { 'border-color': '#c4534d', 'border-width': 4.5 } },
+      { selector: 'node.run-running', style: { 'border-style': 'dashed', 'border-color': '#3978c5' } },
+      { selector: 'node.chain-in', style: { 'border-style': 'dashed', 'border-color': '#2b9db0', 'border-width': 4 } },
     ],
     // 打开编排一律全图适配第一眼（缩放/平移仍会记录，但不恢复——避免恢复到指向空白的历史视口）
     layout: { name: 'preset', fit: true, padding: 60 }, wheelSensitivity: 0.2, minZoom: 0.15, maxZoom: 3,
   })
   // preset 布局是异步完成的：挂载后绝不能立即 sync()（会重建元素并把视口退回适配前），
   // 只在布局完成后再检查一次"全图是否越界"，越界才适配。
-  // preset 布局是异步完成的：挂载后绝不能立即 sync()（会重建元素并把视口退回适配前），
-  // 只在布局完成后再检查一次"全图是否越界"，越界才适配。
   ;[400, 1200].forEach(d => setTimeout(() => { try { ensureWholeGraphVisible() } catch { /* 忽略 */ } }, d))
   cy.on('tap', (event: any) => {
-    if (event.target === cy) { emit('select', ''); return }
+    if (event.target === cy) { if (!props.chainMode) emit('select', ''); return }
+    if (event.target.isEdge()) { if (!props.chainMode) emit('select', ''); return }
     const id = event.target.id()
-    if (event.target.isEdge()) { emit('select', ''); return }
+    if (props.chainMode) {
+      if (id !== INPUT_NODE && id !== OUTPUT_NODE) emit('chain-tap', id)
+      return
+    }
     if (linking.value && event.target.isNode()) {
       if (!linkSource.value) { linkSource.value = id; event.target.addClass('link-src'); notify('已选起点，请点击目标节点') }
       else if (linkSource.value === id) { linkSource.value = ''; cy.nodes().removeClass('link-src') }
@@ -178,6 +207,8 @@ const contentSignature = computed(() => JSON.stringify([
   (props.state?.outputs || []).map((o: any) => [o.id, o.binding?.nodeId || '', o.binding?.outputId || '']),
 ]))
 watch(contentSignature, () => sync())
+// 运行结果/链选择变化 → 刷新徽标与高亮（轻量：重建元素但保留视口）
+watch(() => JSON.stringify([props.results, props.chainIds, props.chainMode]), () => sync())
 defineExpose({ sync, focusNode, fitAll, autoLayout, toggleLink, linking })
 </script>
 <template>
@@ -188,7 +219,7 @@ defineExpose({ sync, focusNode, fitAll, autoLayout, toggleLink, linking })
     <button @click="autoLayout">整理</button>
     <button @click="fitAll">全图</button>
   </div>
-  <span class="canvas-hint">{{linking?(linkSource?'已选起点，点击目标节点':'点击起点节点'):'连线从输入绑定派生 · 右键连线可删除绑定'}}</span>
+  <span class="canvas-hint">{{chainMode?'链选择：点选按执行顺序的连续节点':'连线从输入绑定派生 · 右键连线可删除绑定'}}</span>
   <span v-if="notice" class="canvas-notice" role="status">{{notice}}</span>
 </div>
 </template>

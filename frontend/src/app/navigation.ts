@@ -7,7 +7,7 @@ export const pages: Record<string, string> = {
   'p-upgrade': '版本引用',
   'f-home': '函数编排', 'f-editor': '编排编辑',
   tools: '更多工具', actions: '动作定义', interfaces: '接口定义', discover: '本体浏览', knowledge: '本体画布',
-  explorer: '对象数据浏览', instances: '实例与计算预览', learning: '历史图谱导览', valuetypes: '值类型管理',
+  explorer: '对象数据浏览', instances: '实例与计算预览', learning: '历史图谱导览', valuetypes: '值类型管理', llm: 'LLM 配置',
 }
 
 /** 旧 hash/内部跳转别名：全部归一到白名单键（任务板 §2 冻结）。 */
