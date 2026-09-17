@@ -748,8 +748,9 @@ function selectById(id: string) {
 .ow-h2-def{margin:6px 0 0}
 .ow-head-side .danger{margin:0}
 .relation-sentence{margin:18px 0 0}
-/* 删除/引用拦截等提示：紧贴详情头，点击操作处即可看到 */
-.ow-alert{margin:12px 0 0}
+/* 删除/引用拦截等提示：紧贴详情头，点击操作处即可看到；
+   左右内边距与 .ld-detail-head/.ld-tabs/.ld-body 一致（24px），否则会顶到面板两侧且比正文左移 */
+.ow-alert{margin:12px 24px 0}
 @media(max-width:1000px){
   .ow-toolbar .primary{margin-left:0}
 }
