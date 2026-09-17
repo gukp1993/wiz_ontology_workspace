@@ -226,6 +226,7 @@ def _exec_python(node, values, ctx):
         logs.append('[LLM 请求摘要] ' + _preview(str(trace.get('request'))))
         logs.append('[LLM 响应摘要] ' + _preview(str(trace.get('response'))))
     if not verdict.get('ok'):
+        logs.append(f'[LLM] 调用失败：{verdict.get("error")}')
         raise NodeFailure(verdict.get('error') or 'LLM 代执行失败', logs)
     logs.append('注意：LLM 求值具有非确定性，请结合业务判断结果。')
     return _contract_dict(jsonify(verdict['result']), node, logs), logs
@@ -245,6 +246,7 @@ def _exec_calc(node, values, ctx):
         if trace:
             logs.append(f"[LLM] provider={trace.get('provider')} model={trace.get('model')} 耗时 {trace.get('durationMs')}ms")
         if not verdict.get('ok'):
+            logs.append(f'[LLM] 调用失败：{verdict.get("error")}')
             raise NodeFailure(verdict.get('error') or 'LLM 计算失败', logs)
         return _contract_dict(jsonify(verdict['result']), node, logs), logs
     formulas = impl.get('formulas') or {}

@@ -632,6 +632,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <!-- 项目区加载中/失败（R2）：与「还没有项目」区分，等待或失败时都可返回本体 -->
 <section v-if="projectAreaWaiting" class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:88%"></div></section>
 <AppError v-else-if="projectAreaFailed" :title="projectFailureTitle" :reason="projectListError||projectLoadError" :hint="projectOriginBlocked?'':'项目数据加载失败，本体建模可继续使用。修正后重试，或先回到本体区继续工作。'" :fix-href="projectOriginBlocked?localAccess:''" retry-label="重试" secondary-label="返回本体" @retry="retryProjectContext" @secondary="switchSpace('ontology')"/>
+<LlmProviders v-else-if="view==='llm'"/>
 <section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div><a :href="templateHref" download="本体模型填写模板.xlsx">下载 Excel 模板</a></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>
 <OntologyHome v-if="view==='o-home'" :state="state" @navigate="navigate"/>
@@ -648,7 +649,6 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <ProjectValidation :ref-state="refState" v-if="view==='p-release'&&projectState" :report="projectReport" :validate-error="projectValidateError" :busy="busy" :project-state="projectState" @open-ontology="openReferencedOntology" @refresh="validateProject(false)" @navigate="navigate" @published="onProjectPublished"/>
 <FlowList v-if="view==='f-home'" @open="openFlow" @created="onFlowCreated" @deleted="onFlowDeleted"/>
 <FlowEditor v-if="view==='f-editor'&&flowState" :state="flowState" :check="flowCheck" :project-connections="projectConnections" :project-id="projectId" :revision="flowSaver.revision.value" @update:check="flowCheck=$event" @before-change="pushFlowUndo" @changed="flowChanged"/>
-<LlmProviders v-if="view==='llm'"/>
 <ToolsPage v-if="view==='tools'" @navigate="navigate"/>
 <OntologyDiscover v-if="view==='discover'" :state="state" @navigate="navigate" @graph="showKnowledge" @properties="openProperties"/>
 <KnowledgeExplorer v-if="view==='knowledge'" :state="state" :focus-id="knowledgeFocus" @navigate="navigate"/>

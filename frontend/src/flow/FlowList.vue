@@ -62,7 +62,7 @@ async function remove(item: any) {
   <div class="manager-heading">
     <div>
       <h2>函数编排</h2>
-      <p>把 Python 与 SQL 处理节点编排成可复用的取数与加工流程。第一期只做定义与配置检查，不执行代码或 SQL；与项目取值规则库相互独立。</p>
+      <p>把 SQL/计算/Python/Redis/HTTP 处理节点编排成可复用的取数与加工流程：每个节点都是一个函数，可在画布上测试（指定输入、返回输出）与运行；Python/LLM 计算由配置的大模型代为求值，本机不执行任何用户代码。与项目取值规则库相互独立。</p>
     </div>
     <button class="primary" @click="showCreate=true">＋ 新建编排</button>
   </div>

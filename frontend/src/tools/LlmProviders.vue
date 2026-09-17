@@ -71,7 +71,7 @@ async function test(item: any) {
       <div class="grow">
         <strong>{{item.name}}</strong>
         <span v-if="item.isDefault" class="pill">默认</span>
-        <div class="muted small">模型：{{item.model}} · {{item.keySet ? '密钥已配置' : '未配置密钥'}}</div>
+        <div class="muted small">模型：{{item.model}} · {{item.keyConfigured ? '密钥已配置' : '未配置密钥'}}</div>
       </div>
       <small v-if="testingId===item.id" class="muted">测试中…</small>
       <small v-else-if="testResults[item.id]" :class="testResults[item.id].startsWith('✓')?'inline-success':'inline-error'">{{testResults[item.id]}}</small>
