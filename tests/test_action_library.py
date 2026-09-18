@@ -227,12 +227,11 @@ check(roundtrip['workflow'] == workspaces_state['workflow'], '本体状态 encod
 
 pstate = proj_state([{'id': 'r1', 'objectTypeId': 'StorageDevice', 'actionId': 'act_stop',
                       'implementation': {'kind': 'api', 'path': '/stop', 'roles': '运维', 'paramNotes': 'x'}}])
-files = projects._files_from_state(pstate)
-check(files['bindings'].get('actionBindings') == pstate['bindings']['actionBindings'],
-      'actionBindings 随 bindings.yaml 落盘')
-reloaded = projects._state_from_files('p1', files)
+# 库化后：actionBindings 原样进入快照 bindings 并可读回（等价于旧 bindings.yaml 落盘检查）
+projects.save_draft(pstate)
+reloaded = projects.load('p1')[0]
 check(reloaded['bindings'].get('actionBindings') == pstate['bindings']['actionBindings'],
-      'bindings.yaml 读回 actionBindings 原样')
+      'actionBindings 随快照保存并读回原样')
 
 published = projects.publish(pstate)
 check(published.get('version') == 'v1', '项目发布成功')

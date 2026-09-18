@@ -394,7 +394,7 @@ state['nodes'].append(node('calc', '路由', inputs=[{'name': 'a', 'type': {'typ
                            outputs=[{'name': 'v', 'type': {'type': 'number'}}],
                            impl={'mode': 'formula', 'formulas': {'v': '{a} + 1'}}))
 flows.save_draft(state)
-revision = flows.revision_of(flows.read_draft(created['id']))
+revision = flows.current_token(created['id'])
 result = flow_routes.post_flow_run({'state': state, 'targets': ['nd_路由'], 'inputs': {}})
 check(result[1] == 200 and result[0]['status'] == 'success', '测试形态通过路由执行', result)
 result = flow_routes.post_flow_run({'state': state, 'inputs': {}, 'revision': 'stale'})

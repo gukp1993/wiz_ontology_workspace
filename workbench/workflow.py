@@ -3,13 +3,13 @@ import copy
 import json
 from .properties import effective
 from .contracts import signature_errors, is_contract
-from .paths import DATA_ROOT
-def defaults():return json.loads((DATA_ROOT/'ontology/models/storage/workflow.json').read_text())
 def empty_workflow(name=''):
     return {'objective':{'name':name,'question':'','scope':'','acceptance':''},'functions':[],'actions':[],'interfaces':[],'release':{'note':'','reviewer':''}}
 
 def ensure(state):
-    if 'workflow' not in state:state['workflow']=defaults() if state.get('workspaceId','storage')=='storage' else empty_workflow()
+    # 库化后无 base 文件回退：缺失 workflow 组件一律按空工作流补齐
+    # （迁移导入的草稿自带 workflow；旧 defaults() 只在线读文件，已下线）。
+    if 'workflow' not in state:state['workflow']=empty_workflow()
     return state
 
 def applicable_types(record):
@@ -230,10 +230,21 @@ def definition_errors(state):
     errors.extend(signature_errors(state))
     return errors
 
+def _demo_originals(kind):
+    # 演示基线定义属纯静态资源；缺失（未随库迁移/演示数据未安装）时演示链路不可用，
+    # 返回空表而不是抛错——demo_available 会据此返回 False。
+    try:
+        from .paths import DATA_ROOT
+        import json as _json
+        data=_json.loads((DATA_ROOT/'ontology/models/storage/workflow.json').read_text())
+        return data.get(kind,[])
+    except (OSError, ValueError):
+        return []
+
 def demo_available(record,kind):
     registered={'functions':{'function.storage_soc':'storage.calculate_weighted_soc.v1'},'actions':{'action.change_system':'storage.change_system.dry_run.v1'}}
     if registered.get(kind,{}).get(record.get('id'))!=record.get('implementation_ref') or not record.get('implementation_ref'):return False
-    original=next((n for n in defaults()[kind] if n['id']==record['id']),None)
+    original=next((n for n in _demo_originals(kind) if n.get('id')==record.get('id')),None)
     if not original or record.get('status')=='deprecated':return False
     # Display wording can change; executable contract changes require implementation work.
     if kind=='functions':

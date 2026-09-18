@@ -1,30 +1,30 @@
-"""工作台级 LLM 提供方登记（函数编排 Python/计算节点的 LLM 代执行用）。
+"""工作台级 LLM 提供方登记（数据库版：wb_model_configs + wb_credentials + wb_settings）。
 
-独立命名空间（不与显示格式化的 format-llm.json、项目 api-credentials 混用）：
-
-    <DATA_ROOT>/ontology/vault/llm-providers/<providerId>.json
-
-边界（对齐 workbench/api_credentials.py）：
-* 只做本地配置存储与元数据列举；连通性测试在 llm_client（探测类，不持全局锁）。
-* 密钥只写不读回：HTTP 层只暴露 list_metadata 的 id/name/model/isDefault/
-  keyConfigured；响应、日志、异常信息中都不出现真实密钥。read() 仅供服务端
-  执行器读取，调用方必须保证密钥不外传。
-* 文件 0600、目录 0700、临时文件 + os.replace 原子替换；路径逃逸防护与
-  api_credentials.py 一致。
+* 元数据在 wb_model_configs（不含明文 API Key）；密钥在 wb_credentials
+  （namespace='model'，owner_key='global'，resource_id=provider_id）。
+* 默认项记录在 wb_settings 的 models.default_provider_id；首个提供方、设默认、
+  删默认的兜底行为与文件版一致，且默认切换与配置写入在同一事务（model-default
+  护栏行串行化，防并发出现多个默认）。
+* 密钥只写不读回：HTTP 层只暴露 list_metadata 的安全字段；read() 仅供服务端
+  执行器/连通性测试，密钥绝不进响应、日志、快照。
 """
-import json
-import os
 import re
-import secrets
-import tempfile
+import secrets as pysecrets
 
-from workbench.paths import DATA_ROOT
+from workbench import storage
+from workbench.storage import assets as store
+from workbench.storage import configuration as config_store
+from workbench.storage.engine import read_connection, write_tx, utcnow
+from sqlalchemy import text as sql_text
+from workbench.storage import secret_store
 
-VAULT = DATA_ROOT / 'ontology/vault/llm-providers'
+VAULT = None  # 旧文件目录已下线；保留名字避免外部误用
 _ID = re.compile(r'llm-[a-z0-9][a-z0-9-]{0,31}')
 _MAX_NAME = 60
 _MAX_TEXT = 500
 MAX_TIMEOUT = 300
+MODEL_NS = config_store.NAMESPACE_MODEL
+OWNER = 'global'
 
 
 def _clean(provider_id):
@@ -33,99 +33,78 @@ def _clean(provider_id):
     return provider_id
 
 
-def _file(provider_id):
-    path = VAULT / (_clean(provider_id) + '.json')
-    if path.resolve().parent != VAULT.resolve():
-        raise ValueError('LLM 提供方存储路径无效')
-    return path
+def _rows(conn):
+    rows = conn.execute(
+        sql_text('SELECT provider_id, name, endpoint, model, timeout_seconds, temperature, '
+                       'metadata_revision, updated_at FROM wb_model_configs')).mappings().all()
+    return [dict(row) for row in rows]
 
 
-def _new_id():
-    for _ in range(20):
-        candidate = 'llm-' + secrets.token_hex(5)
-        if not (VAULT / (candidate + '.json')).exists():
-            return candidate
-    raise ValueError('LLM 提供方标识生成失败，请重试')
-
-
-def _write(payload):
-    VAULT.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path = _file(payload['id'])
-    body = json.dumps(payload, ensure_ascii=False)
-    handle = tempfile.NamedTemporaryFile('w', dir=str(path.parent), delete=False, encoding='utf-8')
+def _metadata_of(row):
     try:
-        with handle:
-            handle.write(body)
-        os.chmod(handle.name, 0o600)
-        os.replace(handle.name, path)
-    except Exception:
-        try:
-            os.unlink(handle.name)
-        except OSError:
-            pass
-        raise
-
-
-def _load_all():
-    items = []
+        temperature = float(row.get('temperature')) if row.get('temperature') is not None else 0
+    except (TypeError, ValueError):
+        temperature = 0
     try:
-        files = sorted(VAULT.glob('*.json'))
-    except OSError:
-        return items
-    for path in files:
-        try:
-            payload = json.loads(path.read_text(encoding='utf-8'))
-        except (OSError, ValueError, UnicodeDecodeError):
-            continue
-        if isinstance(payload, dict) and _ID.fullmatch(str(payload.get('id') or '')):
-            items.append(payload)
-    return items
+        timeout = int(row.get('timeout_seconds')) if row.get('timeout_seconds') is not None else 60
+    except (TypeError, ValueError):
+        timeout = 60
+    return {'id': row['provider_id'], 'name': str(row.get('name') or row['provider_id']),
+            'model': str(row.get('model') or ''), 'endpoint': str(row.get('endpoint') or ''),
+            'timeout': timeout, 'temperature': temperature,
+            'isDefault': False, 'keyConfigured': bool(row.get('secret_id'))}
+
+
+def _load_all(conn):
+    return _rows(conn)
 
 
 def list_metadata():
-    """元数据列表（无密钥），默认提供方排最前，其余按名称排序。
-    endpoint/timeout/temperature 一并回传供编辑回显；api_key 永不出现在元数据。"""
-    items = []
-    for p in _load_all():
-        try:
-            temperature = float(p.get('temperature')) if p.get('temperature') is not None else 0
-        except (TypeError, ValueError):
-            temperature = 0
-        try:
-            timeout = int(p.get('timeout')) if p.get('timeout') is not None else 60
-        except (TypeError, ValueError):
-            timeout = 60
-        items.append({'id': p['id'], 'name': str(p.get('name') or p['id']),
-                      'model': str(p.get('model') or ''),
-                      'endpoint': str(p.get('endpoint') or ''),
-                      'timeout': timeout, 'temperature': temperature,
-                      'isDefault': bool(p.get('is_default')),
-                      'keyConfigured': bool(p.get('api_key'))})
+    """元数据列表（无密钥），默认提供方排最前，其余按名称排序；api_key 永不出现。"""
+    storage.ensure_ready()
+    with read_connection() as conn:
+        rows = _load_all(conn)
+        default_id = config_store.get_setting(conn, config_store.DEFAULT_PROVIDER_KEY, '')
+    items = [_metadata_of(row) for row in rows]
+    for item in items:
+        item['isDefault'] = item['id'] == default_id
     items.sort(key=lambda x: (not x['isDefault'], x['name'], x['id']))
     return items
 
 
 def metadata_ids():
-    return {p['id'] for p in _load_all()}
+    storage.ensure_ready()
+    with read_connection() as conn:
+        return {row['provider_id'] for row in _load_all(conn)}
 
 
 def read(provider_id):
-    """完整配置（含密钥）。仅供服务端执行器/连通性测试使用，绝不进响应。"""
-    path = _file(provider_id)
-    if not path.is_file():
-        return None
-    return json.loads(path.read_text(encoding='utf-8'))
+    """完整配置（含解密密钥）。仅供服务端执行器/连通性测试，绝不进响应。"""
+    _clean(provider_id)
+    storage.ensure_ready()
+    with read_connection() as conn:
+        row = next((r for r in _load_all(conn) if r['provider_id'] == provider_id), None)
+        if row is None:
+            return None
+        secret = config_store.get_secret(conn, MODEL_NS, OWNER, provider_id)
+    return {'id': provider_id, 'name': row['name'], 'endpoint': row['endpoint'], 'model': row['model'],
+            'timeout': int(row['timeout_seconds'] or 60), 'temperature': float(row['temperature'] or 0),
+            'api_key': secret or '', 'is_default': False}
 
 
 def default_provider():
     """默认提供方完整配置；无任何提供方返回 None。"""
-    items = _load_all()
-    if not items:
-        return None
-    for item in items:
-        if item.get('is_default'):
-            return item
-    return items[0]
+    storage.ensure_ready()
+    with read_connection() as conn:
+        rows = _load_all(conn)
+        if not rows:
+            return None
+        default_id = config_store.get_setting(conn, config_store.DEFAULT_PROVIDER_KEY, '')
+        row = next((r for r in rows if r['provider_id'] == default_id), rows[0])
+        secret = config_store.get_secret(conn, MODEL_NS, OWNER, row['provider_id'])
+    return {'id': row['provider_id'], 'name': row['name'], 'endpoint': row['endpoint'], 'model': row['model'],
+            'timeout': int(row['timeout_seconds'] or 60), 'temperature': float(row['temperature'] or 0),
+            'api_key': secret or '', 'is_default': True}
 
 
 def resolve(provider_id):
@@ -141,8 +120,7 @@ def resolve(provider_id):
     return payload
 
 
-def save(name, endpoint, model, api_key='', timeout=60, temperature=0, is_default=False, provider_id=''):
-    """写入或覆盖一条提供方配置，返回元数据（不含密钥）。api_key 留空 = 沿用已存密钥。"""
+def _validate(name, endpoint, model, timeout, temperature, api_key):
     name = str(name or '').strip()
     endpoint = str(endpoint or '').strip()
     model = str(model or '').strip()
@@ -175,46 +153,90 @@ def save(name, endpoint, model, api_key='', timeout=60, temperature=0, is_defaul
         raise ValueError('API Key 过长')
     if api_key and ('\n' in api_key or '\r' in api_key):
         raise ValueError('API Key 不能包含换行')
+    return name, endpoint, model, timeout, temperature, api_key
+
+
+def save(name, endpoint, model, api_key='', timeout=60, temperature=0, is_default=False, provider_id=''):
+    """写入或覆盖一条提供方配置，返回元数据（不含密钥）。api_key 留空 = 沿用已存密钥。
+
+    元数据、密钥与默认项设置在同一事务内完成（model-default 护栏串行化默认切换）。
+    """
+    name, endpoint, model, timeout, temperature, api_key = _validate(name, endpoint, model,
+                                                                     timeout, temperature, api_key)
+    storage.ensure_ready()
     if provider_id:
+        _clean(provider_id)
         existing = read(provider_id)
         if existing is None:
             raise ValueError('LLM 提供方不存在或已被删除')
     else:
         existing = None
-        provider_id = _new_id()
-        if not _load_all():  # 第一个提供方自动成为默认，避免节点无可用默认
-            is_default = True
+        for _ in range(20):
+            provider_id = 'llm-' + pysecrets.token_hex(5)
+            if read(provider_id) is None:
+                break
+        else:
+            raise ValueError('LLM 提供方标识生成失败，请重试')
     if not api_key:
         # 编辑时留空 = 沿用已保存密钥；首次配置没有可沿用的密钥即报错
-        api_key = (existing or {}).get('api_key') or ''
+        with read_connection() as conn:
+            api_key = config_store.get_secret(conn, MODEL_NS, OWNER, provider_id) or ''
     if not api_key:
         raise ValueError('API Key 不能为空（首次配置必须填写；编辑时留空表示沿用已保存密钥）')
-    payload = {'id': provider_id, 'name': name, 'endpoint': endpoint, 'model': model,
-               'timeout': timeout, 'temperature': temperature, 'api_key': api_key,
-               'is_default': bool(is_default)}
-    if is_default:
-        for item in _load_all():
-            if item['id'] != provider_id and item.get('is_default'):
-                item['is_default'] = False
-                _write(item)
-    _write(payload)
-    return {'id': provider_id, 'name': name, 'model': model, 'isDefault': bool(is_default),
-            'keyConfigured': bool(api_key)}
+
+    def body(conn):
+        store.bump_guard(conn, 'model-default')
+        existing_rows = _load_all(conn)
+        first = not existing_rows
+        secret_id = config_store.put_secret(conn, MODEL_NS, OWNER, provider_id, api_key,
+                                            display_name=name, now=utcnow())
+        row = next((r for r in existing_rows if r['provider_id'] == provider_id), None)
+        revision = (row['metadata_revision'] + 1) if row else 1
+        if row is not None:
+            conn.execute(sql_text(
+                'UPDATE wb_model_configs SET name = :n, endpoint = :e, model = :m, '
+                'timeout_seconds = :t, temperature = :tp, secret_id = :s, '
+                'metadata_revision = :r, updated_at = :now WHERE provider_id = :p'),
+                {'n': name, 'e': endpoint, 'm': model, 't': timeout, 'tp': temperature,
+                 's': secret_id, 'r': revision, 'now': utcnow(), 'p': provider_id})
+        else:
+            conn.execute(sql_text(
+                'INSERT INTO wb_model_configs (provider_id, name, endpoint, model, timeout_seconds, '
+                'temperature, secret_id, metadata_revision, updated_at) '
+                'VALUES (:p, :n, :e, :m, :t, :tp, :s, :r, :now)'),
+                {'p': provider_id, 'n': name, 'e': endpoint, 'm': model, 't': timeout,
+                 'tp': temperature, 's': secret_id, 'r': revision, 'now': utcnow()})
+        want_default = bool(is_default) or first
+        current_default = config_store.get_setting(conn, config_store.DEFAULT_PROVIDER_KEY, '')
+        if want_default and current_default != provider_id:
+            config_store.put_setting(conn, config_store.DEFAULT_PROVIDER_KEY, provider_id, now=utcnow())
+        return {'id': provider_id, 'name': name, 'model': model,
+                'isDefault': bool(want_default or current_default == provider_id),
+                'keyConfigured': True}
+
+    with write_tx() as tx:
+        return tx.run(body)
 
 
 def clear(provider_id):
     """删除提供方；缺失静默。删除默认项后自动指派剩余第一个为默认。"""
-    path = _file(provider_id)
-    was_default = False
-    payload = read(provider_id) if path.is_file() else None
-    if payload:
-        was_default = bool(payload.get('is_default'))
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        return
-    if was_default:
-        remaining = _load_all()
-        if remaining:
-            remaining[0]['is_default'] = True
-            _write(remaining[0])
+    _clean(provider_id)
+    storage.ensure_ready()
+
+    def body(conn):
+        row = next((r for r in _load_all(conn) if r['provider_id'] == provider_id), None)
+        if row is None:
+            return
+        store.bump_guard(conn, 'model-default')
+        conn.execute(sql_text('DELETE FROM wb_model_configs WHERE provider_id = :p'),
+                     {'p': provider_id})
+        config_store.clear_secret(conn, MODEL_NS, OWNER, provider_id)
+        current_default = config_store.get_setting(conn, config_store.DEFAULT_PROVIDER_KEY, '')
+        if current_default == provider_id:
+            remaining = _load_all(conn)
+            config_store.put_setting(conn, config_store.DEFAULT_PROVIDER_KEY,
+                                     remaining[0]['provider_id'] if remaining else '',
+                                     now=utcnow())
+
+    with write_tx() as tx:
+        tx.run(body)

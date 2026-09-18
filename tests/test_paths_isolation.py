@@ -51,9 +51,9 @@ def data_root_override():
     """2. 临时根生效；未设置时 DATA_ROOT 为仓库根。"""
     tmp = tempfile.mkdtemp()
     r = in_subprocess({'WIZ_WORKBENCH_ROOT': tmp},
-                      "from workbench import paths, workspaces\n"
+                      "from workbench import paths, storage\n"
                       "assert str(paths.DATA_ROOT) == %r, paths.DATA_ROOT\n"
-                      "assert str(workspaces.DRAFT_ROOT).startswith(%r)\n"
+                      "assert str(storage.derived_sqlite_url()).startswith('sqlite:///' + %r), storage.derived_sqlite_url()\n"
                       "print('ok')" % (tmp, tmp))
     assert r.returncode == 0, r.stderr
     r2 = in_subprocess({'WIZ_WORKBENCH_ROOT': ''},
@@ -72,15 +72,13 @@ def static_uses_code_root():
     assert r.returncode == 0, r.stderr
 
 
-def workflow_defaults_respects_root():
-    """4. 隔离根没有基础文件时 defaults() 报 FileNotFoundError，而不是读真实数据。"""
+def workflow_ensure_reads_no_files():
+    """4. 库化后 ensure() 不读任何基础文件：隔离根下也能补齐空工作流，不触真实数据。"""
     r = in_subprocess({'WIZ_WORKBENCH_ROOT': tempfile.mkdtemp()},
                       "from workbench import workflow\n"
-                      "try:\n"
-                      "    workflow.defaults()\n"
-                      "    raise SystemExit('应当报错')\n"
-                      "except FileNotFoundError:\n"
-                      "    print('ok')")
+                      "state = workflow.ensure({'workspaceId': 'storage'})\n"
+                      "assert state['workflow']['functions'] == [], state['workflow']\n"
+                      "print('ok')")
     assert r.returncode == 0 and 'ok' in r.stdout, r.stderr + r.stdout
 
 
@@ -88,5 +86,5 @@ if __name__ == '__main__':
     run('核心导入不加载演示模块', core_imports_isolated)
     run('数据根覆盖与回落', data_root_override)
     run('静态资源走代码根', static_uses_code_root)
-    run('defaults 不读真实数据', workflow_defaults_respects_root)
+    run('ensure 不读基础文件', workflow_ensure_reads_no_files)
     print(f'统计：{len(PASSED)} 项全部通过')

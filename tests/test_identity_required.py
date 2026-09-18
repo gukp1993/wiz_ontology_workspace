@@ -26,9 +26,10 @@ class IdentityRequired(unittest.TestCase):
                     with patch.object(projects, 'load', return_value=(state, None)), \
                          patch.object(project_routes, 'referenced_ontology', return_value=ontology_state()), \
                          patch.object(project_routes.catalog_store, 'load_all', return_value={}), \
+                         patch.object(projects, 'current_token', return_value='tok-test'), \
                          patch.object(projects, 'save_draft', return_value={'revision':'saved'}) as save, \
                          patch.object(projects, 'publish') as publish:
-                        payload={'state':copy.deepcopy(state),'revision':projects.revision(state)}
+                        payload={'state':copy.deepcopy(state),'revision':'tok-test'}
                         out, status=project_routes.post_project_write(payload,'/api/project-publish')
                         self.assertEqual(status,422,out)
                         save.assert_not_called();publish.assert_not_called()

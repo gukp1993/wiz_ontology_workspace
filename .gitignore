@@ -6,3 +6,11 @@ node_modules/
 frontend/dist/
 .DS_Store
 ontology/vault/
+
+# 工作台数据库与备份（运行时产物，不入 git）
+data/
+# 存储加密根密钥（库外 0600 文件，绝不入 git）
+keys/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

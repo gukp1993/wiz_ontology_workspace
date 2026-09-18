@@ -21,7 +21,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
 
 from workbench import model_routes, project_routes, projects, versions, workspaces
-from workbench import flow_routes
+from workbench import flow_routes, storage
 from workbench.paths import CODE_ROOT
 
 STATIC = CODE_ROOT / 'frontend/dist'
@@ -41,6 +41,8 @@ GET_ROUTES = {
     '/api/flows': flow_routes.get_flows,
     '/api/flow-state': flow_routes.get_flow_state,
     '/api/llm-providers': flow_routes.get_llm_providers,
+    '/api/storage-status': model_routes.get_storage_status,
+    '/api/model-definitions': model_routes.get_model_definitions,
 }
 
 # POST 路由表：payload 为解析后的 JSON。白名单即本表键集合。
@@ -129,6 +131,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self.respond({'error': str(exc)}, 404)
         except workspaces.WorkspaceNotFound as exc:
             return self.respond({'error': str(exc)}, 404)
+        except storage.StorageUnavailable as exc:
+            # 库不可用/锁超时/schema 缺失：明确可重试的基础设施错误，绝不回退文件
+            return self.respond({'error': str(exc)}, 503, close=True)
         except (ValueError, KeyError, TypeError, OSError) as exc:
             return self.respond({'error': str(exc)}, 400)
 
@@ -164,11 +169,23 @@ class Handler(SimpleHTTPRequestHandler):
             return self.respond({'error': str(exc)}, 409)
         except workspaces.WorkspaceNotFound as exc:
             return self.respond({'error': str(exc)}, 404)
+        except storage.RevisionConflict as exc:
+            # CAS 失败：与既有 409 契约一致（带服务端最新 token）
+            return self.respond({'error': str(exc), 'currentRevision': exc.current_revision}, 409)
+        except storage.StorageUnavailable as exc:
+            return self.respond({'error': str(exc)}, 503, close=True)
         except Exception as exc:
             return self.respond({'error': str(exc)}, 400)
 
 
 if __name__ == '__main__':
+    # 启动预检（单一策略：storage.ensure_ready）——真实根未初始化时明确报错退出；
+    # 隔离数据根（WIZ_WORKBENCH_ROOT，仅测试/并行实例）允许惰性初始化空库。
+    # 绝不在启动或请求中隐式建真实库、绝不自动导入旧文件。
+    try:
+        storage.ensure_ready()
+    except storage.StorageUnavailable as exc:
+        raise SystemExit(str(exc))
     # WIZ_WORKBENCH_PORT 仅用于自动化测试并行实例；生产固定 18765。
     # 8765 保留给机器上其他服务（如 graph_recall_test_server），本工作台绝不经由该端口提供访问。
     port = int(os.environ.get('WIZ_WORKBENCH_PORT') or 18765)

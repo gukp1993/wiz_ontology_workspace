@@ -1,35 +1,17 @@
-"""项目级 API 凭据登记（动作接口映射 P3，最小实现）。
+"""Project API credentials on the workbench database (namespace='api').
 
-这是 API 凭据（动作接口出站调用所需的密钥）的**独立命名空间**：
-
-    <DATA_ROOT>/ontology/vault/projects/<projectId>/api-credentials/<credentialId>.json
-
-目录与 secrets.py 的数据库连接密码 vault 同根（ontology/vault/projects）但
-**不同子目录**：连接密码写 <projectId>/<connectionId>，本模块只写
-<projectId>/api-credentials/，两者互不覆盖，也不会把连接标识当凭据标识。
-本模块不修改也不依赖 secrets.py 的读写路径。
-
-边界（刻意保持最小）：
-* 只做本地配置存储与元数据列举，**不做任何网络调用**，不解析凭据用途，
-  不提供全局凭据管理产品。
-* 密钥只写不读回浏览器：HTTP 层只暴露 list_metadata 的 id/name；响应、
-  日志、异常信息与项目配置/快照/导出中都不出现真实密钥。
-* 文件 0600、目录 0700、临时文件 + os.replace 原子替换；路径逃逸防护与
-  secrets.py 一致（正则校验 + resolve() 父目录比较）。
-
-read() 仅供未来服务端出站调用读取密钥，调用方必须保证密钥不外传。
+API 凭据（动作接口出站调用所需密钥）独立命名空间，与连接密码（namespace=
+'connection'）同表不同作用域，owner_key=项目资产 uid、resource_id=凭据 id，
+互不覆盖、不把连接标识当凭据标识。密钥只写不读回浏览器：HTTP 层只暴露
+list_metadata 的 id/name；密文经 SecretStore AES-GCM 加密，根密钥在库外。
 """
-import json
-import os
-import re
-import secrets
-import tempfile
+from workbench import storage
+from workbench.storage import configuration as config_store
+from workbench.storage.engine import read_connection, write_tx, utcnow
+from uuid import uuid4
 
-from workbench.paths import DATA_ROOT
-
-VAULT = DATA_ROOT / 'ontology/vault/projects'
-SUBDIR = 'api-credentials'
-_ID = re.compile(r'[a-z0-9][a-z0-9_-]{0,63}')
+NAMESPACE = 'api'
+_ID = __import__('re').compile(r'[a-z0-9][a-z0-9_-]{0,63}')
 MAX_NAME = 60
 MAX_SECRET = 512
 
@@ -37,63 +19,33 @@ MAX_SECRET = 512
 def _clean_id(project_id, credential_id):
     if not _ID.fullmatch(str(project_id or '')):
         raise ValueError('凭据存储路径无效')
-    if not _ID.fullmatch(str(credential_id or '')):
+    if credential_id and not _ID.fullmatch(str(credential_id or '')):
         raise ValueError('凭据标识无效')
 
 
-def _dir(project_id):
-    """返回（并校验）该项目的凭据目录，逃逸时抛 ValueError('凭据存储路径无效')。"""
-    if not _ID.fullmatch(str(project_id or '')):
-        raise ValueError('凭据存储路径无效')
-    expected = VAULT.resolve() / str(project_id) / SUBDIR
-    path = VAULT / str(project_id) / SUBDIR
-    if path.resolve() != expected:
-        raise ValueError('凭据存储路径无效')
-    return path
-
-
-def _file(project_id, credential_id):
-    _clean_id(project_id, credential_id)
-    directory = _dir(project_id)
-    path = directory / (str(credential_id) + '.json')
-    if path.resolve().parent != directory.resolve():
-        raise ValueError('凭据存储路径无效')
-    return path
-
-
-def _new_id(directory):
-    for _ in range(20):
-        candidate = 'cred-' + secrets.token_hex(6)
-        if not (directory / (candidate + '.json')).exists():
-            return candidate
-    raise ValueError('凭据标识生成失败，请重试')
+def _owner_uid(conn, project_id, create=False):
+    from workbench.storage import assets as store
+    asset = store.get_asset(conn, 'project', project_id)
+    if asset is None:
+        if not create:
+            raise ValueError('项目不存在，无法保存凭据')
+        # 与旧 vault 宽松行为一致：写路径允许先于项目草稿登记（资产行无 head，不出现在列表）
+        return store.ensure_asset(conn, 'project', project_id, '', None)
+    return asset['asset_uid']
 
 
 def list_metadata(project_id):
-    """列出凭据元数据 [{'id','name'}]，按 name 排序；不含密钥；目录不存在返回 []。
-
-    单个损坏/不可读文件被跳过，避免一个坏文件让整表 500。
-    """
-    directory = _dir(project_id)
-    items = []
-    try:
-        files = sorted(directory.glob('*.json'))
-    except OSError:
-        return items
-    for path in files:
+    """列出凭据元数据 [{'id','name'}]，按 name 排序；不含密钥。"""
+    _clean_id(project_id, '')
+    storage.ensure_ready()
+    with read_connection() as conn:
         try:
-            payload = json.loads(path.read_text(encoding='utf-8'))
-        except (OSError, ValueError, UnicodeDecodeError):
-            continue
-        if not isinstance(payload, dict):
-            continue
-        credential_id = str(payload.get('id') or '')
-        if not _ID.fullmatch(credential_id):
-            continue
-        name = str(payload.get('name') or credential_id)
-        items.append({'id': credential_id, 'name': name})
-    items.sort(key=lambda item: (item['name'], item['id']))
-    return items
+            uid = _owner_uid(conn, project_id)
+        except ValueError:
+            return []
+        rows = config_store.list_credentials(conn, NAMESPACE, uid)
+    return [{'id': row['resource_id'], 'name': row['display_name'] or row['resource_id']}
+            for row in rows if _ID.fullmatch(row['resource_id'] or '')]
 
 
 def ids(project_id):
@@ -103,6 +55,7 @@ def ids(project_id):
 
 def save(project_id, name, secret, credential_id=''):
     """写入或覆盖一条凭据，返回 {'id','name'}（不回传密钥）。"""
+    _clean_id(project_id, credential_id)
     name = str(name or '').strip()
     if not name:
         raise ValueError('凭据名称不能为空')
@@ -115,41 +68,56 @@ def save(project_id, name, secret, credential_id=''):
         raise ValueError('凭据密钥过长（最多 %d 字符）' % MAX_SECRET)
     if '\n' in secret or '\r' in secret:
         raise ValueError('凭据密钥不能包含换行')
-    credential_id = str(credential_id or '')
-    if credential_id:
-        _clean_id(project_id, credential_id)
-        path = _file(project_id, credential_id)
+    storage.ensure_ready()
+    if not credential_id:
+        credential_id = 'cred-' + uuid4().hex[:12]
     else:
-        directory = _dir(project_id)
-        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        credential_id = _new_id(directory)
-        path = _file(project_id, credential_id)
-    body = json.dumps({'id': credential_id, 'name': name, 'secret': secret}, ensure_ascii=False)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    handle = tempfile.NamedTemporaryFile('w', dir=str(path.parent), delete=False, encoding='utf-8')
-    try:
-        with handle:
-            handle.write(body)
-        os.chmod(handle.name, 0o600)
-        os.replace(handle.name, path)
-    except Exception:
-        try:
-            os.unlink(handle.name)
-        except OSError:
-            pass
-        raise
+        credential_id = str(credential_id)
+
+    def body(conn):
+        uid = _owner_uid(conn, project_id, create=True)
+        config_store.put_secret(conn, NAMESPACE, uid, credential_id, secret,
+                                display_name=name, now=utcnow())
+
+    with write_tx() as tx:
+        tx.run(body)
     return {'id': credential_id, 'name': name}
 
+
+def read(project_id, credential_id):
+    """完整密钥读取；仅供服务端出站调用使用，绝不进响应。缺失返回 None。"""
+    _clean_id(project_id, credential_id)
+    storage.ensure_ready()
+    with read_connection() as conn:
+        try:
+            uid = _owner_uid(conn, project_id)
+        except ValueError:
+            return None
+        return config_store.get_secret(conn, NAMESPACE, uid, str(credential_id))
 
 
 def clear(project_id, credential_id):
     """删除凭据；缺失静默。"""
-    path = _file(project_id, credential_id)
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
+    _clean_id(project_id, credential_id)
+    storage.ensure_ready()
+
+    def body(conn):
+        try:
+            uid = _owner_uid(conn, project_id)
+        except ValueError:
+            return
+        config_store.clear_secret(conn, NAMESPACE, uid, str(credential_id))
+
+    with write_tx() as tx:
+        tx.run(body)
 
 
 def exists(project_id, credential_id):
-    return _file(project_id, credential_id).is_file()
+    _clean_id(project_id, credential_id)
+    storage.ensure_ready()
+    with read_connection() as conn:
+        try:
+            uid = _owner_uid(conn, project_id)
+        except ValueError:
+            return False
+        return config_store.credential_exists(conn, NAMESPACE, uid, str(credential_id))

@@ -106,10 +106,10 @@ def _preview(payload):
     if not (object_type and instance_id):
         raise ValueError('预览请求缺少 objectType／instanceId')
 
-    # 1) 短锁：读取已保存草稿、核对 revision、复制快照后立即释放，联网不持锁。
+    # 1) 短锁：读取已保存草稿、核对 revision（head token）、复制快照后立即释放，联网不持锁。
     with LOCK:
         state, _saved = projects.load(project_id)
-        current_revision = projects.revision(state)
+        current_revision = projects.current_token(project_id)
         if revision_in != current_revision:
             raise StaleRevision(current_revision)
         snapshot = copy.deepcopy(state)

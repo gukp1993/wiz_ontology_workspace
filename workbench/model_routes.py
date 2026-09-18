@@ -1,9 +1,12 @@
-"""本体区路由处理（B3）：/api/ontologies、state、versions、releases、save/publish、
-校验/预览/探索、导出与恢复的业务逻辑。URL、请求字段、状态码与响应结构由 server.py
-统一分派，本模块不再做安全检查（Origin/白名单/大小限制都在 Handler 完成）。
+"""本体区路由处理（B3 + DB 存储切换）：/api/ontologies、state、versions、releases、
+save/publish、校验/预览/探索、导出与恢复的业务逻辑。URL、请求字段、状态码与响应
+结构由 server.py 统一分派，本模块不再做安全检查（Origin/白名单/大小限制都在
+Handler 完成）。
 
-从 server.py 机械提取：函数体保持原语义；写路径的 LOCK 使用 workbench.locking 的
-同一把全局锁。
+存储切换（20260918）：草稿/发布/恢复的权威读写全部经 workspaces/versions 的
+Repository；revision 是不透明 token（无草稿时为空白基线内容 hash，仅此一处），
+保存/发布用 CAS 原子提交，发布为单事务。历史 ZIP 与恢复备份改存附件表；
+resources 导入参考改读附件。旧文件目录仅迁移输入，在线服务无文件回退。
 """
 import copy
 import io
@@ -14,23 +17,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from workbench.demo import Demo
-from workbench import workspaces, versions, contracts
+from workbench import workspaces, versions, contracts, storage
 from workbench.locking import LOCK
 from workbench.model_format import encode_ontology, decode_state, encode_state
-from workbench.paths import DATA_ROOT
 from workbench.properties import effective, api_name, validate_properties
 from workbench.workflow import ensure, definition_errors, demo_available, dry_run_action, readiness, empty_workflow
 from workbench.value_types import validate_value_types, check_property_value, check_value, parse_input, VALUE_TYPE
 from workbench.explorer import snapshot as explorer_snapshot
 
 STATIC = None  # 静态托管属 HTTP 层职责，留在 server.py
-DRAFT = DATA_ROOT / 'ontology/drafts/draft.json'
-RELEASES = DATA_ROOT / 'ontology/releases'
+# 导出包/恢复解析使用的**归档内路径命名**（不是在线存储路径；在线存储已库化）。
 FILES = {'workflow': 'ontology/models/storage/workflow.json', 'ontology': 'ontology/models/storage/ontology.json',
          'metrics': 'ontology/models/storage/metrics.yaml', 'rules': 'ontology/models/storage/rules.yaml',
          'bindings': 'ontology/projects/chuangzhi/bindings.yaml', 'parameters': 'ontology/projects/chuangzhi/parameters.yaml'}
 EMPTY_BINDINGS = {'object_bindings': [], 'observation_binding': {}, 'source_candidates': [], 'notice': ''}
-# Seed namespaces so a blank workbench bootstraps without the legacy storage base files.
+# Seed namespaces so a blank workbench bootstraps without legacy base files.
 DEFAULT_NAMESPACES = {'mg': 'https://example.com/microgrid/', 'owl': 'http://www.w3.org/2002/07/owl#',
                       'rdfs': 'http://www.w3.org/2000/01/rdf-schema#', 'xsd': 'http://www.w3.org/2001/XMLSchema#'}
 UNAVAILABLE = '当前本体尚未配置可用的实例数据与计算实现；请先完成数据接入。'
@@ -41,45 +42,32 @@ def seed_state():
             'workflow': empty_workflow(), 'metrics': {'metrics': []}, 'rules': {'rules': []}}
 
 
-def initial():
-    out = {}
-    try:
-        for key in ('workflow', 'ontology', 'metrics', 'rules'):
-            path = DATA_ROOT / FILES[key]
-            if not path.is_file():
-                return seed_state()
-            raw = path.read_text()
-            out[key] = json.loads(raw) if FILES[key].endswith('.json') else yaml.safe_load(raw)
-    except (OSError, ValueError, yaml.YAMLError):
-        return seed_state()
-    return decode_state(out)
-
-
 def state_id(state):
     return workspaces.clean_id(state.get('workspaceId'))
 
 
-def draft_path(identifier='storage'):
-    return DRAFT if identifier == 'storage' else workspaces.folder(identifier) / 'draft.json'
-
-
-def release_path(identifier='storage'):
-    return RELEASES if identifier == 'storage' else workspaces.folder(identifier) / 'releases'
-
-
 def revision(state):
-    return workspaces.revision_of(state)
+    """在线并发令牌：有草稿取 head token；无草稿时空白状态的内容 hash（一次性基线）。"""
+    identifier = state.get('workspaceId', 'storage')
+    token = workspaces.current_token(identifier)
+    return token if token else workspaces.revision_of(state)
 
 
 def current(identifier='storage'):
     info = workspaces.describe(identifier)
     state = workspaces.read_draft(info['id'])
     if state is None:
-        state = workspaces.legacy_draft_state(info['id'])
-    if state is None:
         state = blank_state(info['name'])
     state['workspaceId'] = info['id']
     return ensure(state)
+
+
+def _expected_revision(identifier):
+    """服务端当前并发令牌：有草稿 = head token；无草稿 = 空白状态内容 hash（一次性基线）。"""
+    token = workspaces.current_token(identifier)
+    if token:
+        return token
+    return workspaces.revision_of(current(identifier))
 
 
 def blank_state(name=''):
@@ -210,7 +198,7 @@ def validate(s):
                         errors.append(f"关系 {relation} 的方向与项目映射不一致")
         from rdflib import Graph
         # Local context only: never dereference a supplied remote JSON-LD context.
-        if s['ontology']['@context'] != initial()['ontology']['@context']:
+        if s['ontology']['@context'] != DEFAULT_NAMESPACES:
             errors.append('命名空间上下文不可更改')
         else:
             Graph().parse(data=json.dumps(s['ontology']), format='json-ld')
@@ -256,13 +244,24 @@ def package(s):
 
 
 def restore_snapshot(identifier, release):
+    """从附件表读取历史恢复 ZIP，解析为新草稿状态；不在线读任何文件目录。"""
     if not isinstance(release, str) or Path(release).name != release or '/' in release or '\\' in release or not release.endswith('.zip'):
         raise ValueError('快照名称无效')
-    directory = release_path(identifier); path = directory / release
-    if not path.is_file() or path.resolve().parent != directory.resolve():
-        raise ValueError('当前本体中不存在此快照')
+    identifier = workspaces.clean_id(identifier)
+    storage.ensure_ready()
+    from workbench.storage import assets as store, artifacts as artifact_store
+    from workbench.storage.engine import read_connection
     state = blank_state(workspaces.describe(identifier)['name']); state['workspaceId'] = identifier
-    with zipfile.ZipFile(path) as archive:
+    with read_connection() as conn:
+        asset = store.get_asset(conn, 'model', identifier)
+        owner_uid = asset['asset_uid'] if asset is not None else None
+        data = artifact_store.read_by_name(conn, owner_uid,
+                                           artifact_store.PURPOSE_RELEASE_ZIP, release) \
+            if owner_uid is not None else None
+    if data is None:
+        raise ValueError('当前本体中不存在此快照')
+    import io as _io
+    with zipfile.ZipFile(_io.BytesIO(data)) as archive:
         if sum(item.file_size for item in archive.infolist()) > 20_000_000:
             raise ValueError('快照内容超过大小限制')
         names = set(archive.namelist())
@@ -295,6 +294,73 @@ def get_ontologies(query):
     return {'items': workspaces.listing(), 'defaultId': 'storage'}, 200
 
 
+def get_storage_status(query):
+    """内部库健康/迁移状态：只返回就绪、schema 版本与后端类型，绝不含 DSN 或密钥。"""
+    ready, schema_version = storage.schema_status()
+    return {'ready': ready, 'schemaVersion': schema_version,
+            'backend': storage.backend_kind(storage.resolve_url())}, 200
+
+
+def get_model_definitions(query):
+    """只读定义查询（索引投影）：固定当前快照、limit≤100；不创建任何版本。
+
+    ontology 缺省 = storage；version 缺省 = 当前草稿快照。快照切换后游标失效，
+    绝不跨版本拼结果。索引缺失时回源完整文档重建（可重建投影，不是第二事实源）。
+    """
+    info = workspaces.describe(query.get('ontology', ['storage'])[0])
+    identifier = info['id']
+    storage.ensure_ready()
+    from workbench.storage import assets as store
+    from workbench.storage import indexing
+    from workbench.storage.engine import read_connection
+    version = query.get('version', [''])[0]
+    try:
+        limit = max(1, min(int(query.get('limit', ['50'])[0]), 100))
+        offset = max(0, int(query.get('cursor', ['0'])[0]))
+    except ValueError:
+        return {'error': '分页参数无效'}, 400
+    with read_connection() as conn:
+        if version:
+            asset = store.get_asset(conn, 'model', identifier)
+            if asset is None:
+                raise versions.VersionNotFound('本体版本不存在')
+            row = store.get_release_row(conn, asset['asset_uid'], version)
+            if row is None:
+                raise versions.VersionNotFound('本体版本不存在')
+            snapshot_id = row['snapshot_id']
+        else:
+            from workbench.storage.engine import head_by_external
+            head = head_by_external(conn, 'model', identifier)
+            if head is None:
+                return {'items': [], 'total': 0, 'cursor': 0, 'snapshot': ''}, 200
+            snapshot_id = head['snapshot_id']
+        if indexing.count_definitions(conn, snapshot_id) == 0:
+            _rebuild_index(conn, snapshot_id)  # 只读查询内重建投影（不写快照/head）
+        kind = query.get('kind', [''])[0]
+        owner = query.get('owner', [''])[0]
+        q = query.get('q', [''])[0]
+        rows = indexing.query_definitions(conn, snapshot_id, kind=kind or None,
+                                          owner=owner or None, q=q or None,
+                                          limit=limit + 1, offset=offset)
+    items = [{'kind': r['definition_kind'], 'id': r['stable_id'], 'name': r['name'],
+              'owner': r['owner_id']} for r in rows[:limit]]
+    return {'items': items, 'cursor': offset + limit if len(rows) > limit else None,
+            'snapshot': snapshot_id, 'version': version or None}, 200
+
+
+def _rebuild_index(conn, snapshot_id):
+    """从完整文档重建定义索引投影（只读查询缺失索引时的回源路径）。"""
+    from workbench.storage import indexing
+    snapshot = store.read_snapshot(conn, snapshot_id)
+    if snapshot is None:
+        return
+    import json as _json
+    payload = _json.loads(snapshot['payload_json'])
+    rows = indexing.extract_definition_rows(payload)
+    if rows:
+        indexing.replace_definition_index(conn, snapshot['asset_uid'], snapshot_id, rows)
+
+
 def get_state(query):
     identifier = query.get('ontology', ['storage'])[0]
     info = workspaces.describe(identifier)
@@ -321,19 +387,43 @@ def get_version_state(query):
 def get_releases(query):
     identifier = query.get('ontology', ['storage'])[0]
     info = workspaces.describe(identifier)
-    return sorted([p.name for p in release_path(info['id']).glob('*.zip')], reverse=True), 200
+    identifier = info['id']
+    storage.ensure_ready()
+    from workbench.storage import assets as store, artifacts as artifact_store
+    from workbench.storage.engine import read_connection
+    with read_connection() as conn:
+        asset = store.get_asset(conn, 'model', identifier)
+        rows = artifact_store.artifact_meta_list(conn, asset['asset_uid'],
+                                                 artifact_store.PURPOSE_RELEASE_ZIP) \
+            if asset is not None else []
+    return sorted([row['legacy_name'] for row in rows if row['legacy_name']], reverse=True), 200
 
 
 def get_source_reference(query):
     identifier = query.get('ontology', ['storage'])[0]
     info = workspaces.describe(identifier)
-    source_file = DATA_ROOT / 'resources/imports/storage_20260814/source.jsonId'
-    if not source_file.is_file():
-        source_file = DATA_ROOT / 'imports/storage_20260814/source.jsonId'  # 旧位置回退（外部数据根兼容）
-    if info['id'] != 'storage' or not source_file.is_file():
+    if info['id'] != 'storage':
         return {'nodes': []}, 200
-    source = json.loads(source_file.read_text())
-    return {'nodes': [{'id': n['@id'], 'name': n.get('name', ''), 'data': n.get('data', {})} for n in source['@graph'] if n.get('nodeType')]}, 200
+    storage.ensure_ready()
+    from workbench.storage import assets as store, artifacts as artifact_store
+    from workbench.storage.engine import read_connection
+    with read_connection() as conn:
+        asset = store.get_asset(conn, 'model', 'storage')
+        if asset is None:
+            return {'nodes': []}, 200
+        rows = artifact_store.artifact_meta_list(conn, asset['asset_uid'],
+                                                 artifact_store.PURPOSE_SOURCE_REFERENCE)
+        data = None
+        for row in rows:
+            blob = artifact_store.read_by_name(conn, asset['asset_uid'],
+                                               artifact_store.PURPOSE_SOURCE_REFERENCE,
+                                               row['legacy_name'])
+            if blob and row['legacy_name'].endswith('.jsonId'):
+                data = json.loads(blob)
+                break
+    if data is None:
+        return {'nodes': []}, 200
+    return {'nodes': [{'id': n['@id'], 'name': n.get('name', ''), 'data': n.get('data', {})} for n in data['@graph'] if n.get('nodeType')]}, 200
 
 
 # --- POST 路由：payload 已解析；返回 (payload, status) -------------------------------
@@ -441,17 +531,28 @@ def post_restore(payload):
     state, info = _decoded_state(payload)
     identifier = info['id']
     with LOCK:
-        existing = current(identifier)
-        if payload.get('revision') != revision(existing):
-            return {'error': '此本体已有新版本，请刷新后重试'}, 409
+        expected = _expected_revision(identifier)
+        if payload.get('revision') != expected:
+            return {'error': '此本体已有新版本，请刷新后重试', 'currentRevision': expected}, 409
         restored = restore_snapshot(identifier, payload.get('release')); errors = validate(restored)
-        folder = draft_path(identifier).parent / 'backups'; folder.mkdir(parents=True, exist_ok=True)
-        backup = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ') + '-' + revision(existing)[:8] + '.json'
-        data = draft_path(identifier).read_bytes() if draft_path(identifier).exists() else json.dumps(encode_state(existing), ensure_ascii=False, indent=2).encode()
-        with (folder / backup).open('xb') as stream:
-            stream.write(data)
-        workspaces.write_draft(restored)
-        return {'revision': revision(restored), 'state': encode_state(restored), 'ontology': info, 'errors': errors, 'backup': backup,
+        storage.ensure_ready()
+        from workbench.storage import assets as store, artifacts as artifact_store
+        from workbench.storage.engine import write_tx, utcnow
+        backup_name = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ') + '-' + str(expected)[:8] + '.json'
+        backup_data = json.dumps(encode_state(_server_current(identifier)), ensure_ascii=False,
+                                 indent=2).encode()
+        def body(conn):
+            asset = store.get_asset(conn, 'model', identifier)
+            if asset is not None:
+                artifact_store.put_artifact(conn, backup_data, artifact_store.PURPOSE_RESTORE_BACKUP,
+                                            legacy_name=backup_name, owner_asset_uid=asset['asset_uid'],
+                                            media_type='application/json', now=utcnow())
+        with write_tx() as tx:
+            tx.run(body)
+        _head_token = workspaces.current_token(identifier)
+        workspaces.write_draft(restored, expected_token=_head_token,
+                               blank_baseline=(_head_token is None))
+        return {'revision': revision(restored), 'state': encode_state(restored), 'ontology': info, 'errors': errors, 'backup': backup_name,
                 'release': payload['release'], 'note': '快照中的项目配置未恢复到项目草稿；项目数据由项目绑定区独立维护。'}, 200
 
 
@@ -471,21 +572,24 @@ def post_save(payload):
     state, info = _decoded_state(payload)
     identifier = info['id']
     with LOCK:
-        current_state = current(identifier)
-        if payload.get('revision') != revision(current_state):
-            return {'error': '此本体已有新版本，请刷新后重试', 'currentRevision': revision(current_state)}, 409
+        head_token = workspaces.current_token(identifier)
+        expected = _expected_revision(identifier)
+        if payload.get('revision') != expected:
+            return {'error': '此本体已有新版本，请刷新后重试', 'currentRevision': expected}, 409
         errors = validate(state)
-        workspaces.write_draft(state)
-        return {'revision': revision(state), 'errors': errors, 'ontology': info}, 200
+        workspaces.write_draft(state, expected_token=head_token,
+                               blank_baseline=(head_token is None))
+        return {'revision': _expected_revision(identifier), 'errors': errors, 'ontology': info}, 200
 
 
 def post_publish(payload):
     state, info = _decoded_state(payload)
     identifier = info['id']
     with LOCK:
-        current_state = current(identifier)
-        if payload.get('revision') != revision(current_state):
-            return {'error': '此本体已有新版本，请刷新后重试', 'currentRevision': revision(current_state)}, 409
+        head_token = workspaces.current_token(identifier)
+        expected = _expected_revision(identifier)
+        if payload.get('revision') != expected:
+            return {'error': '此本体已有新版本，请刷新后重试', 'currentRevision': expected}, 409
         errors = validate(state)
         if state.get('sourceGraph', {}).get('status') in ('pending_review', 'pending_field_verification'):
             errors.append('导入图谱存在未审核内容，请先完成业务口径确认；可保存草稿或导出审核包。')
@@ -505,12 +609,44 @@ def post_publish(payload):
             return {'error': '存在待人工确认的变更，请先选择变更类型后再发布。',
                     'reasons': [r['text'] for r in diff['reasons'] if r['severity'] == 'pending']}, 422
         change_type = override or suggested
-        workspaces.write_draft(state)
-        entry = versions.publish(identifier, state, {'changeType': change_type,
-                                                     'changeNote': payload.get('changeNote') or state.get('workflow', {}).get('release', {}).get('note', ''),
-                                                     'reviewer': payload.get('reviewer', ''), 'revision': revision(state), 'reasons': diff.get('reasons', [])})
-        return {'revision': revision(state), 'errors': [], 'version': entry['version'], 'changeType': entry['changeType'],
-                'reasons': entry.get('reasons', []), 'ontology': info}, 200
+        # 原子发布：草稿快照 + head CAS + 发布快照 + 发布记录一个事务
+        # requestId 幂等：同 key 同内容返回既有回执；同 key 不同内容 409。
+        request_key = str(payload.get('requestId') or '')
+        request_hash = ''
+        if request_key:
+            import hashlib as _hashlib
+            request_hash = _hashlib.sha256(
+                json.dumps(encode_state(state), ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            storage.ensure_ready()
+            from workbench.storage import configuration as config_store
+            from workbench.storage.engine import read_connection
+            with read_connection() as conn:
+                receipt = config_store.get_request_receipt(conn, 'model-publish', identifier, request_key)
+            if receipt is not None:
+                if receipt['request_hash'] != request_hash:
+                    return {'error': 'requestId 已被不同的发布请求使用，请刷新后重试'}, 409
+                prior = receipt['response']
+                return {'revision': prior['revision'], 'errors': [], 'version': prior['version'],
+                        'changeType': prior['changeType'], 'reasons': prior.get('reasons', []),
+                        'ontology': info, 'idempotentReplay': True}, 200
+        entry = versions.publish(identifier, state,
+                                 {'changeType': change_type,
+                                        'changeNote': payload.get('changeNote') or state.get('workflow', {}).get('release', {}).get('note', ''),
+                                      'reviewer': payload.get('reviewer', ''), 'revision': revision(state), 'reasons': diff.get('reasons', [])},
+                                 expected_token=head_token)
+        response = {'revision': entry['revision'], 'errors': [], 'version': entry['version'], 'changeType': entry['changeType'],
+                    'reasons': entry.get('reasons', []), 'ontology': info}
+        if request_key:
+            from workbench.storage import configuration as config_store
+            from workbench.storage.engine import write_tx, utcnow
+            def body(conn):
+                config_store.put_request_receipt(conn, 'model-publish', identifier, request_key, request_hash,
+                                                 {'version': entry['version'], 'changeType': entry['changeType'],
+                                                  'revision': entry['revision'], 'reasons': entry.get('reasons', [])},
+                                                 now=utcnow())
+            with write_tx() as tx:
+                tx.run(body)
+        return response, 200
 
 
 def post_ontologies(payload):

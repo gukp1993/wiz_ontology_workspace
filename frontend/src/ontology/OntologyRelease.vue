@@ -126,6 +126,9 @@ const changeType=ref(''),changeNote=ref(''),reviewer=ref('')
 const publishErrors=ref<string[]>([]),publishError=ref(''),publishReasons=ref<string[]>([]),publishedInfo=ref<any>(null)
 // G2：结果未知（超时/网络中断）时不显示成功也不断言未写入；用现有版本清单核对
 const publishUnknown=ref(false),publishCheckNote=ref(''),publishBaseline=ref<string[]>([]),restoreError=ref('')
+// 幂等 requestId：结果未知的发布重试复用同 key（服务端保证不重复出版本）；结果确定后换新
+const pendingRequestId=ref('')
+function newRequestId(){return (crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2))}
 const suggested=computed(()=>String(precheck.value?.suggested||''))
 const canCompatible=computed(()=>precheck.value?!!precheck.value.canCompatible:suggested.value!=='breaking')
 const changeTypeOptions=computed(()=>[
@@ -141,18 +144,21 @@ async function doPublish(){
   try{
     if(guardBlocked())return // 有未保存表单：不静默发布
     if(commitNow)await commitNow() // ① 未落盘修改先持久化，不借发布偷偷提交表单
+    if(!pendingRequestId.value)pendingRequestId.value=newRequestId()
     const d=await loadStateRaw(ontologyId.value) // ② 服务端最新草稿与 revision
     try{
       // ③ state 已是 schema 形态，原样提交（publishServerState 不做 requestBody 编码）
       publishedInfo.value=await publishServerState({state:d.state,revision:d.revision,changeType:changeType.value,changeNote:changeNote.value.trim(),reviewer:reviewer.value.trim()})
     }catch(err:any){
       if(err.status===422){ // 422 带结构化错误体：errors[]（校验）或 error+reasons（变更类型）
+        pendingRequestId.value='' // 422 确定未发布 → 换新 requestId
         if(err.data?.errors)publishErrors.value=err.data.errors
         else{publishError.value=err.data?.error||err.message||'不能按所选变更类型发布';publishReasons.value=err.data?.reasons||[]}
         return
       }
       throw err
     }
+    pendingRequestId.value='' // 发布成功：下一次发布用新 requestId
     changeType.value='';changeNote.value='';reviewer.value=''
     emit('published')
     await loadLists();await runChecks()

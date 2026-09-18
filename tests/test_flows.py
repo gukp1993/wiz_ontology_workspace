@@ -70,17 +70,17 @@ state_newer = copy.deepcopy(state)
 state_newer['description'] = '服务端较新的草稿'
 flows.save_draft(state_newer)                 # 服务端又前进一版
 payload, status = flow_routes.post_flow_save({'state': state, 'revision': rev1})
-check(status == 409 and payload.get('currentRevision') == flows.revision_of(flows.read_draft(created['id'])),
+check(status == 409 and payload.get('currentRevision') == flows.current_token(created['id']),
       'A13 旧 revision 保存被 409 拒绝且带 currentRevision', {'status': status, 'payload': payload})
 
 # 3) 结构损坏 / 非法请求拒绝 -------------------------------------------------------------------
 bad = copy.deepcopy(state)
 bad['inputs'] = 'not-a-list'
-payload, status = flow_routes.post_flow_save({'state': bad, 'revision': flows.revision_of(flows.read_draft(created['id']))})
+payload, status = flow_routes.post_flow_save({'state': bad, 'revision': flows.current_token(created['id'])})
 check(status == 400, '结构损坏（inputs 非列表）保存被拒绝', {'status': status})
 bad_boundary = {'flowId': created['id'], 'nodes': [dict(node('python', 'x'), id='flow-input')], 'inputs': [], 'outputs': [], 'connections': []}
 payload, status = flow_routes.post_flow_save({'state': bad_boundary,
-                                              'revision': flows.revision_of(flows.read_draft(created['id']))})
+                                              'revision': flows.current_token(created['id'])})
 check(status == 400, '边界节点 ID 混入处理节点被拒绝', {'status': status})
 payload, status = flow_routes.post_flow_check({'state': None})
 check(status == 400, 'flow-check 缺 state 返回 400', {'status': status})
@@ -250,12 +250,12 @@ flow['outputs'] = [{'id': 'fout_9', 'name': 'result', 'label': '结果', 'type':
                     'binding': {'kind': 'nodeField', 'nodeId': n1['id'], 'outputId': 'out_obj', 'fieldPath': ['fld_1']}}]
 flow['layout'] = {'positions': {n1['id']: {'x': 10, 'y': 20}, n2['id']: {'x': 300, 'y': 20}}, 'zoom': 1.2, 'pan': {'x': 1, 'y': 2}}
 flows.save_draft(flow)
-original_revision = flows.revision_of(flows.read_draft(created8['id']))
+original_revision = flows.current_token(created8['id'])
 payload, status = flow_routes.post_flow_copy({'flowId': created8['id']})
 check(status == 201 and payload['id'] != created8['id'], 'A14 复制生成新编排', {'status': status})
 copied = flows.read_draft(payload['id'])
 copied.pop('_draft')
-check(flows.revision_of(flows.read_draft(created8['id'])) == original_revision, 'A14 原编排未被修改')
+check(flows.current_token(created8['id']) == original_revision, 'A14 原编排未被修改')
 all_new_ids = [copied['flowId'], *[i['id'] for i in copied['inputs']], *[o['id'] for o in copied['outputs']],
                *[n['id'] for n in copied['nodes']], *[c['id'] for c in copied['connections']],
                *[f['id'] for f in copied['nodes'][0]['outputs'][1]['type']['fields']]]
@@ -283,12 +283,12 @@ except Exception:
 # 11) 软删除（A15） ------------------------------------------------------------------------------
 created9, _ = blank('旁证编排')
 flows.save_draft(flows.read_draft(created8['id']))
-before_revision_count = len(list((flows.draft_dir(created8['id']) / 'revisions').iterdir()))
+before_seq = flows.read_draft(created8['id'])['_draft']['seq']
 payload, status = flow_routes.post_flow_delete({'flowId': created8['id']})
 check(status == 200, 'A15 软删除成功')
-after_revision_count = len(list((flows.draft_dir(created8['id']) / 'revisions').iterdir()))
-check(after_revision_count == before_revision_count + 1 and (flows.draft_dir(created8['id']) / 'revisions').is_dir(),
-      'A15 删除不清除修订历史（仅追加 deleted 修订）')
+after_state = flows.read_draft(created8['id'])
+check(after_state['_draft']['seq'] == before_seq + 1 and after_state['status'] == 'deleted',
+      'A15 删除不清除修订历史（仅追加 deleted 修订，seq 单调递增）')
 names = [i['id'] for i in flows.listing()]
 check(created8['id'] not in names and created9['id'] in names, 'A15 删除后列表隐藏且其他编排不受影响')
 check(any(i['id'] == created8['id'] for i in flows.listing(include_deleted=True)), 'A15 includeDeleted 可见已删编排')

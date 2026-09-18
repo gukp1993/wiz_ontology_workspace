@@ -288,9 +288,10 @@ async function openSettings(fromView?: string) {
   closeUserMenu(false)
   if (!isGlobalView(view.value)) {
     const ret: { view: string; node?: string; tab?: string } = { view: fromView || view.value }
-    // 对象建模：记录当前选中对象与页签，返回时恢复
+    // 对象建模：记录当前选中对象与页签，返回时恢复（取不到则不写字段，保持协议最小化）
     if (ret.view === 'objects') {
-      ret.node = document.querySelector('.ld-row.active')?.getAttribute('data-row') ?? undefined
+      const node = document.querySelector('.ld-row.active')?.getAttribute('data-row')
+      if (node) ret.node = node
       const tabText = document.querySelector('.ld-tabs button.active')?.textContent.trim() || ''
       if (tabText.startsWith('属性')) ret.tab = 'props'
       else if (tabText.startsWith('链接')) ret.tab = 'links'

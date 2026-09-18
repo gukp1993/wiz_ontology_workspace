@@ -261,9 +261,21 @@ def create_project(name, version):
 
 # --- 主流程 ----------------------------------------------------------------------
 
+def import_seed_into_db():
+    """库化后：把临时根文件树（已复制的发布 + 补丁）导入存储库，服务才可见。"""
+    import os as _os
+    _os.environ['WIZ_DATABASE_URL'] = 'sqlite:///' + str(TMP / 'data' / 'workbench.sqlite3')
+    sys.path.insert(0, str(REPO))
+    from workbench.storage import transfer as _transfer
+    rc = _transfer.main(['import', '--source', str(TMP)])
+    check(rc == 0, '种子发布导入存储库', actual=rc, expected=0)
+    _os.environ.pop('WIZ_DATABASE_URL', None)
+
+
 def main():
     version = seed_release()
     patch_time_series(version)
+    import_seed_into_db()
 
     probe = socket.socket()
     try:
@@ -429,68 +441,42 @@ def main():
     unit_state, _ = projects_store.load(unit_id)
     first = projects_store.save_draft(unit_state)
     check('error' not in first, '首次正常保存不应返回 error', actual=first, expected="无 'error' 键")
-    draft_directory = projects_store.draft_dir(unit_id)
-    pointer_path = draft_directory / 'current.json'
-    pointer_before = json.loads(pointer_path.read_text())
-    unit_state['name'] = '只读目录下应失败的修改'
+    token_before = projects_store.current_token(unit_id)
+    unit_state['name'] = '存储不可用时的修改'
 
-    # 步骤 7：drafts 项目目录只读 → 内层异常路径（修订文件可写，指针暂写失败）。
-    # 此前实现把异常吞掉并返回 {'revision','seq'} 假成功（P02 修复项）。
-    blocked = None
-    os.chmod(draft_directory, 0o500)
-    try:
-        try:
-            (draft_directory / '.perm_probe').write_text('x')
-            blocked = False  # 以 root 运行等环境下只读限制无效
-        except PermissionError:
-            blocked = True
-        finally:
-            probe_path = draft_directory / '.perm_probe'
-            if probe_path.exists():
-                probe_path.unlink()
-        if blocked is False:
-            ok('7', '环境不允许制造只读目录（root 运行），该场景按环境限制跳过')
-        else:
-            outcome = {}
-            try:
-                result = projects_store.save_draft(unit_state)
-                outcome = {'raised': False, 'result': result}
-            except Exception as exc:  # noqa: BLE001 — 允许实现选择抛异常
-                outcome = {'raised': True, 'type': type(exc).__name__, 'message': str(exc)}
-            check(outcome.get('raised') or (isinstance(outcome.get('result'), dict)
-                                            and 'error' in outcome['result']),
-                  'save_draft 在 drafts 目录只读时不得假成功：应返回 error 或抛异常（P02）',
-                  actual=outcome, expected="raised 或 result 含 'error'")
-            pointer_after = json.loads(pointer_path.read_text())
-            check(pointer_after == pointer_before, '保存失败后旧指针 current.json 不得被破坏',
-                  actual=pointer_after, expected=pointer_before)
-            reloaded, _ = projects_store.load(unit_id)
-            check(reloaded.get('name') == '保存失败单测项目',
-                  '保存失败后草稿仍应读出首次保存的内容', actual=reloaded.get('name'),
-                  expected='保存失败单测项目')
-            ok('7', f'save_draft 只读失败不假成功（{outcome.get("type", "返回 error")}），旧指针完好可读')
-    finally:
-        os.chmod(draft_directory, 0o755)
-
-    # 步骤 8：revisions 目录只读 → 外层 mkdir 失败路径（回归保护）。
-    os.chmod(draft_directory / 'revisions', 0o500)
+    # 步骤 7（库化版）：存储不可用 → save_draft 不假成功（返回 error 或抛异常），head 不动。
+    _real_url = os.environ.get('WIZ_DATABASE_URL', '')
+    os.environ['WIZ_DATABASE_URL'] = 'sqlite:////nonexistent-readonly-path/wiz-fail.db'
     try:
         outcome = {}
         try:
             result = projects_store.save_draft(unit_state)
             outcome = {'raised': False, 'result': result}
-        except Exception as exc:  # noqa: BLE001
-            outcome = {'raised': True, 'type': type(exc).__name__, 'message': str(exc)}
+        except Exception as exc:  # noqa: BLE001 — 允许实现选择抛异常
+            outcome = {'raised': True, 'type': type(exc).__name__, 'message': str(exc)[:120]}
         check(outcome.get('raised') or (isinstance(outcome.get('result'), dict)
                                         and 'error' in outcome['result']),
-              'save_draft 在 revisions 目录只读时不得假成功：应返回 error 或抛异常',
+              '存储不可用时 save_draft 不得假成功：应返回 error 或抛异常',
               actual=outcome, expected="raised 或 result 含 'error'")
-        pointer_after = json.loads(pointer_path.read_text())
-        check(pointer_after == pointer_before, '外层失败路径下旧指针同样不得被破坏',
-              actual=pointer_after, expected=pointer_before)
-        ok('8', f'revisions 只读失败不假成功（{outcome.get("type", "返回 error")}），旧指针完好可读')
     finally:
-        os.chmod(draft_directory / 'revisions', 0o755)
+        if _real_url:
+            os.environ['WIZ_DATABASE_URL'] = _real_url
+        else:
+            os.environ.pop('WIZ_DATABASE_URL', None)
+        check(projects_store.current_token(unit_id) == token_before,
+              '保存失败后 head revision token 不得移动',
+              actual=projects_store.current_token(unit_id), expected=token_before)
+        reloaded, _ = projects_store.load(unit_id)
+        check(reloaded.get('name') == '保存失败单测项目',
+              '保存失败后草稿仍应读出首次保存的内容', actual=reloaded.get('name'),
+              expected='保存失败单测项目')
+        ok('7', f'存储不可用不假成功（{outcome.get("type", "返回 error")}），head 完好可读')
+
+    # 步骤 8：恢复后再次保存 → 成功且 token 前进（回归保护：故障后可恢复写入）。
+    result = projects_store.save_draft(unit_state)
+    check('error' not in result and result.get('revision', '').startswith('r-'),
+          '故障恢复后保存成功且返回新 token', actual=result, expected='r- 前缀 token')
+    ok('8', f'恢复后保存正常（token={result.get("revision", "")[:10]}…）')
 
 
 if __name__ == '__main__':

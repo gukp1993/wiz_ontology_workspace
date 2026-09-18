@@ -1,83 +1,38 @@
-"""Immutable ontology version registry: ontology/releases/models/<id>/<version>/.
+"""Immutable ontology version registry on the workbench database.
 
-Every publish writes a directory snapshot plus a manifest.yaml carrying the
-version number and change type. The index.json pointer is updated atomically
-after the version directory is complete. Legacy zip snapshots stay where they
-are and remain restorable; they are not part of this registry.
+发布记录与发布快照都存库（wb_releases + purpose=release 快照），一个发布事务内
+与草稿保存一起原子完成（versions.publish）。版本号严格按数值递增，不按字符串
+排序；同资产并发发布用 head CAS 串行分配。历史目录（ontology/releases/models）
+只作为迁移输入与备份，在线读取不再触碰。
 """
-import json
 import re
-import shutil
-import yaml
-from datetime import datetime, timezone
-from pathlib import Path
 
-from workbench.paths import DATA_ROOT
-from workbench import workspaces
-from workbench.model_format import decode_ontology
+from workbench import storage
+from workbench.storage import assets as store
+from workbench.storage.engine import read_connection, write_tx, utcnow, read_head, read_snapshot
+from workbench.model_format import decode_ontology, encode_ontology
 
-REGISTRY = DATA_ROOT / 'ontology/releases/models'
+KIND = 'model'
 
 
 class VersionNotFound(ValueError):
     pass
 
 
-def folder(identifier):
-    clean = workspaces.clean_id(identifier)
-    path = REGISTRY / clean
-    if path.resolve().parent != REGISTRY.resolve():
-        raise ValueError('版本目录无效')
-    return path
-
-
-def _read_index(identifier):
-    path = folder(identifier) / 'index.json'
-    if path.is_file():
-        data = json.loads(path.read_text())
-        if isinstance(data.get('versions'), list):
-            return data
-    return {'versions': []}
-
-
-def _write_index(identifier, data):
-    path = folder(identifier) / 'index.json'
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix('.tmp')
-    temp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
-    temp.replace(path)
-
-
-def ensure_base_release(identifier):
-    """Register version 1.0.0 from legacy base files once, so projects can pin it."""
-    if _read_index(identifier)['versions']:
-        return
-    if identifier != 'storage':
-        return
-    sources = {'ontology.json': DATA_ROOT / 'ontology/models/storage/ontology.json',
-               'workflow.json': DATA_ROOT / 'ontology/models/storage/workflow.json',
-               'metrics.yaml': DATA_ROOT / 'ontology/models/storage/metrics.yaml',
-               'rules.yaml': DATA_ROOT / 'ontology/models/storage/rules.yaml'}
-    if not all(p.is_file() for p in sources.values()):
-        return
-    destination = folder(identifier) / '1.0.0'
-    if not destination.is_dir():
-        temp = folder(identifier) / '.1.0.0.tmp'
-        if temp.exists():
-            shutil.rmtree(temp)
-        temp.mkdir(parents=True)
-        for name, source in sources.items():
-            shutil.copyfile(source, temp / name)
-        temp.replace(destination)
-    _write_index(identifier, {'versions': [{
-        'version': '1.0.0', 'changeType': 'initial', 'changeNote': '由基础定义文件登记的历史版本',
-        'reviewer': '', 'createdAt': datetime.now(timezone.utc).isoformat(),
-        'revision': 'imported', 'parentVersion': None, 'imported': True}]})
+def clean(identifier):
+    from workbench import workspaces
+    return workspaces.clean_id(identifier)
 
 
 def listing(identifier):
-    ensure_base_release(identifier)
-    return _read_index(identifier)['versions']
+    """版本清单（manifest 列表，按发布顺序）；不在线读取目录、不触发基础版本初始化。"""
+    storage.ensure_ready()
+    identifier = clean(identifier)
+    with read_connection() as conn:
+        asset = store.get_asset(conn, KIND, identifier)
+        if asset is None:
+            return []
+        return [row['manifest'] for row in store.release_rows(conn, asset['asset_uid'])]
 
 
 def latest(identifier):
@@ -85,37 +40,40 @@ def latest(identifier):
     return versions[-1] if versions else None
 
 
-def read_state(identifier, version):
-    entry = next((v for v in listing(identifier) if v['version'] == version), None)
-    if entry is None:
-        raise VersionNotFound('本体版本不存在')
-    directory = folder(identifier) / version
-    data = {}
-    for key in ('ontology', 'workflow'):
-        path = directory / f'{key}.json'
-        if path.is_file():
-            data[key] = json.loads(path.read_text())
-    for key in ('metrics', 'rules'):
-        path = directory / f'{key}.yaml'
-        if path.is_file():
-            data[key] = yaml.safe_load(path.read_text()) or {}
-    if 'ontology' not in data:
-        raise VersionNotFound('版本缺少本体定义文件')
-    state = {'ontology': decode_ontology(data['ontology']),
-             'workflow': data.get('workflow', {'objective': {}, 'functions': [], 'actions': [], 'interfaces': []}),
-             'metrics': data.get('metrics') or {'metrics': []},
-             'rules': data.get('rules') or {'rules': []},
-             'workspaceId': workspaces.clean_id(identifier)}
-    layout = directory / 'layout.json'
-    if layout.is_file():
-        state['layout'] = json.loads(layout.read_text())
+def _decode_release_payload(payload):
+    """发布快照组件 → API state（legacy-release-v1 与 release-state-1 同构：组件字典）。"""
+    ontology = payload.get('ontology')
+    state = {'ontology': decode_ontology(ontology),
+             'workflow': payload.get('workflow') or {'objective': {}, 'functions': [], 'actions': [], 'interfaces': []},
+             'metrics': payload.get('metrics') or {'metrics': []},
+             'rules': payload.get('rules') or {'rules': []}}
+    if payload.get('layout') is not None:
+        state['layout'] = payload['layout']
     return state
 
 
-def _next_version(identifier, change_type):
-    versions = [v['version'] for v in listing(identifier)]
+def read_state(identifier, version):
+    storage.ensure_ready()
+    identifier = clean(identifier)
+    with read_connection() as conn:
+        asset = store.get_asset(conn, KIND, identifier)
+        if asset is None:
+            raise VersionNotFound('本体版本不存在')
+        row = store.get_release_row(conn, asset['asset_uid'], str(version))
+        if row is None:
+            raise VersionNotFound('本体版本不存在')
+        snapshot = read_snapshot(conn, row['snapshot_id'])
+    if snapshot is None:
+        raise VersionNotFound('本体版本不存在')
+    import json
+    state = _decode_release_payload(json.loads(snapshot['payload_json']))
+    state['workspaceId'] = identifier
+    return state
+
+
+def _next_version(labels, change_type):
     numbers = []
-    for version in versions:
+    for version in labels:
         match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)', str(version))
         if match:
             numbers.append(tuple(int(x) for x in match.groups()))
@@ -127,47 +85,102 @@ def _next_version(identifier, change_type):
     return f'{major}.{minor + 1}.0'
 
 
-def publish(identifier, state, meta):
-    """Write an immutable version snapshot; returns the index entry."""
-    identifier = workspaces.clean_id(identifier)
-    versions = listing(identifier)
-    parent = versions[-1]['version'] if versions else None
+def release_payload(state):
+    """发布快照组件（保留旧目录发布的裁剪约定：空 metrics/rules 不写入）。"""
+    return {'ontology': state['ontology'] if 'schemaVersion' in state['ontology'] else encode_ontology(state['ontology']),
+            'workflow': state.get('workflow', {}),
+            'metrics': state.get('metrics') or {},
+            'rules': state.get('rules') or {},
+            'layout': state.get('layout', {})}
+
+
+def publish(identifier, state, meta, expected_token=None):
+    """发布：草稿保存 + 发布快照 + 发布记录一个事务（原子）。
+
+    expected_token：客户端草稿基线（head 存在时 CAS 校验；无 head 的首次发布由
+    路由层完成空白基线核对后传 None）。CAS 失败抛 RevisionConflict（409）。
+    返回 (entry, save_result)。
+    """
+    identifier = clean(identifier)
+    storage.ensure_ready()
+    from workbench import workspaces
     change_type = meta.get('changeType') or 'initial'
-    version = _next_version(identifier, change_type)
-    directory = folder(identifier) / version
-    if directory.exists():
-        raise ValueError('版本目录已存在，请重试发布')
-    temp = folder(identifier) / f'.{version}.tmp'
-    if temp.exists():
-        shutil.rmtree(temp)
-    temp.mkdir(parents=True)
-    try:
-        encoded = dict(state)
-        encoded['ontology'] = state['ontology'] if 'schemaVersion' in state['ontology'] else _encode(state['ontology'])
-        (temp / 'ontology.json').write_text(json.dumps(encoded['ontology'], ensure_ascii=False, indent=2) + '\n')
-        (temp / 'workflow.json').write_text(json.dumps(state.get('workflow', {}), ensure_ascii=False, indent=2) + '\n')
-        # Legacy metrics/rules snapshots are only written when they actually carry content.
-        if state.get('metrics', {}).get('metrics'):
-            (temp / 'metrics.yaml').write_text(yaml.safe_dump(state['metrics'], allow_unicode=True, sort_keys=False))
-        if state.get('rules', {}).get('rules'):
-            (temp / 'rules.yaml').write_text(yaml.safe_dump(state['rules'], allow_unicode=True, sort_keys=False))
-        (temp / 'layout.json').write_text(json.dumps(state.get('layout', {}), ensure_ascii=False, indent=2) + '\n')
+    now = utcnow()
+    outcome = {}
+
+    def body(conn, save_fn, conflict):
+        from workbench import workspaces as _ws
+        asset = store.get_asset(conn, KIND, identifier)
+        if asset is None:
+            # 首次发布（无草稿）：与旧文件版一致，允许直接建立资产与首个草稿
+            name = _ws.DEFAULT_NAME if identifier == _ws.DEFAULT_ID \
+                else str((state.get('workflow') or {}).get('objective', {}).get('name') or identifier)
+            asset_uid = store.ensure_asset(conn, KIND, identifier, name, {}, now)
+        else:
+            asset_uid = asset['asset_uid']
+        head = read_head(conn, asset_uid)
+        has_head = head is not None
+        labels = [row['version_label'] for row in store.release_rows(conn, asset_uid)]
+        parent = labels[-1] if labels else None
+        version = _next_version(labels, change_type)
+        save = save_fn(conn, kind=KIND, external_id=identifier,
+                       payload=workspaces._payload_of(state),
+                       payload_format=store.PAYLOAD_FORMAT_ONTOLOGY,
+                       expected_token=expected_token if has_head else None,
+                       summary=workspaces.summary_of(state),
+                       allow_create=not has_head,
+                       allow_advance=(expected_token is None))
+        release_snapshot = store.append_snapshot(conn, asset_uid, release_payload(state),
+                                                 'release-state-1', 'release', now=now)
         entry = {'version': version, 'changeType': change_type,
                  'changeNote': meta.get('changeNote', ''), 'reviewer': meta.get('reviewer', ''),
-                 'createdAt': datetime.now(timezone.utc).isoformat(),
-                 'revision': meta.get('revision', ''), 'parentVersion': parent,
+                 'createdAt': now, 'revision': save['revision'], 'parentVersion': parent,
                  'reasons': meta.get('reasons', [])}
-        (temp / 'manifest.yaml').write_text(yaml.safe_dump(entry, allow_unicode=True, sort_keys=False))
-        temp.replace(directory)
-    except Exception:
-        shutil.rmtree(temp, ignore_errors=True)
-        raise
-    index = _read_index(identifier)
-    index['versions'].append(entry)
-    _write_index(identifier, index)
+        store.append_release(conn, asset_uid, version, release_snapshot['snapshot_id'],
+                             entry, source_draft_id=save['snapshotId'], now=now)
+        outcome.update({'entry': entry})
+        return outcome
+
+    store.run_in_write_tx(body)
+    return outcome['entry']
+
+
+def ensure_base_release(identifier):
+    """显式迁移动作：从旧基础文件登记 1.0.0（imported），供项目引用历史版本。
+
+    仅由迁移 CLI / 测试播种调用；在线读取路径不再触发文件扫描。
+    """
+    from workbench import workspaces
+    from workbench.paths import DATA_ROOT
+    import json
+    import yaml
+    identifier = clean(identifier)
+    if listing(identifier):
+        return None
+    if identifier != 'storage':
+        return None
+    sources = {'ontology.json': DATA_ROOT / 'ontology/models/storage/ontology.json',
+               'workflow.json': DATA_ROOT / 'ontology/models/storage/workflow.json',
+               'metrics.yaml': DATA_ROOT / 'ontology/models/storage/metrics.yaml',
+               'rules.yaml': DATA_ROOT / 'ontology/models/storage/rules.yaml'}
+    if not all(p.is_file() for p in sources.values()):
+        return None
+    payload = {'ontology': json.loads(sources['ontology.json'].read_text()),
+               'workflow': json.loads(sources['workflow.json'].read_text()),
+               'metrics': yaml.safe_load(sources['metrics.yaml'].read_text()) or {},
+               'rules': yaml.safe_load(sources['rules.yaml'].read_text()) or {},
+               'layout': {}}
+    now = utcnow()
+    entry = {'version': '1.0.0', 'changeType': 'initial', 'changeNote': '由基础定义文件登记的历史版本',
+             'reviewer': '', 'createdAt': now, 'revision': 'imported', 'parentVersion': None,
+             'imported': True, 'reasons': []}
+
+    def body(conn):
+        asset_uid = store.ensure_asset(conn, KIND, identifier, workspaces.DEFAULT_NAME, {}, now)
+        snapshot = store.append_snapshot(conn, asset_uid, payload, 'legacy-release-v1',
+                                         'imported-base', legacy_revision='imported', now=now)
+        store.append_release(conn, asset_uid, '1.0.0', snapshot['snapshot_id'], entry, now=now)
+
+    with write_tx() as tx:
+        tx.run(body)
     return entry
-
-
-def _encode(legacy):
-    from workbench.model_format import encode_ontology
-    return encode_ontology(legacy)

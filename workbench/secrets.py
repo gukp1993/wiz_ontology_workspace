@@ -1,70 +1,86 @@
-"""Protected credential vault for project data connections.
+"""Project data-connection credential vault on the workbench database.
 
-Secrets live under <root>/ontology/vault/projects/<projectId>/<connectionId>
-with 0600 permissions, deliberately outside drafts/, releases/ and every
-snapshot/export path: draft revisions and published versions are produced from
-project state only and can never pick these files up. Secrets are write-only
-from the API's perspective — read() is called solely by the connection probe
-path, values are never returned to browsers and never logged.
+连接密码存 wb_credentials（namespace='connection'，owner_key=项目资产 uid，
+resource_id=连接 id），经 SecretStore AES-GCM 认证加密，根密钥在库外 0600 文件。
+对 API 只写不读：read() 仅供连接探测路径，值永不回传浏览器、不进日志/快照/导出。
+旧 vault 目录（ontology/vault/projects）只是迁移输入，在线服务不再读写。
 """
-import os
-import re
-import tempfile
-from pathlib import Path
+from workbench import storage
+from workbench.storage import configuration as config_store
+from workbench.storage.engine import read_connection, write_tx, utcnow
 
-from workbench.paths import DATA_ROOT
-
-VAULT = DATA_ROOT / 'ontology/vault/projects'
-_ID = re.compile(r'[a-z0-9][a-z0-9_-]{0,63}')
+NAMESPACE = 'connection'
+_ID_MAX = 80
+_MAX_SECRET = 512
 
 
-def _path(project_id, connection_id):
-    if not _ID.fullmatch(str(project_id or '')) or not _ID.fullmatch(str(connection_id or '')):
+def _ids(project_id, connection_id):
+    from workbench.projects import clean_id
+    pid, cid = clean_id(project_id), str(connection_id)
+    if not cid or len(cid) > _ID_MAX or '/' in cid or '\\' in cid or cid in ('.', '..'):
         raise ValueError('凭据存储标识无效')
-    path = VAULT / str(project_id) / str(connection_id)
-    if path.resolve().parent.parent != VAULT.resolve():
-        raise ValueError('凭据存储路径无效')
-    return path
+    return pid, cid
+
+
+def _owner_uid(conn, project_id, create=False):
+    from workbench.storage import assets as store
+    asset = store.get_asset(conn, 'project', project_id)
+    if asset is None:
+        if not create:
+            raise ValueError('项目不存在，无法保存连接凭据')
+        # 与旧 vault 宽松行为一致：写路径允许先于项目草稿登记（资产行无 head，不出现在列表）
+        return store.ensure_asset(conn, 'project', project_id, '', None)
+    return asset['asset_uid']
 
 
 def save(project_id, connection_id, secret):
     secret = str(secret or '')
-    if len(secret) > 512 or '\n' in secret or '\r' in secret:
+    if len(secret) > _MAX_SECRET or '\n' in secret or '\r' in secret:
         raise ValueError('密码内容无效（过长或包含换行）')
-    path = _path(project_id, connection_id)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    handle = tempfile.NamedTemporaryFile('w', dir=str(path.parent), delete=False)
-    try:
-        with handle:
-            handle.write(secret)
-        os.chmod(handle.name, 0o600)
-        os.replace(handle.name, path)
-    except Exception:
-        try:
-            os.unlink(handle.name)
-        except OSError:
-            pass
-        raise
+    project_id, connection_id = _ids(project_id, connection_id)
+    storage.ensure_ready()
+
+    def body(conn):
+        uid = _owner_uid(conn, project_id, create=True)
+        config_store.put_secret(conn, NAMESPACE, uid, connection_id, secret, now=utcnow())
+
+    with write_tx() as tx:
+        tx.run(body)
 
 
 def read(project_id, connection_id):
     """Return the stored secret ('' when absent). Probe path only."""
-    path = _path(project_id, connection_id)
-    try:
-        return path.read_text()
-    except FileNotFoundError:
-        return ''
-    except OSError:
-        raise
+    project_id, connection_id = _ids(project_id, connection_id)
+    storage.ensure_ready()
+    with read_connection() as conn:
+        try:
+            uid = _owner_uid(conn, project_id)
+        except ValueError:
+            return ''
+        return config_store.get_secret(conn, NAMESPACE, uid, connection_id) or ''
 
 
 def clear(project_id, connection_id):
-    path = _path(project_id, connection_id)
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
+    project_id, connection_id = _ids(project_id, connection_id)
+    storage.ensure_ready()
+
+    def body(conn):
+        try:
+            uid = _owner_uid(conn, project_id)
+        except ValueError:
+            return
+        config_store.clear_secret(conn, NAMESPACE, uid, connection_id)
+
+    with write_tx() as tx:
+        tx.run(body)
 
 
 def exists(project_id, connection_id):
-    return _path(project_id, connection_id).is_file()
+    project_id, connection_id = _ids(project_id, connection_id)
+    storage.ensure_ready()
+    with read_connection() as conn:
+        try:
+            uid = _owner_uid(conn, project_id)
+        except ValueError:
+            return False
+        return config_store.credential_exists(conn, NAMESPACE, uid, connection_id)

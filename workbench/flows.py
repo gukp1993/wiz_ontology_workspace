@@ -1,29 +1,24 @@
-"""函数编排（一期）独立存储与纯配置校验。
+"""函数编排（一期）存储与纯配置校验。
 
-第三工作区的数据线，与本体/项目两条保存线完全独立：
-  ontology/drafts/flows/<flowId>/current.json              原子指针
-  ontology/drafts/flows/<flowId>/revisions/<seq>-<hash>/flow.json  整修订目录
-
-一期边界：只有草稿（无发布）、软删除（status=deleted，修订历史永不物理清除）、
-复制（服务端重生成全部稳定 ID 并重映射引用）。配置检查是纯结构校验：
-绝不执行 Python/SQL、绝不访问数据库、绝不联网；检查失败不影响草稿保存。
-未知字段整体保留（零丢失）：本模块只读取认识的键，从不重建整个状态。
+第三工作区的数据线，与本体/项目两条保存线完全独立；存储走 workbench.storage
+Repository（资产 + head + 不可变快照）。一期边界：只有草稿（无发布）、软删除
+（status=deleted，快照历史永不物理清除）、复制（服务端重生成全部稳定 ID 并重映射
+引用）。配置检查是纯结构校验：绝不执行 Python/SQL、绝不访问数据库、绝不联网；
+检查失败不影响草稿保存。未知字段整体保留（零丢失）。
 """
 import ast
 import copy
-import hashlib
 import json
 import re
-import shutil
-from datetime import datetime, timezone
-from pathlib import Path
 from uuid import uuid4
 
 from workbench import calc_functions, flow_http, flow_sql
-from workbench.paths import DATA_ROOT
+from workbench import storage
+from workbench.storage import assets as store
+from workbench.storage.engine import read_connection, write_tx, utcnow
 from workbench.query_rules import IDENTIFIER, SQL_PARAM, strip_sql_noise_mysql
 
-DRAFTS = DATA_ROOT / 'ontology/drafts/flows'
+KIND = 'flow'
 FLOW_FILE = 'flow.json'
 INPUT_NODE = 'flow-input'
 OUTPUT_NODE = 'flow-output'
@@ -68,23 +63,22 @@ def clean_id(identifier):
     return identifier
 
 
-def draft_dir(identifier):
-    path = DRAFTS / clean_id(identifier)
-    if path.resolve().parent != DRAFTS.resolve():
-        raise ValueError('编排目录无效')
-    return path
+# --- draft store（DB 版） ---------------------------------------------------------
 
-
-# --- draft store ---------------------------------------------------------------
-
-def _pointer(identifier):
-    path = draft_dir(identifier) / 'current.json'
-    return json.loads(path.read_text()) if path.is_file() else None
+FLOW_FILE = 'flow.json'
 
 
 def revision_of(state):
+    """内容 hash：仅审计/导出兼容；并发令牌用 current_token（不透明）。"""
     payload = {k: v for k, v in state.items() if not str(k).startswith('_')}
+    import hashlib
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def current_token(identifier):
+    """head 的不透明 revision token；编排不存在返回 None。"""
+    storage.ensure_ready()
+    return store.current_token(KIND, clean_id(identifier))
 
 
 def ensure_structure(state):
@@ -108,39 +102,35 @@ def ensure_structure(state):
 
 
 def read_draft(identifier):
-    pointer = _pointer(identifier)
-    if not pointer:
+    storage.ensure_ready()
+    current = store.read_current(KIND, clean_id(identifier))
+    if current is None:
         return None
-    directory = draft_dir(identifier) / 'revisions' / str(pointer.get('revisionDir', ''))
-    if not directory.is_dir():
-        raise ValueError('编排草稿修订不完整，请检查 ontology/drafts/flows 目录')
-    state = json.loads((directory / FLOW_FILE).read_text())
-    state['_draft'] = {'seq': pointer.get('seq', 0), 'updatedAt': pointer.get('updatedAt', '')}
+    head, snapshot = current['head'], current['snapshot']
+    state = copy.deepcopy(snapshot['payload'])
+    state['_draft'] = {'seq': head.get('snapshot_seq', snapshot.get('seq', 0)),
+                       'updatedAt': head.get('updated_at', '')}
     return state
 
 
-def save_draft(state):
-    """整修订写入 + 原子换指针；失败清理修订目录，绝不留半写状态。"""
+def save_draft(state, expected_token=None):
+    """整快照写入 + CAS 换 head。
+
+    expected_token：客户端基线（路由层必传，配合 CAS 并发控制）；None = 内部/
+    测试路径，按当前 head 推进（与旧文件版"模块不做 revision 检查"语义一致，
+    并发正确性由路由层的 LOCK + 显式基线保证）。
+    """
     ensure_structure(state)
     identifier = clean_id(state['flowId'])
-    directory = draft_dir(identifier)
-    pointer = _pointer(identifier)
-    seq = (pointer.get('seq', 0) if pointer else 0) + 1
-    rev = revision_of(state)
-    revision_dir = directory / 'revisions' / f'{seq:04d}-{rev[:8]}'
-    if revision_dir.exists():
-        revision_dir = directory / 'revisions' / f'{seq:04d}-{rev[:8]}-{uuid4().hex[:4]}'
-    revision_dir.mkdir(parents=True, exist_ok=False)
-    try:
-        (revision_dir / FLOW_FILE).write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n')
-        temp = directory / '.current.tmp'
-        temp.write_text(json.dumps({'seq': seq, 'revision': rev, 'revisionDir': revision_dir.name,
-                                    'updatedAt': datetime.now(timezone.utc).isoformat()}, ensure_ascii=False))
-        temp.replace(directory / 'current.json')
-    except Exception:
-        shutil.rmtree(revision_dir, ignore_errors=True)
-        raise
-    return {'revision': rev, 'seq': seq}
+    storage.ensure_ready()
+    payload = {k: v for k, v in state.items() if not str(k).startswith('_')}
+    result = store.save_draft(KIND, identifier, payload, store.PAYLOAD_FORMAT_FLOW,
+                              expected_token=expected_token,
+                              name=str(state.get('name') or identifier),
+                              summary={'nodeCount': sum(1 for n in payload.get('nodes', []) if isinstance(n, dict)),
+                                       'status': payload.get('status') or 'active'},
+                              allow_create=True, allow_advance=(expected_token is None))
+    return {'revision': result['revision'], 'seq': result['seq']}
 
 
 def blank_flow(identifier, name, description=''):
@@ -154,33 +144,35 @@ def create(name, description=''):
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
         raise ValueError('编排名称需要填写 1～80 个字符')
     name = name.strip()
-    if any(item['name'].casefold() == name.casefold() for item in listing()):
-        raise ValueError('已存在同名编排，请换一个名称')
+    storage.ensure_ready()
     identifier = uuid4().hex[:12]
-    while _pointer(identifier):
-        identifier = uuid4().hex[:12]
     state = blank_flow(identifier, name, description)
-    directory = draft_dir(identifier)
-    directory.mkdir(parents=True, exist_ok=False)
-    try:
-        save_draft(state)
-    except Exception:
-        shutil.rmtree(directory, ignore_errors=True)
-        raise
+
+    def body(conn):
+        store.bump_guard(conn, 'asset-name:flow')
+        rows = store.list_assets(conn, KIND)
+        if any(row['name_key'] == store.name_key(name) for row in rows):
+            raise ValueError('已存在同名编排，请换一个名称')
+        return store._save_draft_in_conn(
+            conn, KIND, identifier, state, store.PAYLOAD_FORMAT_FLOW,
+            expected_token=None, name=name,
+            summary={'nodeCount': 0, 'status': 'active'},
+            project_ref=None, purpose='draft', legacy_revision='',
+            allow_create=True, allow_advance=False, now=utcnow(), conflict={})
+
+    with write_tx() as tx:
+        tx.run(body)
     return {'id': identifier, 'name': name}
 
 
 def listing(include_deleted=False):
+    storage.ensure_ready()
     items = []
-    if not DRAFTS.is_dir():
-        return items
-    for pointer_path in sorted(DRAFTS.glob('*/current.json')):
-        identifier = pointer_path.parent.name
-        try:
-            state = read_draft(identifier)
-            pointer = json.loads(pointer_path.read_text())
-        except (ValueError, OSError, json.JSONDecodeError):
-            continue
+    with read_connection() as conn:
+        rows = store.list_assets(conn, KIND)
+    for row in rows:
+        identifier = row['external_id']
+        state = read_draft(identifier)
         if not isinstance(state, dict):
             continue
         status = state.get('status') or 'active'
@@ -193,20 +185,19 @@ def listing(include_deleted=False):
                       'status': status,
                       'nodeCount': sum(1 for n in state.get('nodes', []) if isinstance(n, dict)),
                       'errorCount': len(check['errors']),
-                      'updatedAt': str(pointer.get('updatedAt', '')),
+                      'updatedAt': str(row.get('updated_at', '')),
                       'configStatus': check['status']})
     return items
 
 
 def copy_flow(identifier, name=None):
     """复制编排：全部稳定 ID 重新生成并重映射引用；原编排任何字节不动。"""
+    storage.ensure_ready()
     source = read_draft(clean_id(identifier))
     if source is None:
         raise FlowNotFound('编排不存在')
     state = copy.deepcopy({k: v for k, v in source.items() if not str(k).startswith('_')})
     clone_id = uuid4().hex[:12]
-    while _pointer(clone_id):
-        clone_id = uuid4().hex[:12]
     state['flowId'] = clone_id
     state['status'] = 'active'
     # 项目数据连接引用（不在编排自带 connections 里的 connectionId）复制时保持不变
@@ -302,13 +293,16 @@ def copy_flow(identifier, name=None):
 
 
 def soft_delete(identifier):
-    """软删除：只追加一条 status=deleted 的修订，历史修订全部保留。"""
-    state = read_draft(clean_id(identifier))
-    if state is None:
+    """软删除：只追加一条 status=deleted 的快照，历史快照全部保留。"""
+    storage.ensure_ready()
+    identifier = clean_id(identifier)
+    current = store.read_current(KIND, identifier)
+    if current is None:
         raise FlowNotFound('编排不存在')
+    state = copy.deepcopy(current['snapshot']['payload'])
     if state.get('status') != 'deleted':
         state['status'] = 'deleted'
-        save_draft(state)
+        save_draft(state, expected_token=current['head']['revision_token'])
     return {'ok': True}
 
 

@@ -120,20 +120,26 @@ const scopeRows=computed(()=>{
 const publishBusy=ref(false),publishError=ref(''),publishReport=ref<any>(null),lastPublish=ref('')
 // G2：写操作结果未知（超时/网络中断）时不显示成功、也不断言未写入；用现有「已发布版本」读取能力核对
 const publishUnknown=ref(false),publishCheckNote=ref(''),publishBaseline=ref<string[]>([])
+// 幂等 requestId：结果未知的发布重试复用同 key（服务端保证不重复出版本）；结果确定后换新 key
+const pendingRequestId=ref('')
+function newRequestId(){return (crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2))}
 async function doPublish(){
   if(publishBusy.value)return
   publishBusy.value=true;publishError.value='';publishReport.value=null;publishUnknown.value=false;publishCheckNote.value=''
   publishBaseline.value=published.value.map((v:any)=>String(v.version||''))
+  if(!pendingRequestId.value)pendingRequestId.value=newRequestId()
   try{
     if(guardApi?.hasDirty()){publishError.value='还有打开的编辑表单未保存；请先在对应页面保存或放弃本次修改，再发布。';return}
     if(commitNow)await commitNow() // ① 未落盘修改先持久化
     const pid=String(props.projectState?.projectId||'');if(!pid)throw Error('未选择项目')
     const d=await loadProjectStateRaw(pid) // ② 服务端最新草稿与 revision（catalogs 由 projectPost 统一剥除）
     try{
-      const pd=await projectPost('project-publish',{state:d.state,revision:d.revision}) // ③
+      const pd=await projectPost('project-publish',{state:d.state,revision:d.revision,requestId:pendingRequestId.value}) // ③
       lastPublish.value=pd.version||''
+      pendingRequestId.value='' // 结果确定：下一次发布用新 requestId
     }catch(err:any){
-      if(err.status===422){ // 422：服务端发布前校验未通过，error + report
+      if(err.status===422){ // 422：服务端发布前校验未通过，确定未发布 → 换新 requestId
+        pendingRequestId.value=''
         publishError.value=err.data?.error||err.message||'项目配置校验未通过，不能发布'
         publishReport.value=err.data?.report||null
         return
@@ -158,6 +164,7 @@ async function verifyPublished(){
     ? '服务端已有新版本 '+added.join('、')+'：本次发布很可能已经成功，请勿重复发布。'
     : (publishedError.value?'暂时无法读取已发布版本：'+publishedError.value:'服务端未发现新版本：本次发布很可能没有写入，可修正后重新发布。')
   if(added.length)publishUnknown.value=false
+  else pendingRequestId.value='' // 核对确认未写入：下一次发布换新 requestId
 }
 </script>
 <template><div class="project-home">

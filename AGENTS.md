@@ -12,7 +12,7 @@ cd frontend && npm run typecheck   # 仅类型检查
 cd frontend && npm run dev         # 开发模式（vite 热更新，/api 代理到 18765）
 ```
 
-依赖极少：后端仅 PyYAML + rdflib；数据连接探测为可选依赖 PyMySQL + redis（未安装时真实测试返回"驱动未安装"提示，其余功能不受影响）；前端 Vue3 + cytoscape + vite，无路由/无状态库。start.sh 只管理 `.runtime/server.pid` 记录的自身进程（防误杀）。
+后端依赖：PyYAML + rdflib + SQLAlchemy/Alembic（存储库）+ cryptography（凭据加密）；数据连接探测为可选依赖 PyMySQL + redis（未安装时真实测试返回"驱动未安装"提示，其余功能不受影响）；前端 Vue3 + cytoscape + vite，无路由/无状态库。start.sh 只管理 `.runtime/server.pid` 记录的自身进程（防误杀）。
 
 ## Git 提交规则（2026-09-17）
 
@@ -27,7 +27,7 @@ cd frontend && npm run dev         # 开发模式（vite 热更新，/api 代理
 
 ## 目录
 
-- `workbench/` — 后端。`server.py`（安全边界+路由分派，业务在 `model_routes.py`/`project_routes.py`）；`paths.py`（CODE_ROOT/DATA_ROOT 唯一定义，核心模块不得从演示模块取路径）；`locking.py`（全局写锁唯一定义）；`projects.py`（项目存储/升级预检）+ `project_validation.py`（校验组织+分职责函数）+ `project_mapping.py`（共用纯辅助）；`model_format.py`（本体 JSON schema ↔ JSON-LD 双向转换）、`contracts.py`、`versions.py`、`workspaces.py`、`dbdrivers.py`（连接探测，仅固定只读操作）、`secrets.py`（0600 vault，位于 drafts/releases 之外）；`demo/`（演示执行器）
+- `workbench/` — 后端。`server.py`（安全边界+路由分派，业务在 `model_routes.py`/`project_routes.py`）；`paths.py`（CODE_ROOT/DATA_ROOT 唯一定义，核心模块不得从演示模块取路径）；`locking.py`（全局写锁唯一定义）；`storage/`（**在线权威存储库**，见架构边界第 13 条）；`projects.py`（项目存储/升级预检）+ `project_validation.py`（校验组织+分职责函数）+ `project_mapping.py`（共用纯辅助）；`model_format.py`（本体 JSON schema ↔ JSON-LD 双向转换）、`contracts.py`、`versions.py`（发布登记，DB）、`workspaces.py`（本体资产/草稿，DB）、`flows.py`（编排，DB）、`dbdrivers.py`（连接探测，仅固定只读操作）、`secrets.py`/`api_credentials.py`/`llm_providers.py`/`catalogs.py`（凭据与缓存，DB）；`migrations/`（Alembic）；`demo/`（演示执行器）
 - `frontend/src/` — Vue3 单页。`app/`：`http.ts`（唯一请求与错误解析层，409 带 currentRevision/.data）、`saveCoordinator.ts`（保存队列）、`navigation.ts`、`workspace.ts`；`ontology/`：`modelFormat.ts`（前后端协议层，与 model_format.py 镜像，两边必须同步改）+ 本体页；`project/`：`bindingModel.ts`（来源制适配层）+ `api.ts`（stripCatalogs 唯一实现）+ 项目页；`shared/` 通用控件；`tools/` 辅助页。页面不得自写 fetch/错误解析
 - `ontology/` — 全部数据（见下方存储规则），**用户数据，勿手改勿删**；`ontology/vault/` 是连接密码受保护存储（服务自动管理）
 - `tests/` — 回归套件 + `fixtures/validation_golden.json`（项目校验金样）+ `ts_hooks.mjs`（Node 跑 TS 的解析钩子）
@@ -48,6 +48,12 @@ cd frontend && npm run dev         # 开发模式（vite 热更新，/api 代理
 10. **通用属性来源配置（2026-09 新增）**：本体属性统一按数据类型描述，时间序列为 `dataType:{type:"timeSeries",valueType:"double"}`；旧 `valueShape` 仅兼容读取，JSON-LD 编辑适配层保留旧内部表示，不提供独立结果形态选项。新旧等价表示不构成业务变更，普通值↔序列或观测值类型变化按 dataType 判定破坏性变更；共享引用继承数据类型。属性来源新增 `{kind:'database'}`（直选项目连接目录中的表，lookup 多条件 AND 至少一条绑定当前实例，result 按 scalar/timeSeries 分支）与 redis 直连（`connection` 与 `source` 互斥、params 支持 `{from:'identityField',field}`）；timeSeries 目标仅接受 database 或输出类型为时间序列的 computed（新实现从契约推导，旧 outputDeclarations[].valueShape 兼容读取）；database 等价旧身份表直取时压缩为字符串，未知 kind 一律按 unknown 保留零丢失（前端 propertyView/commitProperty 与后端 validate_project 镜像）。本轮仅配置校验无业务执行 API；演示 merged() 仍只放行字符串映射并把被过滤来源上报 `bindings.unsupportedSources`。协议全文见 `文档/交付物/通用属性来源配置_数据契约与实施设计_20260914.md` 与 `文档/交付物/通用属性来源配置实施说明_20260914.md`；数据类型调整见 `文档/交付物/时间序列数据类型调整说明_20260915.md`；回归测试 `tests/test_time_series_type.py`、`tests/test_value_shape.py`、`tests/test_property_sources.py`、`tests/test_project_api_roundtrip.py`（纯 python3 直跑）。
 11. **整体交互迭代（2026-09 新增）**：导航重组为两工作区 4+5 页（本体：工作概览/对象建模/共享属性库/校验与发布；项目：项目概览/数据连接/对象映射/计算实现/校验与发布），辅助页归并 `tools`，旧 hash 全量 alias（见 `app/navigation.ts`）。**保存直通**：`app/saveCoordinator.ts` 每区一个 Saver（串行队列、revision 管理、409 currentRevision 换基线重试、900ms touch 合并、beforeunload/flush）；组件表单"保存"按钮经 `inject('commit-now')` 立即持久化，即时编辑走 touch 自动保存；顶栏无保存/发布按钮，仅五态状态条，发布移入两区"校验与发布"页（发布前强制 commit-now 再取服务端最新草稿）。画布在 `ontology/ObjectCanvas.vue`（zoom/pan 不触发保存）；对象建模 `ontology/ObjectWorkspace.vue` 内嵌 PropertyManager 编辑属性；校验页"去处理"按 validate items 的 kind/id 结构化跳转。后端 409 响应带 `currentRevision`，`save_draft` 失败不再假成功。测试新增 `tests/test_save_iteration.py`。事实全文见 `文档/交付物/工作台整体交互迭代实施说明_20260914.md` 与 `文档/交付物/工作台整体交互迭代_并行任务板.md`。
 12. **架构优化（2026-09-15 新增）**：前后端按业务模块组织（见目录节）；`paths.py` 统一 CODE_ROOT/DATA_ROOT，核心存储模块不得 import 演示模块（`tests/test_paths_isolation.py` 守护）；项目校验拆在 `project_validation.py`（`projects.validate_project` 兼容转发），**改校验规则必须同步加金样样例**（`tests/make_validation_golden.py` 生成，`tests/test_validation_split.py` 回放）并保持 errors/warnings/items 顺序逐字节等价；保存协调器行为由 `tests/save_queue.test.mjs` 15 项锁定（提交基线取本客户端最近确认 revision、error 状态 retry/commitNow 强制发送、失败后编辑 retry 提交最新内容、beforeunload 非 saved 一律拦截），改 `saveCoordinator.ts` 必须先加用例；HTTP 层只做安全边界+分派，新接口加进 `server.py` 的 `GET_ROUTES/POST_ROUTES` 表（白名单即表键），业务写在 `model_routes`/`project_routes`，探测类接口永不持 `locking.LOCK`；前端请求一律经 `app/http` + 两区 `api.ts`（catalogs 剥除只在 `project/api.stripCatalogs`）。本轮修复并回归验证：versions.py 遗留裸 ROOT（真实根 500）、保存队列三缺陷等。事实与耗时对比见 `文档/架构优化实施说明_20260915.md`。
+
+13. **SQLite 存储库（2026-09-18 新增，已实施）**：工作台在线权威存储为 SQLite（默认 `<DATA_ROOT>/data/workbench.sqlite3`，目录 0700），`workbench/storage/` 一套 SQLAlchemy Core 实现（SQLite 已验证，MySQL 预留：方言差异收口在 schema.py 的 with_variant；**运行时未实测，不得宣称已支持**）。本体/项目/编排三类资产的草稿与发布、目录缓存、模型配置、连接密码/API 凭据/模型密钥（AES-GCM，根密钥在库外 `<DATA_ROOT>/keys/`）全部入库；`ontology/` 旧文件目录只作迁移输入与备份，**在线服务无文件回退**。要点：
+    - revision 是不透明 token（`r-<uuid>`），与内容 hash 分离；CAS+generation 保证并发（409 带 currentRevision，A→B→A 旧 token 必拒）；发布为单事务，requestId 幂等。
+    - 初始化/迁移/备份必须显式 CLI：`python3 -m workbench.storage.transfer init|inspect|import|verify|export|backup`。服务启动与请求路径**绝不隐式 DDL/导入/回退文件**；真实根未初始化直接拒启。隔离根（WIZ_WORKBENCH_ROOT 已设）允许惰性建空库（测试专用）。
+    - 改 `storage/schema.py` 必须新增 Alembic 迁移（程序化，`workbench/migrations/`）；存储契约测试 `tests/test_storage_contract.py`（45 项，含故障注入；设 WIZ_MYSQL_TEST_URL 加跑 MySQL），迁移演练 `tests/test_storage_transfer.py`。
+    - 实施事实与冻结契约全文见 `文档/需求/20260918_SQLite存储迁移与MySQL预留/开发计划.md` §9。
 
 ## 前端约定
 

@@ -1,15 +1,11 @@
-"""项目区路由处理（B3）：/api/projects、project-state/-save/-validate/-publish/
--upgrade-check、project-releases、connection-*、catalog-refresh 的业务逻辑。
+"""项目区路由处理（B3 + DB 存储切换）：/api/projects、project-state/-save/-validate/
+-publish/-upgrade-check、project-releases、connection-*、catalog-refresh 的业务逻辑。
 安全检查（Origin/白名单/大小限制）在 server.py 的 Handler 统一完成。
 
-注意：connection-test / connection-catalog / catalog-refresh 是真实网络探测，
-绝不持有全局写锁（会阻塞其他保存）；connection-secret 本地快写短暂持锁。
-project-property-preview（关联聚合只读预览，任务 C）的执行器在
-workbench/project_property_reader.py，这里只做路由挂载。
+revision 是不透明 token（读自项目 head）；发布走 publish_draft 单事务（草稿快照 +
+CAS + 发布记录 + 固定引用），失败绝不返回成功。connection-test / connection-catalog /
+catalog-refresh 是真实网络探测，绝不持有全局写锁；迟到目录结果按配置指纹丢弃。
 """
-import json
-import yaml
-
 from workbench import projects, versions, workspaces, contracts
 from workbench import dbdrivers
 from workbench import project_property_reader
@@ -17,7 +13,6 @@ from workbench import secrets as secrets_store
 from workbench import api_credentials
 from workbench import catalogs as catalog_store
 from workbench.locking import LOCK
-from workbench.paths import DATA_ROOT
 
 
 def referenced_ontology(project_state):
@@ -43,9 +38,9 @@ def get_projects(query, url_query_present=False):
 def get_project_state(query):
     project_id = query.get('project', [''])[0]
     state, saved = projects.load(project_id)
-    # 表结构目录是服务端派生数据：加载时注入文件存储内容，随草稿/快照剥离。
+    # 表结构目录是服务端派生数据：加载时注入缓存内容，随草稿/快照剥离。
     state['bindings']['catalogs'] = {**state['bindings'].get('catalogs', {}), **catalog_store.load_all(state['projectId'])}
-    payload = {'state': state, 'revision': projects.revision(state), 'saved': saved,
+    payload = {'state': state, 'revision': projects.current_token(state['projectId']), 'saved': saved,
                'project': {'id': state['projectId'], 'name': state['name'], 'ontologyId': state['ontologyId'], 'ontologyVersion': state['ontologyVersion']}}
     if state.get('ontologyId') and state.get('ontologyVersion'):
         try:
@@ -77,15 +72,23 @@ def get_api_credentials(query):
 
 
 def get_project_config(query):
-    """旧辅助接口：storage 本体的 chuangzhi 项目配置（供历史组件读取，保留兼容）。"""
+    """旧辅助接口：storage 本体的 chuangzhi 项目配置（供历史组件读取，保留兼容）。
+
+    数据改经项目 Repository 读取；项目不存在时保持原"未配置"响应形态。
+    """
     identifier = workspaces.describe(query.get('ontology', ['storage'])[0])['id']
-    project_file = DATA_ROOT / 'ontology/projects/chuangzhi/project.yaml'
-    if identifier != 'storage' or not project_file.is_file():
+    if identifier != 'storage':
         return {'project': {}, 'connections': [], 'available': False, 'message': '当前本体尚未配置项目与数据连接。'}, 200
-    project = yaml.safe_load(project_file.read_text())
-    connections = yaml.safe_load((DATA_ROOT / 'ontology/projects/chuangzhi/connections.yaml').read_text())['connections']
-    return {'project': {k: project[k] for k in ('project_id', 'name', 'timezone', 'model_version', 'config_version', 'demo_only') if k in project},
-            'connections': [{k: c[k] for k in ('id', 'adapter', 'path') if k in c} for c in connections]}, 200
+    try:
+        state, _saved = projects.load('chuangzhi')
+    except projects.ProjectNotFound:
+        return {'project': {}, 'connections': [], 'available': False, 'message': '当前本体尚未配置项目与数据连接。'}, 200
+    meta = state.get('projectMeta') or {}
+    project_view = {k: meta.get(k) for k in ('timezone', 'model_version', 'config_version', 'demo_only') if k in meta}
+    project_view.update({'project_id': state.get('projectId'), 'name': state.get('name', '')})
+    connections = [{'id': c.get('id'), 'adapter': c.get('adapter', ''), 'path': c.get('path', '')}
+                   for c in (state.get('connections') or {}).get('connections', []) if isinstance(c, dict)]
+    return {'project': project_view, 'connections': connections, 'available': True}, 200
 
 
 # --- POST 路由 ----------------------------------------------------------------------
@@ -122,21 +125,23 @@ def post_project_write(payload, path):
         return projects.upgrade_check(project_state, ontology_state, target), 200
     with LOCK:
         existing, _ = projects.load(project_state['projectId'])
-        if payload.get('revision') != projects.revision(existing):
-            return {'error': '此项目已有新版本，请刷新后重试', 'currentRevision': projects.revision(existing)}, 409
+        expected = projects.current_token(project_state['projectId'])
+        if payload.get('revision') != expected:
+            return {'error': '此项目已有新版本，请刷新后重试', 'currentRevision': expected}, 409
         if path == '/api/project-publish':
             if not has_reference:
                 return {'error': '该项目尚未绑定本体版本，无法发布：请先在项目信息中完成绑定。'}, 422
             report = projects.validate_project(project_state, referenced_ontology(project_state))
             if report['errors']:
                 return {'error': '项目配置校验未通过：' + '；'.join(report['errors']), 'report': report}, 422
-        result = projects.save_draft(project_state)
+        if path == '/api/project-publish':
+            # 原子发布：草稿快照 + CAS head + 发布快照 + 发布记录 + 引用一个事务
+            result = projects.publish_draft(project_state, expected)
+            return {'revision': result['revision'], 'version': result['version']}, 200
+        result = projects.save_draft(project_state, expected_token=expected)
         if result.get('error'):
             return {'error': result['error']}, 500
-        response = {'revision': result['revision']}
-        if path == '/api/project-publish':
-            response.update(projects.publish(project_state))
-        return response, 200
+        return {'revision': result['revision']}, 200
 
 
 def post_connection_probe(payload, path):
@@ -156,8 +161,9 @@ def post_connection_probe(payload, path):
 
 
 def post_catalog_refresh(payload):
-    # 从已保存连接 + 受保护凭据读取表结构并落到服务端目录存储；大库目录
+    # 从已保存连接 + 受保护凭据读取表结构并落到服务端目录缓存；大库目录
     # 可达数 MB，绝不随项目草稿请求传输，也不进入草稿/快照文件。
+    # 迟到结果保护：以探测前的连接配置指纹为准，探测后配置已变则丢弃结果。
     try:
         project_id = projects.clean_id(payload.get('projectId'))
         connection_id = str(payload.get('connectionId') or '')
@@ -171,13 +177,20 @@ def post_catalog_refresh(payload):
         if conn.get('engine') != 'mysql':
             return {'ok': False, 'category': 'config', 'message': 'Redis 连接没有表结构目录；请选择 MySQL 连接'}, 200
         config = dbdrivers.normalize_config(conn)
+        fingerprint = catalog_store.config_fingerprint(config)
         secret = secrets_store.read(project_id, connection_id)
     except (ValueError, projects.ProjectNotFound) as exc:
         code = 404 if isinstance(exc, projects.ProjectNotFound) else 400
         return {'error': str(exc)}, code
     result = dbdrivers.catalog(config, secret)
     if result.get('ok'):
-        catalog_store.store(project_id, connection_id, result)
+        # 外部探测完成后再核对配置指纹：不匹配 = 探测期间连接被改过 → 丢弃
+        state2, _ = projects.load(project_id)
+        conn2 = next((c for c in state2['connections'].get('connections', [])
+                      if c.get('id') == connection_id), None)
+        fingerprint2 = catalog_store.config_fingerprint(dbdrivers.normalize_config(conn2)) if conn2 else ''
+        if fingerprint2 == fingerprint:
+            catalog_store.store(project_id, connection_id, result, config_fingerprint_value=fingerprint)
     return result, 200
 
 

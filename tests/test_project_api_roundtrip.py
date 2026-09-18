@@ -174,8 +174,13 @@ def write_catalog(pid):
             {'name': 'sampled_at', 'dataType': 'datetime', 'key': '', 'comment': '采样时间'},
             {'name': 'metric_code', 'dataType': 'varchar', 'key': '', 'comment': '指标编码'},
             {'name': 'value', 'dataType': 'double', 'key': '', 'comment': '采样值'}]}]}
-    (directory / 'conn-mysql-01.json').write_text(
-        json.dumps(catalog, ensure_ascii=False), encoding='utf-8')
+    # 库化后目录缓存存数据库：走与线上相同的 catalogs.store 路径写入同一存储库
+    import os as _os
+    _os.environ['WIZ_DATABASE_URL'] = 'sqlite:///' + str(TMP / 'data' / 'workbench.sqlite3')
+    sys.path.insert(0, str(REPO))
+    from workbench import catalogs as _catalogs
+    _catalogs.store(pid, 'conn-mysql-01', catalog)
+    _os.environ.pop('WIZ_DATABASE_URL', None)
 
 
 def database_series_config(cluster_api, soc_api):
@@ -243,9 +248,21 @@ def discover(version):
 
 # --- 主流程 ----------------------------------------------------------------------
 
+def import_seed_into_db():
+    """库化后：把临时根文件树（已复制的发布 + 补丁）导入存储库，服务才可见。"""
+    import os as _os
+    _os.environ['WIZ_DATABASE_URL'] = 'sqlite:///' + str(TMP / 'data' / 'workbench.sqlite3')
+    sys.path.insert(0, str(REPO))
+    from workbench.storage import transfer as _transfer
+    rc = _transfer.main(['import', '--source', str(TMP)])
+    check(rc == 0, '种子发布导入存储库', actual=rc, expected=0)
+    _os.environ.pop('WIZ_DATABASE_URL', None)
+
+
 def main():
     version = seed_release()
     patch_time_series(version)
+    import_seed_into_db()
 
     # 端口占用预检（SO_REUSEADDR 与服务端 allow_reuse_address 一致，避免 TIME_WAIT 误报）
     probe = socket.socket()
@@ -403,18 +420,32 @@ def main():
           actual=(status, conflict), expected=409)
     ok('h', f'过期 revision 被拒绝：409 {conflict.get("error", "") if isinstance(conflict, dict) else conflict}')
 
-    # i) catalogs 不进草稿
-    revisions_dir = TMP / 'ontology/drafts/projects' / pid / 'revisions'
-    files = sorted(revisions_dir.glob('*/bindings.yaml'))
-    check(bool(files), '草稿修订目录应存在 bindings.yaml', actual=str(revisions_dir),
-          expected='至少一个修订')
+    # i) catalogs 不进草稿（库化后：检查全部草稿快照的 bindings 载荷）
+    import os as _os
+    _os.environ['WIZ_DATABASE_URL'] = 'sqlite:///' + str(TMP / 'data' / 'workbench.sqlite3')
+    sys.path.insert(0, str(REPO))
+    from workbench.storage import assets as _assets
+    from workbench.storage.engine import (read_connection as _rc, read_head as _rh,
+                                          read_snapshot as _rs, resolve_url as _rurl)
+    import json as _json
+    with _rc(_rurl()) as _conn:
+        _asset = _assets.get_asset(_conn, 'project', pid)
+        _head = _rh(_conn, _asset['asset_uid']) if _asset else None
+        snapshots = []
+        if _head:
+            for row in _conn.execute(__import__('sqlalchemy').text(
+                    'SELECT snapshot_id FROM wb_snapshots WHERE asset_uid = :a'),
+                    {'a': _asset['asset_uid']}).fetchall():
+                snapshots.append(_rs(_conn, row[0]))
+    files = snapshots
+    check(bool(files), '项目应存在草稿快照', actual=len(snapshots), expected='至少一个快照')
     leaked = []
-    for path in files:
-        data = yaml.safe_load(path.read_text()) or {}
-        if isinstance(data, dict) and 'catalogs' in data:
-            leaked.append(str(path))
-    check(not leaked, '草稿 bindings.yaml 不应包含 catalogs 键', actual=leaked, expected='无 catalogs')
-    ok('i', f'{len(files)} 份草稿 bindings.yaml 均无 catalogs 键（目录只存服务端文件）')
+    for snap in files:
+        data = _json.loads(snap['payload_json']) if isinstance(snap.get('payload_json'), str) else snap.get('payload', {})
+        if isinstance(data, dict) and 'catalogs' in (data.get('bindings') or {}):
+            leaked.append(str(snap.get('snapshot_id')))
+    check(not leaked, '草稿快照 bindings 不应包含 catalogs 键', actual=leaked, expected='无 catalogs')
+    ok('i', f'{len(files)} 份草稿快照均无 catalogs 键（目录缓存只存数据库缓存表）')
 
     # j) merged() unsupportedSources（demo-objects 未就绪时用 /api/explorer 兜底）
     status, ont_payload = request('GET', '/api/state')

@@ -4,3 +4,8 @@ rdflib>=7.0,<8
 PyMySQL>=1.1,<2
 # Redis 连接测试（可选能力）
 redis>=5,<7
+# 工作台存储库（20260918 SQLite 落地 / MySQL 预留）
+SQLAlchemy>=2.0,<2.1
+alembic>=1.13,<2
+# 凭据 AES-GCM 认证加密（SecretStore 根密钥在库外）
+cryptography>=42,<46

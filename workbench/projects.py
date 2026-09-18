@@ -1,27 +1,19 @@
-"""Project binding store: base files, multi-file drafts, releases, validation.
+"""Project binding store on the workbench database (base files, drafts, releases).
 
-Layout (V3 design section 7):
-  ontology/projects/<id>/            base files, initialization & legacy input only
-  ontology/drafts/projects/<id>/     multi-file draft revisions + current.json pointer
-  ontology/releases/projects/<id>/   immutable published versions (v1, v2, ...)
-
-Draft commits are whole-revision: all files are written into a fresh revision
-directory first, then the current.json pointer is atomically replaced, so a
-failed save never leaves a half-written draft.
+项目三态（base 初始化输入 / 草稿 / 发布）全部入库：资产 + head（imported-base 或
+draft）+ 不可变快照 + 每快照至多一条的本体版本引用（wb_project_refs）。旧目录
+ontology/projects、drafts/projects、releases/projects 只是迁移输入与备份。
+表结构目录（catalogs）是服务端派生数据，仍不入草稿/快照（保存前剥离）。
 """
-import hashlib
-import json
-import re
-import yaml
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import uuid4
+import copy
 
-from workbench.paths import DATA_ROOT
+from workbench import storage
+from workbench.storage import assets as store
+from workbench.storage.engine import read_connection, write_tx, utcnow
 
-BASE = DATA_ROOT / 'ontology/projects'
-DRAFTS = DATA_ROOT / 'ontology/drafts/projects'
-RELEASES = DATA_ROOT / 'ontology/releases/projects'
+KIND = 'project'
 FILE_ORDER = (('project', 'project.yaml'), ('connections', 'connections.yaml'),
               ('bindings', 'bindings.yaml'), ('implementations', 'implementations.yaml'),
               ('parameters', 'parameters.yaml'))
@@ -32,28 +24,10 @@ class ProjectNotFound(ValueError):
 
 
 def clean_id(identifier):
+    import re
     if not isinstance(identifier, str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,63}', identifier):
         raise ValueError('项目标识无效')
     return identifier
-
-
-def _guarded(root, identifier):
-    path = root / clean_id(identifier)
-    if path.resolve().parent != root.resolve():
-        raise ValueError('项目目录无效')
-    return path
-
-
-def base_dir(identifier):
-    return _guarded(BASE, identifier)
-
-
-def draft_dir(identifier):
-    return _guarded(DRAFTS, identifier)
-
-
-def release_dir(identifier):
-    return _guarded(RELEASES, identifier)
 
 
 def _empty_state(identifier, name, ontology_id, ontology_version):
@@ -63,42 +37,6 @@ def _empty_state(identifier, name, ontology_id, ontology_version):
             'bindings': {'notice': '', 'object_bindings': [], 'observation_binding': {}, 'source_candidates': [],
                          'actionBindings': []},
             'implementations': [], 'parameters': {}, 'projectMeta': {}}
-
-
-def _read_files(directory):
-    data = {}
-    for key, filename in FILE_ORDER:
-        path = directory / filename
-        if path.is_file():
-            data[key] = yaml.safe_load(path.read_text()) or {}
-    return data
-
-
-_ID_KEYS = ('ontology', 'ontology_id')
-_VERSION_KEYS = ('ontology_version', 'model_version')
-
-
-def _state_from_files(identifier, data):
-    project = data.get('project', {}) or {}
-    name = str(project.get('name', '')).strip()
-    ontology_id = next((project[k] for k in _ID_KEYS if project.get(k)), '')
-    version = next((str(project[k]) for k in _VERSION_KEYS if project.get(k) is not None), '')
-    if not ontology_id and version:
-        ontology_id = 'storage'  # legacy convention: only the storage ontology had projects
-    state = _empty_state(identifier, name, ontology_id, version)
-    meta = {k: v for k, v in project.items()
-            if k not in ('project_id', 'name', *_ID_KEYS, *_VERSION_KEYS)}
-    state['projectMeta'] = meta
-    if 'connections' in data:
-        state['connections'] = data['connections']
-    if 'bindings' in data:
-        state['bindings'] = data['bindings']
-    if 'implementations' in data:
-        loaded = data['implementations']
-        state['implementations'] = loaded.get('implementations', []) if isinstance(loaded, dict) else loaded
-    if 'parameters' in data:
-        state['parameters'] = data['parameters']
-    return _normalize(state)
 
 
 def _normalize(state):
@@ -115,24 +53,27 @@ def _normalize(state):
     return state
 
 
-def _files_from_state(state):
-    identifier = clean_id(state.get('projectId'))
-    project = {'project_id': identifier, 'name': state.get('name', ''),
-               'ontology': state.get('ontologyId', ''),
-               'ontology_version': str(state.get('ontologyVersion', ''))}
-    project.update(state.get('projectMeta') or {})
-    # Table catalogs are derived server-side data (potentially megabytes); they are
-    # stored under ontology/catalogs/ and must not enter draft or snapshot files.
-    bindings = {k: v for k, v in state['bindings'].items() if k != 'catalogs'}
-    return {'project': project, 'connections': state.get('connections', {'connections': []}),
-            'bindings': bindings,
-            'implementations': {'implementations': state.get('implementations', [])},
-            'parameters': state.get('parameters', {})}
+def _payload_of(state):
+    """在线快照形态：规范化项目状态（剥离 catalogs 与运行期 _ 字段）。"""
+    state = _normalize(state)
+    payload = {k: v for k, v in state.items() if not str(k).startswith('_')}
+    bindings = {k: v for k, v in payload['bindings'].items() if k != 'catalogs'}
+    payload['bindings'] = bindings
+    return payload
+
+
+def summary_of(state):
+    bindings = state.get('bindings') or {}
+    return {'ontologyId': state.get('ontologyId', ''),
+            'ontologyVersion': str(state.get('ontologyVersion', '')),
+            'objectBindings': len(bindings.get('object_bindings') or []),
+            'implementations': len(state.get('implementations') or [])}
 
 
 def revision(state):
-    # catalogs 是服务端注入的派生数据，不参与修订哈希：否则加载注入/保存未注入
-    # 两种路径算出的哈希不同，会让所有保存误判 409。
+    """内容 hash：仅用于审计（manifest contentHash）与旧导出兼容，不作并发令牌。"""
+    import hashlib
+    import json
     payload = {k: v for k, v in state.items() if not str(k).startswith('_')}
     bindings = payload.get('bindings')
     if isinstance(bindings, dict) and 'catalogs' in bindings:
@@ -140,78 +81,85 @@ def revision(state):
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
-def _pointer(identifier):
-    path = draft_dir(identifier) / 'current.json'
-    return json.loads(path.read_text()) if path.is_file() else None
+def current_token(identifier):
+    """head 的不透明 revision token；项目不存在返回 None。"""
+    storage.ensure_ready()
+    return store.current_token(KIND, clean_id(identifier))
 
 
-def read_draft(identifier):
-    pointer = _pointer(identifier)
-    if not pointer:
-        return None
-    directory = draft_dir(identifier) / 'revisions' / pointer['revisionDir']
-    if not directory.is_dir():
-        raise ValueError('项目草稿修订不完整，请联系管理员检查 drafts 目录')
-    state = _state_from_files(clean_id(identifier), _read_files(directory))
-    state['_draft'] = {'seq': pointer.get('seq', 0), 'updatedAt': pointer.get('updatedAt', '')}
+def _project_ref_of(state):
+    if state.get('ontologyId') and state.get('ontologyVersion'):
+        return {'target_ontology_id': state['ontologyId'],
+                'target_version': str(state['ontologyVersion'])}
+    return None
+
+
+def _state_from_payload(payload, identifier, payload_format=''):
+    """版本化读取适配：project-state-1 直读；legacy-files-v3（迁移的历史文件组件）
+    按旧 project.yaml 结构还原为规范化状态（不经二次转换、不丢未知键）。"""
+    if payload_format in ('', 'project-state-1'):
+        state = _normalize(copy.deepcopy(payload))
+    else:
+        project = payload.get('project') or {}
+        ontology_id = str(project.get('ontology') or project.get('ontology_id') or '')
+        version = str(project.get('ontology_version') or project.get('model_version') or '')
+        if not ontology_id and version:
+            ontology_id = 'storage'  # 旧约定：只有 storage 本体有项目
+        state = _normalize({
+            'projectId': identifier,
+            'name': str(project.get('name', '') or ''),
+            'ontologyId': ontology_id,
+            'ontologyVersion': version,
+            'connections': payload.get('connections') or {'connections': []},
+            'bindings': payload.get('bindings') or {},
+            'implementations': (payload.get('implementations') or {}).get('implementations', [])
+                               if isinstance(payload.get('implementations'), dict)
+                               else (payload.get('implementations') or []),
+            'parameters': payload.get('parameters') or {},
+            'projectMeta': {k: v for k, v in project.items()
+                            if k not in ('project_id', 'name', 'ontology', 'ontology_id',
+                                         'ontology_version', 'model_version')},
+        })
+    state['projectId'] = clean_id(identifier)
     return state
 
 
-def save_draft(state):
-    identifier = clean_id(state.get('projectId'))
-    directory = draft_dir(identifier)
-    pointer = _pointer(identifier)
-    seq = (pointer.get('seq', 0) if pointer else 0) + 1
-    rev = revision(state)
-    revision_dir = directory / 'revisions' / f'{seq:04d}-{rev[:8]}'
-    if revision_dir.exists():
-        revision_dir = directory / 'revisions' / f'{seq:04d}-{rev[:8]}-{uuid4().hex[:4]}'
-    revision_dir.mkdir(parents=True, exist_ok=False)
-    try:
-        for key, value in _files_from_state(state).items():
-            filename = dict(FILE_ORDER)[key]
-            (revision_dir / filename).write_text(yaml.safe_dump(value, allow_unicode=True, sort_keys=False))
-        pointer_path = directory / 'current.json'
-        temp = directory / '.current.tmp'
-        temp.write_text(json.dumps({'seq': seq, 'revision': rev, 'revisionDir': revision_dir.name,
-                                    'updatedAt': datetime.now(timezone.utc).isoformat()}, ensure_ascii=False))
-        temp.replace(pointer_path)
-    except Exception as exc:
-        # 指针未替换，修订目录只是孤立垃圾；清掉后向上报错，绝不能让调用方误以为保存成功。
-        import shutil
-        shutil.rmtree(revision_dir, ignore_errors=True)
-        return {'error': '草稿保存失败：' + str(exc)}
-    return {'revision': rev, 'seq': seq}
+def read_draft(identifier):
+    storage.ensure_ready()
+    identifier = clean_id(identifier)
+    current = store.read_current(KIND, identifier)
+    if current is None:
+        return None
+    head, snapshot = current['head'], current['snapshot']
+    state = _state_from_payload(snapshot['payload'], identifier, snapshot.get('payload_format', ''))
+    state['_draft'] = {'seq': head.get('snapshot_seq', snapshot.get('seq', 0)),
+                       'updatedAt': head.get('updated_at', ''),
+                       'purpose': snapshot.get('purpose', '')}
+    return state
 
 
 def load(identifier):
     identifier = clean_id(identifier)
     state = read_draft(identifier)
     if state is not None:
-        return state, True
-    if (base_dir(identifier) / 'project.yaml').is_file():
-        return _state_from_files(identifier, _read_files(base_dir(identifier))), False
+        has_draft = state.get('_draft', {}).get('purpose') == 'draft'
+        return state, has_draft
     raise ProjectNotFound('项目不存在')
 
 
 def listing(ontology_id=None):
-    identifiers = set()
-    if BASE.is_dir():
-        identifiers.update(p.parent.name for p in BASE.glob('*/project.yaml'))
-    if DRAFTS.is_dir():
-        identifiers.update(p.parent.name for p in DRAFTS.glob('*/current.json'))
+    storage.ensure_ready()
+    with read_connection() as conn:
+        rows = store.list_assets(conn, KIND)
     items = []
-    for identifier in sorted(identifiers):
-        try:
-            state, has_draft = load(identifier)
-        except (ValueError, OSError, yaml.YAMLError):
+    for row in rows:
+        summary = row.get('summary') or {}
+        if ontology_id and summary.get('ontologyId') != ontology_id:
             continue
-        if ontology_id and state.get('ontologyId') != ontology_id:
-            continue
-        items.append({'id': identifier, 'name': state.get('name') or identifier,
-                      'ontologyId': state.get('ontologyId', ''),
-                      'ontologyVersion': state.get('ontologyVersion', ''),
-                      'hasDraft': has_draft})
+        items.append({'id': row['external_id'], 'name': row['name'] or row['external_id'],
+                      'ontologyId': summary.get('ontologyId', ''),
+                      'ontologyVersion': str(summary.get('ontologyVersion', '')),
+                      'hasDraft': row.get('purpose') == 'draft'})
     return items
 
 
@@ -219,65 +167,131 @@ def create(name, ontology_id='', ontology_version=''):
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
         raise ValueError('项目名称需要填写 1～80 个字符')
     name = name.strip()
-    if any(item['name'].casefold() == name.casefold() and (not ontology_id or item['ontologyId'] == ontology_id)
-           for item in listing(ontology_id or None)):
-        raise ValueError('已存在同名项目，请换一个名称')
+    storage.ensure_ready()
+    ontology_id = ontology_id or ''
+    ontology_version = str(ontology_version or '')
     identifier = uuid4().hex[:12]
-    while (base_dir(identifier) / 'project.yaml').is_file() or _pointer(identifier):
-        identifier = uuid4().hex[:12]
-    state = _empty_state(identifier, name, ontology_id, str(ontology_version))
-    directory = base_dir(identifier)
-    directory.mkdir(parents=True, exist_ok=False)
+    state = _empty_state(identifier, name, ontology_id, ontology_version)
+    payload = _payload_of(state)
+
+    def body(conn):
+        store.bump_guard(conn, 'asset-name:project')
+        # 名称唯一范围与旧行为一致：同名且（未指明本体 或 同一本体）才冲突
+        rows = store.list_assets(conn, KIND)
+        for row in rows:
+            if row['name_key'] != store.name_key(name):
+                continue
+            other = (row.get('summary') or {}).get('ontologyId', '')
+            if not ontology_id or other == ontology_id:
+                raise ValueError('已存在同名项目，请换一个名称')
+        result = store._save_draft_in_conn(
+            conn, KIND, identifier, payload, store.PAYLOAD_FORMAT_PROJECT,
+            expected_token=None, name=name, summary=summary_of(state),
+            project_ref=_project_ref_of(state), purpose='imported-base',
+            legacy_revision='', allow_create=True, allow_advance=False, now=utcnow(),
+            conflict={})
+        return result
+
+    with write_tx() as tx:
+        tx.run(body)
+    return {'id': identifier, 'name': name, 'ontologyId': ontology_id,
+            'ontologyVersion': ontology_version}
+
+
+def save_draft(state, expected_token=None):
+    """保存项目草稿。expected_token：客户端基线（路由层必传）；None = 内部/测试
+    路径，按当前 head 推进（旧文件版模块层不做 revision 检查，语义保持一致）。"""
+    identifier = clean_id(state.get('projectId'))
+    storage.ensure_ready()
     try:
-        for key, value in _files_from_state(state).items():
-            (directory / dict(FILE_ORDER)[key]).write_text(yaml.safe_dump(value, allow_unicode=True, sort_keys=False))
-    except Exception:
-        directory.rmdir()
-        raise
-    return {'id': identifier, 'name': name, 'ontologyId': ontology_id, 'ontologyVersion': str(ontology_version)}
+        result = store.save_draft(KIND, identifier, _payload_of(state),
+                                  store.PAYLOAD_FORMAT_PROJECT, expected_token=expected_token,
+                                  name=str(state.get('name') or identifier),
+                                  summary=summary_of(state), project_ref=_project_ref_of(state),
+                                  purpose='draft', allow_create=True,
+                                  allow_advance=(expected_token is None))
+    except storage.StorageUnavailable as exc:
+        return {'error': '草稿保存失败：' + str(exc)}
+    return {'revision': result['revision'], 'seq': result['seq']}
+
+
+def publish_draft(state, expected_token, note=''):
+    """发布与草稿保存同一事务：CAS head → 草稿快照 → 发布快照 → 发布记录 → 引用。"""
+    identifier = clean_id(state.get('projectId'))
+    storage.ensure_ready()
+    now = utcnow()
+    outcome = {}
+
+    def body(conn, save_fn, conflict):
+        asset = store.get_asset(conn, KIND, identifier)
+        if asset is None:
+            raise ProjectNotFound('项目不存在')
+        save = save_fn(conn, kind=KIND, external_id=identifier,
+                       payload=_payload_of(state), payload_format=store.PAYLOAD_FORMAT_PROJECT,
+                       expected_token=expected_token, name=str(state.get('name') or identifier),
+                       summary=summary_of(state), project_ref=_project_ref_of(state),
+                       purpose='draft', allow_create=True)
+        labels = [row['version_label'] for row in store.release_rows(conn, asset['asset_uid'])]
+        version = f'v{len(labels) + 1}'
+        while version in labels:  # 唯一约束兜底前的防御
+            version = 'v' + str(int(version[1:]) + 1)
+        release_snapshot = store.append_snapshot(conn, asset['asset_uid'], _payload_of(state),
+                                                 store.PAYLOAD_FORMAT_PROJECT, 'release', now=now)
+        manifest = {'version': version, 'projectId': identifier,
+                    'ontologyId': state.get('ontologyId', ''),
+                    'ontologyVersion': str(state.get('ontologyVersion', '')),
+                    'createdAt': now, 'revision': save['revision'],
+                    'contentHash': revision(state),
+                    'note': note or '项目配置快照；配置校验通过不等于已执行验证或上线'}
+        store.append_release(conn, asset['asset_uid'], version, release_snapshot['snapshot_id'],
+                             manifest, source_draft_id=save['snapshotId'], now=now)
+        outcome.update({'version': version, 'revision': save['revision']})
+        return outcome
+
+    store.run_in_write_tx(body)
+    return {'version': outcome['version'], 'revision': outcome['revision']}
 
 
 def publish(state):
+    """兼容入口：直接为当前状态追加一条发布记录（不动草稿 head）。"""
     identifier = clean_id(state.get('projectId'))
-    directory = release_dir(identifier)
-    directory.mkdir(parents=True, exist_ok=True)
-    existing = [p.name for p in directory.iterdir() if p.is_dir() and p.name.startswith('v')]
-    version = f'v{len(existing) + 1}'
-    while (directory / version).exists():
-        version = 'v' + str(int(version[1:]) + 1)
-    temp = directory / f'.{version}.tmp'
-    if temp.exists():
-        temp.rmdir()
-    temp.mkdir()
-    try:
-        for key, value in _files_from_state(state).items():
-            (temp / dict(FILE_ORDER)[key]).write_text(yaml.safe_dump(value, allow_unicode=True, sort_keys=False))
-        manifest = {'version': version, 'projectId': identifier, 'ontologyId': state.get('ontologyId', ''),
+    storage.ensure_ready()
+    now = utcnow()
+    outcome = {}
+
+    def body(conn):
+        asset = store.get_asset(conn, KIND, identifier)
+        if asset is None:
+            raise ProjectNotFound('项目不存在')
+        labels = [row['version_label'] for row in store.release_rows(conn, asset['asset_uid'])]
+        version = f'v{len(labels) + 1}'
+        while version in labels:
+            version = 'v' + str(int(version[1:]) + 1)
+        release_snapshot = store.append_snapshot(conn, asset['asset_uid'], _payload_of(state),
+                                                 store.PAYLOAD_FORMAT_PROJECT, 'release', now=now)
+        manifest = {'version': version, 'projectId': identifier,
+                    'ontologyId': state.get('ontologyId', ''),
                     'ontologyVersion': str(state.get('ontologyVersion', '')),
-                    'createdAt': datetime.now(timezone.utc).isoformat(), 'revision': revision(state),
+                    'createdAt': now, 'revision': revision(state),
                     'note': '项目配置快照；配置校验通过不等于已执行验证或上线'}
-        (temp / 'manifest.yaml').write_text(yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False))
-        temp.replace(directory / version)
-    except Exception:
-        import shutil
-        shutil.rmtree(temp, ignore_errors=True)
-        raise
-    return {'version': version}
+        store.append_release(conn, asset['asset_uid'], version, release_snapshot['snapshot_id'],
+                             manifest, now=now)
+        outcome['version'] = version
+        return outcome
+
+    with write_tx() as tx:
+        tx.run(body)
+    return {'version': outcome['version']}
 
 
 def published_versions(identifier):
-    directory = release_dir(identifier)
-    if not directory.is_dir():
-        return []
-    out = []
-    for path in sorted(directory.iterdir()):
-        manifest = path / 'manifest.yaml'
-        if path.is_dir() and manifest.is_file():
-            try:
-                out.append(yaml.safe_load(manifest.read_text()) or {})
-            except yaml.YAMLError:
-                continue
-    return out
+    identifier = clean_id(identifier)
+    storage.ensure_ready()
+    with read_connection() as conn:
+        asset = store.get_asset(conn, KIND, identifier)
+        if asset is None:
+            return []
+        return [row['manifest'] for row in store.release_rows(conn, asset['asset_uid'])]
 
 
 # --- configuration validation (V3 section 8) ----------------------------------
@@ -286,9 +300,9 @@ def published_versions(identifier):
 # server.py 与既有测试经 projects.validate_project / projects.derive_display_names
 # 调用不需改动。
 
-from workbench.project_mapping import bare  # noqa: E402  (upgrade_check 使用)
+from workbench.project_mapping import bare  # noqa: E402,F401  (upgrade_check 使用)
 from workbench.project_mapping import derive_display_names  # noqa: F401  (兼容转发)
-from workbench.project_validation import validate_project  # noqa: F401  (兼容转发)
+from workbench.project_validation import validate_project  # noqa: F401,E402  (兼容转发)
 
 
 def upgrade_check(state, current_state, target_state):

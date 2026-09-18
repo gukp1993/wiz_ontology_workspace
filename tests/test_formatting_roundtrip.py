@@ -254,13 +254,19 @@ def test_service_roundtrip():
     verify_state_formatting(after_restart, '重启后')
     ok('5', '服务重启后 formatting 配置仍完整保留')
 
-    draft_files = sorted((TMP / 'ontology/drafts/models/storage/revisions').glob('*/ontology.json'))
-    check(bool(draft_files), '草稿应只写入临时根 ontology/drafts/', actual=str(TMP), expected='存在 revisions/*/ontology.json')
-    if draft_files:
-        on_disk = json.loads(draft_files[-1].read_text())
-        disk_props = {r['id']: r for r in on_disk.get('properties', [])}
+    # 库化后草稿不再落盘：直接读当前 head 快照 payload 验证同一不变量
+    from workbench.storage import assets as store
+    from workbench.storage.engine import read_connection as _rc
+    os.environ.setdefault('WIZ_DATABASE_URL', '')
+    from workbench.storage.engine import resolve_url as _rurl
+    with _rc(_rurl()) as _conn:
+        _head = store.read_current('model', 'storage')
+    check(_head is not None, '草稿应写入临时根数据库（storage 资产存在）', actual=str(TMP), expected='head 快照存在')
+    if _head is not None:
+        on_disk = _head['snapshot']['payload']
+        disk_props = {r['id']: r for r in (on_disk.get('ontology') or {}).get('properties', [])}
         check(disk_props.get('mg:legacy_code', {}).get('formatting', {}).get('x-custom') == 1,
-              '落盘 JSON 中未知扩展键 x-custom 应原样存在',
+              '快照 JSON 中未知扩展键 x-custom 应原样存在',
               actual=disk_props.get('mg:legacy_code'), expected=LEGACY_CODE_CONFIG)
     ok('6', '落盘草稿文件含未知扩展键，全部写入发生在临时根内')
 

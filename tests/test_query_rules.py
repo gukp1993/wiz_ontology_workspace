@@ -24,8 +24,8 @@ class QueryRules(unittest.TestCase):
     def test_invalid_definitions_block_publish(self):
         for mutate in [lambda r:r['steps'][0]['where'][2].update(value='1'),lambda r:r['steps'][1].update(table='{{steps.samples.value}}'),lambda r:r['result'].update(timestamp='missing'),lambda r:r.update(connection='missing')]:
             state=self.state();mutate(state['implementations'][0]);state=projects._normalize(state)
-            with patch.object(projects,'load',return_value=(state,None)),patch.object(project_routes,'referenced_ontology',return_value=QUERY_ONTOLOGY),patch.object(project_routes.catalog_store,'load_all',return_value={}),patch.object(projects,'publish') as publish:
-                out,status=project_routes.post_project_write({'state':state,'revision':projects.revision(state)},'/api/project-publish')
+            with patch.object(projects,'load',return_value=(state,None)),patch.object(project_routes,'referenced_ontology',return_value=QUERY_ONTOLOGY),patch.object(project_routes.catalog_store,'load_all',return_value={}),patch.object(projects,'current_token',return_value='tok-test'),patch.object(projects,'publish') as publish:
+                out,status=project_routes.post_project_write({'state':state,'revision':'tok-test'},'/api/project-publish')
                 self.assertEqual(status,422,out);publish.assert_not_called()
     def test_reusable_roundtrip_and_missing_inputs(self):
         rule=copy.deepcopy(REUSABLE_QUERY_RULE)

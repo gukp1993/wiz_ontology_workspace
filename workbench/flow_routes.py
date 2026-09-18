@@ -25,7 +25,7 @@ def get_flow_state(query):
         return {'error': str(exc)}, 400
     if state is None:
         return {'error': '编排不存在'}, 404
-    return {'state': state, 'revision': flows.revision_of(state)}, 200
+    return {'state': state, 'revision': flows.current_token(identifier)}, 200
 
 
 def post_create_flow(payload):
@@ -75,14 +75,13 @@ def post_flow_save(payload):
     llm_meta = llm_providers.list_metadata()
     credential_ids = _credential_ids(payload)
     with LOCK:
-        existing = flows.read_draft(identifier)
-        if existing is None:
+        expected = flows.current_token(identifier)
+        if expected is None:
             return {'error': '编排不存在'}, 404
-        expected = flows.revision_of(existing)
         if payload.get('revision') != expected:
             return {'error': '此编排已有新版本，请刷新后重试', 'currentRevision': expected}, 409
         try:
-            result = flows.save_draft(state)
+            result = flows.save_draft(state, expected_token=expected)
         except ValueError as exc:
             return {'error': str(exc)}, 400
     return {'revision': result['revision'],
@@ -154,10 +153,9 @@ def post_flow_run(payload):
             return {'error': '此编排正在运行中，请等待本次运行完成后再试'}, 409
         try:
             with LOCK:  # 仅短暂持锁核对版本；执行阶段绝不持全局锁
-                existing = flows.read_draft(identifier)
-                if existing is None:
+                expected = flows.current_token(identifier)
+                if expected is None:
                     return {'error': '编排不存在'}, 404
-                expected = flows.revision_of(existing)
                 if payload.get('revision') != expected:
                     return {'error': '此编排已有新版本，请刷新后重试', 'currentRevision': expected}, 409
             report = flows.check_flow(state, _conn_context(payload), llm_meta, credential_ids)
