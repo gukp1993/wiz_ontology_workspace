@@ -85,46 +85,46 @@ def pick_path(payload, response_path):
 
 
 def implementation_issues(impl, declared_names, credential_ids=None):
-    """HTTP 节点静态校验，返回 error 文案列表（不含执行）。"""
+    """HTTP 节点静态校验，返回 (message, code, field) 三元组列表（不含执行）。"""
     errors = []
     url = str(impl.get('url') or '').strip()
     if not url:
-        errors.append('请填写请求 URL')
+        errors.append(('请填写请求 URL', 'HTTP_URL_MISSING', 'url'))
     elif not url.lower().startswith(('http://', 'https://')):
-        errors.append('URL 仅支持 http(s)')
+        errors.append(('URL 仅支持 http(s)', 'HTTP_URL_INVALID', 'url'))
     method = str(impl.get('method') or 'GET').upper()
     if method not in METHODS:
-        errors.append(f'请求方法无效（支持 {" / ".join(METHODS)}）')
+        errors.append((f'请求方法无效（支持 {" / ".join(METHODS)}）', 'HTTP_METHOD_INVALID', 'method'))
     declared = set(declared_names or [])
     for name in scan_placeholders(url):
         if name not in declared:
-            errors.append(f'URL 占位 {{{name}}} 不是已声明的输入参数')
+            errors.append((f'URL 占位 {{{name}}} 不是已声明的输入参数', 'HTTP_PLACEHOLDER_UNDECLARED', 'url'))
     body_mode = impl.get('bodyMode') or 'none'
     if body_mode not in ('none', 'json'):
-        errors.append('请求体类型无效（none/json）')
+        errors.append(('请求体类型无效（none/json）', 'HTTP_BODYMODE_INVALID', 'bodyMode'))
     body = impl.get('body')
     if body_mode == 'none' and body:
-        errors.append('请求体类型为 none 时不应填写请求体')
+        errors.append(('请求体类型为 none 时不应填写请求体', 'HTTP_BODY_UNEXPECTED', 'body'))
     if body_mode == 'json' and not str(body or '').strip() and method in ('POST', 'PUT'):
-        errors.append('POST/PUT 需要填写 JSON 请求体模板')
+        errors.append(('POST/PUT 需要填写 JSON 请求体模板', 'HTTP_BODY_MISSING', 'body'))
     if method == 'GET' and str(body or '').strip():
-        errors.append('GET 请求不应携带请求体（请改用 POST 或清空）')
+        errors.append(('GET 请求不应携带请求体（请改用 POST 或清空）', 'HTTP_BODY_ON_GET', 'body'))
     if body_mode == 'json':
         for name in scan_placeholders(body):
             if name not in declared:
-                errors.append(f'请求体占位 {{{name}}} 不是已声明的输入参数')
+                errors.append((f'请求体占位 {{{name}}} 不是已声明的输入参数', 'HTTP_PLACEHOLDER_UNDECLARED', 'body'))
     headers = impl.get('headers')
     if headers is not None:
         if not isinstance(headers, dict):
-            errors.append('请求头必须是「名: 值」对象')
+            errors.append(('请求头必须是「名: 值」对象', 'HTTP_HEADERS_INVALID', 'headers'))
         else:
             for key, value in headers.items():
                 if not str(key).strip() or '\n' in str(key) + str(value):
-                    errors.append(f'请求头 {key or "（空）"} 格式无效')
+                    errors.append((f'请求头 {key or "（空）"} 格式无效', 'HTTP_HEADER_INVALID', 'headers'))
     path = str(impl.get('responsePath') or '').strip()
     if path and not _PATH_RE.fullmatch(path):
-        errors.append('响应提取路径无效（应为 a.b.c 形式的点路径）')
+        errors.append(('响应提取路径无效（应为 a.b.c 形式的点路径）', 'HTTP_PATH_INVALID', 'responsePath'))
     credential_id = str(impl.get('credentialId') or '')
     if credential_id and credential_ids is not None and credential_id not in credential_ids:
-        errors.append('认证凭据不存在或已被删除，请重新选择')
+        errors.append(('认证凭据不存在或已被删除，请重新选择', 'CREDENTIAL_NOT_FOUND', 'credentialId'))
     return errors

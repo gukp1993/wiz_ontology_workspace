@@ -373,5 +373,35 @@ flat = _flat(errors)
 check(any('超时无效' in e for e in flat) and any('行数上限无效' in e for e in flat)
       and any('允许写' in e for e in flat), '执行参数越界报错', flat)
 
+
+# 15) 结构化诊断（仅 API 定位信息；errors/warnings/items/status 内容与顺序兼容） -------------------
+diag_flow = flows.blank_flow('diagcheck', '诊断校验')
+diag_flow['inputs'] = [{'id': 'fin_dev', 'name': 'device_id', 'label': '设备', 'type': {'type': 'text'}}]
+diag_flow['nodes'] = [
+    {'id': 'nd_sql', 'kind': 'sql', 'name': '查询簇',
+     'inputs': [{'id': 'in_dev', 'name': 'device_id', 'label': '设备', 'type': {'type': 'text'}, 'source': None}],
+     'outputs': [{'id': 'out_rows', 'name': 'rows', 'label': '行', 'type': {'type': 'list', 'elementType': {'type': 'text'}}}],
+     'implementation': {'language': 'sql', 'connectionId': 'ghost-conn', 'sql': 'SELECT 1 FROM t WHERE id = :device_id'}},
+]
+report = flows.check_flow(diag_flow, [{'id': 'real-conn', 'name': '库', 'engine': 'mysql'}], [], None)
+diags = report['diagnostics']
+check(isinstance(diags, list) and all(set(d) >= {'code', 'level', 'message', 'kind', 'id', 'section', 'field', 'parameterId'} for d in diags),
+      'diagnostics 元素字段齐全', diags)
+codes = {(d['code'], d['id'], d['section']) for d in diags}
+check(('INPUT_BINDING_MISSING', 'nd_sql', 'inputs') in codes, '缺绑定诊断指向 inputs/binding', codes)
+check(('CONNECTION_NOT_FOUND', 'nd_sql', 'implementation') in codes, '连接失效诊断指向 implementation/connectionId', codes)
+check(all(d['parameterId'] in (None, 'in_dev', 'out_rows') for d in diags), 'parameterId 为稳定 ID 或空')
+check(report['errors'][:1] == ['数据连接不存在或已被删除，请重新选择'], 'errors 文案与顺序不受诊断影响', report['errors'])
+check(any(d['code'] == 'INPUT_BINDING_MISSING' and d['level'] == 'warning' for d in diags),
+      '缺绑定按 warning 级别进诊断', diags)
+# 修复绑定后重检：诊断随之更新
+diag_flow['nodes'][0]['inputs'][0]['source'] = {'kind': 'flowInput', 'inputId': 'fin_dev'}
+diag_flow['nodes'][0]['implementation']['connectionId'] = 'real-conn'
+report2 = flows.check_flow(diag_flow, [{'id': 'real-conn', 'name': '库', 'engine': 'mysql'}], [], None)
+codes2 = {(d['code'], d['id']) for d in report2['diagnostics']}
+check(('INPUT_BINDING_MISSING', 'nd_sql') not in codes2 and ('CONNECTION_NOT_FOUND', 'nd_sql') not in codes2,
+      '修复后旧诊断不再出现', codes2)
+check(report2['diagnostics'] == [] , '完全通过的编排诊断为空', report2['diagnostics'])
+
 print(f'\n全部通过：{len(PASSED)} 项')
 shutil.rmtree(TMP, ignore_errors=True)

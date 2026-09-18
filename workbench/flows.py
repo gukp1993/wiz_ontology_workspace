@@ -417,11 +417,15 @@ def check_flow(state, project_connections=None, llm_meta=None, credential_ids=No
     llm_meta：LLM 提供方元数据列表（{'id','name'}）；None 表示无法获取（跳过存在性检查），
     空列表 = 尚未配置任何提供方（Python/LLM 计算节点给指引 warning）。
     credential_ids：项目 API 凭据 id 集合（HTTP 节点认证引用校验）；None 跳过。
+    返回在既有 errors/warnings/items/status 之外附 diagnostics[]（仅 API 定位信息，
+    不存草稿）：{code, level, message, kind, id, section, field, parameterId}。
+    section ∈ inputs/implementation/outputs/advanced；无精确 field 的问题退到 section/节点。
     不做语法/业务正确性判断之外的执行语义检查，也不尝试执行任何代码。"""
-    errors, warnings, items = [], [], []
-    index = {}
+    errors, warnings, items, diagnostics = [], [], [], []
+    index, diag_index = {}, set()
 
-    def report(level, kind, item_id, name, text):
+    def report(level, kind, item_id, name, text, code='CONFIG_ISSUE', section=None,
+               field=None, parameter_id=None):
         (errors if level == 'error' else warnings).append(text)
         key = (kind, str(item_id))
         if key not in index:
@@ -434,82 +438,98 @@ def check_flow(state, project_connections=None, llm_meta=None, credential_ids=No
                 entry['issues'].append(text)
             if level == 'error':
                 entry['level'] = 'error'
+        diag_key = (code, level, kind, str(item_id), str(parameter_id or ''), str(field or ''))
+        if diag_key not in diag_index:
+            diag_index.add(diag_key)
+            diagnostics.append({'code': code, 'level': level, 'message': text, 'kind': kind,
+                                'id': str(item_id), 'section': section, 'field': field,
+                                'parameterId': parameter_id})
 
     try:
         _check_body(state, report, project_connections, llm_meta, credential_ids)
     except Exception:  # 结构怪异的数据也要给出可定位的失败，而不是 500
         report('error', 'flow', str(state.get('flowId') if isinstance(state, dict) else '') or 'flow',
-               '编排', '编排结构无法解析，请修复或重新创建编排')
+               '编排', '编排结构无法解析，请修复或重新创建编排', code='FLOW_STATE_UNPARSEABLE')
 
     return {'errors': list(dict.fromkeys(errors)), 'warnings': list(dict.fromkeys(warnings)),
-            'items': items, 'status': 'passed' if not errors and not warnings else 'pending'}
+            'items': items, 'status': 'passed' if not errors and not warnings else 'pending',
+            'diagnostics': diagnostics}
 
 
 def _execution_issues(node):
-    """节点执行参数（v2 additive）：timeoutMs/maxRows/allowWrite 全部可选。"""
+    """节点执行参数（v2 additive）：返回 (text, code, field) 三元组列表。"""
     execution = node.get('execution')
     if execution is None:
         return []
     if not isinstance(execution, dict):
-        return ['execution 执行参数必须是对象']
+        return [('execution 执行参数必须是对象', 'EXEC_CONFIG_INVALID', 'execution')]
     issues = []
     timeout = execution.get('timeoutMs')
     if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, int)
                                 or not 1000 <= timeout <= EXEC_MAX_TIMEOUT_MS):
-        issues.append(f'节点超时无效（1000–{EXEC_MAX_TIMEOUT_MS} 毫秒）')
+        issues.append((f'节点超时无效（1000–{EXEC_MAX_TIMEOUT_MS} 毫秒）', 'EXEC_TIMEOUT_INVALID', 'timeoutMs'))
     max_rows = execution.get('maxRows')
     if max_rows is not None and (isinstance(max_rows, bool) or not isinstance(max_rows, int)
                                  or not 1 <= max_rows <= SQL_MAX_ROWS_MAX):
-        issues.append(f'行数上限无效（1–{SQL_MAX_ROWS_MAX}）')
+        issues.append((f'行数上限无效（1–{SQL_MAX_ROWS_MAX}）', 'EXEC_MAXROWS_INVALID', 'maxRows'))
     if 'allowWrite' in execution and not isinstance(execution.get('allowWrite'), bool):
-        issues.append('允许写必须是是/否')
+        issues.append(('允许写必须是是/否', 'EXEC_ALLOWWRITE_INVALID', 'allowWrite'))
     return issues
 
 
 def _check_llm_provider(impl, llm_meta, report, kind, item_id, label):
     provider = str(impl.get('providerId') or '')
     if provider and llm_meta is not None and provider not in {m.get('id') for m in llm_meta}:
-        report('error', kind, item_id, label, 'LLM 提供方不存在或已被删除，请重新选择')
+        report('error', kind, item_id, label, 'LLM 提供方不存在或已被删除，请重新选择',
+               code='LLM_PROVIDER_NOT_FOUND', section='implementation', field='providerId')
     if llm_meta is not None and not llm_meta:
-        report('error', kind, item_id, label, '尚未配置 LLM 提供方：请到「更多工具 → LLM 配置」添加后重试')
+        report('error', kind, item_id, label, '尚未配置 LLM 提供方：请到「更多工具 → LLM 配置」添加后重试',
+               code='LLM_PROVIDER_NOT_CONFIGURED', section='implementation', field='providerId')
 
 
 def _check_python_impl(node, impl, llm_meta, report, nid, nlabel):
     code = impl.get('code')
     if not isinstance(code, str) or not code.strip():
-        report('error', 'node', nid, nlabel, 'Python 代码为空')
+        report('error', 'node', nid, nlabel, 'Python 代码为空',
+               code='IMPLEMENTATION_EMPTY', section='implementation', field='code')
         return
     try:
         tree = ast.parse(code)
     except SyntaxError as exc:
-        report('error', 'node', nid, nlabel, f'Python 代码语法无法解析（第 {exc.lineno} 行）')
+        report('error', 'node', nid, nlabel, f'Python 代码语法无法解析（第 {exc.lineno} 行）',
+               code='PYTHON_SYNTAX_INVALID', section='implementation', field='code')
         return
     if not any(isinstance(item, ast.FunctionDef) and item.name == 'main' for item in tree.body):
-        report('error', 'node', nid, nlabel, 'Python 代码需在顶层定义 main 函数（def main(...)）')
+        report('error', 'node', nid, nlabel, 'Python 代码需在顶层定义 main 函数（def main(...)）',
+               code='PYTHON_MAIN_MISSING', section='implementation', field='code')
     _check_llm_provider(impl, llm_meta, report, 'node', nid, nlabel)
 
 
 def _check_calc_impl(node, impl, input_map, llm_meta, report, nid, nlabel):
     mode = impl.get('mode') or 'formula'
     if mode not in ('formula', 'llm'):
-        report('error', 'node', nid, nlabel, '计算模式无效（formula/llm）')
+        report('error', 'node', nid, nlabel, '计算模式无效（formula/llm）',
+               code='CALC_MODE_INVALID', section='implementation', field='mode')
         return
     outputs = [o for o in node.get('outputs', []) if isinstance(o, dict) and o.get('name')]
     if mode == 'llm':
         if not str(impl.get('llmInstruction') or '').strip():
-            report('error', 'node', nid, nlabel, 'LLM 计算模式需要填写自然语言计算规则')
+            report('error', 'node', nid, nlabel, 'LLM 计算模式需要填写自然语言计算规则',
+                   code='LLM_INSTRUCTION_MISSING', section='implementation', field='llmInstruction')
         _check_llm_provider(impl, llm_meta, report, 'node', nid, nlabel)
         return
     formulas = impl.get('formulas')
     if formulas is None:
         formulas = {}
     if not isinstance(formulas, dict):
-        report('error', 'node', nid, nlabel, '公式声明无效（应为 输出技术名 → 公式 的对象）')
+        report('error', 'node', nid, nlabel, '公式声明无效（应为 输出技术名 → 公式 的对象）',
+               code='CALC_FORMULAS_INVALID', section='implementation', field='formulas')
         return
     output_names = {o['name'] for o in outputs}
     for name in formulas:
         if name not in output_names:
-            report('error', 'node', nid, nlabel, f'公式 {name} 没有对应的输出')
+            report('error', 'node', nid, nlabel, f'公式 {name} 没有对应的输出',
+                   code='CALC_OUTPUT_UNKNOWN', section='implementation', field='formulas')
     param_types = {}
     unmappable = {}
     for info in input_map.values():
@@ -526,118 +546,149 @@ def _check_calc_impl(node, impl, input_map, llm_meta, report, nid, nlabel):
         calc_type = CALC_TYPE_OF_FLOW.get(out.get('type', {}).get('type') if isinstance(out.get('type'), dict) else None)
         if calc_type is None:
             report('error', 'node', nid, nlabel,
-                   f'公式模式仅支持数值/文本/是否类型的输出「{out.get("label") or name}」')
+                   f'公式模式仅支持数值/文本/是否类型的输出「{out.get("label") or name}」',
+                   code='CALC_OUTPUT_TYPE_UNSUPPORTED', section='outputs', field='type', parameter_id=out.get('id'))
             continue
         if not isinstance(expr, str) or not expr.strip():
-            report('error', 'node', nid, nlabel, f'输出「{out.get("label") or name}」缺少公式')
+            report('error', 'node', nid, nlabel, f'输出「{out.get("label") or name}」缺少公式',
+                   code='CALC_FORMULA_MISSING', section='implementation', field='formulas', parameter_id=out.get('id'))
             continue
         for ref in re.findall(r'\{([A-Za-z_][A-Za-z0-9_]*)\}', expr):
             if ref not in input_map:
-                report('error', 'node', nid, nlabel, f'公式引用了不存在的输入 {{{ref}}}')
+                report('error', 'node', nid, nlabel, f'公式引用了不存在的输入 {{{ref}}}',
+                       code='CALC_PARAM_UNKNOWN', section='implementation', field='formulas', parameter_id=out.get('id'))
             elif ref in unmappable:
                 report('error', 'node', nid, nlabel,
-                       f'公式不支持引用 {TYPE_LABELS.get(unmappable[ref], unmappable[ref])} 类型的输入「{ref}」')
+                       f'公式不支持引用 {TYPE_LABELS.get(unmappable[ref], unmappable[ref])} 类型的输入「{ref}」',
+                       code='CALC_PARAM_TYPE_UNSUPPORTED', section='implementation', field='formulas', parameter_id=out.get('id'))
         issue = calc_functions.validate_expression(expr, param_types, calc_type)
         if issue:
-            report('error', 'node', nid, nlabel, f'公式（{name}）：{issue}')
+            report('error', 'node', nid, nlabel, f'公式（{name}）：{issue}',
+                   code='CALC_FORMULA_INVALID', section='implementation', field='formulas', parameter_id=out.get('id'))
 
 
 def _check_sql_impl(node, impl, input_names, input_map, connections, project_connections, report, nid, nlabel):
     sql = impl.get('sql')
     if not isinstance(sql, str) or not sql.strip():
-        report('error', 'node', nid, nlabel, 'SQL 模板为空')
+        report('error', 'node', nid, nlabel, 'SQL 模板为空',
+               code='IMPLEMENTATION_EMPTY', section='implementation', field='sql')
     conn = connections.get(impl.get('connectionId'))
     if not impl.get('connectionId'):
-        report('error', 'node', nid, nlabel, '请选择数据连接（来自数据连接菜单）')
+        report('error', 'node', nid, nlabel, '请选择数据连接（来自数据连接菜单）',
+               code='CONNECTION_MISSING', section='implementation', field='connectionId')
     elif conn is None:
         if project_connections is None:
-            report('warning', 'node', nid, nlabel, '数据连接引用待在编辑器中选择项目数据连接后校验')
+            report('warning', 'node', nid, nlabel, '数据连接引用待在编辑器中选择项目数据连接后校验',
+                   code='CONNECTION_UNVERIFIED', section='implementation', field='connectionId')
         else:
-            report('error', 'node', nid, nlabel, '数据连接不存在或已被删除，请重新选择')
+            report('error', 'node', nid, nlabel, '数据连接不存在或已被删除，请重新选择',
+                   code='CONNECTION_NOT_FOUND', section='implementation', field='connectionId')
     elif conn.get('engine') != 'mysql':
-        report('error', 'node', nid, nlabel, '数据连接类型须为 MySQL')
+        report('error', 'node', nid, nlabel, '数据连接类型须为 MySQL',
+               code='CONNECTION_ENGINE_INVALID', section='implementation', field='connectionId')
     if isinstance(sql, str) and sql.strip():
         try:
             scanned = flow_sql.scan_template(sql)
         except flow_sql.FlowSqlError as exc:
-            report('error', 'node', nid, nlabel, f'SQL 模板无法解析：{exc}')
+            report('error', 'node', nid, nlabel, f'SQL 模板无法解析：{exc}',
+                   code='SQL_PARSE_INVALID', section='implementation', field='sql')
             scanned = {'named': [], 'collections': []}
         referenced = set(SQL_PARAM_SCAN(sql)) | set(scanned['named'])
         for param in sorted(referenced):
             if param not in input_names:
-                report('error', 'node', nid, nlabel, f'SQL 引用了未声明的输入参数 :{param}')
+                report('error', 'node', nid, nlabel, f'SQL 引用了未声明的输入参数 :{param}',
+                       code='SQL_PARAM_UNDECLARED', section='implementation', field='sql')
         for name in sorted(n for n in input_names if n not in referenced):
-            report('warning', 'node', nid, nlabel, f'输入参数 {name} 未在 SQL 中引用')
+            report('warning', 'node', nid, nlabel, f'输入参数 {name} 未在 SQL 中引用',
+                   code='SQL_PARAM_UNUSED', section='implementation', field='sql')
         for collection in scanned['collections']:
             info = input_map.get(collection)
             if info is None:
-                report('error', 'node', nid, nlabel, f'foreach 引用了未声明的集合 {collection}')
+                report('error', 'node', nid, nlabel, f'foreach 引用了未声明的集合 {collection}',
+                       code='SQL_FOREACH_COLLECTION_INVALID', section='implementation', field='sql')
             elif not isinstance(info['decl'], dict) or info['decl'].get('type') != 'list':
-                report('error', 'node', nid, nlabel, f'foreach 的集合 {collection} 须为列表类型的输入')
+                report('error', 'node', nid, nlabel, f'foreach 的集合 {collection} 须为列表类型的输入',
+                       code='SQL_FOREACH_NOT_LIST', section='implementation', field='sql')
         if re.search(r'\$\{[A-Za-z_][A-Za-z0-9_]*\}', sql):
-            report('warning', 'node', nid, nlabel, '${} 原文拼接存在 SQL 注入风险，请确认参数来源可信')
+            report('warning', 'node', nid, nlabel, '${} 原文拼接存在 SQL 注入风险，请确认参数来源可信',
+                   code='SQL_RAW_INTERPOLATION', section='implementation', field='sql')
 
 
 def _check_redis_impl(node, impl, input_names, connections, project_connections, report, nid, nlabel):
     inputs = node.get('inputs') if isinstance(node.get('inputs'), list) else []
     key_template = impl.get('keyTemplate')
     if not isinstance(key_template, str) or not key_template.strip():
-        report('error', 'node', nid, nlabel, 'Redis key 模板为空')
+        report('error', 'node', nid, nlabel, 'Redis key 模板为空',
+               code='KEY_TEMPLATE_EMPTY', section='implementation', field='keyTemplate')
     conn = connections.get(impl.get('connectionId'))
     if not impl.get('connectionId'):
-        report('error', 'node', nid, nlabel, '请选择数据连接（来自数据连接菜单）')
+        report('error', 'node', nid, nlabel, '请选择数据连接（来自数据连接菜单）',
+               code='CONNECTION_MISSING', section='implementation', field='connectionId')
     elif conn is None:
         if project_connections is None:
-            report('warning', 'node', nid, nlabel, '数据连接引用待在编辑器中选择项目数据连接后校验')
+            report('warning', 'node', nid, nlabel, '数据连接引用待在编辑器中选择项目数据连接后校验',
+                   code='CONNECTION_UNVERIFIED', section='implementation', field='connectionId')
         else:
-            report('error', 'node', nid, nlabel, '数据连接不存在或已被删除，请重新选择')
+            report('error', 'node', nid, nlabel, '数据连接不存在或已被删除，请重新选择',
+                   code='CONNECTION_NOT_FOUND', section='implementation', field='connectionId')
     elif conn.get('engine') != 'redis':
-        report('error', 'node', nid, nlabel, '数据连接类型须为 Redis')
+        report('error', 'node', nid, nlabel, '数据连接类型须为 Redis',
+               code='CONNECTION_ENGINE_INVALID', section='implementation', field='connectionId')
     command = impl.get('command')
     if command:
         if command not in REDIS_COMMANDS:
             report('error', 'node', nid, nlabel,
-                   f'不支持的 Redis 命令 {command}（仅允许白名单内的读写命令，管理命令一律禁止）')
+                   f'不支持的 Redis 命令 {command}（仅允许白名单内的读写命令，管理命令一律禁止）',
+                   code='REDIS_COMMAND_FORBIDDEN', section='implementation', field='command')
         args = impl.get('args')
         if args is not None:
             if not isinstance(args, list) or not all(isinstance(a, str) and a.strip() for a in args):
-                report('error', 'node', nid, nlabel, '命令参数无效（应为非空文本列表：输入参数名或字面量）')
+                report('error', 'node', nid, nlabel, '命令参数无效（应为非空文本列表：输入参数名或字面量）',
+                       code='REDIS_ARGS_INVALID', section='implementation', field='args')
                 args = []
             low, high = REDIS_COMMANDS.get(command, (0, None))[0], REDIS_COMMANDS.get(command, (0, None))[1]
             if isinstance(args, list) and (len(args) < low or (high is not None and len(args) > high)):
                 report('error', 'node', nid, nlabel,
-                       f'{command} 需要 {low}' + (f'–{high}' if high else ' 个及以上') + '个参数')
+                       f'{command} 需要 {low}' + (f'–{high}' if high else ' 个及以上') + '个参数',
+                       code='REDIS_ARGS_COUNT_INVALID', section='implementation', field='args')
             for entry in args if isinstance(args, list) else []:
                 if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', entry) and not re.fullmatch(r'-?\d+(\.\d+)?', entry) \
                         and not re.fullmatch(r"\{\{[A-Za-z_][A-Za-z0-9_]*\}\}", entry.strip()):
                     report('error', 'node', nid, nlabel,
-                           f'命令参数「{entry}」无效：应为输入参数名、数字字面量或行模式 {{字段}}')
+                           f'命令参数「{entry}」无效：应为输入参数名、数字字面量或行模式 {{字段}}',
+                           code='REDIS_ARGS_ENTRY_INVALID', section='implementation', field='args')
     if isinstance(key_template, str) and key_template.strip():
         row_refs = re.findall(r'\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}', key_template)
         param_refs = re.findall(r'\$\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}', key_template)
         if row_refs and param_refs:
-            report('error', 'node', nid, nlabel, 'key 模板不能混用 {{行字段}} 与 ${参数}；行模式只引用列表元素字段，单键模式只引用输入参数')
+            report('error', 'node', nid, nlabel, 'key 模板不能混用 {{行字段}} 与 ${参数}；行模式只引用列表元素字段，单键模式只引用输入参数',
+                   code='KEY_TEMPLATE_MIXED', section='implementation', field='keyTemplate')
         elif row_refs:
             list_inputs = [i for i in inputs if isinstance(i, dict) and isinstance(i.get('type'), dict) and i['type'].get('type') == 'list']
             if len(inputs) != 1 or not list_inputs:
-                report('error', 'node', nid, nlabel, '行模式（{{行字段}}）要求恰好声明一个列表类型的输入参数')
+                report('error', 'node', nid, nlabel, '行模式（{{行字段}}）要求恰好声明一个列表类型的输入参数',
+                       code='KEY_TEMPLATE_ROW_INPUT_INVALID', section='inputs')
             else:
                 element = inputs[0]['type'].get('elementType')
                 fields = {f.get('name') for f in (element or {}).get('fields', [])
                           if isinstance(f, dict) and f.get('name')} if isinstance(element, dict) else set()
                 for ref in row_refs:
                     if ref not in fields:
-                        report('error', 'node', nid, nlabel, f'key 模板引用了列表元素不存在的字段 {{{{{ref}}}}}')
+                        report('error', 'node', nid, nlabel, f'key 模板引用了列表元素不存在的字段 {{{{{ref}}}}}',
+                               code='KEY_TEMPLATE_FIELD_UNKNOWN', section='implementation', field='keyTemplate')
                 src = inputs[0].get('source')
                 if not src or not isinstance(src, dict) or src.get('kind') not in ('node', 'nodeField', 'flowInput'):
-                    report('error', 'node', nid, nlabel, '行模式的列表输入须绑定来源（编排入口/其他节点输出）')
+                    report('error', 'node', nid, nlabel, '行模式的列表输入须绑定来源（编排入口/其他节点输出）',
+                           code='INPUT_BINDING_MISSING', section='inputs',
+                           parameter_id=inputs[0].get('id') if isinstance(inputs[0], dict) else None)
             outputs = node.get('outputs') if isinstance(node.get('outputs'), list) else []
             if not command and outputs and not any(isinstance(o.get('type'), dict) and o['type'].get('type') == 'list' for o in outputs):
                 report('warning', 'node', nid, nlabel, '行模式输出建议声明为列表（与输入列表逐行对应）')
         else:
             for p in param_refs:
                 if p not in input_names:
-                    report('error', 'node', nid, nlabel, f'key 模板引用了未声明的输入参数 ${{{p}}}')
+                    report('error', 'node', nid, nlabel, f'key 模板引用了未声明的输入参数 ${{{p}}}',
+                           code='KEY_TEMPLATE_PARAM_UNDECLARED', section='implementation', field='keyTemplate')
 
 
 def _check_body(state, report, project_connections=None, llm_meta=None, credential_ids=None):
@@ -665,24 +716,30 @@ def _check_body(state, report, project_connections=None, llm_meta=None, credenti
     flow_inputs = {}
     for inp in state.get('inputs', []):
         if not isinstance(inp, dict):
-            report('error', 'flow', flow_id, flow_label, '编排入口参数声明无效')
+            report('error', 'flow', flow_id, flow_label, '编排入口参数声明无效',
+                   code='PARAM_DECL_INVALID', section='inputs')
             continue
         iid = inp.get('id')
         label = str(inp.get('label') or inp.get('name') or '未命名参数')
         if not isinstance(iid, str) or not iid:
-            report('error', 'flow-input', iid or '?', label, '编排入口参数缺少稳定 ID')
+            report('error', 'flow-input', iid or '?', label, '编排入口参数缺少稳定 ID',
+                   code='PARAM_ID_MISSING', section='inputs')
             continue
         if iid in flow_inputs:
-            report('error', 'flow-input', iid, label, '编排入口参数稳定 ID 重复')
+            report('error', 'flow-input', iid, label, '编排入口参数稳定 ID 重复',
+                   code='PARAM_ID_DUPLICATE', section='inputs', parameter_id=iid)
             continue
         flow_inputs[iid] = inp
         name = inp.get('name')
         if not isinstance(name, str) or not IDENTIFIER.fullmatch(name or ''):
-            report('error', 'flow-input', iid, label, '编排入口参数技术名无效（须为字母/下划线开头）')
+            report('error', 'flow-input', iid, label, '编排入口参数技术名无效（须为字母/下划线开头）',
+                   code='PARAM_NAME_INVALID', section='inputs', field='name', parameter_id=iid)
         for issue in _type_decl_errors(inp.get('type'), label):
-            report('error', 'flow-input', iid, label, issue)
+            report('error', 'flow-input', iid, label, issue,
+                   code='PARAM_TYPE_INVALID', section='inputs', field='type', parameter_id=iid)
         for issue in _structure_warnings(inp.get('type'), label):
-            report('warning', 'flow-input', iid, label, issue)
+            report('warning', 'flow-input', iid, label, issue,
+                   code='PARAM_TYPE_INCOMPLETE', section='inputs', field='type', parameter_id=iid)
 
     node_index = {}
     for node in state.get('nodes', []):
@@ -741,68 +798,86 @@ def _check_body(state, report, project_connections=None, llm_meta=None, credenti
             report('error', 'flow', flow_id, flow_label, '存在缺少稳定 ID 的处理节点')
             continue
         if node.get('kind') not in NODE_KINDS:
-            report('error', 'node', nid, nlabel, '节点类型未知（本期支持 Python / SQL）')
+            report('error', 'node', nid, nlabel, '节点类型未知（支持 SQL/计算/Python/Redis/HTTP）',
+                   code='NODE_KIND_UNKNOWN', section='implementation')
         if not str(node.get('name') or '').strip():
-            report('error', 'node', nid, nlabel, '请填写节点名称')
+            report('error', 'node', nid, nlabel, '请填写节点名称',
+                   code='NODE_NAME_MISSING', field='name')
 
         input_names = set()
         inputs = node.get('inputs') if isinstance(node.get('inputs'), list) else []
         for inp in inputs:
             if not isinstance(inp, dict):
-                report('error', 'node', nid, nlabel, '输入参数声明无效')
+                report('error', 'node', nid, nlabel, '输入参数声明无效',
+                       code='PARAM_DECL_INVALID', section='inputs')
                 continue
             iid = inp.get('id')
             ilabel = str(inp.get('label') or inp.get('name') or '未命名输入')
             if not isinstance(iid, str) or not iid:
-                report('error', 'node', nid, nlabel, f'输入「{ilabel}」缺少稳定 ID')
+                report('error', 'node', nid, nlabel, f'输入「{ilabel}」缺少稳定 ID',
+                       code='PARAM_ID_MISSING', section='inputs')
             name = inp.get('name')
             if not isinstance(name, str) or not IDENTIFIER.fullmatch(name or ''):
-                report('error', 'node', nid, nlabel, f'输入「{ilabel}」技术名无效（须为字母/下划线开头）')
+                report('error', 'node', nid, nlabel, f'输入「{ilabel}」技术名无效（须为字母/下划线开头）',
+                       code='PARAM_NAME_INVALID', section='inputs', field='name', parameter_id=iid)
             elif name in input_names:
-                report('error', 'node', nid, nlabel, f'输入技术名 {name} 重复')
+                report('error', 'node', nid, nlabel, f'输入技术名 {name} 重复',
+                       code='PARAM_NAME_DUPLICATE', section='inputs', field='name', parameter_id=iid)
             else:
                 input_names.add(name)
             for issue in _type_decl_errors(inp.get('type'), f'输入「{ilabel}」'):
-                report('error', 'node', nid, nlabel, issue)
+                report('error', 'node', nid, nlabel, issue,
+                       code='PARAM_TYPE_INVALID', section='inputs', field='type', parameter_id=iid)
             for issue in _structure_warnings(inp.get('type'), f'输入「{ilabel}」'):
-                report('warning', 'node', nid, nlabel, issue)
+                report('warning', 'node', nid, nlabel, issue,
+                       code='PARAM_TYPE_INCOMPLETE', section='inputs', field='type', parameter_id=iid)
             src = inp.get('source')
             decl, error, source_node = resolve_source(src, f'输入「{ilabel}」')
             if error:
-                report('error', 'node', nid, nlabel, error)
+                report('error', 'node', nid, nlabel, error,
+                       code='INPUT_REFERENCE_INVALID', section='inputs', field='binding', parameter_id=iid)
             if src is None:
-                report('warning', 'node', nid, nlabel, f'输入「{ilabel}」尚未绑定来源，待完善')
+                report('warning', 'node', nid, nlabel, f'输入「{ilabel}」尚未绑定来源，待完善',
+                       code='INPUT_BINDING_MISSING', section='inputs', field='binding', parameter_id=iid)
             else:
                 if source_node == nid:
-                    report('error', 'node', nid, nlabel, f'输入「{ilabel}」不能引用本节点自身的输出')
+                    report('error', 'node', nid, nlabel, f'输入「{ilabel}」不能引用本节点自身的输出',
+                           code='INPUT_SELF_REFERENCE', section='inputs', field='binding', parameter_id=iid)
                 elif source_node:
                     edges.append((source_node, nid))
                 if decl is not None and isinstance(inp.get('type'), dict):
                     ok, reason = types_compatible(inp['type'], decl)
                     if not ok:
-                        report('error', 'node', nid, nlabel, f'输入「{ilabel}」类型不相容：{reason}')
+                        report('error', 'node', nid, nlabel, f'输入「{ilabel}」类型不相容：{reason}',
+                               code='INPUT_TYPE_MISMATCH', section='inputs', field='binding', parameter_id=iid)
 
         output_names = set()
         outputs = node.get('outputs') if isinstance(node.get('outputs'), list) else []
         for out in outputs:
             if not isinstance(out, dict):
-                report('error', 'node', nid, nlabel, '输出声明无效')
+                report('error', 'node', nid, nlabel, '输出声明无效',
+                       code='PARAM_DECL_INVALID', section='outputs')
                 continue
             oid = out.get('id')
             olabel = str(out.get('label') or out.get('name') or '未命名输出')
             if not isinstance(oid, str) or not oid:
-                report('error', 'node', nid, nlabel, f'输出「{olabel}」缺少稳定 ID')
+                report('error', 'node', nid, nlabel, f'输出「{olabel}」缺少稳定 ID',
+                       code='PARAM_ID_MISSING', section='outputs')
             name = out.get('name')
             if not isinstance(name, str) or not IDENTIFIER.fullmatch(name or ''):
-                report('error', 'node', nid, nlabel, f'输出「{olabel}」技术名无效（须为字母/下划线开头）')
+                report('error', 'node', nid, nlabel, f'输出「{olabel}」技术名无效（须为字母/下划线开头）',
+                       code='PARAM_NAME_INVALID', section='outputs', field='name', parameter_id=oid)
             elif name in output_names:
-                report('error', 'node', nid, nlabel, f'输出技术名 {name} 重复')
+                report('error', 'node', nid, nlabel, f'输出技术名 {name} 重复',
+                       code='PARAM_NAME_DUPLICATE', section='outputs', field='name', parameter_id=oid)
             else:
                 output_names.add(name)
             for issue in _type_decl_errors(out.get('type'), f'输出「{olabel}」'):
-                report('error', 'node', nid, nlabel, issue)
+                report('error', 'node', nid, nlabel, issue,
+                       code='PARAM_TYPE_INVALID', section='outputs', field='type', parameter_id=oid)
             for issue in _structure_warnings(out.get('type'), f'输出「{olabel}」'):
-                report('warning', 'node', nid, nlabel, issue)
+                report('warning', 'node', nid, nlabel, issue,
+                       code='PARAM_TYPE_INCOMPLETE', section='outputs', field='type', parameter_id=oid)
 
         input_map = {}
         for inp in inputs:
@@ -810,10 +885,12 @@ def _check_body(state, report, project_connections=None, llm_meta=None, credenti
                 input_map[inp['name']] = {'decl': inp.get('type'), 'input': inp}
 
         impl = node.get('implementation')
-        for issue in _execution_issues(node):
-            report('error', 'node', nid, nlabel, issue)
+        for issue, code, field in _execution_issues(node):
+            report('error', 'node', nid, nlabel, issue,
+                   code=code, section='advanced', field=field)
         if not isinstance(impl, dict):
-            report('error', 'node', nid, nlabel, '缺少实现正文')
+            report('error', 'node', nid, nlabel, '缺少实现正文',
+                   code='IMPLEMENTATION_MISSING', section='implementation')
             continue
         kind = node.get('kind') or impl.get('language')
         if kind == 'python':
@@ -823,12 +900,14 @@ def _check_body(state, report, project_connections=None, llm_meta=None, credenti
         elif kind == 'redis':
             _check_redis_impl(node, impl, input_names, connections, project_connections, report, nid, nlabel)
         elif kind == 'http':
-            for issue in flow_http.implementation_issues(impl, input_names, credential_ids):
-                report('error', 'node', nid, nlabel, issue)
+            for issue, code, field in flow_http.implementation_issues(impl, input_names, credential_ids):
+                report('error', 'node', nid, nlabel, issue,
+                       code=code, section='implementation', field=field)
         elif kind == 'calc':
             _check_calc_impl(node, impl, input_map, llm_meta, report, nid, nlabel)
         else:
-            report('error', 'node', nid, nlabel, '节点类型未知（支持 SQL/计算/Python/Redis/HTTP）')
+            report('error', 'node', nid, nlabel, '节点类型未知（支持 SQL/计算/Python/Redis/HTTP）',
+                   code='NODE_KIND_UNKNOWN', section='implementation')
 
     # 循环依赖（自引用已在节点内报告；这里查多节点环）
     deps = {}
@@ -847,7 +926,7 @@ def _check_body(state, report, project_connections=None, llm_meta=None, credenti
                 cycle = stack[stack.index(source_node):] + [source_node]
                 names = [str(node_index[n].get('name') or n) for n in cycle if n in node_index]
                 report('error', 'flow', flow_id, flow_label,
-                       '存在循环依赖：' + ' → '.join(names))
+                       '存在循环依赖：' + ' → '.join(names), code='FLOW_CYCLE')
             elif color[source_node] == WHITE:
                 walk(source_node, stack)
         stack.pop()
@@ -861,33 +940,41 @@ def _check_body(state, report, project_connections=None, llm_meta=None, credenti
     output_names = set()
     for out in state.get('outputs', []):
         if not isinstance(out, dict):
-            report('error', 'flow-output', '?', '编排输出', '编排输出声明无效')
+            report('error', 'flow-output', '?', '编排输出', '编排输出声明无效',
+                   code='PARAM_DECL_INVALID', section='outputs')
             continue
         oid = out.get('id')
         olabel = str(out.get('label') or out.get('name') or '未命名输出')
         if not isinstance(oid, str) or not oid:
-            report('error', 'flow-output', oid or '?', olabel, '编排输出缺少稳定 ID')
+            report('error', 'flow-output', oid or '?', olabel, '编排输出缺少稳定 ID',
+                   code='PARAM_ID_MISSING', section='outputs')
             continue
         name = out.get('name')
         if not isinstance(name, str) or not IDENTIFIER.fullmatch(name or ''):
-            report('error', 'flow-output', oid, olabel, '编排输出技术名无效（须为字母/下划线开头）')
+            report('error', 'flow-output', oid, olabel, '编排输出技术名无效（须为字母/下划线开头）',
+                   code='PARAM_NAME_INVALID', section='outputs', field='name', parameter_id=oid)
         elif name in output_names:
-            report('error', 'flow-output', oid, olabel, f'编排输出技术名 {name} 重复')
+            report('error', 'flow-output', oid, olabel, f'编排输出技术名 {name} 重复',
+                   code='PARAM_NAME_DUPLICATE', section='outputs', field='name', parameter_id=oid)
         else:
             output_names.add(name)
         for issue in _type_decl_errors(out.get('type'), f'编排输出「{olabel}」'):
-            report('error', 'flow-output', oid, olabel, issue)
+            report('error', 'flow-output', oid, olabel, issue,
+                   code='PARAM_TYPE_INVALID', section='outputs', field='type', parameter_id=oid)
         binding = out.get('binding')
         if binding is None:
-            report('error', 'flow-output', oid, olabel, f'编排输出「{olabel}」尚未绑定来源节点输出')
+            report('error', 'flow-output', oid, olabel, f'编排输出「{olabel}」尚未绑定来源节点输出',
+                   code='OUTPUT_BINDING_MISSING', section='outputs', field='binding', parameter_id=oid)
             continue
         decl, error, _ = resolve_source(binding, f'编排输出「{olabel}」')
         if error:
-            report('error', 'flow-output', oid, olabel, error)
+            report('error', 'flow-output', oid, olabel, error,
+                   code='OUTPUT_REFERENCE_INVALID', section='outputs', field='binding', parameter_id=oid)
         elif isinstance(out.get('type'), dict):
             ok, reason = types_compatible(out['type'], decl)
             if not ok:
-                report('error', 'flow-output', oid, olabel, f'编排输出「{olabel}」声明类型与来源不相容：{reason}')
+                report('error', 'flow-output', oid, olabel, f'编排输出「{olabel}」声明类型与来源不相容：{reason}',
+                       code='OUTPUT_TYPE_MISMATCH', section='outputs', field='binding', parameter_id=oid)
 
 
 def SQL_PARAM_SCAN(sql):
