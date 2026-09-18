@@ -77,6 +77,13 @@ function friendlyIssue(text: string) {
   return records.sort((a: any, b: any) => String(b['@id'] || b.id).length - String(a['@id'] || a.id).length).reduce((out: string, n: any) => { const id = n['@id'] || n.id; if (!id) return out; const kind = ({ 'owl:Class': '对象类型', 'owl:ObjectProperty': '链接类型', 'owl:DatatypeProperty': '属性', 'mg:SharedProperty': '共享属性', 'mg:ValueType': '值类型' } as any)[n['@type']] || '定义'; return out.split(id).join(`${n['rdfs:label'] || n.name || '未命名' + kind}（${id}）`) }, String(text))
 }
 const templateHref = ((import.meta as any).env?.BASE_URL || '/') + 'templates/ontology-import-v1.xlsx'
+// 下载模板（20260918）：按钮与工作台按钮同款；此前裸链接无样式（用户反馈）
+function downloadTemplate() {
+  const a = document.createElement('a')
+  a.href = templateHref
+  a.download = '本体模型填写模板.xlsx'
+  document.body.appendChild(a); a.click(); a.remove()
+}
 function notify(text: string, bad = false) { message.value = bad ? friendlyIssue(text) : text; error.value = bad }
 
 // --- 本体区 Saver：load GET /api/state（decodeState），submit POST /api/save（requestBody 自动 encodeState，附 projectState 沿用旧格式） ---
@@ -938,7 +945,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <!-- 项目区加载中/失败（R2）：与「还没有项目」区分，等待或失败时都可返回本体 -->
 <section v-if="projectAreaWaiting" class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:88%"></div></section>
 <AppError v-else-if="projectAreaFailed" :title="projectFailureTitle" :reason="projectListError||projectLoadError" :hint="projectOriginBlocked?'':'项目数据加载失败，本体建模可继续使用。修正后重试，或先回到本体区继续工作。'" :fix-href="projectOriginBlocked?localAccess:''" retry-label="重试" secondary-label="返回本体" @retry="retryProjectContext" @secondary="switchSpace('ontology')"/>
-<section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div><a :href="templateHref" download="本体模型填写模板.xlsx">下载 Excel 模板</a></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
+<section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div><button type="button" class="dl-template" @click="downloadTemplate">下载 Excel 模板</button></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>
 <OntologyHome v-if="view==='o-home'" :state="state" @navigate="navigate"/>
 <ObjectWorkspace v-if="view==='objects'" :state="state" :focus-type="propertyFocusType" :focus-property="propertyFocusId" :initial-tab="objectDetailTab" :focus-definition="definitionFocusId" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
@@ -970,6 +977,8 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 </template>
 
 <style>
+/* 下载 Excel 模板：与工作台次级按钮同款外观（此前是裸链接，无样式） */
+.dl-template{white-space:nowrap}
 /* 侧栏收起（用户手动切换，偏好记忆）：64px 图标轨，全页面通用 */
 .rail-toggle{display:flex;align-items:center;gap:7px;width:100%;background:var(--paper-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 10px;color:var(--ink-2);font-size:12px}
 .rail-toggle:hover{background:var(--blue-soft);color:var(--blue-ink)}

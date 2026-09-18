@@ -53,6 +53,13 @@ function takeFile(f: File) {
   fileName.value = f.name; fileSize.value = f.size
 }
 function switchPolicy(v: ImportPolicy) { if (policy.value === v) return; policy.value = v; resetPreview() }
+// 移除已选文件（保留同名策略选择，只清文件与预览）
+function clearFile() {
+  if (busy.value) return
+  fileName.value = ''; fileSize.value = 0; fileData.value = null; fileError.value = ''; dragOver.value = false
+  if (fileInput.value) fileInput.value.value = ''
+  resetPreview('选择文件后检查。')
+}
 function resetPreview(hint = '内容已变化，请重新检查。') {
   plan.value = null; panelError.value = ''; outcomeUnknown.value = false; verifyNote.value = ''
   checkHint.value = hint
@@ -212,16 +219,32 @@ void nextTick
 
       <!-- 编辑页 -->
       <template v-else>
-        <div class="imp-drop" :class="{ drag: dragOver }" @dragover.prevent="dragOver = true" @dragleave="dragOver = false" @drop.prevent="onDrop">
-          <strong>{{ fileName ? '已选择文件' : '选择填写好的 Excel' }}</strong>
-          <button type="button" :disabled="busy" @click="pickFile">{{ fileName ? '更换文件' : '选择文件' }}</button>
-          <span class="note">或拖拽到这里</span>
+        <!-- 文件选择：隐藏原生 file 控件（全局 input 样式会把它渲染成宽输入框，很难看），
+             用「选择文件」按钮 + 拖拽区承载；选中后显示文件名/大小/移除。 -->
+        <div class="imp-drop" :class="{ drag: dragOver, filled: !!fileName }"
+             @dragover.prevent="dragOver = true" @dragleave="dragOver = false" @drop.prevent="onDrop">
           <input ref="fileInput" type="file" accept=".xlsx" hidden @change="onFileChange">
-          <p v-if="fileName" class="note imp-filename">{{ fileName }}（{{ formatSize(fileSize) }}）<span v-if="checking"> · 正在检查…</span></p>
-          <p class="note">仅支持 .xlsx，最大 {{ Math.round(MAX_FILE_BYTES / 1024) }} KB，四个表合计最多 {{ MAX_BUSINESS_ROWS }} 条内容</p>
-          <a class="row-link" :href="templateHref()" download="本体模型填写模板.xlsx">下载空白模板</a>
+          <template v-if="!fileName">
+            <span class="imp-drop-ico" aria-hidden="true">⤒</span>
+            <strong>选择填写好的 Excel</strong>
+            <p class="note">把文件拖到这里，或</p>
+            <button type="button" class="primary" :disabled="busy" @click="pickFile">选择文件</button>
+            <p class="note imp-limits">仅支持 .xlsx，最大 {{ Math.round(MAX_FILE_BYTES / 1024) }} KB，四个表合计最多 {{ MAX_BUSINESS_ROWS }} 条内容</p>
+          </template>
+          <div v-else class="imp-file">
+            <span class="imp-file-ico" aria-hidden="true">▤</span>
+            <span class="imp-file-main">
+              <strong>{{ fileName }}</strong>
+              <small class="note">{{ formatSize(fileSize) }}<template v-if="checking"> · 正在检查…</template></small>
+            </span>
+            <span class="imp-file-ops">
+              <button type="button" :disabled="busy" @click="pickFile">更换</button>
+              <button type="button" :disabled="busy" @click="clearFile">移除</button>
+            </span>
+          </div>
         </div>
         <p v-if="fileError" class="inline-error" role="alert">{{ fileError }}</p>
+        <p class="note imp-tplrow">还没有模板？<a class="imp-dl" :href="templateHref()" download="本体模型填写模板.xlsx">下载空白模板</a></p>
 
         <h3 class="imp-section">遇到同名内容时</h3>
         <div class="imp-policies">
@@ -237,7 +260,7 @@ void nextTick
         <p class="note imp-hintnote">只比较当前本体内同一类别的名称，文件内部重复也按此策略处理。</p>
 
         <div class="tools imp-checkrow">
-          <button type="button" :disabled="!fileData || busy" @click="runCheck">{{ checking ? '正在检查…' : '检查导入内容' }}</button>
+          <button type="button" class="primary" :disabled="!fileData || busy" @click="runCheck">{{ checking ? '正在检查…' : '检查导入内容' }}</button>
           <span class="note">{{ previewStale && plan ? '内容已变化，请重新检查。' : checkHint }}</span>
         </div>
 
@@ -297,42 +320,84 @@ void nextTick
 </template>
 
 <style scoped>
+/* ── 导入弹窗（20260918 视觉重做）──────────────────────────────────────────────
+   关键修复：全局 `input,select,textarea{display:block;width:100%;...}` 会波及本组件内的
+   file / radio 控件——原生「选择文件」被渲染成整行输入框、radio 被拉宽顶开文字，
+   这正是原来"很丑"的根因。此处把这两类控件的外观归还给浏览器（重置 display/width/margin/
+   padding/border），其余沿用工作台既有令牌与卡片语言。 */
 .imp-backdrop{z-index:120}
-.imp-modal{width:min(960px,96vw);max-height:94vh;padding:0;display:flex;flex-direction:column}
+.imp-modal{width:min(920px,96vw);max-height:94vh;padding:0;display:flex;flex-direction:column}
 .imp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:20px 26px;border-bottom:1px solid var(--line)}
-.imp-head h2{margin:0 0 4px;font-size:20px}
-.imp-head button{border:0;font-size:22px;padding:0 8px;color:var(--muted);background:none}
-.imp-body{padding:20px 26px;overflow:auto}
-.imp-drop{border:1px dashed var(--line-2);background:var(--bg);border-radius:var(--r-md);padding:20px;text-align:center}
+.imp-head h2{margin:0 0 4px;font-size:19px}
+.imp-head p{margin:0;font-size:13px}
+.imp-head button{border:0;font-size:22px;padding:0 8px;color:var(--muted);background:none;line-height:1}
+.imp-head button:hover{color:var(--ink);background:var(--paper-2);border-radius:var(--r-sm)}
+.imp-body{padding:22px 26px;overflow:auto}
+
+/* 文件选择区：未选=虚线投放区；已选=实心文件卡（不出现原生 file 控件） */
+.imp-drop{border:1px dashed var(--line-2);background:var(--bg);border-radius:var(--r-md);padding:26px 20px;text-align:center;transition:background .12s,border-color .12s}
 .imp-drop.drag{background:var(--blue-soft);border-color:var(--blue)}
-.imp-drop strong{display:block;font-size:15px;margin-bottom:10px}
-.imp-drop button{margin-right:8px}
-.imp-filename{overflow-wrap:anywhere}
+.imp-drop.filled{padding:14px 16px;background:var(--paper);border-style:solid;border-color:var(--line);text-align:left}
+.imp-drop strong{display:block;font-size:15px;margin-bottom:4px}
+.imp-drop-ico{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:var(--paper);border:1px solid var(--line);color:var(--blue);font-size:18px;margin-bottom:10px}
+.imp-drop .note{margin:0}
+.imp-drop .imp-limits{margin-top:12px;font-size:12px;color:var(--faint)}
+.imp-drop .primary{margin-top:10px}
+.imp-file{display:flex;align-items:center;gap:12px}
+.imp-file-ico{flex:none;width:34px;height:34px;border-radius:var(--r-sm);background:var(--blue-soft);color:var(--blue-ink);display:inline-flex;align-items:center;justify-content:center;font-size:15px}
+.imp-file-main{flex:1;min-width:0}
+.imp-file-main strong{display:block;font-size:14px;margin:0;overflow-wrap:anywhere}
+.imp-file-main .note{font-size:12px}
+.imp-file-ops{flex:none;display:flex;gap:8px}
+.imp-file-ops button{height:30px;padding:0 12px;font-size:12px}
+
+/* 原生控件外观归还（覆盖全局 input 规则；仅本弹窗内） */
+.imp-drop input[type=file]{display:none}
+.imp-policy input[type=radio]{display:inline-block;width:auto;min-width:0;height:auto;margin:3px 0 0;padding:0;border:0;border-radius:0;background:none;accent-color:var(--blue);flex:none}
+
+.imp-tplrow{margin:10px 0 0;font-size:12px}
+.imp-dl{color:var(--blue);text-decoration:underline;text-underline-offset:3px;white-space:nowrap;padding:2px 4px;border-radius:4px}
+.imp-dl:hover{background:var(--blue-soft);text-decoration:none}
 .imp-section{font-size:14px;margin:22px 0 10px}
 .imp-policies{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.imp-policy{display:flex;align-items:flex-start;gap:10px;padding:14px;border:1px solid var(--line);border-radius:var(--r-md);cursor:pointer}
+.imp-policy{display:flex;align-items:flex-start;gap:10px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-md);cursor:pointer;background:var(--paper);margin:0}
+.imp-policy:hover{border-color:var(--blue-line)}
 .imp-policy.selected{border-color:var(--blue);background:var(--blue-soft)}
-.imp-policy input{margin-top:4px;accent-color:var(--blue)}
-.imp-policy strong{display:block}
-.imp-policy .note{display:block;margin-top:2px}
-.imp-hintnote{margin:9px 0 14px}
-.imp-checkrow{margin-bottom:6px}
+.imp-policy>span{min-width:0}
+.imp-policy strong{display:block;font-size:14px}
+.imp-policy .note{display:block;margin-top:3px;font-size:12px;line-height:1.6}
+.imp-hintnote{margin:9px 0 16px;font-size:12px}
+.imp-checkrow{margin:0 0 14px;align-items:center}
 .imp-checkrow button{white-space:nowrap}
-.imp-summary{display:flex;gap:20px;flex-wrap:wrap;padding:14px 0}
-.imp-summary strong{font-size:22px;margin-right:5px;font-variant-numeric:tabular-nums}
-.imp-tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
-.imp-tabs button{padding:5px 11px;font-size:13px}
-.imp-tabs button.active{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
-.imp-tablewrap{max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-sm)}
-.imp-tablewrap th{position:sticky;top:0;white-space:nowrap}
-.imp-reason{overflow-wrap:anywhere}
+
+/* 检查结果摘要：四个计数卡（替代裸数字行） */
+.imp-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 0 14px}
+.imp-summary>span{display:flex;align-items:baseline;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper);font-size:12px;color:var(--muted)}
+.imp-summary strong{font-size:20px;font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums}
+.imp-tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.imp-tabs button{padding:5px 11px;font-size:12px;border-radius:var(--r-pill)}
+.imp-tabs button.active{border-color:var(--blue-line);color:var(--blue-ink);background:var(--blue-soft);font-weight:600}
+.imp-tablewrap{max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper)}
+.imp-tablewrap table{font-size:13px}
+.imp-tablewrap th{position:sticky;top:0;white-space:nowrap;z-index:1}
+.imp-tablewrap td{vertical-align:top}
+.imp-reason{overflow-wrap:anywhere;font-size:12px;color:var(--muted)}
 .imp-badge{white-space:nowrap;font-size:12px;border-radius:4px;padding:3px 7px;display:inline-block;background:var(--paper-2);color:var(--muted)}
-.imp-badge.create{background:#eaf5ee;color:#287047}
-.imp-badge.rename{background:var(--warn-soft);color:var(--warn)}
-.imp-badge.error{background:var(--danger-soft);color:var(--danger)}
-.imp-success{padding:18px;background:var(--ok-soft);border:1px solid var(--ok-line);border-radius:var(--r-md)}
-.imp-success h3{margin:0 0 8px;font-size:19px;color:var(--ok)}
+.imp-badge.create{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok-line)}
+.imp-badge.rename{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-line)}
+.imp-badge.error{background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger-line)}
+.imp-success{padding:20px;background:var(--ok-soft);border:1px solid var(--ok-line);border-radius:var(--r-md)}
+.imp-success h3{margin:0 0 8px;font-size:18px;color:var(--ok)}
+.imp-success p{margin:0 0 6px}
 .imp-golinks{margin-top:16px}
-.imp-foot{padding:16px 26px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:14px}
-@media(max-width:800px){.imp-modal{width:100vw;height:100dvh;max-height:100dvh;border-radius:0}.imp-policies{grid-template-columns:1fr}.imp-head,.imp-body,.imp-foot{padding:16px}}
+.imp-foot{padding:14px 26px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--paper-2)}
+.imp-foot .note{font-size:12px}
+@media(max-width:800px){
+  .imp-modal{width:100vw;height:100dvh;max-height:100dvh;border-radius:0}
+  .imp-policies{grid-template-columns:1fr}
+  .imp-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .imp-head,.imp-body,.imp-foot{padding:16px}
+  .imp-file{flex-wrap:wrap}
+  .imp-file-ops{width:100%;justify-content:flex-end}
+}
 </style>

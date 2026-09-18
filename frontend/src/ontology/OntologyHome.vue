@@ -16,6 +16,12 @@ const emit=defineEmits<{navigate:[view:string,focus?:any]}>()
 // Excel 模板下载与导入（20260917 需求 §2）：入口在概览顶部；导入面板关闭后刷新统计/校验
 const importOpen=ref(false)
 const templateHref=()=>((import.meta as any).env?.BASE_URL||'/')+'templates/ontology-import-v1.xlsx'
+// 下载模板：用按钮触发程序化下载——原生 <a> 与工作台按钮不同款，用户反馈「下载链接没有样式」
+function downloadTemplate(){
+  const a=document.createElement('a')
+  a.href=templateHref(); a.download='本体模型填写模板.xlsx'
+  document.body.appendChild(a); a.click(); a.remove()
+}
 function onImported(){importOpen.value=false;void loadVersions();void checkDraft()}
 const graph=computed<any[]>(()=>props.state?.ontology?.['@graph']||[])
 const objects=computed(()=>graph.value.filter(n=>n['@type']==='owl:Class'))
@@ -83,7 +89,7 @@ const usageLine=computed(()=>{
 <section class="card">
   <div class="panelhead"><div><h2>维护本体内容</h2>
   <p class="muted">逐项建模，或通过 Excel 批量填写；先定义对象、属性与链接，再校验发布。</p></div>
-  <div class="tools"><a class="imp-dl" :href="templateHref()" download="本体模型填写模板.xlsx">下载 Excel 模板</a><button class="primary" @click="importOpen=true">导入 Excel</button></div></div>
+  <div class="tools imp-actions"><button type="button" class="imp-dl" @click="downloadTemplate">下载 Excel 模板</button><button class="primary" @click="importOpen=true">导入 Excel</button></div></div>
   <!-- 任务清单式：整行可点击直达对应页面；原按钮动作上移到整行，右侧保留原按钮文案作为引导 -->
   <div class="step-list">
     <button v-for="s in steps" :key="s.view" type="button" class="step-row" :class="{ suggested: suggestion?.view === s.view }" @click="emit('navigate', s.view)">
@@ -121,6 +127,7 @@ const usageLine=computed(()=>{
 .next-step .go-fix{margin-left:10px}
 .readonly-line{padding:9px 12px;background:var(--bg);border:1px solid var(--line);border-radius:7px;overflow-wrap:anywhere;font-size:13px;color:var(--muted)}
 @media(max-width:640px){.step-row{flex-wrap:wrap}.step-go{flex-basis:100%;text-align:right}}
-/* 下载模板：与按钮同排的安静链接样式（不引入新一级入口） */
+/* 下载模板：与「导入 Excel」同款按钮外观（此前是裸 <a>，无样式）；层级仍是次级按钮 */
+.imp-actions{align-items:center}
 .imp-dl{white-space:nowrap}
 </style>
