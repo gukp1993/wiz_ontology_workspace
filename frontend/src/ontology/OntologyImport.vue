@@ -85,6 +85,7 @@ async function runCheck() {
       newPropertyId: () => 'mg:p_' + crypto.randomUUID().replaceAll('-', ''),
       newRuleId: () => 'rule_' + crypto.randomUUID().replaceAll('-', ''),
       newActionId: () => 'action_' + crypto.randomUUID().replaceAll('-', ''),
+      newLinkId: () => 'mg:link_' + crypto.randomUUID().replaceAll('-', ''),
     })
     outcome.issues.push(...result.issues)
     plan.value = outcome
@@ -129,8 +130,8 @@ async function confirmImport() {
       return
     }
     const c = planCounts(snapshot.decisions)
-    doneSummary.value = ['对象', '属性', '规则', '动作'].map(s => {
-      const label = s === '属性' ? '共享属性' : s === '规则' ? '业务规则' : s === '动作' ? '动作' : '对象'
+    doneSummary.value = ['对象', '属性', '链接', '规则', '动作'].map(s => {
+      const label = s === '属性' ? '共享属性' : s === '规则' ? '业务规则' : s === '动作' ? '动作' : s
       const n = snapshot.decisions.filter(d => d.sheet === s && (d.disposition === 'create' || d.disposition === 'rename')).length
       return label + '新增 ' + n + ' 项'
     }).join('，') + '；跳过 ' + c.skip + ' 项。'
@@ -154,8 +155,8 @@ async function verifyOutcome() {
     const outcome = verifyImported(props.state, snapshot.decisions)
     if (outcome === 'all-present') {
       const c = planCounts(snapshot.decisions)
-      doneSummary.value = ['对象', '属性', '规则', '动作'].map(s => {
-        const label = s === '属性' ? '共享属性' : s === '规则' ? '业务规则' : s === '动作' ? '动作' : '对象'
+      doneSummary.value = ['对象', '属性', '链接', '规则', '动作'].map(s => {
+        const label = s === '属性' ? '共享属性' : s === '规则' ? '业务规则' : s === '动作' ? '动作' : s
         const n = snapshot.decisions.filter(d => d.sheet === s && (d.disposition === 'create' || d.disposition === 'rename')).length
         return label + '新增 ' + n + ' 项'
       }).join('，') + '；跳过 ' + c.skip + ' 项。'
@@ -188,7 +189,7 @@ const extraIssues = computed<ParseIssue[]>(() => {
   return plan.value.issues.filter(i => i.row === 0 || !covered.has(i.sheet + '#' + i.row))
 })
 
-function templateHref() { return (import.meta as any).env?.BASE_URL ? (import.meta as any).env.BASE_URL + 'templates/ontology-import-v1.xlsx' : '/templates/ontology-import-v1.xlsx' }
+function templateHref() { return (import.meta as any).env?.BASE_URL ? (import.meta as any).env.BASE_URL + 'templates/ontology-import-v2.xlsx' : '/templates/ontology-import-v2.xlsx' }
 function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) + ' KB' : (n / 1024 / 1024).toFixed(2) + ' MB' }
 
 async function requestClose() {

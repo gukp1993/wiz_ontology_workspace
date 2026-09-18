@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`c32c643ee1fc8180`
+上下文版本：`280ebc316b174d7c`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,28 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### Excel 模板 v2：关系导入（对象-属性/链接/规则动作关联）+ 储能本体全量导入实测 · zcode · 已实施，待验收
+
+时间：2026-09-18T17:16:25.487886+00:00；记录：`.collaboration/entries/000018-e48d5ebf4629.json`
+
+按用户指令实现模板 v2 并用储能本体全量数据完成导入实测。模板 v2：属性/规则/动作表新增「关联对象」列（顿号分隔多值、填名称不填 id），新增「链接」表（名称/定义/起点/终点/数量关系下拉/反向名称），下载入口切到 v2，v1 旧文件完全兼容（链接表与关联列均可缺省）。导入器：链接唯一性为「名称+起点+目标」三元组（真实草稿中存在两条同名所属于，端点不同），同名策略按三元组生效；关联对象两阶段解析（本批定义优先、其次草稿已有），解析不到记填写问题整批阻断并定位单元格；跳过行关联列不生效并在预览注明；落库与页面一致（属性=addReference 同构引用节点，规则/动作=businessRuleAssociations/actionAssociations，链接=owl:ObjectProperty）。完成摘要补「链接新增 N 项」。
+
+- 决定：链接身份=名称+起点+目标三元组（名称不唯一）；关联列只在 create/rename 行生效，跳过行不生效并注明；引用一律填名称由导入器解析为稳定 id，解析失败阻断整批；私有属性沿用 v1 约定进共享库再挂回对象
+- 验证：单测 ontology_import 18→21（⑲ 链接表/⑳ 关联对象列/㉑ 草稿同名策略），全量前端套件通过（唯一失败 mapping_forms 既有基线）；build 通过；真实回环：储能本体草稿只读全量提取（对象5/链接4/共享6/私有4/引用对24/规则1关联2/动作1关联2）→ 填入 v2 模板 → 隔离实例 18852 新账号新本体浏览器导入：检查 21 新增 0 问题 → 确认 → 摘要「对象5/共享属性10/链接4/规则1/动作1」→ 与源草稿逐项比对全部一致（含 24 引用对与链接三元组）；确认框（z-150 修复）真实点击可用；隔离实例与临时数据已清理
+- 下一步：用户验收：文档/导出/储能本体_全量数据_含关系_20260919.xlsx 可导入任意新空本体复刻储能本体全部内容（含关系）；概览页「24 项缺名称或业务定义」把引用节点计入，为既有展示口径（页面手工引用同样触发），待后续需求确认是否调整；已知范围外：functions 计算契约不在模板范围，需页面维护
+- 依据/文档：frontend/src/ontology/excelImport.ts；frontend/src/ontology/importPlan.ts；frontend/public/templates/ontology-import-v2.xlsx；文档/导出/储能本体_全量数据_含关系_20260919.xlsx；文档/需求/20260917_本体Excel模板下载与导入/开发计划.md
+
+### 导入仍报错（TDZ）排查与确认框层叠修复 · zcode · 已实施，待验收
+
+时间：2026-09-18T16:22:13.653662+00:00；记录：`.collaboration/entries/000017-e63cbb883545.json`
+
+用户刷新后仍见 Cannot access 'P' before initialization。服务端日志取证：用户浏览器在当前构建上无任何分块 404；同时段存在多条 0d12b233 的 validate/projects/versions 401（会话失效的旧页面）且全程零次 auth-login、零次 /api/save——用户从未通过导入确认。本轮穷尽复现：当前构建上导入四条 UI 分支（全新增/同名跳过/自动重命名/填写问题）、xlsx 解析层 10 类真实 Excel 特征内容矩阵（公式/日期/合并/隐藏列/富文本等，Node 与浏览器同实现）、401 会话失效→登录页切换，全部零报错，字面 TDZ 未能在当前构建复现。但发现并修复一个必然命中用户的真实缺陷：appConfirm 确认框 z-index:100 被导入弹窗 .imp-backdrop z-index:120 压住——从导入弹窗点「导入 N 项」后确认框不可见、无法点击，整屏背板吞掉所有点击，页面表现为假死，与日志零保存完全吻合。修复（f573967）：appConfirm 背板加 app-confirm-backdrop 类定 z-index:150，高于一切业务弹层；横幅文案补「刷新仍出现请附控制台报错」。
+
+- 决定：确认框必须压过一切业务弹层：appConfirm 背板专用类 app-confirm-backdrop z-150（高于导入弹窗 120、行菜单/用户菜单 115/120，低于横幅 200）；排查结论口径：当前构建各导入路径未复现字面 TDZ；用户报错最可能来自会话失效的旧页面（日志 401 风暴佐证）或确认框假死被误读，需用户提供文件与控制台截图才能最终定位字面 'P'
+- 验证：隔离实例 18851 真实浏览器修复后全链路：登录→导入弹窗→检查 17 项→导入→确认框可见可点（z=150，elementFromPoint 命中确定按钮）→确定→「导入完成 对象5/共享属性10/规则1/动作1」，服务端日志出现 POST /api/save 200，console 0 错误；xlsx 解析矩阵（Node，与浏览器同实现）：公式/日期/合并/布尔错误/表头变体/隐藏额外列/特殊字符/空缺表/富文本/300 行共 10 类全部正常解析；前端 mjs 套件全过（含 ontology_import 18、save_queue 22、ontology_lazy_load 11）；唯一失败 mapping_forms 为既有基线（断言项目映射表单渲染，与本次无关）；build 通过（新入口 index-HajE0iiA.js），真实服务 18765 无需重启已在提供新构建；隔离实例与临时数据已清理
+- 下一步：用户侧操作：关掉所有旧标签页，统一用 127.0.0.1:18765 一个地址，刷新后重新登录（日志显示 localhost 主机多个标签页处于登出态且从未重新登录），再试导入；若仍出现 TDZ 字面报错：请用户提供所导入的 Excel 文件 + F12 控制台完整报错截图（含堆栈），当前构建下无法进一步定位字面 'P'；admin 侧 0d12b233 本体的导入如再次遇到确认后无反应，属已修复缺陷，刷新页面后重试即可
+- 依据/文档：frontend/src/shared/appConfirm.ts；frontend/src/style.css；frontend/src/main.ts；.runtime/server.log（401 风暴与零保存证据）
 
 ### Excel 导入视觉重做 · zcode · 已实施，待验收
 
@@ -130,25 +152,3 @@
 - 验证：直连标准端点复刻工作台请求：429 + {"code":"1113","message":"余额不足或无可用资源包"}；直连 coding 端点同 key 同请求：HTTP 200 模型响应（temperature=0 与 0.1 均 200）；经工作台 /api/llm-provider-save 改端点（未带 apiKey，沿用已存值，keyConfigured=true）后 /api/llm-provider-test：ok=true 连通正常 1527ms；诊断调用共 5 次，密钥未写入任何文件、git 或交接记录
 - 下一步：提示用户：该 key 已在聊天明文出现过，建议之后在 bigmodel 控制台轮换；编码套餐按套餐限速，若编排高并发调用再遇 429（1302/1304）属套餐限流而非配置问题
 - 依据/文档：workbench/llm_client.py；frontend/src/tools/LlmProviders.vue
-
-### 共享上下文接入 · zcode · 已实施，待验收
-
-时间：2026-09-18T07:43:19.905634+00:00；记录：`.collaboration/entries/000002-5c8fe20346b4.json`
-
-zcode 已接入项目 Hook：新建 .zcode/config.json（hooks.enabled=true，SessionStart/UserPromptSubmit/Stop 三个事件调用 context.py hook --actor zcode，timeout 10s）。经 zcode 官方配置指南核实：事件恰为七种、含所需三种；工作区配置式 Hook 无信任门（区别于 Codex 需 /hooks 审查），enabled 即生效。临时根六项协议模拟全过：additionalContext 注入含 ticket、Stop 未交接首块二提（防循环）、交接后空输出放行、缺 session/turn 降级仍可注入、仓库外 cwd 空转。当前会话按规则主动交接；真实客户端事件触发留待下一轮验证。
-
-- 决定：zcode 采用工作区 .zcode/config.json 配置式 Hook，actor=zcode 与 Codex 配置互不影响；未改共用脚本与存储格式
-- 验证：python3 tests/test_context_sync.py：7 项通过；zcode 官方 zcode-configuration-guide/diagnosing-hooks skill 核实事件与输出协议（additionalContext 注入、Stop 可请求续跑、输出 JSON 严格校验）；临时根模拟 6 项：UserPromptSubmit 注入、Stop 首块/次提/交接后放行、降级、仓库外空转；本会话真实 read→record 完成（本轮 ticket）；手动模拟均用 --root 临时目录，未污染真实事件计数；未验证：真实客户端事件触发（配置为本轮新建，热重载未知），下一轮观察注入上下文与 .runtime/context-hooks.json 计数
-- 下一步：下一轮核对真实触发：AI 可读到注入上下文、Stop 核对生效；若 zcode payload 字段名与 snake_case（session_id/turn_id/hook_event_name）不符，仅写薄字段适配器，不改共用存储；若本会话未热加载，重启会话后生效
-- 依据/文档：.zcode/config.json；.collaboration/context.py；文档/需求/20260918_共享上下文自动交接/zcode接入指令.md；文档/需求/20260918_共享上下文自动交接/使用说明.md
-
-### 共享上下文自动交接-v1 · codex · 已实施，待验收
-
-时间：2026-09-18T07:30:34.427985+00:00；记录：`.collaboration/entries/000001-9b2570bcc1d3.json`
-
-共用交接脚本、Codex 项目级 Hooks、AGENTS 规则及 zcode 接入指令已落地。当前会话主动交接可用；Codex 新 Hook 尚需用户信任并验证真实事件，zcode 尚未接入，不能声称两端已经全自动。
-
-- 决定：以每轮和阶段交付为同步时机，不等待关闭会话；Codex 与 zcode 分别追加交接，由共用脚本加锁汇总，不直接覆盖 session_context.md；不调用外部模型，不扫描原始聊天或写入业务数据库
-- 验证：python3 tests/test_context_sync.py：7 项通过；含隔离并发、去重、重建、防循环、常见密钥拒绝；.codex/hooks.json JSON 解析通过；本机 CLI hooks feature 开启，项目受信任；未完成真实客户端 Hook 信任与自动触发验证；未进行工作台业务回归
-- 下一步：用户在 Codex /hooks 审查并信任本项目 Hook，然后在下一轮验证实际触发；zcode 按接入指令核实自身事件能力并配置；无 Hook 则先使用规则驱动的主动交接；当前其他工具仍在改项目映射，后续验收需重新核对代码和其交接
-- 依据/文档：文档/需求/20260918_共享上下文自动交接/使用说明.md；文档/需求/20260918_共享上下文自动交接/zcode接入指令.md；.codex/hooks.json；.collaboration/context.py；tests/test_context_sync.py

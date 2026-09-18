@@ -54,6 +54,7 @@ const makeCtx = (existing, policy, random = () => 0.5) => plan.buildPlan.length 
   newPropertyId: () => 'mg:p_test' + Math.random().toString(16).slice(2, 10),
   newRuleId: () => 'rule_test' + Math.random().toString(16).slice(2, 10),
   newActionId: () => 'action_test' + Math.random().toString(16).slice(2, 10),
+  newLinkId: () => 'mg:link_test' + Math.random().toString(16).slice(2, 10),
 }) : null
 
 const ctxFor = (existing, policy, random) => ({
@@ -62,6 +63,7 @@ const ctxFor = (existing, policy, random) => ({
   newPropertyId: () => 'mg:p_test' + Math.random().toString(16).slice(2, 10),
   newRuleId: () => 'rule_test' + Math.random().toString(16).slice(2, 10),
   newActionId: () => 'action_test' + Math.random().toString(16).slice(2, 10),
+  newLinkId: () => 'mg:link_test' + Math.random().toString(16).slice(2, 10),
 })
 
 await check('① 空模板：解析 0 行 0 问题；计划报「没有填写内容」', async () => {
@@ -294,6 +296,141 @@ await check('⑱ 入口注册旧页面错误兜底（横幅 + 刷新按钮）', 
   assert.match(src, /dynamically imported module/, '需识别分块加载失败')
   assert.match(src, /location\.reload\(\)/, '需提供刷新动作')
   assert.match(src, /addEventListener\('unhandledrejection'/, '需覆盖未捕获的 promise 失败')
+})
+
+
+// ── ⑲ 关系导入：链接表（20260919）──
+await check('⑲ 链接表：同名不同端点都导入、数量关系映射/缺省、反向名称、未知端点阻断', async () => {
+  const wb = XLSX.utils.book_new()
+  const heads = { 对象: ['对象名称', '业务定义'], 属性: ['属性名称', '业务定义', '数据类型', '观测值类型', '显示格式', '关联对象'], 规则: ['规则名称', '业务定义', '规则内容', '输出结果', '关联对象'], 动作: ['动作名称', '业务定义', '业务效果', '关联对象'] }
+  for (const name of ['对象', '属性', '规则', '动作']) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([heads[name]]), name)
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['链接名称', '业务定义', '起始对象', '目标对象', '数量关系', '反向名称'],
+    ['所属于', 'A所属于B', '对象A', '对象B', '多对一', ''],
+    ['所属于', 'B所属于C', '对象B', '对象C', '', ''],
+    ['拥有', 'C拥有A', '对象C', '对象A', '一对多', '被拥有'],
+    ['坏端点', 'x', '对象A', '不存在对象', '', ''],
+    ['坏枚举', 'x', '对象A', '对象B', '很多对很多', ''],
+  ]), '链接')
+  const { result, error } = await excel.parseWorkbook(buf2ab(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })))
+  assert.ifError(error)
+  const existing = plan.collectExistingNames({ ontology: { '@graph': [] }, workflow: {} })
+  existing['对象'].add('对象A'); existing['对象'].add('对象B'); existing['对象'].add('对象C')
+  existing.objectIds.set('对象A', 'mg:object_a'); existing.objectIds.set('对象B', 'mg:object_b'); existing.objectIds.set('对象C', 'mg:object_c')
+  const outcome = plan.buildPlan(result.rows, ctxFor(existing, 'skip'))
+  const created = outcome.decisions.filter(d => d.sheet === '链接' && d.disposition === 'create')
+  assert.equal(created.length, 3, '同名不同端点两条 + 拥有一条都导入')
+  assert.equal(outcome.blocked, true, '未知端点/非法枚举阻断')
+  const badEnd = outcome.decisions.find(d => d.originalName === '坏端点')
+  assert.equal(badEnd.disposition, 'error')
+  const badEnum = outcome.decisions.find(d => d.originalName === '坏枚举')
+  assert.equal(badEnum.disposition, 'error')
+  const ab = created.find(d => d.definition['rdfs:comment'] === 'A所属于B')
+  assert.equal(ab.definition['mg:cardinality'], 'many-to-one')
+  const owned = created.find(d => d.originalName === '拥有')
+  assert.equal(owned.definition['mg:cardinality'], 'one-to-many', '数量关系中文映射为枚举值')
+  assert.equal(owned.definition['mg:reverseLabel'], '被拥有')
+  const bc = created.find(d => d.definition['rdfs:comment'] === 'B所属于C')
+  assert.equal(bc.definition['mg:cardinality'], 'many-to-one', '缺省多对一')
+  // applyPlan 落库形态与页面建链接一致
+  const state = { ontology: { '@graph': [] }, workflow: {} }
+  plan.applyPlan(state, created)
+  const nodes = state.ontology['@graph'].filter(n => n['@type'] === 'owl:ObjectProperty')
+  assert.equal(nodes.length, 3)
+  const ownedNode = nodes.find(n => n['rdfs:label'] === '拥有')
+  assert.equal(ownedNode['rdfs:domain']['@id'], 'mg:object_c')
+  assert.equal(ownedNode['rdfs:range']['@id'], 'mg:object_a')
+})
+
+// ── ⑳ 关系导入：关联对象列（20260919）──
+await check('⑳ 关联对象列：批内解析/引用节点与关联集合落库/未知名称阻断/列内去重', async () => {
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['对象名称', '业务定义'],
+    ['储能设备', '设备'],
+    ['储能簇', '簇'],
+  ]), '对象')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['属性名称', '业务定义', '数据类型', '观测值类型', '显示格式', '关联对象'],
+    ['soc', '电量', '时间序列', '数值', '保留2位', '储能设备、储能簇、储能设备'],
+    ['坏关联', 'x', '文本', '', '', '储能设备、幽灵对象'],
+    ['无关联', 'y', '文本', '', '', ''],
+  ]), '属性')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['规则名称', '业务定义', '规则内容', '输出结果', '关联对象'],
+    ['规则一', 'd', 'c', 'o', '储能设备'],
+  ]), '规则')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['动作名称', '业务定义', '业务效果', '关联对象'],
+    ['动作一', 'd', 'e', '储能设备'],
+  ]), '动作')
+  const { result, error } = await excel.parseWorkbook(buf2ab(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })))
+  assert.ifError(error)
+  const outcome = plan.buildPlan(result.rows, ctxFor(plan.collectExistingNames({ ontology: { '@graph': [] }, workflow: {} }), 'skip'))
+  assert.equal(outcome.blocked, true, '幽灵对象阻断整批')
+  const soc = outcome.decisions.find(d => d.originalName === 'soc')
+  assert.deepEqual(soc.associations.map(a => a.objectName), ['储能设备', '储能簇'], '列内重复去重')
+  const bad = outcome.decisions.find(d => d.originalName === '坏关联')
+  assert.equal(bad.disposition, 'error')
+  assert.match(bad.reason, /幽灵对象/)
+  // 去掉问题行重新计划并落库（行号跨表重复，需连同工作表一起过滤）
+  const rows2 = result.rows.filter(r => !(r.sheet === bad.sheet && r.row === bad.row))
+  const outcome2 = plan.buildPlan(rows2, ctxFor(plan.collectExistingNames({ ontology: { '@graph': [] }, workflow: {} }), 'skip'))
+  assert.equal(outcome2.blocked, false)
+  const state = { ontology: { '@graph': [] }, workflow: {} }
+  plan.applyPlan(state, outcome2.decisions)
+  const devId = outcome2.decisions.find(d => d.sheet === '对象' && d.originalName === '储能设备').definition['@id']
+  const socId = outcome2.decisions.find(d => d.sheet === '属性' && d.originalName === 'soc').definition['@id']
+  const refs = state.ontology['@graph'].filter(n => n['@type'] === 'owl:DatatypeProperty')
+  assert.equal(refs.length, 2, 'soc 挂两对象；无关联行不挂')
+  for (const ref of refs) {
+    assert.equal(ref['mg:sharedProperty']['@id'], socId, '引用节点指向本批共享属性')
+    assert.equal(ref['mg:apiName'], ref['@id'].slice(3), '与页面 addReference 同构')
+  }
+  assert.ok(refs.some(r => r['rdfs:domain']['@id'] === devId))
+  assert.equal(state.workflow.businessRuleAssociations.length, 1)
+  assert.equal(state.workflow.actionAssociations.length, 1)
+  assert.equal(state.workflow.businessRuleAssociations[0].objectTypeId, devId)
+})
+
+// ── ㉑ 关系导入：与草稿已有内容的同名策略（20260919）──
+await check('㉑ 链接三元组跳过策略 + 关联对象解析到草稿已有对象；跳过行关联列不生效', async () => {
+  const state0 = {
+    ontology: { '@graph': [
+      { '@id': 'mg:object_old', '@type': 'owl:Class', 'rdfs:label': '旧对象', 'rdfs:comment': '已有' },
+      { '@id': 'mg:p_old', '@type': 'mg:SharedProperty', 'rdfs:label': '旧属性', 'rdfs:comment': '已有共享属性', 'rdfs:range': { '@id': 'xsd:string' } },
+      { '@id': 'mg:link_old', '@type': 'owl:ObjectProperty', 'rdfs:label': '所属于', 'rdfs:comment': '旧链接', 'rdfs:domain': { '@id': 'mg:object_old' }, 'rdfs:range': { '@id': 'mg:object_old' }, 'mg:cardinality': 'many-to-one' },
+    ] },
+    workflow: {},
+  }
+  const existing = plan.collectExistingNames(state0)
+  assert.equal(existing['链接'].size, 1, '三元组键入集合')
+  const wb = XLSX.utils.book_new()
+  const heads = { 对象: ['对象名称', '业务定义'], 属性: ['属性名称', '业务定义', '数据类型', '观测值类型', '显示格式', '关联对象'], 规则: ['规则名称', '业务定义', '规则内容', '输出结果', '关联对象'], 动作: ['动作名称', '业务定义', '业务效果', '关联对象'] }
+  const body = {
+    对象: [['新对象', '本批新增对象']],
+    属性: [['旧对象属性', 'z', '文本', '', '', '旧对象'], ['旧属性', '同名跳过行', '文本', '', '', '旧对象']],
+  }
+  for (const name of ['对象', '属性', '规则', '动作']) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([heads[name], ...(body[name] || [])]), name)
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['链接名称', '业务定义', '起始对象', '目标对象', '数量关系', '反向名称'],
+    ['所属于', '旧链接同三元组', '旧对象', '旧对象', '', ''],
+    ['所属于', '不同端点是新链接', '新对象', '旧对象', '', ''],
+  ]), '链接')
+  const { result, error } = await excel.parseWorkbook(buf2ab(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })))
+  assert.ifError(error)
+  const outcome = plan.buildPlan(result.rows, ctxFor(existing, 'skip'))
+  const linkOld = outcome.decisions.find(d => d.sheet === '链接' && d.disposition === 'skip')
+  assert.ok(linkOld, '同三元组命中跳过')
+  const propSkip = outcome.decisions.find(d => d.sheet === '属性' && d.originalName === '旧属性' && d.disposition === 'skip')
+  assert.ok(propSkip, '同名属性命中跳过')
+  assert.match(propSkip.reason, /关联对象/, '带关联列的跳过行提示该列不生效')
+  const linkNew = outcome.decisions.find(d => d.sheet === '链接' && d.disposition === 'create')
+  assert.equal(linkNew.finalName, '所属于', '不同端点的同名链接不受影响')
+  assert.equal(linkNew.definition['rdfs:domain']['@id'].startsWith('mg:object_test'), true, '批内新对象解析为预生成 id')
+  assert.equal(linkNew.definition['rdfs:range']['@id'], 'mg:object_old', '目标解析到草稿已有对象')
+  const prop = outcome.decisions.find(d => d.sheet === '属性' && d.originalName === '旧对象属性')
+  assert.equal(prop.associations[0].objectTypeId, 'mg:object_old', '关联对象解析到草稿已有对象')
 })
 
 const failed = results.filter(r => !r.ok)
