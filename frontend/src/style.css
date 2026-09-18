@@ -136,9 +136,8 @@ button:active:not(:disabled){transform:translateY(1px)}
 .ld-list-head{padding:14px 14px 0}
 .ld-list-head h2{font-size:14px;margin:0 0 10px;font-weight:650;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .ld-list-head .muted{font-weight:400;font-size:12px}
-.ld-search{position:relative;padding:0 14px}
-.ld-search input{padding-right:30px;background:var(--paper-2);font-size:13px;margin:0}
-.ld-search-clear{position:absolute;right:18px;top:50%;transform:translateY(-50%);border:0;background:none;padding:2px 6px;border-radius:var(--r-sm);color:var(--muted);font-size:14px;line-height:1}
+.ld-search{padding:0 14px}
+.ld-search .search-field{width:100%}
 .ld-filters{display:flex;gap:6px;padding:10px 14px;flex-wrap:wrap}
 .ld-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
 .ld-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
@@ -151,9 +150,6 @@ button:active:not(:disabled){transform:translateY(1px)}
 .ld-row-main strong{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ld-row-main small{display:block;font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ld-row-arrow{color:var(--faint);font-size:15px;flex:none}
-.ld-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
-.ld-pager-ctl{display:flex;align-items:center;gap:6px}
-.ld-pager button{padding:2px 9px}
 .ld-detail{min-width:0;min-height:0;overflow:auto}
 .ld-back{display:none;margin:0;border:0;background:none;color:var(--blue);padding:14px 18px 0;font-size:13px;text-align:left}
 .ld-detail-head{padding:22px 24px 0}
@@ -247,10 +243,22 @@ button:active:not(:disabled){transform:translateY(1px)}
    视觉令牌复用既有 CSS 变量：表头 40px、行最小 64px、工具栏控件 34px/6px 圆角、单层面板。 */
 .ont-block{display:flex;flex-direction:column;min-height:0;flex:1}
 .ont-tools{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
-.ont-search{position:relative;width:264px;max-width:100%}
-.ont-search input{width:100%;margin:0;padding-left:30px;background:var(--paper-2);font-size:13px}
-.ont-search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;padding:2px 6px;color:var(--muted);font-size:14px;line-height:1}
-.ont-search-clear:hover{background:var(--paper-2)}
+/* 统一搜索框 / 分页条（20260918 补充）：shared/SearchField.vue、shared/ListPager.vue 的样式，
+   本体列表（表格与对象导航）共用；图标与「第 x–y 项，共 N 项」文案对齐交互原型。 */
+.search-field{position:relative;width:264px;max-width:100%}
+.search-field input{width:100%;margin:0;padding-left:30px;padding-right:30px;background:var(--paper-2);font-size:13px}
+/* 隐藏浏览器原生清除按钮（Chrome/Safari 的 ✕ 与自绘按钮在右缘重叠，会抢走 mouseup 使自绘清空失效） */
+.search-field input::-webkit-search-cancel-button,
+.search-field input::-webkit-search-decoration{-webkit-appearance:none;appearance:none;display:none}
+.search-field-ico{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);width:14px;height:14px}
+.search-field-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;padding:2px 6px;color:var(--muted);font-size:14px;line-height:1}
+.search-field-clear:hover{background:var(--paper-2)}
+/* 按下反馈：全局 button:active{transform:translateY(1px)} 会覆盖居中的 translateY(-50%)，
+   按钮在 mousedown 时下跳约 10px，光标落到下方输入框上导致 click 不触发。此处用更高优先级保留居中。 */
+.search-field-clear:active:not(:disabled){transform:translateY(calc(-50% + 1px))}
+.list-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;border-top:1px solid var(--line);color:var(--muted);font-size:12px;flex-wrap:wrap}
+.list-pager-ctl{display:flex;align-items:center;gap:6px}
+.list-pager button{padding:2px 9px}
 .ont-total{margin-left:auto;color:var(--muted);font-size:12px}
 .ont-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ont-scroll{flex:1;min-height:0;overflow:auto;position:relative}
@@ -271,9 +279,6 @@ button.ont-badge:hover{color:var(--blue);border-color:var(--blue-line);backgroun
 .ont-clip{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:21px;font-size:13px;color:var(--ink-2)}
 .ont-ops{text-align:left;white-space:nowrap}
 .ont-ops .row-link+.row-link,.ont-ops .row-link+.row-menu,.ont-ops .row-menu+.row-menu{margin-left:10px}
-.ont-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;border-top:1px solid var(--line);color:var(--muted);font-size:12px;flex-wrap:wrap}
-.ont-pager-ctl{display:flex;align-items:center;gap:6px}
-.ont-pager button{padding:2px 9px}
 .ont-empty{padding:70px 20px;text-align:center;color:var(--muted)}
 .ont-empty-ico{margin:0 auto 14px;width:40px;height:40px;border-radius:8px;background:var(--paper-2);display:grid;place-items:center;font-size:23px;color:var(--faint)}
 .ont-empty h3{color:var(--ink);font-size:15px;margin:0 0 8px}

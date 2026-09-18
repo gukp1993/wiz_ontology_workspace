@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`82f3da089f39bdab`
+上下文版本：`5ec11faaa27786da`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,14 +22,14 @@
 
 ### 本体列表统一设计-v1 · zcode · 已实施，待验收
 
-时间：2026-09-18T11:33:55.191629+00:00；记录：`.collaboration/entries/000011-9e6b702f9638.json`
+时间：2026-09-18T11:44:13.182086+00:00；记录：`.collaboration/entries/000012-4374db6b6ff2.json`
 
-按用户要求两项调整：① 动作/规则行按钮文案由「移除关联/移除引用」改为「删除动作/删除规则」（含确认框点名、撤销标签、行下说明、拦截提示同步改词）；语义不变——仍只删当前对象的关联/引用，动作定义与规则正文保留、其他对象不受影响。② 操作列由右对齐改为左对齐：按钮与列头「操作」左缘对齐（原右对齐使按钮浮在列最右侧，与表头错位）。.ont-ops 为共用类，四个页签与三个资产库一并生效；浏览器实测各列表 thLeft 与 opsLeft 一致。
+搜索框与分页条组件化：新增 shared/SearchField.vue（放大镜图标 + 自绘清空，受控 update:value/clear）与 shared/ListPager.vue（第 x–y 项，共 N 项 / 每页 P 项 /‹ n/N ›，禁用越界，上抛绝对页码）。OntologyList 工具栏与分页、ObjectWorkspace 对象导航搜索与分页全部接入，页面不再有手写搜索/分页结构；OntDrawer 焦点回落改为 .search-field input。修复实施中发现的两个真实缺陷：① 全局 button:active{transform:translateY(1px)} 覆盖清空按钮的 translateY(-50%) 居中，真实点击在 mousedown 后漂移到输入框而丢失（已用 :active 保留居中修复）；② 浏览器原生 search 清除按钮与自绘按钮重叠（已隐藏原生按钮）。
 
-- 决定：用户 2026-09-18 决定：动作/规则行按钮统一用「删除」动词（属性行按语义仍区分移除引用/删除属性，链接行删除链接）；操作列统一左对齐，与列头对齐（共用 .ont-ops，全列表一致）
-- 验证：18765 浏览器实测：规则页「查看 删除规则」、动作页「查看 删除动作」、共享库「编辑 ⋯」、动作库「编辑 ⋯」、规则库「编辑」；各页 thLeft==opsLeft（1242/1242、1217/1217、1204/1204）；行下说明与拦截提示文案同步：删除动作仅移除当前对象的关联；删除规则仅移除当前对象的引用；「请先到规则页签删除规则引用」；ont_list_unified 用例更新（行内按钮清单改为 删除链接/删除动作/删除规则）4/4 通过；typecheck/build 通过；全量前端套件 20/21（唯一败 mapping_forms 为既有基线）
-- 下一步：用户复核文案与对齐效果
-- 依据/文档：frontend/src/ontology/ObjectWorkspace.vue；frontend/src/style.css；tests/ont_list_unified.test.mjs
+- 决定：列表搜索框与分页条统一为共用组件（SearchField/ListPager），表格与对象导航同款；清空先发空值再发 clear，供父级一并复位筛选（对象导航同时复位「已收藏」）；分页组件上抛绝对页码，表格内外语义由调用方换算
+- 验证：18765 浏览器实测：导航与表格搜索框均带图标；清空真实点击后输入清空、行数回满（导航 4→5 行、表格 2→6 行）；三资产库与四页签分页文案统一（第 1–6 项，共 6 项／每页 20 项／1 / 1）；旧类名清零（ont-search=0、ld-pager-ctl=0）；新增 tests/list_controls.test.mjs 4 项通过（事件协议/文案与禁用/接入面/清空按钮居中回归）；typecheck、build 通过；全量前端套件 21/22（唯一败 mapping_forms 为既有基线）
+- 下一步：用户复核视觉（图标与分页文案）
+- 依据/文档：frontend/src/shared/SearchField.vue；frontend/src/shared/ListPager.vue；frontend/src/shared/OntologyList.vue；frontend/src/ontology/ObjectWorkspace.vue；tests/list_controls.test.mjs
 
 ### 用户菜单裁切修复 · zcode · 已实施，待验收
 

@@ -1,5 +1,5 @@
 <!-- 只读详情抽屉（20260918 列表统一设计 §7）：右侧约 480px 面板，Esc / 点击遮罩 / 关闭按钮均可关闭。
-     打开时记录触发元素，关闭归还焦点；触发元素已不在文档时回到列表搜索框（.ont-search input）。
+     打开时记录触发元素，关闭归还焦点；触发元素已不在文档时回到列表搜索框（.search-field input）。
      纯展示容器：正文与底部按钮由插槽提供，不做任何保存，不影响列表筛选条件。 -->
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
@@ -27,7 +27,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey)
   if (returnFocus?.isConnected) returnFocus.focus()
-  else document.querySelector<HTMLElement>('.ont-search input')?.focus()
+  else document.querySelector<HTMLElement>('.search-field input')?.focus()
 })
 </script>
 

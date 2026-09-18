@@ -1,0 +1,32 @@
+{
+  "ticket": "530c9b0d7e1b442e927873512d927001",
+  "task": "本体列表统一设计-v1",
+  "status": "implemented",
+  "summary": "搜索框与分页条组件化：新增 shared/SearchField.vue（放大镜图标 + 自绘清空，受控 update:value/clear）与 shared/ListPager.vue（第 x–y 项，共 N 项 / 每页 P 项 /‹ n/N ›，禁用越界，上抛绝对页码）。OntologyList 工具栏与分页、ObjectWorkspace 对象导航搜索与分页全部接入，页面不再有手写搜索/分页结构；OntDrawer 焦点回落改为 .search-field input。修复实施中发现的两个真实缺陷：① 全局 button:active{transform:translateY(1px)} 覆盖清空按钮的 translateY(-50%) 居中，真实点击在 mousedown 后漂移到输入框而丢失（已用 :active 保留居中修复）；② 浏览器原生 search 清除按钮与自绘按钮重叠（已隐藏原生按钮）。",
+  "decisions": [
+    "列表搜索框与分页条统一为共用组件（SearchField/ListPager），表格与对象导航同款；清空先发空值再发 clear，供父级一并复位筛选（对象导航同时复位「已收藏」）",
+    "分页组件上抛绝对页码，表格内外语义由调用方换算"
+  ],
+  "verification": [
+    "18765 浏览器实测：导航与表格搜索框均带图标；清空真实点击后输入清空、行数回满（导航 4→5 行、表格 2→6 行）",
+    "三资产库与四页签分页文案统一（第 1–6 项，共 6 项／每页 20 项／1 / 1）；旧类名清零（ont-search=0、ld-pager-ctl=0）",
+    "新增 tests/list_controls.test.mjs 4 项通过（事件协议/文案与禁用/接入面/清空按钮居中回归）",
+    "typecheck、build 通过；全量前端套件 21/22（唯一败 mapping_forms 为既有基线）"
+  ],
+  "next": [
+    "用户复核视觉（图标与分页文案）"
+  ],
+  "references": [
+    "frontend/src/shared/SearchField.vue",
+    "frontend/src/shared/ListPager.vue",
+    "frontend/src/shared/OntologyList.vue",
+    "frontend/src/ontology/ObjectWorkspace.vue",
+    "tests/list_controls.test.mjs"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-18T11:44:13.182086+00:00",
+  "sequence": 12,
+  "filename": "000012-4374db6b6ff2.json",
+  "record_hash": "388c6930b12a22273df5e226834e322c2ef73a423b855132e8096798a9bb4aeb",
+  "context_advanced": false
+}

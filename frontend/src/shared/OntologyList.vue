@@ -1,9 +1,12 @@
 <!-- 本体区统一标准表格容器（20260918 列表统一设计 T1/§5）：
      工具栏（搜索 → 筛选插槽 → 总数 → 操作插槽）+ 语义 table（列定义 + 行插槽）+ 空态 + 分页外壳。
+     搜索框与分页条复用共用组件 SearchField/ListPager（20260918 补充，与对象导航同一实现）。
      只负责显示与事件：不发请求、不保存、不产生撤销记录；行内容与业务操作由各页面以插槽提供。
      表头 40px、行最小 64px、每页 20 项；样式走全局 .ont-*（style.css 本体列表段），不改全站 table/button。
      初始无数据的唯一主入口在工具栏（§8），空态不放第二个新建按钮。 -->
 <script setup lang="ts">
+import SearchField from './SearchField.vue'
+import ListPager from './ListPager.vue'
 export interface OntColumn { label: string; width?: string; sort?: boolean }
 withDefaults(defineProps<{
   columns: OntColumn[]
@@ -26,11 +29,7 @@ const emit = defineEmits(['update:search', 'sort', 'page', 'clear'])
 
 <template>
   <div class="ont-tools">
-    <div class="ont-search">
-      <input type="search" :value="search" :placeholder="searchPlaceholder" :aria-label="searchPlaceholder"
-        @input="emit('update:search', ($event.target as HTMLInputElement).value)">
-      <button v-if="search" type="button" class="ont-search-clear" aria-label="清空搜索" @click="emit('update:search', '')">×</button>
-    </div>
+    <SearchField :value="search" :placeholder="searchPlaceholder" @update:value="emit('update:search', $event)"/>
     <slot name="filter"/>
     <span class="ont-total">{{ totalText || (total + ' 项') }}</span>
     <div class="ont-actions"><slot name="actions"/></div>
@@ -53,13 +52,5 @@ const emit = defineEmits(['update:search', 'sort', 'page', 'clear'])
       <button v-if="search || hasFilter" type="button" @click="emit('clear')">清空筛选</button>
     </div>
   </div>
-  <div class="ont-pager">
-    <span>{{ total ? '第 ' + ((page - 1) * pageSize + 1) + '–' + Math.min(page * pageSize, total) + ' 项，共 ' + total + ' 项' : '共 0 项' }}</span>
-    <div class="ont-pager-ctl">
-      <span>每页 {{ pageSize }} 项</span>
-      <button type="button" :disabled="page <= 1" aria-label="上一页" @click="emit('page', -1)">‹</button>
-      <span>{{ page }} / {{ pageCount }}</span>
-      <button type="button" :disabled="page >= pageCount" aria-label="下一页" @click="emit('page', 1)">›</button>
-    </div>
-  </div>
+  <ListPager :total="total" :page="page" :page-count="pageCount" :page-size="pageSize" @update:page="emit('page', $event - page)"/>
 </template>

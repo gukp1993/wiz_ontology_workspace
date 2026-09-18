@@ -28,6 +28,8 @@ import PickerDialog, { type PickerRow } from './PickerDialog.vue'
 import { navIcons } from '../shared/icons'
 import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
+import SearchField from '../shared/SearchField.vue'
+import ListPager from '../shared/ListPager.vue'
 import { localProperties, effectiveProperty, propertyTypeLabel, propertyDataType, dataTypeLabel, valueShapeOf, copyAsPrivate, addReference, shapeConflict } from './propertyModel'
 import { useOntTable, type OntTable } from './ontList'
 import { appConfirm } from '../shared/appConfirm'
@@ -688,8 +690,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
       <section class="ld-list" aria-label="对象类型列表">
         <div class="ld-list-head"><h2>对象类型 <span class="muted">{{ filteredObjects.length }} / {{ objects.length }}</span></h2></div>
         <div class="ld-search">
-          <input type="search" :value="listQuery" placeholder="搜索全部对象类型…" aria-label="搜索全部对象类型（名称与业务定义）" @input="onSearch(($event.target as HTMLInputElement).value)">
-          <button v-if="listQuery" type="button" class="ld-search-clear" aria-label="清空搜索" @click="clearFilters">×</button>
+          <SearchField :value="listQuery" placeholder="搜索全部对象类型…" ariaLabel="搜索全部对象类型（名称与业务定义）" @update:value="onSearch" @clear="clearFilters"/>
         </div>
         <div class="ld-filters" role="group" aria-label="筛选与排序">
           <button type="button" :class="{ active: !starOnly }" :aria-pressed="!starOnly" @click="setFilter(false)">全部</button>
@@ -708,14 +709,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
             <p v-else class="muted">用上方「＋ 新建对象」创建第一个对象类型。</p>
           </div>
         </div>
-        <div v-if="showPager" class="ld-pager">
-          <span>{{ (page - 1) * pageSize + 1 }}–{{ Math.min(page * pageSize, filteredObjects.length) }} / {{ filteredObjects.length }}</span>
-          <span class="ld-pager-ctl">
-            <button type="button" :disabled="page <= 1" aria-label="上一页" @click="page--">‹</button>
-            <span>{{ page }} / {{ pageCount }}</span>
-            <button type="button" :disabled="page >= pageCount" aria-label="下一页" @click="page++">›</button>
-          </span>
-        </div>
+        <ListPager v-if="showPager" class="ld-pager" :total="filteredObjects.length" :page="page" :page-count="pageCount" :page-size="pageSize" @update:page="page = $event"/>
       </section>
       <!-- 详情区：页签在滚动容器内吸顶；筛选不含当前对象时如实提示，不静默换对象 -->
       <section class="ld-detail" aria-label="对象详情">
@@ -949,6 +943,8 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
 <style scoped>
 /* 浏览态的列表/详情骨架在全局 .ld-*（style.css）：两区独立滚动，窄屏单栏。 */
 .ow-root{display:block}
+/* 对象导航底部分页：沿用共用 ListPager，仅此处收紧内边距（贴近原 ld-pager 的 9px 12px） */
+.ld-pager{padding:9px 12px}
 /* 对象详情页签内的统一表格：ld-detail 整体滚动，表头不再单独吸顶（避免钻到页签下面）；
    复用方式筛选沿用紧凑分段按钮（§4）。 */
 .ld-body :deep(.ont-table th){position:static}
