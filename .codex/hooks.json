@@ -1,0 +1,8 @@
+{
+  "description": "本项目 Codex/zcode 共享交接：每轮读取，结束时检查，最多提醒一次。无网络、无数据库写入。",
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 '/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/.collaboration/context.py' hook --actor codex", "timeout": 10}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 '/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/.collaboration/context.py' hook --actor codex", "timeout": 10}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "python3 '/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/.collaboration/context.py' hook --actor codex", "timeout": 10}]}]
+  }
+}
