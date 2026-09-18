@@ -24,10 +24,13 @@ export interface FormGuardAPI {
 //   watch(editorOpen, (open) => open ? guardApi.register(guard) : guardApi.unregister(guard), { immediate: true })
 //   onBeforeUnmount(() => guardApi.unregister(guard))   // 视图切换即卸载，防泄漏
 export type FormSaveResult = { ok: boolean; message: string }
+/** 可选操作描述（20260918 撤销优化）：成功保存登记一条具名历史；失败/异常/无变化不入栈。 */
+export interface FormSaveAction { actionLabel: string; target?: { kind: string; id: string; ownerId?: string } }
 export interface FormSaveAPI {
   // area：表单所属工作区；mutate：把已校验的本地草稿合入 working（此时 working 会被提交）。
+  // action：具名历史（候选事务——成功才入栈一条，失败/异常取消且不清 redo）。
   // 成功：返回 {ok:true}，调用方关闭表单并定位条目（一次保存即持久化，无二次总保存）。
   // 失败：working 已回滚到提交前状态，错误经 message 返回；表单保持打开、本地输入保留，
   // 后台队列不会重提已取消的修改（Saver.clearFailed）。conflict 时状态栏保留处理入口。
-  submitForm(area: 'ontology' | 'project', mutate: () => void): Promise<FormSaveResult>
+  submitForm(area: 'ontology' | 'project', mutate: () => void, action?: FormSaveAction): Promise<FormSaveResult>
 }

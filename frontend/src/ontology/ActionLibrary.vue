@@ -77,8 +77,8 @@ async function openConvert() {
   message.value = ''
 }
 
-async function submit(apply: () => void): Promise<boolean> {
-  const r = await formSave.submitForm('ontology', apply)
+async function submit(apply: () => void, action?: { actionLabel: string; target?: { kind: string; id: string } }): Promise<boolean> {
+  const r = await formSave.submitForm('ontology', apply, action)
   if (!r.ok) { message.value = r.message; return false }
   return true
 }
@@ -101,7 +101,7 @@ async function save() {
         a.definitionVersion = 2
       }
     }
-  })
+  }, { actionLabel: (isNew ? '新建动作「' : '修改动作「') + name + '」', target: { kind: 'action', id: targetId } })
   saving.value = false
   if (!ok) return
   converting = false

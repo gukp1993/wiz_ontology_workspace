@@ -20,6 +20,7 @@ import { getJson } from '../app/http'
 
 const props = defineProps<{ state: any; projectConnections?: any[]; projectId?: string; revision?: string; projectName?: string; saveCheck?: any; saveCheckSig?: string; restoreTab?: string; restoreNode?: { id: string; token: number } | null; providersRefresh?: number }>()
 const emit = defineEmits(['before-change', 'changed', 'navigate', 'back'])
+// 具名撤销（20260918）：emit('before-change', { actionLabel, target?, mergeKey? })
 const canvasRef = ref<any>(null)
 const notice = ref('')
 // 从模型设置返回：恢复页签与节点选中，刷新可用模型列表（保留原 providerId，不自动重绑/执行）

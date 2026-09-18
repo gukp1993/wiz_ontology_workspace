@@ -15,6 +15,8 @@ const notice = ref('')
 let noticeTimer: any = null
 function warn(text: string) { notice.value = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => notice.value = '', 6000) }
 const kind = computed(() => props.node.kind as string)
+// 常用字段中文名（具名撤销用）
+const FIELD_LABELS: Record<string, string> = { code: 'Python 代码', sql: 'SQL 模板', keyTemplate: 'Redis Key 模板', body: 'HTTP 请求体', llmInstruction: 'LLM 计算规则', method: '请求方法', url: '请求地址', providerId: '模型配置', connectionId: '数据连接', mode: '计算模式' }
 const isPython = computed(() => kind.value === 'python')
 const isRedis = computed(() => kind.value === 'redis')
 const isHttp = computed(() => kind.value === 'http')
@@ -154,9 +156,9 @@ function renameTechnical(container: any, list: 'inputs' | 'outputs', index: numb
     warn(`技术名「${old}」已改为「${next || '（空）'}」，公式仍引用旧名，请检查计算定义。`)
   }
 }
-function setInputLabel(input: any, value: string) { emit('before-change'); input.label = value; emit('changed') }
-function setOutputLabel(out: any, value: string) { emit('before-change'); out.label = value; emit('changed') }
-function setField(row: any, key: string, value: any) { emit('before-change'); row[key] = value; emit('changed') }
+function setInputLabel(input: any, value: string) { emit('before-change', { actionLabel: '修改输入「' + (value || input.label || '') + '」名称', target: { kind: 'node', id: props.node.id } }); input.label = value; emit('changed') }
+function setOutputLabel(out: any, value: string) { emit('before-change', { actionLabel: '修改输出「' + (value || out.label || '') + '」名称', target: { kind: 'node', id: props.node.id } }); out.label = value; emit('changed') }
+function setField(row: any, key: string, value: any) { emit('before-change', { actionLabel: '修改节点「' + (props.node.name || '') + '」的 ' + (FIELD_LABELS[key] || key), target: { kind: 'node', id: props.node.id } }); row[key] = value; emit('changed') }
 function setFormula(outputName: string, value: string) {
   emit('before-change')
   const formulas = impl.value.formulas || (impl.value.formulas = {})

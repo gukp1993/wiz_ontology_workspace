@@ -32,7 +32,7 @@ import { decodeState, requestBody, type WorkbenchState } from './ontology/modelF
 import { shortcutAction } from './app/shortcuts'
 import { READ_TIMEOUT_MS, SaveRequestError, isOriginRejected, localAccessUrl } from './app/http'
 import { createSaver } from './app/saveCoordinator'
-import type { FormGuardInstance, FormGuardAPI, FormSaveAPI } from './app/formGuard'
+import type { FormGuardInstance, FormGuardAPI, FormSaveAPI, FormSaveAction } from './app/formGuard'
 import { pages, normalizeView, projectViews, projectSpaceViews, flowViews, menuOntology, menuProjectOf, initialView, initialSpace, isGlobalView, settingsCategories } from './app/navigation'
 import { navIcons } from './shared/icons'
 import { appConfirm } from './shared/appConfirm'
@@ -196,29 +196,57 @@ const formGuardApi: FormGuardAPI = {
 provide('form-guard', formGuardApi)
 // 表单提交：flush 基线→快照→mutate→commitNow→按 status 判定；失败回滚 working 并清除后台重试隐患。
 const formSaveApi: FormSaveAPI = {
-  async submitForm(area, mutate) {
+  // 候选事务（20260918 撤销优化）：mutate 前开启候选；成功才以 actionLabel 登记一条历史；
+  // 失败/异常/无变化取消候选，且不清 redo。actionLabel 可选（第三参），未提供时不入历史
+  // （对应"未补具名的调用点"，避免出现无名步骤；逐页补齐）。
+  async submitForm(area, mutate, action?: FormSaveAction) {
     const saver = area === 'project' ? projectSaver : ontologySaver
     await saver.flush()
     if (saver.status.value === 'conflict') return { ok: false, message: '草稿版本冲突，请先在顶栏处理后再保存表单' }
     if (saver.status.value === 'error') return { ok: false, message: '工作区有未保存成功的修改（' + saver.error.value + '），请先点顶栏“重试”' }
     if (saver.status.value !== 'saved') return { ok: false, message: '工作区正在保存其他修改，请稍候重试' }
+    const undoArea = area === 'project' ? projectUndoArea : ontologyUndoArea
+    const scopeBefore = historyScopeKey.value
+    const tx = action && area === 'ontology' ? undoArea.begin() : null
     const snapshot = clone(saver.working.value)
-    area === 'project' ? pushProjectUndo() : pushUndo()
-    mutate()
-    if (area === 'project') { projectEditGeneration.value++; projectReport.value = null; projectSaveErrors.value = [] }
-    else { editGeneration.value++; validationReport.value = null; ontologySaveErrors.value = [] }
-    await saver.commitNow()
-    if (saver.status.value === 'saved') return { ok: true, message: '' }
-    const msg = saver.error.value || '保存失败'
-    saver.working.value = snapshot
-    saver.clearFailed()
-    return { ok: false, message: msg }
+    try {
+      mutate()
+      if (area === 'project') { projectEditGeneration.value++; projectReport.value = null; projectSaveErrors.value = [] }
+      else { editGeneration.value++; validationReport.value = null; ontologySaveErrors.value = [] }
+      await saver.commitNow()
+      if (saver.status.value === 'saved') {
+        if (tx && scopeBefore === historyScopeKey.value) tx.commit(action!.actionLabel, saver.working.value, action!.target ? { target: action!.target } : undefined)
+        else tx?.cancel() // scope 已变（保存期间切换了页面/资产）：不入历史
+        return { ok: true, message: '' }
+      }
+      const msg = saver.error.value || '保存失败'
+      saver.working.value = snapshot
+      saver.clearFailed()
+      tx?.cancel() // 失败：取消候选，不清 redo
+      return { ok: false, message: msg }
+    } catch (e) {
+      // mutate 同步异常：commitNow 尚未发起，回滚 working、取消候选并向上抛（组件按保存失败处理）
+      saver.working.value = snapshot
+      tx?.cancel()
+      throw e
+    }
   },
 }
 provide('form-save', formSaveApi)
 
 const editGeneration = ref(0), projectEditGeneration = ref(0), flowEditGeneration = ref(0)
+// 编辑历史（20260918 撤销范围优化）：仅白名单编辑页收集。项目映射/连接/设置等表单页
+// 用保存/取消，无业务撤销——projectUndoArea 保留但已无入口，禁止继续压入项目快照。
 const ontologyUndoArea = createUndoArea(state), projectUndoArea = createUndoArea(projectState), flowUndoArea = createUndoArea(flowState)
+/** 编辑页白名单（需求 §3）：这些页面展示撤销/重做并接收快捷键；其余页面两者皆无。 */
+const EDITABLE_VIEWS = ['objects', 'library', 'rules', 'actions', 'f-editor'] as const
+const isEditableView = (v: string) => (EDITABLE_VIEWS as readonly string[]).includes(v)
+/** scopeKey：本体 = ontologyId+页；编排 = flowId+f-editor。页面内切换对象/页签不换 scope。 */
+const historyScopeKey = computed(() => {
+  if (view.value === 'f-editor') return 'flow:' + flowId.value + ':f-editor'
+  if (isEditableView(view.value)) return 'ontology:' + ontologyId + ':' + view.value
+  return ''
+})
 
 // --- 导航（任务板 §2）：常量与别名在 app/navigation；view 状态与定位 ref 在此装配 ---
 const view = ref(initialView())
@@ -258,7 +286,19 @@ function onDocClickUserMenu(e: MouseEvent) { if (userMenuOpen.value && !userMenu
 const settingsReturn = ref<{ view: string; node?: string; tab?: string } | null>(null)
 async function openSettings(fromView?: string) {
   closeUserMenu(false)
-  if (!isGlobalView(view.value)) settingsReturn.value = { view: fromView || view.value }
+  if (!isGlobalView(view.value)) {
+    const ret: { view: string; node?: string; tab?: string } = { view: fromView || view.value }
+    // 对象建模：记录当前选中对象与页签，返回时恢复
+    if (ret.view === 'objects') {
+      ret.node = document.querySelector('.ld-row.active')?.getAttribute('data-row') ?? undefined
+      const tabText = document.querySelector('.ld-tabs button.active')?.textContent.trim() || ''
+      if (tabText.startsWith('属性')) ret.tab = 'props'
+      else if (tabText.startsWith('链接')) ret.tab = 'links'
+      else if (tabText.startsWith('动作')) ret.tab = 'actions'
+      else if (tabText.startsWith('规则')) ret.tab = 'rules'
+    }
+    settingsReturn.value = ret
+  }
   await navigate('settings-models')
 }
 async function backToWorkspace() {
@@ -268,6 +308,13 @@ async function backToWorkspace() {
   if (ret && ret.view in pages && !isGlobalView(ret.view)) {
     if (projectSpaceViews.includes(ret.view)) { space.value = 'project'; try { localStorage.setItem('wiz-space', 'project') } catch {} }
     else { space.value = 'ontology'; try { localStorage.setItem('wiz-space', 'ontology') } catch {} }
+    if (ret.view === 'objects') {
+      // 对象建模：缓存选中对象与页签，经 focus 参数恢复（组件卸载丢失内存状态）
+      if (ret.node) { propertyFocusType.value = ret.node }
+      if (ret.tab) objectDetailTab.value = ret.tab
+      await navigate('objects', ret.node ? { type: ret.node, tab: ret.tab } : (ret.tab ? { tab: ret.tab } : undefined))
+      return
+    }
     await navigate(ret.view)
     if (ret.view === 'f-editor') {
       // 恢复节点与页签（保留原 providerId/“使用默认”），并刷新可用模型列表
@@ -343,6 +390,16 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
 }
 function hashChanged() { navigate(window.location.hash.slice(1)) }
 watch(view, () => closeUserMenu(false))
+// scope 生命周期（需求 §4.2）：实际成功离开编辑页 / 切换本体 / 切换编排 / 重载 → 清空该范围历史。
+// watch(view) 只在实际切换成功后触发（导航取消不会改 view），符合「实际离开时结束会话」。
+watch([view, historyScopeKey], ([nv], [ov]) => {
+  if (nv === ov) return
+  const wasEditable = isEditableView(String(ov))
+  const nowEditable = isEditableView(String(nv))
+  // 离开编辑页：清对应区域；编辑页之间互切也各自重置（objects→library 等不同 scope）
+  if (wasEditable && ov !== 'f-editor' && (!nowEditable || nv !== ov)) ontologyUndoArea.reset()
+  // 编排内部不清（同 flowId 同 scope）；f-home↔f-editor 保留（同一编排的列表/编辑切换）
+})
 // 侧栏菜单：本体建设 5 项 + 更多工具；项目映射 5 项（未选项目时只显示项目概览）。
 const menuProject = computed<Record<string, string>>(() => menuProjectOf(!!projectState.value))
 // 项目页眉 crumb 引用的本体名：按项目引用的本体 id 回查列表，回退显示 id。
@@ -368,17 +425,74 @@ function flowChanged() { flowEditGeneration.value++; flowSaveErrors.value = []; 
 // counts() 读取普通数组不具响应性：依赖 editGeneration（每次 changed 递增）触发重算，沿用既有约定。
 // 编排页面位于项目空间：按当前视图（而非 space）路由到对应撤销栈与 Saver。
 const onFlowView = computed(() => flowViews.includes(view.value))
-const undoCount = computed(() => { void (onFlowView.value ? flowEditGeneration.value : area.value === 'project' ? projectEditGeneration.value : editGeneration.value); return onFlowView.value ? flowUndoArea.counts()[0] : area.value === 'project' ? projectUndoArea.counts()[0] : ontologyUndoArea.counts()[0] })
-const redoCount = computed(() => { void (onFlowView.value ? flowEditGeneration.value : area.value === 'project' ? projectEditGeneration.value : editGeneration.value); return onFlowView.value ? flowUndoArea.counts()[1] : area.value === 'project' ? projectUndoArea.counts()[1] : ontologyUndoArea.counts()[1] })
-function pushUndo() { ontologyUndoArea.push() }
-function pushProjectUndo() { projectUndoArea.push() }
-function pushFlowUndo() { flowUndoArea.push() }
-function undo() { if (onGlobalView.value) return; if (onFlowView.value) return undoFlow(); if (area.value === 'project') return undoProject(); const restored = ontologyUndoArea.undo(); if (!restored) return; state.value = restored; validationReport.value = null; editGeneration.value++; void ontologySaver.commitNow() }
-function redo() { if (onGlobalView.value) return; if (onFlowView.value) return redoFlow(); if (area.value === 'project') return redoProject(); const restored = ontologyUndoArea.redo(); if (!restored) return; state.value = restored; validationReport.value = null; editGeneration.value++; void ontologySaver.commitNow() }
-function undoProject() { const restored = projectUndoArea.undo(); if (!restored) return; projectState.value = restored; projectReport.value = null; void projectSaver.commitNow() }
-function redoProject() { const restored = projectUndoArea.redo(); if (!restored) return; projectState.value = restored; projectReport.value = null; void projectSaver.commitNow() }
-function undoFlow() { const restored = flowUndoArea.undo(); if (!restored) return; flowState.value = restored; flowCheck.value = null; void flowSaver.commitNow() }
-function redoFlow() { const restored = flowUndoArea.redo(); if (!restored) return; flowState.value = restored; flowCheck.value = null; void flowSaver.commitNow() }
+// 撤销按钮可用性：仅白名单编辑页展示；保存失败/冲突未处理时禁用（走顶栏既有入口）
+const historyUsable = computed(() => isEditableView(view.value) && !formEditing.value && !undoBusy.value)
+const undoCount = computed(() => {
+  if (!historyUsable.value) return 0
+  void (onFlowView.value ? flowEditGeneration.value : editGeneration.value)
+  return onFlowView.value ? flowUndoArea.counts.value[0] : ontologyUndoArea.counts.value[0]
+})
+const redoCount = computed(() => {
+  if (!historyUsable.value) return 0
+  void (onFlowView.value ? flowEditGeneration.value : editGeneration.value)
+  return onFlowView.value ? flowUndoArea.counts.value[1] : ontologyUndoArea.counts.value[1]
+})
+const canUndo = computed(() => undoCount.value > 0)
+const canRedo = computed(() => redoCount.value > 0)
+const undoLabel = computed(() => onFlowView.value ? flowUndoArea.peekUndoLabel() : ontologyUndoArea.peekUndoLabel())
+const redoLabel = computed(() => onFlowView.value ? flowUndoArea.peekRedoLabel() : ontologyUndoArea.peekRedoLabel())
+// pushUndo(actionLabel?, target?, mergeKey?)：具名压栈（编辑器 emit('before-change') 的既有调用点
+// 不带参数时仍可用，但建议逐页补动作名）。合并 key 相同的连续输入只保留一步。
+function pushUndo(actionLabel?: string | { actionLabel: string; target?: { kind: string; id: string; ownerId?: string }; mergeKey?: string }, target?: { kind: string; id: string; ownerId?: string }, mergeKey?: string) {
+  if (typeof actionLabel === 'object' && actionLabel) {
+    ontologyUndoArea.push(String(actionLabel.actionLabel), undefined, { target: actionLabel.target, mergeKey: actionLabel.mergeKey })
+    return
+  }
+  const label = typeof actionLabel === 'string' ? actionLabel : '编辑本体草稿'
+  ontologyUndoArea.push(label, undefined, { target, mergeKey })
+}
+function pushProjectUndo() { /* 项目映射/连接等表单页无业务撤销（20260918）：显式保存/取消 */ }
+function pushFlowUndo(actionLabel?: string | { actionLabel: string; target?: { kind: string; id: string }; mergeKey?: string }, target?: { kind: string; id: string }, mergeKey?: string) {
+  if (typeof actionLabel === 'object' && actionLabel) {
+    flowUndoArea.push(String(actionLabel.actionLabel), undefined, { target: actionLabel.target, mergeKey: actionLabel.mergeKey })
+    return
+  }
+  const label = typeof actionLabel === 'string' ? actionLabel : '编辑编排'
+  flowUndoArea.push(label, undefined, { target, mergeKey })
+}
+// 撤销/重做主流程（需求 §7.1）：① 结束未结算字段事务 ② flush 基线（失败不动栈）
+// ③ 应用目标快照、指针移动一次、检查/结果标过期 ④ commitNow 串行保存。
+// 保存失败：保留恢复内容与历史位置，交由顶栏重试/重载（§7.2）；重试不再移动历史。
+async function applyHistory(kind: 'undo' | 'redo') {
+  if (undoBusy.value || !isEditableView(view.value) || formEditing.value) return
+  const isFlow = view.value === 'f-editor'
+  const area = isFlow ? flowUndoArea : ontologyUndoArea
+  const scopeBefore = historyScopeKey.value
+  const label = kind === 'undo' ? area.peekUndoLabel() : area.peekRedoLabel()
+  undoBusy.value = true
+  try {
+    if (isFlow) { await flowSaver.flush() }
+    else { await ontologySaver.flush() }
+    const saver = isFlow ? flowSaver : ontologySaver
+    if (saver.status.value !== 'saved') return // 基线保存失败/冲突：历史位置不动
+    if (historyScopeKey.value !== scopeBefore) return // 等待期间离开了编辑页
+    const restored = kind === 'undo' ? area.undo() : area.redo()
+    if (!restored) return
+    if (isFlow) { flowState.value = restored; flowCheck.value = null }
+    else { state.value = restored; validationReport.value = null }
+    editGeneration.value++; isFlow ? flowEditGeneration.value++ : 0
+    notify(kind === 'undo' ? '已撤销：' + label + '，正在保存…' : '已重做：' + label + '，正在保存…')
+    await saver.commitNow()
+    if (saver.status.value === 'saved') notify(kind === 'undo' ? '已撤销：' + label + '，已保存' : '已重做：' + label + '，已保存')
+    else notify('已在当前页面' + (kind === 'undo' ? '撤销' : '重做') + '，但保存未成功／结果未确认；可用顶栏重试或放弃重载', true)
+  } finally { undoBusy.value = false }
+}
+function undo() { void applyHistory('undo') }
+function redo() { void applyHistory('redo') }
+function undoProject() { /* 项目映射/连接无业务撤销（20260918） */ }
+function redoProject() { /* 同上 */ }
+function undoFlow() { undo() }
+function redoFlow() { redo() }
 
 // --- 函数编排：打开/复制/删除（编排列表页触发；切换前 flush 由 Saver 状态兜底） ---
 async function openFlow(id: string) {
@@ -579,6 +693,18 @@ async function onProjectPublished() { if (!projectState.value) return; await pro
 
 // --- 顶栏状态条（按当前视图路由：函数编排页面用 flowSaver，其余按空间） ---
 const onGlobalView = computed(() => isGlobalView(view.value))
+// ── 撤销/重做统一入口（20260918）：按钮与快捷键调用同一组 canUndo/canRedo/undoRedo ──
+const undoBusy = ref(false)
+const undoDisabledReason = computed(() => {
+  if (!isEditableView(view.value)) return '当前页面没有可撤销的操作'
+  if (formEditing.value) return '请先保存或取消当前表单'
+  if (undoBusy.value) return '正在处理撤销／重做'
+  if (space.value === 'project' && projectSaver.status.value === 'saving') return '正在保存，请稍候'
+  if (view.value === 'f-editor' && flowSaver.status.value === 'saving') return '正在保存，请稍候'
+  if (!onFlowView.value && ontologySaver.status.value === 'saving') return '正在保存，请稍候'
+  if (!canUndo.value && !canRedo.value) return '当前页面没有可撤销的操作'
+  return ''
+})
 const activeSaver = computed(() => onGlobalView.value ? null : onFlowView.value ? flowSaver : space.value === 'project' ? projectSaver : ontologySaver)
 const activeErrors = computed(() => onGlobalView.value ? [] as string[] : onFlowView.value ? flowSaveErrors.value : space.value === 'project' ? projectSaveErrors.value : ontologySaveErrors.value)
 const activeReleaseView = computed(() => onGlobalView.value ? view.value : onFlowView.value ? 'f-editor' : space.value === 'project' ? 'p-release' : 'o-release')
@@ -714,7 +840,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 </template>
 <template v-else><span v-if="ontologyLoad==='error'" class="save-pill error" :title="ontologyLoadError">本体读取失败</span><span v-else-if="space==='ontology'">尚未创建本体</span><span v-else-if="flowViews.includes(view)">未选择编排</span><span v-else>未选择项目</span></template>
 </div><div class="topbar-actions">
-<template v-if="(space==='project'&&(projectState||(flowViews.includes(view)&&flowState)))||(space==='ontology'&&hasOntology)"><button :disabled="!undoCount" title="撤销上一次修改" @click="undo">撤销</button><button :disabled="!redoCount" title="重做修改" @click="redo">重做</button></template>
+<template v-if="isEditableView(view)&&!onGlobalView"><button :disabled="!canUndo" :title="canUndo?('撤销：'+undoLabel):undoDisabledReason" :aria-label="canUndo?('撤销：'+undoLabel):'撤销（当前页面没有可撤销的操作）'" @click="undo">撤销</button><button :disabled="!canRedo" :title="canRedo?('重做：'+redoLabel):undoDisabledReason" :aria-label="canRedo?('重做：'+redoLabel):'重做（当前页面没有可重做的操作）'" @click="redo">重做</button></template>
 </div></div>
 <aside class="rail" :class="{mini: railMini && !onGlobalView}" :inert="modalOpen">
 <!-- 设置中心形态：独立分类侧栏，替换业务 Tab/选择器/菜单（20260918 需求 §3.2） -->

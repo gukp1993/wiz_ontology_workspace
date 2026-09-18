@@ -37,6 +37,7 @@ import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 // focusType/focusProperty：共享属性库「查看引用」/校验问题/旧深链跳转定位
 // （propertyFocusId 存 apiName 或 @id，此处换算为节点 @id；指向共享定义时落到首个引用属性）。
 const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
+// 具名撤销（20260918）：emit('before-change', { actionLabel, target?, mergeKey? })；App 侧兼容字符串与对象
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
 
@@ -154,7 +155,7 @@ async function saveObject() {
   const r = await formSave.submitForm('ontology', () => {
     if (e.isNew) graph.value.push({ '@id': e.id, '@type': 'owl:Class', 'rdfs:label': name, 'rdfs:comment': def })
     else { const n: any = graph.value.find(x => x['@id'] === e.id); if (n) { n['rdfs:label'] = name; n['rdfs:comment'] = def } }
-  })
+  }, { actionLabel: (e.isNew ? '新建对象「' : '修改对象「') + name + '」', target: { kind: 'object', id: e.id } })
   editorSaving.value = false
   if (!r.ok) { editorError.value = r.message; return }
   editor.value = null
@@ -211,7 +212,7 @@ async function saveLink() {
     if (!n) { n = { '@id': e.id, '@type': 'owl:ObjectProperty' }; graph.value.push(n) }
     n['rdfs:label'] = name; n['rdfs:domain'] = { '@id': d.from }; n['rdfs:range'] = { '@id': d.to }
     n['mg:cardinality'] = d.cardinality; n['mg:reverseLabel'] = d.reverseLabel; n['rdfs:comment'] = d.comment
-  })
+  }, { actionLabel: (e.isNew ? '新建链接「' : '修改链接「') + typeName(d.from) + ' → ' + name + ' → ' + typeName(d.to) + '」', target: { kind: 'link', id: e.id, ownerId: d.from } })
   editorSaving.value = false
   if (!r.ok) { editorError.value = r.message; return }
   editor.value = null
@@ -463,7 +464,7 @@ async function confirmPick(ids: string[]) {
   if (!ids.length || !current.value) return
   const r = await formSave.submitForm('ontology', () => {
     commitAssociations(props.state, [...associationsOf(props.state), ...ids.map(id => ({ objectTypeId: current.value['@id'], actionId: id }))])
-  })
+  }, { actionLabel: '关联动作到「' + (current.value['rdfs:label'] || '对象') + '」（' + ids.length + ' 项）', target: { kind: 'object', id: current.value['@id'] } })
   if (!r.ok) { message.value = r.message; return }
   pickerOpen.value = false
   locate(ids[0])
@@ -474,7 +475,7 @@ async function removeAssociation(actionId: string) {
   const typeId = current.value['@id']
   const r = await formSave.submitForm('ontology', () => {
     commitAssociations(props.state, associationsOf(props.state).filter(a => !(a.actionId === actionId && (a.objectTypeId === typeId || a.objectTypeId === 'mg:' + typeId.replace(/^mg:/, '')))))
-  })
+  }, { actionLabel: '移除对象「' + (current.value['rdfs:label'] || '') + '」的动作关联', target: { kind: 'object', id: typeId } })
   if (!r.ok) message.value = r.message
 }
 
@@ -495,7 +496,7 @@ async function addRules(ids: string[]) {
   const typeId = current.value['@id']
   const r = await formSave.submitForm('ontology', () => {
     commitRuleAssociations(props.state, [...ruleAssociationsOf(props.state), ...ids.map(id => ({ objectTypeId: typeId, ruleId: id }))])
-  })
+  }, { actionLabel: '引用规则到「' + (current.value['rdfs:label'] || '对象') + '」（' + ids.length + ' 项）', target: { kind: 'object', id: typeId } })
   if (!r.ok) { message.value = r.message; return }
   rulePickerOpen.value = false
   locate(ids[0])
@@ -505,7 +506,7 @@ async function removeRuleRef(ruleId: string) {
   const typeId = current.value['@id']
   const r = await formSave.submitForm('ontology', () => {
     commitRuleAssociations(props.state, ruleAssociationsOf(props.state).filter(a => !(a.ruleId === ruleId && (a.objectTypeId === typeId || a.objectTypeId === 'mg:' + typeId.replace(/^mg:/, '')))))
-  })
+  }, { actionLabel: '移除对象「' + (current.value['rdfs:label'] || '') + '」的规则引用', target: { kind: 'object', id: typeId } })
   if (!r.ok) message.value = r.message
 }
 
@@ -519,7 +520,7 @@ async function removeNode(id: string, label: string) {
   const assocCount = associationsOfObject(props.state, id).length
   const extra = assocCount ? `此对象有 ${assocCount} 条动作关联，删除对象将同时移除这些关联（动作定义与项目绑定保留）。` : ''
   if (!(await appConfirm({ message: '删除「' + (label || id) + '」？可通过撤销恢复。' + extra }))) return
-  emit('before-change')
+  emit('before-change', { actionLabel: '删除「' + (label || id) + '」', target: { kind: 'object', id } })
   props.state.ontology['@graph'] = graph.value.filter((n: any) => n['@id'] !== id)
   if (assocCount) commitAssociations(props.state, associationsOf(props.state).filter(a => a.objectTypeId !== id && a.objectTypeId !== 'mg:' + id.replace(/^mg:/, '')))
   emit('changed')

@@ -106,7 +106,10 @@ function openSharedDef() { editingShared.value = true; initDraft() }
 async function runSave(mutate: () => void, after?: () => void) {
   if (saving.value) return false
   saving.value = true; error.value = ''
-  const r = await formSave.submitForm('ontology', mutate)
+  const r = await formSave.submitForm('ontology', mutate, {
+    actionLabel: (isNew.value ? '新建' : '修改') + (props.kind === 'shared' ? '共享属性「' : '属性「') + (draft.value?.['rdfs:label'] || '') + '」',
+    target: { kind: 'property', id: String(props.propertyId || draft.value?.['@id'] || '') },
+  })
   saving.value = false
   if (!r.ok) { error.value = r.message; return false }
   after?.(); return true

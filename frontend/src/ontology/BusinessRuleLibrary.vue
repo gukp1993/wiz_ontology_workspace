@@ -73,13 +73,14 @@ async function saveEdit() {
   const target = dialog.value!
   const name = draft.value.name.trim()
   const payload = Object.fromEntries(RULE_FIELDS.map(([k]) => [k, draft.value[k].trim()]))
+  const list = props.state.workflow.businessRules = Array.isArray(props.state.workflow.businessRules) ? props.state.workflow.businessRules : []
+  const existed = list.some((x: any) => x === Object(x) && x.id === target.id)
   const r = await formSave.submitForm('ontology', () => {
-    const list = props.state.workflow.businessRules = Array.isArray(props.state.workflow.businessRules) ? props.state.workflow.businessRules : []
     const hit = list.find((x: any) => x === Object(x) && x.id === target.id)
     if (hit) Object.assign(hit, payload)
     else list.push({ id: target.id, ...payload })
     void name
-  })
+  }, { actionLabel: (existed ? '修改规则「' : '新建规则「') + name + '」', target: { kind: 'rule', id: target.id } })
   saving.value = false
   if (!r.ok) { message.value = r.message; return }
   dialog.value = null

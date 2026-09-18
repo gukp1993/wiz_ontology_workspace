@@ -47,9 +47,9 @@ const typeOptions = computed(() => types.value.map((t: any) => ({ value: t['@id'
 const batchSourceProps = computed(() => batchSource.value ? localProperties(graph.value, batchSource.value) : [])
 watch(batchSource, () => { batchProps.value = [] })
 
-function before() { emit('before-change') }
+function before(named?: { actionLabel: string; target?: { kind: string; id: string; ownerId?: string } }) { emit('before-change', named) }
 function changed() { emit('changed') }
-function mutate(fn: any) { before(); fn(); changed() }
+function mutate(fn: any, actionLabel?: string, target?: { kind: string; id: string; ownerId?: string }) { before(actionLabel ? { actionLabel, target } : undefined); fn(); changed() }
 const typeName = (id: string) => types.value.find((n: any) => n['@id'] === id)?.['rdfs:label'] || id
 const rangeOf = (s: any) => s['rdfs:range']?.['@id'] || 'xsd:string'
 const typeLabel = (s: any) => shortType(rangeOf(s))
@@ -85,7 +85,7 @@ function referenceMany() {
       if (shapeConflict(graph.value, s, t)) { blocked.push(typeName(t)); continue }
       if (addReference(graph.value, s, t)) ok++; else skip++
     }
-  })
+  }, '引用共享属性「' + (s['rdfs:label'] || '') + '」到 ' + ok + ' 个对象', { kind: 'sharedProperty', id: s['@id'] })
   dialog.value = ''
   let msg = `已引用到 ${ok} 个对象`
   if (skip) msg += `，跳过 ${skip} 个（已有同名属性或引用）`
@@ -99,7 +99,7 @@ function copyOne() {
   if (!s || !t) return
   const dup = localProperties(graph.value, t).find((p: any) => effectiveProperty(p, graph.value)['rdfs:label'] === (s['rdfs:label'] || ''))
   if (dup) { dialog.value = ''; feedback.value = `${typeName(t)} 已有同名属性「${s['rdfs:label']}」，为避免重复未复制；如需统一维护请改用「引用到对象」。`; return }
-  mutate(() => copyAsPrivate(s, graph.value, t))
+  mutate(() => copyAsPrivate(s, graph.value, t), '复制共享属性「' + (s['rdfs:label'] || '') + '」为 ' + typeName(t) + ' 的私有属性', { kind: 'sharedProperty', id: String(s['@id'] || ''), ownerId: t })
   dialog.value = ''; copyTarget.value = ''
   feedback.value = `已在 ${typeName(t)} 创建私有副本（含完整元数据与新属性标识），此后可独立修改，不再跟随共享定义。`
 }
@@ -131,7 +131,7 @@ async function removeShared(s: any) {
   mutate(() => {
     for (const p of usages) detachProperty(p, graph.value)
     props.state.ontology['@graph'] = graph.value.filter((n: any) => n['@id'] !== s['@id'])
-  })
+  }, '删除共享属性「' + (s['rdfs:label'] || '未命名') + '」', { kind: 'sharedProperty', id: s['@id'] })
   feedback.value = count ? `已删除共享定义，并已把共享内容拷贝到 ${count} 个原引用属性，各自独立维护。` : '已删除共享定义。'
 }
 
@@ -148,7 +148,7 @@ function importRows() {
       if (names.has(row.name)) { skip++; continue }
       graph.value.push(makeProperty(row, t)); names.add(row.name); count++
     }
-  })
+  }, '粘贴多行属性到「' + typeName(t) + '」（' + count + ' 项）', { kind: 'sharedProperty', id: String(t || '') })
   dialog.value = ''; pasted.value = ''
   feedback.value = `已为 ${typeName(t)} 添加 ${count} 项属性${skip ? `，跳过 ${skip} 项同名属性` : ''}`
 }
@@ -164,7 +164,7 @@ function distribute() {
       const s = asShared(p, graph.value)
       for (const t of batchTargets.value) { if (addReference(graph.value, s, t)) count++; else skip++ }
     }
-  })
+  }, '批量复用 ' + batchProps.value.length + ' 项属性到 ' + batchTargets.value.length + ' 类对象', { kind: 'sharedProperty', id: String(batchSource.value || '') })
   dialog.value = ''
   feedback.value = `已新增 ${count} 个共享引用${skip ? `，跳过 ${skip} 个已有引用或同名属性` : ''}`
 }
