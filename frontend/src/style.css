@@ -209,3 +209,32 @@ button:active:not(:disabled){transform:translateY(1px)}
 .row-menu-list button:hover{background:var(--paper-2)}
 .row-menu-list button.danger{color:var(--danger);border-top:1px solid var(--line);margin-top:4px;padding-top:10px;border-radius:0 0 var(--r-sm) var(--r-sm)}
 .row-menu-list button:disabled{opacity:.5}
+
+/* ── 全局设置中心（20260918）：左下固定用户区、用户菜单、设置专用侧栏 ── */
+/* 底部用户区：两种形态都固定在侧栏底部，不随导航滚动 */
+.rail-user{flex-shrink:0;display:flex;align-items:center;gap:4px;border-top:1px solid var(--line);padding-top:10px;margin-top:2px}
+.rail-user-wrap{position:relative;flex:1;min-width:0;display:flex}
+.rail-user-trigger{display:flex;align-items:center;gap:9px;flex:1;min-width:0;background:none;border:0;border-radius:var(--r-sm);padding:6px 8px;color:var(--ink-2);font:inherit;text-align:left}
+.rail-user-trigger:hover{background:var(--paper-2);color:var(--ink)}
+.user-avatar{flex:none;width:28px;height:28px;border-radius:50%;background:var(--blue-soft);color:var(--blue-ink);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:650}
+.user-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500}
+.rail-gear{flex:none;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;border-radius:var(--r-sm);color:var(--ink-2)}
+.rail-gear svg{width:18px;height:18px}
+.rail-gear:hover{background:var(--paper-2);color:var(--ink)}
+.rail.mini .rail-user-trigger{justify-content:center;padding:6px 2px}
+.rail.mini .rail-user{flex-direction:column}
+/* 用户菜单：向上弹出，不被侧栏裁切 */
+.user-menu{position:absolute;bottom:calc(100% + 8px);left:0;z-index:60;width:280px;max-width:calc(100vw - 24px);background:var(--paper);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow-2);padding:6px;display:flex;flex-direction:column}
+.user-menu-head{display:flex;align-items:center;gap:10px;padding:10px 10px 12px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.user-menu-head strong{display:block;font-size:14px}
+.user-menu-head small{display:block;color:var(--muted);font-size:12px}
+.user-menu button{display:flex;align-items:center;gap:9px;width:100%;background:none;border:0;border-radius:var(--r-sm);padding:9px 10px;font:inherit;font-size:14px;color:var(--ink-2);text-align:left}
+.user-menu button:hover:not(:disabled){background:var(--paper-2);color:var(--ink)}
+.user-menu button:disabled{opacity:.55;cursor:not-allowed}
+.user-menu .user-menu-note{margin-left:auto;color:var(--faint);font-size:12px}
+/* 设置专用侧栏：返回工作区 + 分类导航（完整显示，不继承业务折叠） */
+.settings-back{display:flex;align-items:center;gap:8px;width:100%;background:var(--paper-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 10px;font:inherit;font-size:14px;font-weight:500;color:var(--ink);text-align:left}
+.settings-back:hover{border-color:var(--blue-line);background:var(--blue-soft);color:var(--blue-ink)}
+.settings-group{padding:8px 2px 0}
+.settings-group label{font-size:12px;color:var(--muted)}
+.settings-cat{margin:8px 0 2px;font-size:12px;color:var(--faint)}

@@ -285,7 +285,7 @@ async function refillSkeleton() {
       </label>
       <p v-if="providersStatus==='loading'" class="muted tight">LLM 提供方加载中…</p>
       <p v-else-if="providersStatus==='failed'" class="inline-error">LLM 提供方列表加载失败。<button class="mini" @click="emit('retry-providers')">重试</button></p>
-      <p v-else-if="!llmReady" class="inline-error">尚未配置 LLM 提供方，此节点无法执行。<button class="mini" @click="emit('open-llm-config')">前往 LLM 配置</button></p>
+      <p v-else-if="!llmReady" class="inline-error">尚未配置可用模型，此节点无法执行。<button class="mini" @click="emit('open-llm-config')">前往模型设置</button></p>
     </template>
   </template>
 

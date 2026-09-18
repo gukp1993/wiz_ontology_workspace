@@ -18,10 +18,14 @@ import { checkFlow, runFlow } from './api'
 import * as llm from '../tools/llm'
 import { getJson } from '../app/http'
 
-const props = defineProps<{ state: any; projectConnections?: any[]; projectId?: string; revision?: string; projectName?: string; saveCheck?: any; saveCheckSig?: string }>()
+const props = defineProps<{ state: any; projectConnections?: any[]; projectId?: string; revision?: string; projectName?: string; saveCheck?: any; saveCheckSig?: string; restoreTab?: string; restoreNode?: { id: string; token: number } | null; providersRefresh?: number }>()
 const emit = defineEmits(['before-change', 'changed', 'navigate', 'back'])
 const canvasRef = ref<any>(null)
 const notice = ref('')
+// 从模型设置返回：恢复页签与节点选中，刷新可用模型列表（保留原 providerId，不自动重绑/执行）
+watch(() => props.restoreTab, t => { if (t) inspectorTab.value = t })
+watch(() => props.restoreNode, n => { if (n?.id) { selectedId.value = n.id; inspectorTab.value = inspectorTab.value || 'implementation'; nextTick(() => canvasRef.value?.focusNode(n.id)) } })
+watch(() => props.providersRefresh, () => { void loadProviders() })
 let noticeTimer: any = null
 function warn(text: string) { notice.value = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => notice.value = '', 5000) }
 
@@ -570,7 +574,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
         <button v-for="t in ['inputs','implementation','outputs','advanced']" :key="t" :class="{active: inspectorTab===t}" @click="inspectorTab=t">{{SECTION_LABELS[t]}}</button>
       </nav>
       <div class="detail-content">
-        <NodeConfig v-if="node" :state="state" :node="node" :tab="inspectorTab" :connections="projectConnections || []" :credentials="credentials" :providers="providers" :providers-status="providersStatus" :connections-status="connectionsStatus" :focus="focusRequest" @before-change="emit('before-change')" @changed="emit('changed')" @expand-code="onExpandCode" @open-llm-config="emit('navigate','llm')" @open-connections="emit('navigate','connections')" @retry-providers="loadProviders"/>
+        <NodeConfig v-if="node" :state="state" :node="node" :tab="inspectorTab" :connections="projectConnections || []" :credentials="credentials" :providers="providers" :providers-status="providersStatus" :connections-status="connectionsStatus" :focus="focusRequest" @before-change="emit('before-change')" @changed="emit('changed')" @expand-code="onExpandCode" @open-llm-config="emit('navigate','llm',{ tab: inspectorTab, definition: selectedId })" @open-connections="emit('navigate','connections')" @retry-providers="loadProviders"/>
         <BoundaryConfig v-else-if="selectedKind==='input'" :state="state" kind="input" @before-change="emit('before-change')" @changed="emit('changed')"/>
         <BoundaryConfig v-else-if="selectedKind==='output'" :state="state" kind="output" @before-change="emit('before-change')" @changed="emit('changed')"/>
       </div>

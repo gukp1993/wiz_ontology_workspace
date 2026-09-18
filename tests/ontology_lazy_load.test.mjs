@@ -98,12 +98,14 @@ try {
   })
 
   // ── A5：函数编排不依赖项目 ──
-  await check('A5 函数编排页面不强制加载项目', async (server, a) => {
+  await check('A5 函数编排页面不被项目加载阻塞（列表后台加载，完整状态不请求）', async (server, a) => {
     a.space.value = 'project'
     a.view.value = 'f-home'
     await a.settleInitialView()
-    assert.equal(server.countOf('/api/projects'), 0, '编排页不需要项目列表')
+    // 20260918 起（1fed1d4）：编排页侧栏需要项目选择器，列表后台加载（fire-and-forget）；
+    // 阻断性断言保留在「不请求完整项目状态」——编排页自身不依赖项目状态。
     assert.equal(server.countOf('/api/project-state'), 0, '编排页不需要项目状态')
+    assert.ok(server.countOf('/api/projects') <= 1, '列表至多后台加载一次：' + server.countOf('/api/projects'))
   })
 
   // ── A6：项目深链按需加载后再判定（不能因懒加载未完成就退回概览） ──
