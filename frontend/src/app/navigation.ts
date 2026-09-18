@@ -32,8 +32,10 @@ export const navIcon: Record<string, string> = { 'o-home': '▤', objects: '▦'
 /** 项目区菜单：顺序 = 项目概览 → 数据连接 → 对象映射 → 取值规则库 → 函数编排 → 项目校验与发布；
  *  函数编排固定在取值规则库下方，且不依赖选中项目。 */
 export function menuProjectOf(hasProject: boolean): Record<string, string> {
+  // 取值规则库（implements）2026-09-18 功能下线：取值能力统一收敛到函数编排；
+  // 页面与路由保留（历史校验定位/旧深链可达），仅从菜单移除。
   const m: Record<string, string> = { 'p-home': '项目概览' }
-  if (hasProject) { m.connections = '数据连接'; m.binding = '对象映射'; m.implements = '取值规则库' }
+  if (hasProject) { m.connections = '数据连接'; m.binding = '对象映射' }
   m['f-home'] = '函数编排'
   if (hasProject) { m['p-release'] = '项目校验与发布' }
   return m
