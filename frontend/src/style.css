@@ -225,8 +225,9 @@ button:active:not(:disabled){transform:translateY(1px)}
 .rail-gear:hover{background:var(--paper-2);color:var(--ink)}
 .rail.mini .rail-user-trigger{justify-content:center;padding:6px 2px}
 .rail.mini .rail-user{flex-direction:column}
-/* 用户菜单：向上弹出，不被侧栏裁切 */
-.user-menu{position:absolute;bottom:calc(100% + 8px);left:0;z-index:60;width:280px;max-width:calc(100vw - 24px);background:var(--paper);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow-2);padding:6px;display:flex;flex-direction:column}
+/* 用户菜单：向上弹出。20260918 修裁切——渲染到 body 的独立浮层（fixed + 组件计算位置），
+   侧栏 overflow:hidden 与 224px 宽度不再裁剪 280px 菜单；位置由 App.vue placeUserMenu 写入 style。 */
+.user-menu{position:fixed;z-index:115;width:280px;max-width:calc(100vw - 24px);background:var(--paper);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow-2);padding:6px;display:flex;flex-direction:column}
 .user-menu-head{display:flex;align-items:center;gap:10px;padding:10px 10px 12px;border-bottom:1px solid var(--line);margin-bottom:6px}
 .user-menu-head strong{display:block;font-size:14px}
 .user-menu-head small{display:block;color:var(--muted);font-size:12px}

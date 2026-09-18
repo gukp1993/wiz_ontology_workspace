@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`8c8cebb686f18adb`
+上下文版本：`4bcd6ef7057ecb61`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 用户菜单裁切修复 · zcode · 已实施，待验收
+
+时间：2026-09-18T11:20:23.792670+00:00；记录：`.collaboration/entries/000009-3d836591ac4f.json`
+
+修复左下用户菜单被侧栏裁切：菜单由 .rail 内 position:absolute 改为渲染到 body 的 fixed 浮层（App.vue Teleport + placeUserMenu 按触发器矩形定位/视口收敛），侧栏 overflow:hidden 与 224px 宽度不再裁剪 280px 菜单。顺带补齐需求 §8 要求的 Esc 关闭（原实现缺失）：Esc 关闭并归还焦点到触发器。已在运行中的 18765 实测：展开/收起两种侧栏形态下菜单完整可见（280px 全宽、右缘 292/295.5 均在视口内）、点外关闭、Esc 关闭+焦点归还、菜单内「设置」正常进入设置页。未改菜单项语义与功能。
+
+- 决定：用户菜单改用 body 级 fixed 浮层（与 RowMenu 同一模式），位置由触发器矩形计算——不放开 .rail 的 overflow（那会破坏导航独立滚动）；Esc 关闭为本轮补的功能缺口：菜单原只支持上下键/Home/End/Tab，需求 §8「菜单支持方向键与 Esc」要求补齐
+- 验证：18765 实测：菜单 rect 280px 完整可见、位于 body、position:fixed；展开态右缘 292 与收起态 295.5 均在视口内；Esc 关闭 + 焦点归还触发器（真实键盘事件）；点外关闭；菜单「设置」进入 #settings-models 且菜单关闭；npm run typecheck 与 npm run build 通过；global_settings_nav 测试补 ⑦ 用例锁定位计算与 Esc 行为：7/7 通过；全量前端套件 20/21：唯一败 mapping_forms 为既有基线失败（与本轮无关，未修）
+- 下一步：用户复核视觉效果；mapping_forms 既有失败仍待其负责人处理
+- 依据/文档：frontend/src/App.vue；frontend/src/style.css；tests/global_settings_nav.test.mjs
 
 ### 本体列表统一设计-v1 · zcode · 已实施，待验收
 

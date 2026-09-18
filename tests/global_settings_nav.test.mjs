@@ -159,6 +159,32 @@ try {
     assert.equal(a.onGlobalView.value, true)
     assert.equal(a.saveState.value.text, '设置')
   })
+  // ⑦ 用户菜单（20260918 修裁切）：菜单渲染到 body 浮层、定位按视口收敛、Esc 关闭并归还焦点
+  await check('⑦ 用户菜单浮层定位与 Esc 关闭', async () => {
+    const s = server()
+    globalThis.fetch = s
+    const { Component, api } = await loadApp()
+    const inst = createSSRApp(Component, {})
+    await renderToString(inst)
+    const a = api()
+    // 触发器贴近右下：菜单应右对齐收敛在视口内、向上弹出（不越过视口顶部）
+    const trigger = { getBoundingClientRect: () => ({ left: 120, right: 220, top: 800, bottom: 840 }) }
+    a.userMenuTrigger.value = trigger
+    a.userMenuCard.value = { offsetWidth: 280, offsetHeight: 180, querySelector: () => null }
+    globalThis.innerWidth = 1440
+    globalThis.innerHeight = 900
+    a.userMenuOpen.value = true
+    a.placeUserMenu()
+    const style = a.userMenuStyle.value
+    assert.equal(style.left, '120px', '左边缘取触发器左缘（视口内不收敛）')
+    assert.equal(style.top, '612px', '向上弹出：顶部 = 触发器顶 - 高度 - 间距')
+    // Esc：关闭并把焦点还给触发器
+    const focused = []
+    a.userMenuTrigger.value = { ...trigger, focus: () => focused.push('trigger') }
+    a.userMenuKeydown({ key: 'Escape', preventDefault() {}, currentTarget: { querySelectorAll: () => [] } })
+    assert.equal(a.userMenuOpen.value, false, 'Esc 必须关闭菜单')
+    assert.deepEqual(focused, ['trigger'], 'Esc 关闭后焦点回到触发器')
+  })
 } finally {
   rmSync(root, { recursive: true, force: true })
 }

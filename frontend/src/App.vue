@@ -261,12 +261,29 @@ const railMini = ref(localStorage.getItem('wiz-rail-mini') === '1')
 const userMenuOpen = ref(false)
 const userMenuWrap = ref<HTMLElement | null>(null)
 const userMenuTrigger = ref<HTMLButtonElement | null>(null)
+// 20260918 修复：菜单渲染到 body（Teleport）——侧栏 overflow:hidden 会把 280px 菜单裁到 224px 边界，
+// 出现右侧缺边/文字截断。定位由触发器矩形计算（向上弹出），不再受侧栏裁剪。
+const userMenuCard = ref<HTMLElement | null>(null)
+const userMenuStyle = ref<Record<string, string>>({})
 const userName = '本地用户' // 当前无应用账户 API；数据库连接用户名不能当登录用户
 const hasAuthSession = false // 无认证服务：退出登录禁用并说明（接入认证后启用同一菜单项）
+function placeUserMenu() {
+  const el = userMenuTrigger.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  const width = userMenuCard.value?.offsetWidth || 280
+  const height = userMenuCard.value?.offsetHeight || 180
+  const left = Math.max(8, Math.min(window.innerWidth - width - 8, r.left))
+  const top = Math.max(8, r.top - height - 8)
+  userMenuStyle.value = { left: left + 'px', top: top + 'px' }
+}
 function toggleUserMenu() {
   if (userMenuOpen.value) { closeUserMenu(true); return }
   userMenuOpen.value = true
-  void nextTick(() => userMenuWrap.value?.querySelector<HTMLElement>('[role="menuitem"]')?.focus())
+  void nextTick(() => {
+    placeUserMenu()
+    userMenuCard.value?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus()
+  })
 }
 function closeUserMenu(refocus = false) {
   if (!userMenuOpen.value) return
@@ -274,7 +291,9 @@ function closeUserMenu(refocus = false) {
   if (refocus) userMenuTrigger.value?.focus()
 }
 function userMenuKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') { e.preventDefault(); closeUserMenu(true); return }
   const items = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')]
+  if (!items.length) return
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault()
     const i = items.indexOf(document.activeElement as HTMLElement)
@@ -283,7 +302,14 @@ function userMenuKeydown(e: KeyboardEvent) {
   else if (e.key === 'End') { e.preventDefault(); items[items.length - 1]?.focus() }
   else if (e.key === 'Tab') closeUserMenu(false)
 }
-function onDocClickUserMenu(e: MouseEvent) { if (userMenuOpen.value && !userMenuWrap.value?.contains(e.target as Node)) closeUserMenu(false) }
+function onDocClickUserMenu(e: MouseEvent) {
+  if (!userMenuOpen.value) return
+  const t = e.target as Node
+  if (userMenuWrap.value?.contains(t) || userMenuCard.value?.contains(t)) return
+  closeUserMenu(false)
+}
+// 视口变化：重新计算浮层位置（触发器固定在侧栏底部，只需跟随窗口宽度收敛）
+function onUserMenuViewport() { if (userMenuOpen.value) placeUserMenu() }
 // 进入设置：记录返回来源（进入前的 view）；已在设置内再次进入不覆盖最初来源
 const settingsReturn = ref<{ view: string; node?: string; tab?: string } | null>(null)
 async function openSettings(fromView?: string) {
@@ -758,6 +784,7 @@ function unloadGuard(e: BeforeUnloadEvent) { if (dirtyGuards().length) { e.preve
 onMounted(async () => {
   bindGlobals()
   document.addEventListener('click', onDocClickUserMenu)
+  window.addEventListener('resize', onUserMenuViewport)
   await loadOntologyData()
   normalizeLanding()
   booting.value = false
@@ -828,7 +855,7 @@ async function settleInitialView() {
   if (view.value === 'o-release') { await loadVersionList(); await loadReleases(); await checkWorkflow() }
   if (view.value === 'p-release') await validateProject(false)
 }
-onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.removeEventListener('hashchange', hashChanged); window.removeEventListener('beforeunload', unloadGuard); document.removeEventListener('click', onDocClickUserMenu) })
+onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.removeEventListener('hashchange', hashChanged); window.removeEventListener('beforeunload', unloadGuard); window.removeEventListener('resize', onUserMenuViewport); document.removeEventListener('click', onDocClickUserMenu) })
 onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.removeEventListener('hashchange', hashChanged); window.removeEventListener('beforeunload', unloadGuard) })
 </script>
 
@@ -872,14 +899,16 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
       <span class="user-avatar" aria-hidden="true">{{ userName.slice(0, 1) }}</span>
       <span v-if="!railMini||onGlobalView" class="user-name">{{ userName }}</span>
     </button>
-    <div v-if="userMenuOpen" id="user-menu" class="user-menu" role="menu" aria-label="用户菜单" @keydown="userMenuKeydown">
-      <div class="user-menu-head">
-        <span class="user-avatar" aria-hidden="true">{{ userName.slice(0, 1) }}</span>
-        <span><strong>{{ userName }}</strong><small>当前工作台</small></span>
+    <Teleport to="body">
+      <div v-if="userMenuOpen" id="user-menu" ref="userMenuCard" class="user-menu" role="menu" aria-label="用户菜单" :style="userMenuStyle" @keydown="userMenuKeydown">
+        <div class="user-menu-head">
+          <span class="user-avatar" aria-hidden="true">{{ userName.slice(0, 1) }}</span>
+          <span><strong>{{ userName }}</strong><small>当前工作台</small></span>
+        </div>
+        <button type="button" role="menuitem" @click="openSettings()"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons['user-settings']||navIcons._default"/></svg>设置</button>
+        <button type="button" role="menuitem" :disabled="!hasAuthSession" :title="hasAuthSession?undefined:'当前为本地模式，无登录会话'" @click="logoutClick"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons['user-logout']||navIcons._default"/></svg>退出登录<small v-if="!hasAuthSession" class="user-menu-note">未登录</small></button>
       </div>
-      <button type="button" role="menuitem" @click="openSettings()"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons['user-settings']||navIcons._default"/></svg>设置</button>
-      <button type="button" role="menuitem" :disabled="!hasAuthSession" :title="hasAuthSession?undefined:'当前为本地模式，无登录会话'" @click="logoutClick"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons['user-logout']||navIcons._default"/></svg>退出登录<small v-if="!hasAuthSession" class="user-menu-note">未登录</small></button>
-    </div>
+    </Teleport>
   </div>
   <button type="button" class="rail-gear" :title="'设置'" aria-label="设置" @click="openSettings()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons.settings||navIcons._default"/></svg></button>
 </div>
