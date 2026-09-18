@@ -18,6 +18,7 @@ import AppSelect from '../shared/AppSelect.vue'
 import {isQueryRule,isReusableRule,ruleInputErrors} from './queryRules'
 import {scanSqlParams,inlineSqlErrors,effectiveParams,blankInlineSql} from './inlineSql'
 import {isCalcFunction,calcRangeOk,calcConstantOk,CALC_TYPE_NAMES} from './calcFunction'
+import {listFlows,loadFlowStateRaw} from '../flow/api'
 import {redisSourcesOf,sourceById,commitProperty,propertyView,tableCatalog,tableOptions,fieldOptions,catalogOf,keyTokens,refreshCatalogOf,TIMESTAMP_ENCODINGS,mysqlConnectionsOf,redisConnectionsOf,identityTableOf,databaseSummary,propertyLocalIssues,bindingIdentityOf,registeredInstancesOf} from './bindingModel'
 import SourcePreview from './SourcePreview.vue'
 import {localProperties,effectiveProperty,valueShapeOf,propertyTypeLabel,signatureDataType,dataTypeLabel} from '../ontology/propertyModel'
@@ -98,10 +99,39 @@ function typeNameOf(id:string){const t=graph.value.find((n:any)=>n['@id']==='mg:
 
 // ---------- 列表态：来源可读摘要 + 状态（本地推导 + 项目校验 report 兜底） ----------
 function viewOf(api:string):any{return propertyView(props.b,api)}
+// ---------- 函数编排：列表（摘要/存在性校验）与详情缓存（输出/输入声明） ----------
+// 编排是独立第三工作区：这里只读引用 flowId，不复制编排内容进项目状态。
+const flowsList=ref<any[]>([]),flowsLoading=ref(false),flowsError=ref('')
+const flowStates=ref<Record<string,any>>({})
+const flowStateLoading=ref('')
+async function loadFlows(){
+  flowsLoading.value=true;flowsError.value=''
+  try{const r=await listFlows();flowsList.value=r?.items||[]}
+  catch(e:any){flowsError.value=String(e?.message||e||'编排列表加载失败')}
+  finally{flowsLoading.value=false}
+  // 已配置属性引用的编排：补齐详情缓存（列表态摘要与校验需要输出/输入声明）
+  for(const p of properties.value){const v=viewOf(key(p));if(v?.kind==='flow')ensureFlowState(String(v.flow||''))}
+}
+async function ensureFlowState(flowId:string){
+  if(!flowId||flowStates.value[flowId])return
+  flowStateLoading.value=flowId
+  try{const r=await loadFlowStateRaw(flowId);flowStates.value={...flowStates.value,[flowId]:r?.state||null}}
+  catch{flowStates.value={...flowStates.value,[flowId]:null}}
+  finally{if(flowStateLoading.value===flowId)flowStateLoading.value=''}
+}
+loadFlows()
+const flowOptions=computed(()=>flowsList.value.filter((f:any)=>f.status!=='deleted').map((f:any)=>({value:f.id,label:(f.name||f.id)+(f.errorCount?'（配置检查 '+f.errorCount+' 项未通过）':'')})))
+function flowNameOf(flowId:string){const m=flowsList.value.find((f:any)=>f.id===flowId);return m?.name||flowId||'未选择编排'}
+function flowOutputName(flowId:string,outputId:string){const st=flowStates.value[flowId];const o=(st?.outputs||[]).find((x:any)=>String(x?.id)===String(outputId));return o?(o.label||o.name||o.id):''}
+function flowSummary(v:any):string{
+  const out=flowOutputName(String(v.flow||''),String(v.output||''))
+  return '函数编排 · '+flowNameOf(String(v.flow||''))+(out?' · '+out:'')
+}
 // 当前配置沿用来源摘要（不带种类前缀）
 function summaryOf(v:any):string{
   if(!v)return ''
   if(v.kind==='unknown')return '当前版本未识别的来源结构，已原样保留'
+  if(v.kind==='flow')return flowSummary(v).replace(/^函数编排 · /,'')
   if(v.kind==='computed'&&(v.mode==='inline'||v.mode==='inlineSql'))return '直接 SQL · '+connName(String((v.inline||v.inlineSql||{}).connection||''))
   if(v.kind==='computed'&&v.mode==='function'){const fn=implOf(String(v.implementation||''));return '计算函数 · '+(fn?.name||v.implementation)}
   if(v.kind==='database')return connName(String(v.connection||''))+' · '+(v.table||'未选表')+(v.result?.valueField?' · 值字段 '+v.result.valueField:'')
@@ -121,6 +151,7 @@ function aggregateSummary(v:any):string{
 function listSummary(v:any):string{
   if(!v)return '尚未配置'
   if(v.kind==='unknown')return '当前版本未识别的来源结构，已原样保留'
+  if(v.kind==='flow')return flowSummary(v)
   if(v.kind==='computed'&&(v.mode==='inline'||v.mode==='inlineSql'))return '直接 SQL · '+connName(String((v.inline||v.inlineSql||{}).connection||''))
   if(v.kind==='computed'&&v.mode==='function'){const fn=implOf(String(v.implementation||''));return '计算函数 · '+(fn?.name||v.implementation)}
   if(v.kind==='database')return '数据库 '+connName(String(v.connection||''))+' · '+(v.table||'未选表')+(v.result?.valueField?' · '+v.result.valueField:'')+(v.result?.timestampField?' + '+v.result.timestampField:'')
@@ -164,6 +195,54 @@ function extraIssuesOf(api:string,v:any,shape:'scalar'|'timeSeries'):string[]{
     if(!['double','decimal','integer'].includes(rangeOf(ownProp)))out.push('聚合目标属性必须为数值类型')
     if(!String(v.relation||'').trim())out.push('请选择关联链接')
     if(!String(v.property||'').trim())out.push('请选择成员属性')
+    return out
+  }
+  if(v?.kind==='flow'){
+    // 函数编排取值：存在性看编排列表；输出/输入结构校验需编排详情（配置态已加载）。
+    // 列表态详情未加载时只做存在性校验，权威校验以后端 project_validation 为准。
+    const flowId=String(v.flow||'')
+    if(!flowId){out.push('请选择函数编排');return out}
+    if(flowsList.value.length&&!flowsList.value.some((f:any)=>f.id===flowId&&f.status!=='deleted')){
+      out.push('引用的函数编排不存在或已删除');return out
+    }
+    const st=flowStates.value[flowId]
+    if(!st)return out
+    const declaredOuts=(st.outputs||[]).filter((o:any)=>o&&typeof o==='object')
+    const selOut=declaredOuts.find((o:any)=>String(o.id)===String(v.output||''))
+    if(!String(v.output||''))out.push('请选择编排输出')
+    else if(!selOut)out.push('编排输出不存在，请重新选择（编排签名可能已修改）')
+    else{
+      const ot=String(selOut.type?.type||'')
+      if(ot==='object'||ot==='list')out.push('编排输出为对象/列表，不能绑定属性')
+      else if(shape==='timeSeries')out.push('函数编排输出为单值，不能绑定时间序列属性')
+      else if(!(FLOW_RANGE_COMPAT[ot]||[]).includes(rangeOf(ownProp)))out.push('编排输出类型与属性数据类型不匹配')
+    }
+    const declaredIns=(st.inputs||[]).filter((i:any)=>i&&typeof i==='object')
+    const entries=v.inputs&&typeof v.inputs==='object'?v.inputs:{}
+    for(const inp of declaredIns){
+      const nm=inp.label||inp.name||inp.id
+      const it=String(inp.type?.type||'')
+      const entry=entries[inp.id]
+      if(!entry||typeof entry!=='object'){out.push(`编排输入「${nm}」未绑定取值`);continue}
+      if(entry.from==='property'){
+        const ref=String(entry.property||'')
+        if(!ref){out.push(`编排输入「${nm}」未选择属性`);continue}
+        if(ref===api){out.push('取值配置存在循环依赖');continue}
+        const refProp=properties.value.find((x:any)=>key(x)===ref)
+        if(!refProp){out.push(`编排输入「${nm}」引用的属性不存在`);continue}
+        if(valueShapeOf(refProp,graph.value)==='timeSeries'){out.push(`编排输入「${nm}」引用的属性「${label(refProp)}」是时间序列，不能作为输入`);continue}
+        const rr=String(effectiveProperty(refProp,graph.value)?.['rdfs:range']?.['@id']||'').replace('xsd:','')
+        if(!(FLOW_RANGE_COMPAT[it]||[]).includes(rr))out.push(`编排输入「${nm}」引用的属性「${label(refProp)}」数据类型不匹配`)
+      }else if(entry.from==='constant'){
+        if(!flowConstantOk(it,entry.value))out.push(`编排输入「${nm}」的固定值无效`)
+      }else if(entry.from==='instanceId'){
+        if(it!=='text')out.push(`编排输入「${nm}」不是文本类型，不能绑定实例编号`)
+        else if(identityMode.value!=='registered'&&!String(props.b?.primary_key||'').trim())out.push('当前对象未配置实例身份，不能绑定实例编号')
+      }else out.push(`编排输入「${nm}」的绑定来源无效`)
+    }
+    for(const inputId of Object.keys(entries))if(!declaredIns.some((i:any)=>String(i.id)===inputId))
+      out.push(`编排不存在输入 ${inputId}，请重新绑定（编排签名可能已修改）`)
+    if(calcCycleExists(api,v))out.push('取值配置存在循环依赖')
     return out
   }
   if(v?.kind==='computed'&&(v.mode==='inline'||v.mode==='inlineSql')){
@@ -296,15 +375,10 @@ function openEditor(api:string){
       d.connection=src?src.connection:String(props.b.connection||'')
       d.table=src?src.table:String(props.b.table||'')
     }
-    if(v.kind==='computed'&&(v as any).mode==='function'){
-      draft.value={kind:'computed',mode:'function',inline:blankInlineSql(),implementation:d.implementation,output:d.output,...(d.inputs!==undefined?{inputs:d.inputs}:{})}
-    }else if(v.kind==='computed'&&(v as any).mode==='inlineSql'){
-      // 内联 SQL 原文与绑定进草稿；规则侧字段置空（两种方式切换互不覆盖，保存只落一种）。
-      draft.value={kind:'computed',mode:'inline',inline:{...d.inlineSql},implementation:'',output:''}
-    }else if(v.kind==='computed'){
-      draft.value={kind:'computed',mode:'rule',inline:blankInlineSql(),implementation:d.implementation,output:d.output,...(d.inputs!==undefined?{inputs:d.inputs}:{})}
-    }else draft.value=d
+    // 其余 kind 原样进草稿：flow 走函数编排表单；旧 computed 配置只读展示（见模板分支）。
+    draft.value=d
   }
+  if(draft.value?.kind==='flow'&&draft.value.flow)ensureFlowState(String(draft.value.flow))
   baseline.value=normalizeDraft(draft.value)
   configuring.value=true
 }
@@ -320,10 +394,10 @@ const guard={isDirty:()=>draftDirty.value,discard:()=>closeEditor()}
 watch(configuring,open=>{emit('edit-state',open);open?formGuard?.register(guard):formGuard?.unregister(guard)},{immediate:true})
 onBeforeUnmount(()=>formGuard?.unregister(guard))
 defineExpose({dirty:()=>draftDirty.value,discard:closeEditor})
-// 取值方式与连接引擎分开：读取数据源 / 调用函数。
+// 取值方式与连接引擎分开：读取数据源 / 函数编排。
 const sourceCards=computed(()=>{const out=[
   {value:'data',title:'读取数据源',desc:'选择连接，读取表字段或 Redis 值'},
-  {value:'computed',title:'调用取值规则 / 函数',desc:'直接编写 SQL，或引用项目取值规则与原有实现'}]
+  {value:'flow',title:'函数编排',desc:'选择已编排的计算函数，绑定输入后作为属性取值'}]
   if(identityMode.value==='registered'){
     out.push({value:'registered',title:'登记信息',desc:'读取本对象登记实例的编号或显示名称'})
   }
@@ -332,7 +406,7 @@ function pickCardRaw(v:string){
   if(v==='registered'){draft.value={kind:'registered',field:'label'};return}
   pickCard(v)
 }
-const topKind=computed(()=>{const d=draft.value;if(!d||d.kind==='none')return '';if(d.kind==='computed')return 'computed';if(d.kind==='registered')return 'registered';if(d.kind==='aggregate')return 'aggregate';return 'data'})
+const topKind=computed(()=>{const d=draft.value;if(!d||d.kind==='none')return '';if(d.kind==='flow')return 'flow';if(d.kind==='computed')return 'legacy';if(d.kind==='registered')return 'registered';if(d.kind==='aggregate')return 'aggregate';return 'data'})
 function pickCard(v:string){if(v!==topKind.value)switchKind(v==='data'?'db':v)}
 const dataConnectionOptions=computed(()=>[
   {value:'',label:'请选择数据连接'},
@@ -354,7 +428,7 @@ function dataConnectionChanged(v:string){
 function switchKind(v:string){
   if(v==='')draft.value={kind:'none'}
   else if(v==='redis')draft.value={kind:'redis',source:'',connection:'',command:'GET',key:'',params:{},hashField:'',conversion:defaultConversion(),missing:'null'}
-  else if(v==='computed')draft.value={kind:'computed',mode:'inline',inline:blankInlineSql(),implementation:'',output:''}  // 新配置默认直接 SQL
+  else if(v==='flow')draft.value={kind:'flow',flow:'',output:'',inputs:{}}  // 新配置：函数编排
   else draft.value=freshDbDraft()
 }
 // ---------- 数据库路径（连接联动选表）：连接 → 目录搜索选任意表 ＋ 快捷使用实例来源表 ----------
@@ -435,8 +509,7 @@ function paramModel(token:string):string{const v=draft.value?.params?.[token];if
 function setParam(token:string,value:string){const d:any=draft.value;if(!d)return;if(!d.params)d.params={};if(!value)delete d.params[token];else if(value==='primary')d.params[token]={from:'primary'};else if(value.startsWith('idfield:'))d.params[token]={from:'identityField',field:value.slice(8)};else d.params[token]={from:'property',property:value.slice(5)}}
 const previewKey=computed(()=>{const d:any=draft.value;if(!d||d.kind!=='redis')return '';const sample=String(samplePrimary.value||'').trim()||'123';return String(d.key||'').replace(/\{([^{}\s]+)\}/g,(m,t)=>{const v=d.params?.[t];return v?.from==='primary'?sample:v?.from==='identityField'?'身份字段值':v?.from==='property'?'属性值':m})})
 // ---------- 计算函数：展示实现输入绑定并选择输出 ----------
-const computedShapeMismatch=computed(()=>{const d:any=draft.value;if(!d||d.kind!=='computed'||!d.implementation||!d.output)return false;return declaredShapeOf(d.implementation,d.output)!==draftShape.value})
-const saveDisabled=computed(()=>computedShapeMismatch.value||draft.value?.kind==='aggregate')
+const saveDisabled=computed(()=>draft.value?.kind==='aggregate'||draft.value?.kind==='computed')
 const needTimestamp=computed(()=>{const d:any=draft.value;if(!d||d.kind!=='database')return false;return draftShape.value==='timeSeries'||d.result?.selection==='latest'})
 function bindingRefText(input:any){
   const r=input?.ref
@@ -507,6 +580,9 @@ function calcDepsOf(q:string,editingApi:string,editingView:any):string[]{
   if(view?.kind==='computed'&&view.mode==='function'){
     return Object.values(view.inputs||{}).filter((e:any)=>e?.from==='property').map((e:any)=>String(e.property))
   }
+  if(view?.kind==='flow'){
+    return Object.values(view.inputs||{}).filter((e:any)=>e?.from==='property').map((e:any)=>String(e.property))
+  }
   return []
 }
 function calcCycleExists(api:string,editingView:any):boolean{
@@ -538,6 +614,49 @@ function fnPropertyOptions(calcType:string){
     if(valueShapeOf(p,graph.value)==='timeSeries')return false
     const range=String(effectiveProperty(p,graph.value)?.['rdfs:range']?.['@id']||'').replace('xsd:','')
     return calcRangeOk(calcType,range)
+  }).map((p:any)=>({value:key(p),label:label(p)+' · '+typeName(p)}))
+}
+// ---------- 函数编排：类型兼容、输出/输入选项与绑定读写 ----------
+// flow 类型 → 本体属性 xsd range（与后端 project_validation._FLOW_RANGE_COMPAT 镜像）。
+const FLOW_RANGE_COMPAT:Record<string,string[]>={number:['double','decimal','integer'],text:['string'],boolean:['boolean'],datetime:['dateTime']}
+const FLOW_TYPE_LABELS:Record<string,string>={text:'文本',number:'数值',boolean:'是/否',datetime:'日期时间',object:'对象',list:'列表'}
+function flowTypeLabel(t:any):string{return FLOW_TYPE_LABELS[String(t?.type||'')]||String(t?.type||'未知')}
+function flowConstantOk(t:string,value:any):boolean{
+  if(value===undefined||value===null)return false
+  if(t==='number'){if(typeof value==='boolean')return false;const s=String(value).trim();return s!==''&&Number.isFinite(Number(s))}
+  if(t==='boolean')return value===true||value===false||value==='true'||value==='false'
+  if(t==='datetime')return String(value).trim()!==''
+  return true  // text：0、false、明确的空字符串都是有效值
+}
+const selectedFlow=computed(()=>{const d:any=draft.value;return d?.kind==='flow'?flowStates.value[String(d.flow||'')]:null})
+const flowInputs=computed(()=>Array.isArray(selectedFlow.value?.inputs)?selectedFlow.value.inputs.filter((i:any)=>i&&typeof i==='object'):[])
+const flowOutputOptions=computed(()=>{
+  const outs=Array.isArray(selectedFlow.value?.outputs)?selectedFlow.value.outputs.filter((o:any)=>o&&typeof o==='object'):[]
+  return outs.map((o:any)=>({value:String(o.id||''),label:(o.label||o.name||o.id)+' · '+flowTypeLabel(o.type),disabled:['object','list'].includes(String(o.type?.type||''))}))
+})
+async function selectFlow(id:string){
+  const d:any=draft.value;if(!d||d.kind!=='flow')return
+  d.flow=id;d.output='';d.inputs={}
+  if(id)await ensureFlowState(id)
+  // 单输出且可绑定时自动选用（对象/列表输出不自动选）
+  const outs=(flowStates.value[id]?.outputs||[]).filter((o:any)=>o&&typeof o==='object'&&!['object','list'].includes(String(o.type?.type||'')))
+  if(outs.length===1)d.output=String(outs[0].id||'')
+}
+function flowBindingOf(inputId:string){const d:any=draft.value;return d?.inputs?.[inputId]}
+function setFlowBinding(inp:any,kind:string){
+  const d:any=draft.value;if(!d.inputs)d.inputs={}
+  if(!kind)delete d.inputs[inp.id]
+  else if(kind==='property')d.inputs[inp.id]={from:'property',property:''}
+  else if(kind==='constant')d.inputs[inp.id]={from:'constant',value:''}
+  else d.inputs[inp.id]={from:'instanceId'}
+}
+function flowPropertyOptions(flowType:string){
+  const allowed=FLOW_RANGE_COMPAT[flowType]||[]
+  return properties.value.filter((p:any)=>{
+    const api=key(p);if(api===selectedApi.value)return false
+    if(valueShapeOf(p,graph.value)==='timeSeries')return false
+    const range=String(effectiveProperty(p,graph.value)?.['rdfs:range']?.['@id']||'').replace('xsd:','')
+    return allowed.includes(range)
   }).map((p:any)=>({value:key(p),label:label(p)+' · '+typeName(p)}))
 }
 const ruleValueTypeMismatch=computed(()=>{
@@ -601,8 +720,7 @@ function formSectionIssues(n:number):string[]{
     }else if(d.kind==='redis'){
       if(draftShape.value==='timeSeries')out.push('普通 Redis GET／HGET 标量读取不能返回时间序列，请选择数据库取值或兼容的函数输出')
       if(!d.connection&&!d.source)out.push('请选择 Redis 连接或已登记 Redis 来源')
-    }else if(d.kind==='computed'&&d.mode!=='inline'&&!d.implementation)out.push('请选择一个已有项目实现')
-    else if(d.kind==='computed'&&d.mode==='inline'&&!String(d.inline?.connection||'').trim())out.push('请选择数据连接')
+    }else if(d.kind==='flow'&&!String(d.flow||'').trim())out.push('请选择函数编排')
     return out
   }
   if(n===2){
@@ -643,7 +761,7 @@ function formSectionIssues(n:number):string[]{
       if(!String(r.timestampField||'').trim())out.push('按时间取最新必须指定时间字段')
       if(!r.timestampEncoding)out.push('按时间取最新必须选择时间戳编码')
     }
-  }else if(d.kind==='computed'&&d.mode!=='inline'&&!String(d.output||'').trim())out.push('请选择该实现的具体输出')
+  }else if(d.kind==='flow'&&!String(d.output||'').trim())out.push('请选择编排输出')
   return out
 }
 // ---------- 目录刷新：捕获当时连接，await 后连接已变则放弃本次结果 ----------
@@ -661,6 +779,7 @@ async function refresh(){
 const advancedNote=computed(()=>{
   const d:any=draft.value;if(!d||d.kind==='none'||d.kind==='unknown')return ''
   if(d.kind==='redis')return 'Key 未找到或转换失败时按「未找到或转换失败」策略处理，缺失不静默变为 0。'
+  if(d.kind==='flow')return '函数编排取值仅做配置校验（编排存在、输出类型匹配、输入绑定齐全）；「配置校验通过」不代表已执行验证。'
   if(d.kind==='computed')return d.mode==='inline'?'内联 SQL 只做配置校验（连接、单条 SELECT、参数绑定）；配置检查通过不代表 SQL 验证成功，模板不会被执行。':'函数输出仅做结构与形态校验，「配置校验通过」不代表已执行验证。'
   return draftShape.value==='timeSeries'
     ?'时间序列：无记录=空列表；观测值缺失保留 null（不补零）；无效时标或转换失败报错。'
@@ -692,11 +811,11 @@ async function saveDraft(){
   if(r.ok)closeEditor()
   else editError.value='保存未完成：'+r.message+'。表单内容已保留，可重试保存或取消。'
 }
-// 跳「计算实现」维护实现：草稿入模块缓存后静默关闭（不经离开确认），返回本页签自动恢复。
-function goImplements(){
+// 跳「函数编排」工作区维护编排：草稿入模块缓存后静默关闭（不经离开确认），返回本页签自动恢复。
+function goFlows(){
   if(draft.value&&selectedApi.value)psStash(props.b.object_type,selectedApi.value,draft.value,baseline.value)
   closeEditor()
-  location.hash='#implements'
+  location.hash='#flows'
 }
 // 返回恢复：挂载时检查模块缓存中是否有本对象的待恢复表单草稿。
 if(psPendingOf(props.b.object_type)){
@@ -715,7 +834,7 @@ if(psPendingOf(props.b.object_type)){
 <!-- ========== 列表态（默认）：属性清单 ========== -->
 <div v-if="!configuring">
 <p class="ps-lede">每个属性配置一种生效来源</p>
-<p class="fill-hint">支持读取数据源或调用函数。点「配置／修改」在同一页完成填写并保存。列表状态仅代表配置校验，未执行取值验证。</p>
+<p class="fill-hint">支持读取数据源或函数编排。点「配置／修改」在同一页完成填写并保存。列表状态仅代表配置校验，未执行取值验证。</p>
 <div class="scroll"><table class="source-table ps-table">
 <thead><tr><th style="width:32%">属性</th><th style="width:37%">来源</th><th style="width:19%">状态</th><th style="width:12%">操作</th></tr></thead>
 <tbody>
@@ -779,55 +898,38 @@ if(psPendingOf(props.b.object_type)){
 </div>
 <p v-if="draftShape==='timeSeries'" class="inline-error">普通 GET／HGET 标量不能作为时间序列，请选择数据库取值或兼容的函数输出。</p>
 </template>
+
 <template v-else-if="draft.kind==='computed'">
-<div class="row">
-<label>取值方式 *<AppSelect :model-value="draft.mode" aria-label="取值方式" :options="[{value:'inline',label:'直接编写 SQL'},{value:'rule',label:'引用已有规则'},{value:'function',label:'计算函数'}]" @update:model-value="draft.mode=$event"/><small class="field-help">直接 SQL 是当前属性的匿名取值配置，不起规则名、不进规则库；复杂、可复用、多步骤查询请引用已有规则。切换只改本地草稿，两边未保存内容各自保留。</small></label>
-</div>
-<template v-if="draft.mode==='rule'">
-<div class="row">
-<label>项目取值规则 / 实现 *<AppSelect :model-value="draft.implementation||''" aria-label="项目实现" searchable :options="[{value:'',label:'请选择已有实现'},...implOptions]" @update:model-value="selectImplementation($event)"/><small class="field-help">引用已存在的项目实现；规则在「取值规则库」页维护，在下方选择具体输出。</small></label>
-</div>
-<div class="tools"><button @click="goImplements">前往取值规则库 →</button></div>
-<p v-if="!implOptions.length" class="field-help">当前项目还没有取值规则或计算实现；可先去维护，返回后草稿保留。</p>
-<p v-else class="field-help">无可用实现时可先去维护；离开前草稿会保留，返回本页签自动恢复。</p>
+<!-- 旧「调用取值规则 / 函数」配置（直接 SQL／引用规则／计算函数）：只读兼容，新建入口已替换为函数编排。 -->
+<p class="inline-warning">此属性保留了旧的取值规则／函数配置，当前仅供查看。请切换到「函数编排」卡片配置新的来源。</p>
+<p class="field-help">当前配置：{{summaryOf(viewOf(selectedApi))||'（结构已无法识别）'}}。切换后点击保存才替换原配置；不切换直接关闭则原配置保持不变。</p>
 </template>
-<template v-else-if="draft.mode==='inline'">
+<template v-else-if="draft.kind==='flow'">
 <div class="row">
-<label>数据连接 *<AppSelect :model-value="draft.inline?.connection||''" aria-label="内联 SQL 数据连接" searchable :options="[{value:'',label:'请选择数据连接'},...mysqlConnectionsOf(projectState).map(c=>({value:c.value,label:c.label}))]" @update:model-value="draft.inline&&(draft.inline.connection=$event)"/></label>
+<label>函数编排 *<AppSelect :model-value="draft.flow||''" aria-label="函数编排" searchable :options="[{value:'',label:flowsLoading?'加载中…':(flowOptions.length?'请选择函数编排':'还没有函数编排')},...flowOptions]" @update:model-value="selectFlow($event)"/><small class="field-help">编排在「函数编排」工作区维护；选中后下方按该编排的输出与输入联动展开。切换编排会清空已选的输出与输入绑定。</small></label>
 </div>
-<label>SQL 模板 *<textarea v-model="draft.inline.sql" class="inline-sql-editor" aria-label="内联 SQL 模板" spellcheck="false" rows="8" placeholder="SELECT SUM(rated_power) AS value&#10;FROM m_storage_phase&#10;WHERE park_id_column = :park_id;"></textarea>
-<small class="field-help">单条 SELECT 模板，JOIN、聚合、表达式、子查询可写在 SELECT 内；用 <code>:参数名</code> 占位并在下方绑定。不支持 WITH、多语句、动态表名／字段名与步骤引用——需要时请改用「引用已有规则」。</small></label>
-<div v-if="inlineParams.length">
-<p class="field-help">识别到 {{inlineParams.length}} 个参数（字符串、注释内的冒号不参与；重复占位只显示一行）。SQL 改动后仍存在的绑定会保留，新增参数显示待绑定。</p>
-<div v-for="name in inlineParams" :key="name" class="row">
-<label>参数 {{ '{'+name+'}' }} 来源<AppSelect :model-value="inlineBindingKind(name)" :aria-label="'参数 '+name+' 来源'" :options="inlineBindingOptions" @update:model-value="setInlineBinding(name,$event)"/></label>
-<template v-if="inlineBindingKind(name)==='constant'">
-<label>数据类型<AppSelect :model-value="inlineBindingOf(name)?.dataType||'string'" :aria-label="'参数 '+name+' 常量类型'" :options="constTypes" @update:model-value="inlineBindingOf(name).dataType=$event"/></label>
-<label>常量值 *<input :value="inlineBindingOf(name)?.value??''" :aria-label="'参数 '+name+' 常量值'" @input="inlineBindingOf(name).value=($event.target as HTMLInputElement).value"><small class="field-help">明确填写的 0、false、空字符串都是有效值。</small></label>
-</template>
-<label v-else-if="inlineBindingKind(name)==='projectParameter'">项目参数 *<AppSelect :model-value="inlineBindingOf(name)?.key||''" :aria-label="'参数 '+name+' 项目参数'" searchable :options="[{value:'',label:'请选择项目参数'},...parameterOptions]" @update:model-value="inlineBindingOf(name).key=$event"/></label>
-<span v-else-if="inlineBindingKind(name)==='instanceId'" class="muted">绑定{{instanceIdLabel}}，按现有身份机制解析。</span>
-</div>
-</div>
-<p v-else class="field-help">SQL 中没有 :参数 占位，无需参数绑定。</p>
-<p class="field-help"><strong>输出约定（只读，继承属性类型）</strong>：{{inlineOutputNote}}</p>
-</template>
-<template v-else>
+<div class="tools"><button @click="goFlows">前往函数编排 →</button></div>
+<p v-if="flowsError" class="inline-warning">编排列表加载失败：{{flowsError}} <button type="button" class="ps-inline-link" @click="loadFlows">重试</button></p>
+<p v-else-if="!flowsLoading&&!flowOptions.length" class="field-help">还没有可用的函数编排；可先去创建，离开前草稿会保留，返回本页签自动恢复。</p>
+<template v-if="draft.flow">
+<p v-if="flowStateLoading===draft.flow" class="field-help">正在读取编排定义…</p>
+<template v-else-if="selectedFlow">
 <div class="row">
-<label>计算函数 *<AppSelect :model-value="isCalcFunction(fnOf(draft.implementation))?draft.implementation:''" aria-label="计算函数选择" searchable :options="[{value:'',label:calcFnOptions.length?'请选择计算函数':'还没有计算函数'},...calcFnOptions]" @update:model-value="selectImplementation($event)"/><small class="field-help">计算函数在「取值规则库」用「＋ 新建计算函数」维护。</small></label>
+<label>取值输出 *<AppSelect :model-value="draft.output||''" aria-label="编排输出" :options="[{value:'',label:'请选择编排输出'},...flowOutputOptions]" @update:model-value="draft.output=$event"/><small class="field-help">输出类型需与属性类型匹配；对象／列表输出不能绑定属性，已禁用。</small></label>
 </div>
-<p v-if="draft.implementation&&!isCalcFunction(fnOf(draft.implementation))" class="inline-warning">所选实现不是计算函数；请重新选择。</p>
-<p v-else-if="!draft.implementation" class="field-help">还没有可用的计算函数时，点「前往取值规则库」用「＋ 新建计算函数」创建；离开前草稿会保留。</p>
-<template v-if="isCalcFunction(fnOf(draft.implementation))">
-<p class="ps-info">计算函数「{{fnOf(draft.implementation)?.name}}」：绑定每个输入后保存。输出「{{fnOf(draft.implementation)?.output?.name}}」自动选用；属性、函数、输入与输出引用都使用稳定标识。<button type="button" class="ps-inline-link" @click="goImplements">前往取值规则库 →</button></p>
-<div v-for="p in fnInputs" :key="p.id" class="row">
-<label>输入 {{p.name}}（{{CALC_TYPE_NAMES[p.type]}}）<AppSelect :model-value="fnBindingOf(p.id)?.from||''" :aria-label="'函数输入 '+p.name+' 来源'" :options="[{value:'',label:'待绑定（请选择来源）'},{value:'property',label:'当前对象属性'},{value:'constant',label:'固定值'}]" @update:model-value="setFnBinding(p.id,$event)"/></label>
-<label v-if="fnBindingOf(p.id)?.from==='property'">属性<AppSelect :model-value="fnBindingOf(p.id)?.property||''" :aria-label="'函数输入 '+p.name+' 属性'" searchable :options="[{value:'',label:'请选择当前对象属性'},...fnPropertyOptions(p.type)]" @update:model-value="fnBindingOf(p.id).property=$event"/></label>
-<label v-else-if="fnBindingOf(p.id)?.from==='constant'">固定值<input :value="fnBindingOf(p.id)?.value??''" :aria-label="'函数输入 '+p.name+' 固定值'" :placeholder="p.type==='number'?'例如 100（0 是有效值）':(p.type==='boolean'?'true / false':'文本，空字符串也是有效值')" @input="fnBindingOf(p.id).value=($event.target as HTMLInputElement).value"></label>
+<p class="ps-info">函数编排「{{flowNameOf(draft.flow)}}」：绑定每个输入后保存。<button type="button" class="ps-inline-link" @click="goFlows">前往函数编排 →</button></p>
+<template v-if="flowInputs.length">
+<div v-for="inp in flowInputs" :key="inp.id" class="row">
+<label>输入 {{inp.label||inp.name||inp.id}}（{{flowTypeLabel(inp.type)}}）<AppSelect :model-value="flowBindingOf(inp.id)?.from||''" :aria-label="'编排输入 '+(inp.label||inp.name||inp.id)+' 来源'" :options="[{value:'',label:'待绑定（请选择来源）'},{value:'property',label:'当前对象属性'},{value:'constant',label:'固定值'},{value:'instanceId',label:'实例编号 · '+instanceIdLabel}]" @update:model-value="setFlowBinding(inp,$event)"/></label>
+<label v-if="flowBindingOf(inp.id)?.from==='property'">属性<AppSelect :model-value="flowBindingOf(inp.id)?.property||''" :aria-label="'编排输入 '+(inp.label||inp.name||inp.id)+' 属性'" searchable :options="[{value:'',label:'请选择当前对象属性'},...flowPropertyOptions(inp.type?.type)]" @update:model-value="flowBindingOf(inp.id).property=$event"/></label>
+<label v-else-if="flowBindingOf(inp.id)?.from==='constant'">固定值<input :value="flowBindingOf(inp.id)?.value??''" :aria-label="'编排输入 '+(inp.label||inp.name||inp.id)+' 固定值'" :placeholder="inp.type?.type==='number'?'例如 100（0 是有效值）':(inp.type?.type==='boolean'?'true / false':(inp.type?.type==='datetime'?'例如 2026-09-18T00:00:00+08:00':'文本，空字符串也是有效值'))" @input="flowBindingOf(inp.id).value=($event.target as HTMLInputElement).value"></label>
+<span v-else-if="flowBindingOf(inp.id)?.from==='instanceId'" class="muted">绑定{{instanceIdLabel}}，按现有身份机制解析。</span>
 </div>
-<p class="field-help">输入只能引用当前对象的属性（含本函数之外的取值配置）或填写固定值；存在直接或间接循环依赖时无法通过保存校验。0、false、明确的空字符串是有效固定值。</p>
-<p v-if="ruleValueTypeMismatch" class="inline-error">计算函数输出类型与属性数据类型不匹配，请选择兼容的函数或属性。</p>
+<p class="field-help">输入只能引用当前对象的属性、填写固定值或绑定实例编号；实例编号仅可绑定文本类型输入。存在直接或间接循环依赖时无法通过保存校验。</p>
 </template>
+<p v-else class="field-help">该编排没有声明输入，无需绑定。</p>
+</template>
+<p v-else class="inline-warning">编排定义读取失败或编排已被删除，请重新选择。</p>
 </template>
 </template>
 <!-- ===== 登记信息（registered）===== -->
@@ -840,11 +942,11 @@ if(psPendingOf(props.b.object_type)){
 </template>
 <!-- 历史聚合配置只读兼容，不再提供创建和编辑入口。 -->
 <template v-else-if="draft.kind==='aggregate'">
-<p class="inline-warning">此属性保留了历史聚合配置，当前仅供查看。请切换到「调用取值规则 / 函数」，使用 SQL 求和规则配置新的来源。</p>
+<p class="inline-warning">此属性保留了历史聚合配置，当前仅供查看。请切换到「函数编排」，用编排实现求和后配置新的来源。</p>
 <p class="field-help">{{aggregateSummary(draft)}}。切换后点击保存才替换原配置。</p>
 </template>
 <!-- 按来源展开定位条件；身份表无需额外填写。 -->
-<template v-if="(draft.kind==='field'&&draft.table)||(draft.kind==='database'&&draft.table)||draft.kind==='redis'||(draft.kind==='computed'&&draft.mode!=='inline'&&draft.mode!=='function'&&draft.implementation)">
+<template v-if="(draft.kind==='field'&&draft.table)||(draft.kind==='database'&&draft.table)||draft.kind==='redis'">
 <template v-if="draft.kind==='none'">
 <p class="field-help">未选择来源，无需定位记录。</p>
 </template>
@@ -904,33 +1006,10 @@ if(psPendingOf(props.b.object_type)){
 <div class="row"><label>示例实例主键<input v-model="samplePrimary" placeholder="例如 123"></label></div>
 <p class="field-help">预览 Key（仅展开模板，不读取 Redis）：{{previewKey?draft.command+' '+previewKey:'填写 Key 模板后显示预览'}}</p>
 </template>
-<template v-else-if="draft.kind==='computed'">
-<template v-if="reusableInput">
-<h3 class="ps-sub">规则输入</h3><p class="field-help">这些输入只属于当前属性绑定。同一条规则可以供其他属性使用，各自传入不同的表名与属性名。</p>
-<template v-if="declaredInputs">
-<div class="form-grid"><label v-for="p in declaredInputs.binding" :key="p.name">{{p.name}} · {{p.description||'输入参数'}} *<input :aria-label="'规则输入 '+p.name" :value="draft.inputs?.[p.name]??''" @input="setRuleInput(p.name,($event.target as HTMLInputElement).value)" placeholder="固定值，或 {id} 引用当前实例主键"></label></div>
-<p v-if="declaredInputs.runtime.length" class="field-help">查询时传入（无需在此填写）：{{declaredInputs.runtime.map((p:any)=>p.name+(p.description?'（'+p.description+'）':'')).join('、')}}。</p>
-</template>
-<div v-else class="form-grid"><label>model_name · 表名 *<input aria-label="规则输入 model_name" :value="draft.inputs?.model_name||''" @input="setRuleInput('model_name',($event.target as HTMLInputElement).value)" placeholder="m_storage_cluster_phase"></label>
-<label>attr_name · 属性名 *<input aria-label="规则输入 attr_name" :value="draft.inputs?.attr_name||''" @input="setRuleInput('attr_name',($event.target as HTMLInputElement).value)" placeholder="soc"></label>
-<label>model_id · 主键模板 *<input aria-label="规则输入 model_id" :value="draft.inputs?.model_id||''" @input="setRuleInput('model_id',($event.target as HTMLInputElement).value)" placeholder="{id}"><small class="field-help">{id} 使用当前实例主键 {{b.primary_key||'（尚未配置）'}}。</small></label></div>
-<p v-if="!declaredInputs" class="field-help">开始、结束时间由查询时传入。</p>
-</template><template v-else>
-<h3 class="ps-sub">输入按项目实现绑定（只读）</h3>
-<div v-if="implInputRows.length" class="ps-impl-inputs">
-<div v-for="row in implInputRows" :key="row.name" class="ps-impl-row">
-<div><strong>{{row.name}}</strong><small class="muted">{{row.ref}}</small></div>
-<span class="ps-impl-binding">{{row.binding}}</span>
-</div>
-</div>
-<p v-else class="field-help">所选规则或实现未声明输入。</p>
-<p class="field-help">调用时传入对象引用，实现负责解析对应的主键或资产编码；输入绑定需要在「取值规则库」页修改。<button type="button" class="ps-inline-link" @click="goImplements">前往取值规则库 →</button>离开前草稿会保留，返回本页签自动恢复。</p>
-</template>
-<p v-if="computedShapeMismatch" class="inline-error">函数输出数据类型与属性要求不匹配，请选择兼容的实现与输出。</p>
-</template>
+
 </template>
 <!-- 按目标类型展开结果字段，和来源在同一页保存。 -->
-<template v-if="(draft.kind==='field'&&draft.table)||(draft.kind==='database'&&draft.table)||draft.kind==='redis'||(draft.kind==='computed'&&draft.mode!=='inline'&&draft.mode!=='function'&&draft.implementation)">
+<template v-if="(draft.kind==='field'&&draft.table)||(draft.kind==='database'&&draft.table)||draft.kind==='redis'">
 <template v-if="draft.kind==='none'"><p class="field-help">未选择来源，无需结果映射；保存将清除该属性的来源配置。</p></template>
 <template v-else-if="draft.kind==='field'">
 <div class="row">
@@ -997,14 +1076,7 @@ if(psPendingOf(props.b.object_type)){
 </div>
 <p class="field-help">目标类型核对：属性要求「{{selectedMeta?.type}}」，转换结果为「{{conversionLabels[draft.conversion||'number']||draft.conversion}}」<template v-if="conversionMismatch">；<span class="inline-error">数值转换与目标类型不一致，请调整转换或改用其他来源</span></template>。</p>
 </template>
-<template v-else-if="draft.kind==='computed'">
-<div class="row">
-<label>实现的输出 *<AppSelect :model-value="draft.output||''" aria-label="实现输出" searchable :options="[{value:'',label:'请选择该实现的具体输出'},...outputsOf(draft.implementation)]" @update:model-value="draft.output=$event"/><small class="field-help">多输出实现不默认取第一个；选项展示契约输出的数据类型。</small></label>
-</div>
-  <p v-if="computedShapeMismatch" class="inline-error">函数输出数据类型与属性要求不匹配：输出为{{declaredShapeOf(draft.implementation,draft.output)==='timeSeries'?'时间序列':'单值'}}，属性要求{{draftShape==='timeSeries'?'时间序列':'单值'}}，请选择兼容输出。</p>
-  <p v-else-if="ruleValueTypeMismatch" class="inline-error">取值规则值类型与属性数据类型不匹配：输出为{{dataTypeLabel(declaredTypeOf(draft.implementation,draft.output))}}，属性要求{{selectedMeta?.type}}，请选择兼容的规则或属性。</p>
-  <p v-else-if="draft.output" class="field-help">输出「{{outputLabel(draft.implementation,draft.output)}}」：{{dataTypeLabel(declaredTypeOf(draft.implementation,draft.output))}}，与属性要求一致；数据类型的最终核对以保存校验为准。</p>
-</template>
+
 <template v-if="ghostFields.length">
 <p v-for="g in ghostFields" :key="g" class="inline-warning">{{g}}</p>
 </template>

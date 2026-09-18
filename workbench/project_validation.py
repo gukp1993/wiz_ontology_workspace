@@ -24,6 +24,7 @@ import zoneinfo
 from workbench.query_rules import is_query_rule, query_rule_errors, rule_input_errors, scan_sql_params, strip_sql_noise_mysql
 from workbench import action_http
 from workbench import calc_functions
+from workbench import flows
 
 from workbench.contracts import is_contract
 from workbench.properties import effective, signature_data_type
@@ -414,6 +415,99 @@ def _check_calc_binding(value, impl, b, ot, prop, graph, node, shape, dep_edges)
     return blocking
 
 
+# flow 类型 → 本体属性 xsd range 兼容表（与前端 PropertySources.FLOW_RANGE_COMPAT 镜像）；
+# object/list 不可进表：对象与列表输出/输入不能绑定标量属性。
+_FLOW_RANGE_COMPAT = {'number': ('double', 'decimal', 'integer'), 'text': ('string',),
+                      'boolean': ('boolean',), 'datetime': ('dateTime',)}
+
+
+def _flow_constant_ok(flow_type, value):
+    """编排输入固定值有效性（与前端 flowConstantOk 镜像）：0/false/空串是有效值。"""
+    if value is None:
+        return False
+    if flow_type == 'number':
+        if isinstance(value, bool):
+            return False
+        try:
+            float(str(value).strip())
+            return str(value).strip() != ''
+        except (ValueError, TypeError):
+            return False
+    if flow_type == 'boolean':
+        return value in (True, False, 'true', 'false')
+    if flow_type == 'datetime':
+        return str(value).strip() != ''
+    return True
+
+
+def _check_flow_binding(value, flow_state, b, ot, prop, graph, node, shape, dep_edges):
+    """kind='flow' 函数编排取值校验：编排存在、输出存在且类型相容、输入绑定齐全合法。只读。
+
+    flow_state 为 None 表示编排不存在或已删除（由调用方读取并缓存）。"""
+    blocking = []
+    if flow_state is None:
+        return ['引用的函数编排不存在或已删除']
+    declared_outs = [o for o in flow_state.get('outputs', []) if isinstance(o, dict)]
+    selected = next((o for o in declared_outs if str(o.get('id', '')) == str(value.get('output', '') or '')), None)
+    if not str(value.get('output', '') or ''):
+        blocking.append('未选择编排输出')
+    elif selected is None:
+        blocking.append('编排输出不存在，请重新选择（编排签名可能已修改）')
+    else:
+        out_type = str((selected.get('type') or {}).get('type', '') if isinstance(selected.get('type'), dict) else '')
+        if out_type in ('object', 'list'):
+            blocking.append('编排输出为对象/列表，不能绑定属性')
+        elif shape == 'timeSeries':
+            blocking.append('函数编排输出为单值，不能绑定时间序列属性')
+        elif node is not None:
+            target = effective(node, graph).get('rdfs:range', {}).get('@id', '').replace('xsd:', '')
+            if target not in _FLOW_RANGE_COMPAT.get(out_type, ()):
+                blocking.append('编排输出类型与属性数据类型不匹配')
+    entries = value.get('inputs') if isinstance(value.get('inputs'), dict) else {}
+    declared = {str(i.get('id')): i for i in flow_state.get('inputs', []) if isinstance(i, dict)}
+    identity_ready = identity_kind(b) == 'registered' or bool(str(b.get('primary_key', '') or '').strip())
+    for input_id, item in declared.items():
+        name = str(item.get('label') or item.get('name') or input_id)
+        in_type = str((item.get('type') or {}).get('type', '') if isinstance(item.get('type'), dict) else '')
+        entry = entries.get(input_id)
+        if not isinstance(entry, dict):
+            blocking.append(f'编排输入「{name}」未绑定取值')
+            continue
+        source = entry.get('from')
+        if source == 'property':
+            ref = str(entry.get('property', '') or '')
+            ref_node = property_node(graph, ot, ref) if ref else None
+            if ref_node is None:
+                blocking.append(f'编排输入「{name}」引用的属性不存在')
+                continue
+            if ref == prop:
+                blocking.append('属性来源存在循环依赖')
+                continue
+            if value_shape(ref_node, graph) == 'timeSeries':
+                blocking.append(f'编排输入「{name}」引用的属性「{ref}」是时间序列，不能作为输入')
+                continue
+            ref_range = effective(ref_node, graph).get('rdfs:range', {}).get('@id', '').replace('xsd:', '')
+            if ref_range not in _FLOW_RANGE_COMPAT.get(in_type, ()):
+                blocking.append(f'编排输入「{name}」引用的属性「{ref}」数据类型不匹配')
+                continue
+            if dep_edges is not None:
+                dep_edges.setdefault((ot, prop), set()).add((ot, ref))
+        elif source == 'constant':
+            if not _flow_constant_ok(in_type, entry.get('value')):
+                blocking.append(f'编排输入「{name}」的固定值无效')
+        elif source == 'instanceId':
+            if in_type != 'text':
+                blocking.append(f'编排输入「{name}」不是文本类型，不能绑定实例编号')
+            elif not identity_ready:
+                blocking.append('当前对象未配置实例身份，不能绑定实例编号')
+        else:
+            blocking.append(f'编排输入「{name}」的绑定来源无效')
+    for input_id in entries:
+        if input_id not in declared:
+            blocking.append(f'编排不存在输入 {input_id}，请重新绑定（编排签名可能已修改）')
+    return blocking
+
+
 def _check_property_sources(ctx, errors, warnings, items):
     graph = ctx['graph']
     object_bindings = ctx['object_bindings']
@@ -426,6 +520,7 @@ def _check_property_sources(ctx, errors, warnings, items):
 
     # 本对象内 database 属性经 match {kind:'property'} 形成依赖图，用于循环依赖检测（§3 规则 5）。
     dep_edges = {}
+    flow_states = {}  # flowId → 编排草稿状态（None=不存在/已删除）；kind='flow' 校验共享缓存
     for b in object_bindings:
         dep_ot = b.get('object_type', '')
         dep_props = b.get('properties') or {}
@@ -442,6 +537,16 @@ def _check_property_sources(ctx, errors, warnings, items):
                         dep_ref = str(dep_entry.get('property', '') or '')
                         if dep_ref in dep_props and dep_ref != dep_prop:
                             dep_edges.setdefault((dep_ot, dep_prop), set()).add((dep_ot, dep_ref))
+            dep_is_flow = isinstance(dep_value, dict) and dep_value.get('kind') == 'flow'
+            if dep_is_flow:
+                # 函数编排输入的属性引用同样构成依赖边（循环检测与计算函数同一套规则）。
+                dep_entries = dep_value.get('inputs') if isinstance(dep_value.get('inputs'), dict) else {}
+                for dep_input_id, dep_entry in dep_entries.items():
+                    if not isinstance(dep_entry, dict) or dep_entry.get('from') != 'property':
+                        continue
+                    dep_ref = str(dep_entry.get('property', '') or '')
+                    if dep_ref in dep_props and dep_ref != dep_prop:
+                        dep_edges.setdefault((dep_ot, dep_prop), set()).add((dep_ot, dep_ref))
             if not (isinstance(dep_value, dict) and dep_value.get('kind') == 'database'):
                 continue
             dep_lookup = dep_value.get('lookup') if isinstance(dep_value.get('lookup'), dict) else {}
@@ -778,6 +883,23 @@ def _check_property_sources(ctx, errors, warnings, items):
                         ref = (output or {}).get('ref') or {}
                         if ref.get('kind') == 'property' and ref.get('id') not in (node.get('mg:sharedProperty', {}).get('@id'), node['@id']):
                             warnings.append(f'属性 {prop} 的计算输出指向另一个属性定义，请核对业务口径')
+            elif kind == 'flow':
+                # 函数编排取值（2026-09-18）：只读引用编排工作区的 flowId + 输出 + 输入绑定；
+                # 状态按 flowId 缓存（同一编排可被多个属性引用），删除的编排按不存在处理。
+                flow_id = str(value.get('flow', '') or '').strip()
+                if not flow_id:
+                    blocking.append('未选择函数编排')
+                else:
+                    if flow_id not in flow_states:
+                        try:
+                            state = flows.read_draft(flow_id)
+                        except ValueError:
+                            state = None
+                        if not isinstance(state, dict) or state.get('status') == 'deleted':
+                            state = None
+                        flow_states[flow_id] = state
+                    blocking.extend(_check_flow_binding(value, flow_states[flow_id], b, ot, prop,
+                                                        graph, node, shape, dep_edges))
             elif kind in ('field', 'related'):
                 source_id = str(value.get('source', '') or '')
                 source = sources.get(source_id) if source_id else None

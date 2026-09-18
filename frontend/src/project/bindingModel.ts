@@ -16,6 +16,10 @@ export interface InlineSqlView{kind:'computed';mode:'inlineSql';inlineSql:Inline
 // 计算函数绑定（mode='calcFunction'）：inputs 按函数参数稳定 ID 绑定当前对象属性或固定值。
 export type CalcBindingEntry={from:'property';property:string}|{from:'constant';value:any}
 export interface CalcFunctionView{kind:'computed';mode:'function';implementation:string;output:string;inputs:Record<string,CalcBindingEntry>}
+// 函数编排取值（kind:'flow'，2026-09-18 新增）：引用编排工作区的稳定 flowId + 输出 id，
+// 编排输入逐项绑定当前对象属性 / 固定值 / 实例编号；不复制编排、不写本体。
+export type FlowBindingEntry={from:'property';property:string}|{from:'constant';value:string}|{from:'instanceId'}
+export interface FlowView{kind:'flow';flow:string;output:string;inputs:Record<string,FlowBindingEntry>}
 // 数据库直选表（kind:'database'，2026-09 新结构）：存储里 secondarySort:{field,order} 嵌套，
 // 视图扁平为 secondarySortField/secondarySortOrder；默认值在视图侧显式呈现
 // （timestampEncoding=''、order='ascending'、duplicateTimestamp='error'、selection=''、missing='null'）。
@@ -31,7 +35,7 @@ export interface UnknownView{kind:'unknown'}
 // empty 恒为字符串 'null'（YAML 序列化后端存字符串，视图层不得转成 null）。
 export interface RegisteredView{kind:'registered';field:'id'|'label'}
 export interface AggregateView{kind:'aggregate';relation:string;property:string;operator:'sum';empty:'null';missing:'incomplete';inputUnitConfirmed:boolean}
-export type PropertyView=FieldView|RedisView|ComputedView|InlineSqlView|CalcFunctionView|DatabaseView|RegisteredView|AggregateView|UnknownView
+export type PropertyView=FieldView|RedisView|ComputedView|InlineSqlView|CalcFunctionView|DatabaseView|RegisteredView|AggregateView|FlowView|UnknownView
 // membership 链接（按条件选择成员）：按起点实例保存成员条件；value 仅 eq/ne/in 需要（标量或标量数组）。
 export type MembershipOperator='eq'|'ne'|'in'|'isnull'|'notnull'
 export type MembershipScalar=string|number|boolean
@@ -139,6 +143,17 @@ export function propertyView(b:any,api:string):PropertyView|null{
     if(v.mode!==undefined)return {kind:'unknown'}
     return {kind:'computed',implementation:String(v.implementation||''),output:String(v.output||''),...(v.inputs!==undefined?{inputs:JSON.parse(JSON.stringify(v.inputs))}:{})}
   }
+  if(v.kind==='flow'){
+    // 函数编排取值：flow/output 必须是字符串稳定标识；inputs 逐条是
+    // {from:'property',property} / {from:'constant',value} / {from:'instanceId'}；
+    // 结构偏离一律走 unknown 通道原样保留（零丢失），绝不当空配置重存。
+    const entries=v.inputs
+    const okEntries=entries!==null&&typeof entries==='object'&&!Array.isArray(entries)
+      &&Object.values(entries).every((e:any)=>e&&typeof e==='object'&&!Array.isArray(e)
+        &&((e.from==='property'&&typeof e.property==='string')||e.from==='constant'||e.from==='instanceId'))
+    const okIds=typeof v.flow==='string'&&typeof v.output==='string'
+    return okIds&&okEntries?{kind:'flow',flow:v.flow,output:v.output,inputs:JSON.parse(JSON.stringify(entries||{}))}:{kind:'unknown'}
+  }
   if(v.kind==='registered')return v.field==='label'?{kind:'registered',field:'label'}:v.field==='id'?{kind:'registered',field:'id'}:{kind:'unknown'}
   if(v.kind==='aggregate'){
     // 严格按冻结契约解码：operator 仅 sum；empty 仅字符串 'null'（键缺失视为默认，YAML 真 null
@@ -196,6 +211,11 @@ export function commitProperty(b:any,api:string,view:PropertyView|null):void{
     b.properties[api]=out;return
   }
   if(view.kind==='registered'){b.properties[api]={kind:'registered',field:view.field};return}
+  if(view.kind==='flow'){
+    // 函数编排绑定：inputs 按编排输入稳定 id；不复制编排、不写本体。
+    b.properties[api]={kind:'flow',flow:view.flow,output:view.output,inputs:JSON.parse(JSON.stringify(view.inputs||{}))}
+    return
+  }
   if(view.kind==='aggregate'){
     // 原样对象存取；empty 恒写字符串 'null'（YAML/JSON 序列化后端存字符串，视图层不得转 null）。
     b.properties[api]={kind:'aggregate',relation:String(view.relation||''),property:String(view.property||''),operator:'sum',empty:'null',missing:'incomplete',inputUnitConfirmed:view.inputUnitConfirmed===true}

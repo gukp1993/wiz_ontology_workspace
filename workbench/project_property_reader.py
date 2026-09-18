@@ -150,6 +150,10 @@ def _preview(payload):
     if kind == 'aggregate':
         return _aggregate_preview(project_id, snapshot, graph, catalogs,
                                   binding, object_type, prop, source, instance)
+    if kind == 'flow':
+        # 函数编排取值：本期不执行编排，明确告知而非报通用「不支持」，避免误判为配置错误。
+        _fail('该属性来源为函数编排，配置校验已通过；取值预览暂不执行编排，'
+              '请到「函数编排」工作区运行编排查看结果')
     _fail('该属性来源不支持预览（本轮仅支持登记信息与关联聚合）')
 
 
