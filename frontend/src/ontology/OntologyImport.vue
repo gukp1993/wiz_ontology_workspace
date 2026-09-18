@@ -7,7 +7,7 @@
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import AppError from '../shared/AppError.vue'
 import { appConfirm } from '../shared/appConfirm'
-import { checkFileMeta, parseWorkbook, MAX_FILE_BYTES, MAX_BUSINESS_ROWS, type ParseIssue } from './excelImport'
+import { checkFileMeta, parseWorkbook, MAX_FILE_BYTES, MAX_BUSINESS_ROWS, CHUNK_LOAD_HINT, chunkLoadFailure, type ParseIssue } from './excelImport'
 import { applyPlan, buildPlan, collectExistingNames, planCounts, verifyImported, type ImportDecision, type ImportPolicy, type PlanOutcome } from './importPlan'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
@@ -95,6 +95,13 @@ async function runCheck() {
     else if (outcome.allSkipped) checkHint.value = '已检查：没有可导入的新内容，全部同名项已跳过。'
     else if (outcome.blocked) checkHint.value = '已检查：有填写问题，修改 Excel 后重新上传检查；本次不会导入任何内容。'
     else checkHint.value = '已检查，请确认下方处理结果。'
+  } catch (e: any) {
+    // 分块加载失败（旧页面持有已失效的分块名）与其他异常都要有可读反馈，不能只留控制台报错
+    plan.value = null
+    const msg = String(e?.message || e || '')
+    panelError.value = msg.includes(CHUNK_LOAD_HINT) || /dynamically imported module|importModule|before initialization/i.test(msg)
+      ? CHUNK_LOAD_HINT
+      : (msg || '检查失败，请重试。')
   } finally { checking.value = false }
 }
 

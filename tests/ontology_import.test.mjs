@@ -4,6 +4,7 @@
 import { createRequire } from 'node:module'
 import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
+import { readFileSync } from 'node:fs'
 
 const require = createRequire(new URL('../frontend/package.json', import.meta.url))
 const XLSX = require('@e965/xlsx')
@@ -272,6 +273,27 @@ await check('⑯ 业务行超 1000 条拒绝；applyPlan 合入后可被 verifyI
   // 拿掉属性 → partial
   state.ontology['@graph'] = state.ontology['@graph'].filter(n => n['@type'] !== 'mg:SharedProperty')
   assert.equal(plan.verifyImported(state, outcome.decisions), 'partial')
+})
+
+// ── ⑰ 旧页面兜底（20260918）：动态分块加载失败要有可读指引，不能抛裸错误 ──
+await check('⑰ 分块加载失败转可读文案（重新构建后旧页面场景）', async () => {
+  const mod = await import(pathToFileURL(path.join(root, 'frontend/src/ontology/excelImport.ts')).href)
+  assert.equal(typeof mod.CHUNK_LOAD_HINT, 'string')
+  assert.match(mod.CHUNK_LOAD_HINT, /刷新页面/)
+  const err = mod.chunkLoadFailure(new TypeError('Failed to fetch dynamically imported module'))
+  assert.match(err.message, /刷新页面/)
+  assert.match(err.message, /Failed to fetch dynamically imported module/, '保留原始信息便于排查')
+  assert.match(mod.chunkLoadFailure('').message, /刷新页面/, '无原始信息也要给出指引')
+})
+
+// ── ⑱ 入口兜底：main.ts 注册了旧页面错误捕获与横幅 ──
+await check('⑱ 入口注册旧页面错误兜底（横幅 + 刷新按钮）', async () => {
+  const src = readFileSync(path.join(root, 'frontend/src/main.ts'), 'utf8')
+  assert.match(src, /stale-page-banner/, '需有横幅元素')
+  assert.match(src, /before initialization/, '需识别 TDZ 类错误文案')
+  assert.match(src, /dynamically imported module/, '需识别分块加载失败')
+  assert.match(src, /location\.reload\(\)/, '需提供刷新动作')
+  assert.match(src, /addEventListener\('unhandledrejection'/, '需覆盖未捕获的 promise 失败')
 })
 
 const failed = results.filter(r => !r.ok)

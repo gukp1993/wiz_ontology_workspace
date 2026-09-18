@@ -82,9 +82,25 @@ export interface ParsedWorkbook { sheets: Record<string, SheetScan>; extraSheets
 let xlsxModule: any = null
 let xlsxLoading: Promise<any> | null = null
 export function setXlsxModule(mod: any) { xlsxModule = mod }
+
+/** 动态分块加载失败的可读文案（20260918）。
+ * 场景：工作台重新构建后，仍在运行的旧页面持有的分块名 404——浏览器只会抛出
+ * "Failed to fetch dynamically imported module" 或 TDZ 类 ReferenceError，用户看不懂。
+ * 这里统一转成「刷新页面」的明确指引；同时保留原始错误信息便于排查。 */
+export const CHUNK_LOAD_HINT = '页面资源已更新或加载失败（可能刚重新构建过），请刷新页面后重试。'
+export function chunkLoadFailure(err: any): Error {
+  const detail = String((err && (err.message || err)) || '')
+  return new Error(CHUNK_LOAD_HINT + (detail ? '（' + detail + '）' : ''))
+}
+
 async function getXlsx(): Promise<any> {
   if (xlsxModule) return xlsxModule
-  if (!xlsxLoading) xlsxLoading = import('@e965/xlsx')
+  if (!xlsxLoading) {
+    xlsxLoading = import('@e965/xlsx').catch(err => {
+      xlsxLoading = null            // 允许刷新后重试同一模块
+      throw chunkLoadFailure(err)
+    })
+  }
   xlsxModule = await xlsxLoading
   return xlsxModule
 }

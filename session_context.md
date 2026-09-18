@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`c180eccdae7a81e7`
+上下文版本：`c32c643ee1fc8180`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,14 +22,14 @@
 
 ### Excel 导入视觉重做 · zcode · 已实施，待验收
 
-时间：2026-09-18T12:47:13.233032+00:00；记录：`.collaboration/entries/000015-db4d92d4cae4.json`
+时间：2026-09-18T13:06:03.260038+00:00；记录：`.collaboration/entries/000016-b889cac044d7.json`
 
-用户反馈「下载链接没有样式、导入界面太丑」。根因：全局 input 规则 (display:block;width:100%;padding/border) 波及弹窗内的原生 file 控件与 radio——原生「选择文件」被渲染成整行输入框、radio 被拉宽顶开文字。已重做：① 下载入口在两处（工作台「创建第一个本体」卡、本体概览「维护本体内容」）由裸 <a> 改为按钮并程序化触发下载；② 导入弹窗重写：隐藏原生 file（改为居中投放区 + 主色「选择文件」；选中后变文件卡含图标/大小/更换/移除）、radio 外观归还浏览器、同名策略卡改为可点选卡片、检查结果由裸数字行改为四张计数卡、筛选页签改胶囊、表格与徽标走既有令牌、页脚改浅底条并统一按钮层级。未改任何导入/校验/保存逻辑与字段。
+用户报导入时 ReferenceError: Cannot access 'A' before initialization。根因确诊（有服务端日志实证，非猜测）：该 JD 页面运行的是旧构建分块 index-D6QLQfnR.js，而 20:43 重新构建时 Vite 清空 dist、该文件已删除——20:57:11 日志记录该分块请求 404。旧页面在断掉的模块图上做动态 import，浏览器抛出压缩后的 TDZ 类错误与 importModule is not defined。导入功能本身完好：同构建新页面在隔离实例跑完整链路（上传→检查→确认→完成「对象5/共享属性10/规则1/动作1」）无任何错误。已加两层兜底：① excelImport 的动态 import 失败转可读文案（含刷新指引 + 保留原始信息）；② 入口 main.ts 全局识别旧页面类错误（TDZ/分块 404/importModule），顶部横幅提示并给「刷新页面」按钮，覆盖所有懒加载路径。导入弹窗 runCheck 也捕获异常显示可读提示而非静默崩。
 
-- 决定：原生 file/radio 控件必须在弹窗内显式重置 display/width/margin/padding/border——全局 input 规则会破坏它们的外观（本次根因，写进样式注释防复发）；下载模板统一用按钮 + 程序化 a.click()，不再用裸 <a>（与工作台按钮同款外观）
-- 验证：浏览器实测（18765 真实实例 admin 登录）：下载按钮已为样式化按钮；弹窗空态=居中投放区+选择文件按钮；file 控件 0x0（隐藏）、radio 13x13（正常）；选中态=文件卡「▤ 储能本体_全量数据.xlsx 7.5 KB 更换｜移除」；检查后：四张计数卡（4 新增/13 跳过/0 自动重命名/0 填写问题）、胶囊筛选页签、17 行预览表、跳过徽标正确着色、确认按钮变「导入 4 项」；错误态：无效 xlsx 显示「导入未完成」错误卡（AppError），不写数据；tests/ontology_import.test.mjs 16/16 通过（解析/校验/计划层未受影响）；npm run typecheck、npm run build 通过；全量 mjs 21/22（唯一败 mapping_forms 为既有基线）；临时用于验收的样本文件已删除；未触碰真实 ontology/ 数据（仅打开弹窗与检查，未点确认导入）
-- 下一步：用户复核弹窗视觉；如需进一步统一（例如把导入改成整页而非弹窗）属需求变更
-- 依据/文档：frontend/src/ontology/OntologyImport.vue；frontend/src/ontology/OntologyHome.vue；frontend/src/App.vue
+- 决定：旧页面（重新构建后仍在运行）的加载失败要有可读指引：入口横幅 + 刷新按钮；动态 import 失败转可读文案；识别模式覆盖：dynamically imported module / before initialization（TDZ）/ importModule is not defined / loading chunk failed / failed to load module script
+- 验证：根因实证：服务端日志 20:57:11 "GET /assets/index-D6QLQfnR.js 404"（该分块属旧构建，已被重新构建删除）；当前 dist 仅含 index-Bx2Ytpfj.js 与 xlsx-B2eTCt_Q.js；同构建新页面在隔离实例 18850 跑完整导入链路：文件卡→检查(17 新增)→确认→「导入完成 对象新增 5 项，共享属性新增 10 项，业务规则新增 1 项，动作新增 1 项」；全程 console 错误 0；旧页面路径也在旧 bundle 上验证过：打开弹窗与检查均正常（说明导入代码本身无 TDZ）；兜底生效验证：加载新 bundle 后派发 "Cannot access 'A' before initialization" → 顶部横幅出现「页面资源已更新（工作台可能刚重新构建过），请刷新页面后重试。刷新页面」；ontology_import 测试 16→18 项全过（新增 ⑰ 分块失败文案、⑱ 入口兜底注册）；typecheck/build 通过；全量 mjs 21/22（唯一败 mapping_forms 为既有基线）
+- 下一步：用户刷新页面（Ctrl/Cmd+Shift+R）即可恢复；页面已具备下次遇到同类情况时的自解释横幅；建议：以后重新构建后，已打开的旧页面需手动刷新一次（这是按内容 hash 缓存的前端产物的固有行为）
+- 依据/文档：frontend/src/main.ts；frontend/src/ontology/excelImport.ts；frontend/src/ontology/OntologyImport.vue；tests/ontology_import.test.mjs
 
 ### 登录与账号体系 · zcode · 已实施，待验收
 
