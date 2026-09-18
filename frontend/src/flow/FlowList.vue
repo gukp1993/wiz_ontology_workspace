@@ -70,7 +70,7 @@ async function remove(item: any) {
     <label class="list-search" style="margin:0">搜索编排
       <input v-model="search" type="search" aria-label="搜索编排" placeholder="按名称或说明搜索"/>
     </label>
-    <button :disabled="loading" @click="refresh">{{loading?'加载中…':'刷新'}}</button>
+
   </div>
   <div class="scroll">
     <table>
