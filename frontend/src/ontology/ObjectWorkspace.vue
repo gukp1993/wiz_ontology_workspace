@@ -28,7 +28,6 @@ import PickerDialog, { type PickerRow } from './PickerDialog.vue'
 import { navIcons } from '../shared/icons'
 import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
-import RowMenu from '../shared/RowMenu.vue'
 import { localProperties, effectiveProperty, propertyTypeLabel, propertyDataType, dataTypeLabel, valueShapeOf, copyAsPrivate, addReference, shapeConflict } from './propertyModel'
 import { useOntTable, type OntTable } from './ontList'
 import { appConfirm } from '../shared/appConfirm'
@@ -546,9 +545,9 @@ function editLinkFromDrawer() { if (linkDetail.value) { linkDetailId.value = '';
 function goActionLibrary() { if (actionDetail.value && current.value) emit('navigate', 'actions', { definition: actionDetail.value.actionId, type: current.value['@id'], tab: 'actions' }) }
 function goRuleLibrary() { if (ruleDetail.value && current.value) emit('navigate', 'rules', { definition: ruleDetail.value.id, type: current.value['@id'], tab: 'rules' }) }
 // 行内更多（§6）：危险/低频操作收纳进菜单；只承载已有语义，不改引用检查与撤销。
-const propMenuItems = (p: { sharedId: string }) => p.sharedId
-  ? [{ id: 'remove', label: '移除引用', danger: true }]
-  : [{ id: 'remove', label: '删除属性', danger: true }]
+// 行内删除文案（20260918 用户变更：四页签删除/移除不再收进更多菜单，直接显示在操作列）：
+// 共享引用是「移除引用」（共享定义保留），私有是「删除属性」。两者都走 removeNode 的引用检查与撤销。
+const propRemoveLabel = (p: { sharedId: string }) => p.sharedId ? '移除引用' : '删除属性'
 async function onPropMenu(p: { id: string; label: string; sharedId: string }) {
   const msg = p.sharedId
     ? '移除当前对象对共享属性「' + (p.label || '未命名属性') + '」的引用？共享定义与其他对象的引用不受影响；可通过撤销恢复。'
@@ -788,7 +787,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
                 </td>
                 <td class="ont-ops">
                   <button type="button" class="row-link" @click="openPropertyEditor(current['@id'], p.id)">编辑</button>
-                  <RowMenu compact :items="propMenuItems(p)" :aria-label="'更多操作 · ' + (p.label || '未命名属性')" @pick="onPropMenu(p)"/>
+                  <button type="button" class="row-link danger" @click="onPropMenu(p)">{{ propRemoveLabel(p) }}</button>
                 </td>
               </tr>
             </OntologyList>
@@ -817,7 +816,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
                 <td>{{ l.card }}</td>
                 <td class="ont-ops">
                   <button type="button" class="row-link" @click="openLinkEditor(l.id)">编辑</button>
-                  <RowMenu compact :items="[{ id: 'remove', label: '删除链接', danger: true }]" :aria-label="'更多操作 · ' + (l.label || '未命名链接')" @pick="removeLinkRow(l)"/>
+                  <button type="button" class="row-link danger" @click="removeLinkRow(l)">删除链接</button>
                 </td>
               </tr>
             </OntologyList>
@@ -846,7 +845,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
                 <td><span class="ont-clip" :title="row.effect">{{ row.effect || '—' }}</span></td>
                 <td class="ont-ops">
                   <button v-if="!row.missing" type="button" class="row-link" @click="actionDetailId = row.actionId">查看</button>
-                  <RowMenu compact :items="[{ id: 'remove', label: '移除关联', danger: true }]" :aria-label="'更多操作 · ' + (row.name || '未命名动作')" @pick="removeAssociation(row.actionId)"/>
+                  <button type="button" class="row-link danger" @click="removeAssociation(row.actionId)">移除关联</button>
                 </td>
               </tr>
             </OntologyList>
@@ -873,7 +872,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
                 <td><span class="ont-clip" :title="row.desc">{{ row.desc || '—' }}</span></td>
                 <td class="ont-ops">
                   <button v-if="!row.missing" type="button" class="row-link" @click="ruleDetailId = row.ruleId">查看</button>
-                  <RowMenu compact :items="[{ id: 'remove', label: '移除引用', danger: true }]" :aria-label="'更多操作 · ' + (row.name || '未命名规则')" @pick="removeRuleRef(row.ruleId)"/>
+                  <button type="button" class="row-link danger" @click="removeRuleRef(row.ruleId)">移除引用</button>
                 </td>
               </tr>
             </OntologyList>

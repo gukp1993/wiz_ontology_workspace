@@ -131,13 +131,16 @@ try {
     assert.deepEqual([fromDevice.from, fromDevice.to, fromDevice.card], ['储能簇', '储能设备', '多对一'], '终点侧同样按定义真实方向显示')
     owApi().selected.value = 'mg:cluster'
 
-    // 菜单语义：共享引用→移除引用；私有→删除属性；动作→移除关联；规则→移除引用
-    assert.equal(owApi().propMenuItems({ sharedId: 'mg:sp' })[0].label, '移除引用')
-    assert.equal(owApi().propMenuItems({ sharedId: '' })[0].label, '删除属性')
+    // 删除语义（20260918 用户变更：四页签删除/移除改为行内直接显示，不进更多菜单）：
+    // 共享引用→「移除引用」；私有→「删除属性」；动作→「移除关联」；规则→「移除引用」。
+    assert.equal(owApi().propRemoveLabel({ sharedId: 'mg:sp' }), '移除引用')
+    assert.equal(owApi().propRemoveLabel({ sharedId: '' }), '删除属性')
+    const owSrc = readFileSync(resolve('frontend/src/ontology/ObjectWorkspace.vue'), 'utf8')
+    assert.ok(!/RowMenu/.test(owSrc), '四页签行操作不得再依赖更多菜单')
+    for (const label of ['删除链接', '移除关联', '移除引用']) assert.ok(owSrc.includes('>' + label + '</button>'), '缺少行内操作：' + label)
 
     // 共享引用「移除引用」只删当前对象上的引用记录，共享定义保留
     const before = state.ontology['@graph'].length
-    assert.ok(owApi().propMenuItems({ sharedId: 'mg:sp' })[0].danger, '移除/删除项必须是危险样式')
     await owApi().removeNode('mg:p1', '额定功率', '移除当前对象对共享属性「额定功率」的引用？')
     assert.equal(state.ontology['@graph'].length, before - 1, '引用记录被移除')
     assert.ok(state.ontology['@graph'].some(n => n['@id'] === 'mg:sp'), '共享定义必须保留')
@@ -154,7 +157,7 @@ try {
     owApi().ruleDetailId.value = 'rule1'
     assert.equal(owApi().ruleDetail.value.content, 'RC')
     assert.equal(owApi().ruleDetail.value.output, 'RO')
-    check('② 链接真实方向/自链接不重复；③ 菜单语义与移除边界正确', () => assert.equal(0, 0))
+    check('② 链接真实方向/自链接不重复；③ 行内删除语义与移除边界正确', () => assert.equal(0, 0))
   }
 
   // ── ⑤ 从资产库返回对象：focusDefinition + initialTab 应定位并高亮目标行 ──

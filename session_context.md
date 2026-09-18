@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`4bcd6ef7057ecb61`
+上下文版本：`d6214411b010d788`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -20,6 +20,17 @@
 
 ## 最近交接（新 → 旧）
 
+### 本体列表统一设计-v1 · zcode · 已实施，待验收
+
+时间：2026-09-18T11:28:41.689426+00:00；记录：`.collaboration/entries/000010-feff053ac6cf.json`
+
+用户变更：属性/链接/动作/规则四列表的删除/移除不再收进「更多」菜单，直接显示为操作列行内危险按钮。已实施：四处 RowMenu 改为 row-link danger 按钮（属性=移除引用或删除属性、链接=删除链接、动作=移除关联、规则=移除引用），保留全部既有语义（确认文案、引用检查、撤销、形式守卫）；ObjectWorkspace 不再依赖 RowMenu（该组件仍用于共享属性库与动作定义库的多项菜单，未动）。运行中的 18765 实测四处行内操作均显示且页面无 row-menu（menusLeft=0）。
+
+- 决定：四页签的删除/移除是行级唯一破坏性操作，改为行内直接展示（用户 2026-09-18 决定）；共享属性库/动作定义库的多项菜单不在本次范围，保持现状；属性行保留「移除引用/删除属性」双文案精确语义（sharedId 判定），不笼统写「删除」
+- 验证：18765 浏览器实测：属性页 6 行均为「编辑 · 移除引用」；链接页「编辑 · 删除链接」；储能设备动作页「查看 · 移除关联」、规则页「查看 · 移除引用」；四处页面 menusLeft=0（无残留菜单）；ont_list_unified 用例更新：断言行内按钮存在、ObjectWorkspace 不再引用 RowMenu、propRemoveLabel 双语义；4/4 通过；npm run typecheck 与 npm run build 通过；全量前端套件 20/21（唯一败 mapping_forms 为既有基线失败，与本轮无关）
+- 下一步：用户核对四处行内按钮的视觉与误点风险；如需保留菜单但合并多操作（如链接的编辑+删除），属下一轮变更
+- 依据/文档：frontend/src/ontology/ObjectWorkspace.vue；tests/ont_list_unified.test.mjs；文档/需求/20260918_本体列表统一设计/需求说明.md
+
 ### 用户菜单裁切修复 · zcode · 已实施，待验收
 
 时间：2026-09-18T11:20:23.792670+00:00；记录：`.collaboration/entries/000009-3d836591ac4f.json`
@@ -30,17 +41,6 @@
 - 验证：18765 实测：菜单 rect 280px 完整可见、位于 body、position:fixed；展开态右缘 292 与收起态 295.5 均在视口内；Esc 关闭 + 焦点归还触发器（真实键盘事件）；点外关闭；菜单「设置」进入 #settings-models 且菜单关闭；npm run typecheck 与 npm run build 通过；global_settings_nav 测试补 ⑦ 用例锁定位计算与 Esc 行为：7/7 通过；全量前端套件 20/21：唯一败 mapping_forms 为既有基线失败（与本轮无关，未修）
 - 下一步：用户复核视觉效果；mapping_forms 既有失败仍待其负责人处理
 - 依据/文档：frontend/src/App.vue；frontend/src/style.css；tests/global_settings_nav.test.mjs
-
-### 本体列表统一设计-v1 · zcode · 已实施，待验收
-
-时间：2026-09-18T11:09:59.761351+00:00；记录：`.collaboration/entries/000008-e57bd03223c8.json`
-
-按四件套实施八处列表统一：新增 T1 公共层（ontList.ts 全量过滤后分页、OntologyList 标准表格、OntDrawer 只读抽屉、RowMenu 改 Teleport+fixed 浮层与 compact ⋯）；对象导航行高 58px 与计数文案；四页签全部表格化（列/操作/分页按 §6）；三资产库改全宽表格（规则库无更多菜单、动作库取消左列并保留历史格式转换与删除保护）；跨菜单维护/返回来源对象闭环。修复中发现的两个缺陷：动作/规则行缺统一 id 致返回不定位、行内菜单被滚动容器裁切。仅改前端本体区，无接口/后端/数据变更。
-
-- 决定：视图状态统一走 useOntTable：搜索/排序在全量记录上执行再分页，页码随结果收缩合法化；编辑一律复用既有表单；危险操作只收进 RowMenu 不改语义；共享删除仍走私有化+外部引用拦截；规则库不新增删除；动作删除受引用保护；历史动作只读保留可显式转换；RowMenu 浮层 Teleport 到 body 避免表格滚动容器裁切
-- 验证：typecheck 与 build 通过；新增 ont_list_unified 4 项全过；object_workspace 8/8；run.py quick 3/3；既有前端套件 20/21：唯一败 mapping_forms 经 stash 基线对照为本批之前已存在，未修如实保留；隔离实例 18890 浏览器 1440/1024/768：四页签表格与分页、跨页搜索、浮层完整可见、抽屉焦点归还、三库表格、跨菜单返回定位高亮、768 单栏无横向溢出；浏览期间 0 次 /api/save；全部夹具仅写隔离库；未测 100x200 规模浏览器压测（以分页逻辑用例+26 条夹具覆盖）
-- 下一步：用户/Codex 验收原型一致性；mapping_forms 既有失败属属性取值来源任务，需其负责人处理；真实 18765 服务未重启加载本次构建，验收通过后按发布流程处理
-- 依据/文档：frontend/src/ontology/ontList.ts；frontend/src/shared/OntologyList.vue；frontend/src/shared/OntDrawer.vue；frontend/src/shared/RowMenu.vue；文档/需求/20260918_本体列表统一设计/开发计划.md
 
 ### 本体列表统一设计-共享属性库 SharedLibrary.vue 单文件改造 · zcode · 已实施，待验收
 
