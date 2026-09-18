@@ -1,6 +1,10 @@
 """Portable table definitions (SQLAlchemy Core), shared by SQLite and MySQL.
 
 Design contract (需求说明 §4, 冻结于开发计划):
+* 2026-09-18 账号体系：wb_assets / wb_model_configs 增加 owner_user_id（空串=未归属，
+  历史数据由 transfer assign-owner 归属 admin）；唯一约束升级为按账号
+  （uq_assets_kind_owner_external、wb_model_configs(owner_user_id, provider_id)）。
+  用户级设置走 wb_user_settings（复合主键），旧 wb_settings 保持工作台全局语义。
 * 完整快照为事实：wb_snapshots.payload_json 保存整份文档；定义/引用索引只是
   可重建的查询投影，删除重建不得触碰快照与发布记录。
 * 内部主键为应用生成的 UUID 字符串；外部 ID（storage、UUID、短 id）原样保留。
@@ -21,6 +25,7 @@ SCHEMA_VERSION_BASELINE = '20260918_0001'
 
 wb_assets = sa.Table('wb_assets', METADATA,
     sa.Column('asset_uid', BinV(36), primary_key=True),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),  # 账号归属；''=未归属（仅迁移期）
     sa.Column('kind', sa.String(16), nullable=False),          # model / project / flow
     sa.Column('external_id', BinV(64), nullable=False),        # storage | UUID | 短 id
     sa.Column('name', sa.String(160), nullable=False, default=''),
@@ -29,7 +34,8 @@ wb_assets = sa.Table('wb_assets', METADATA,
     sa.Column('created_at', sa.String(32), nullable=False, default=''),
     sa.Column('updated_at', sa.String(32), nullable=False, default=''),
     sa.Column('deleted_at', sa.String(32), nullable=True),
-    sa.UniqueConstraint('kind', 'external_id', name='uq_assets_kind_external'),
+    sa.UniqueConstraint('kind', 'owner_user_id', 'external_id', name='uq_assets_kind_owner_external'),
+    sa.Index('ix_assets_owner_kind', 'owner_user_id', 'kind'),
     )
 
 wb_snapshots = sa.Table('wb_snapshots', METADATA,
@@ -130,6 +136,7 @@ wb_catalog_cache = sa.Table('wb_catalog_cache', METADATA,
     )
 
 wb_model_configs = sa.Table('wb_model_configs', METADATA,
+    sa.Column('owner_user_id', BinV(36), primary_key=True, default=''),  # 账号归属；''=未归属（仅迁移期）
     sa.Column('provider_id', BinV(64), primary_key=True),      # 保持原值（llm-…）
     sa.Column('name', sa.String(160), nullable=False),
     sa.Column('endpoint', sa.String(500), nullable=False, default=''),
@@ -208,10 +215,41 @@ wb_write_guards = sa.Table('wb_write_guards', METADATA,
     sa.Column('generation', sa.Integer(), nullable=False, default=0),
     )
 
+# --- 账号体系（2026-09-18）--------------------------------------------------------
+wb_users = sa.Table('wb_users', METADATA,
+    sa.Column('user_id', BinV(36), primary_key=True),
+    sa.Column('username', BinV(32), nullable=False),
+    sa.Column('username_key', BinV(32), nullable=False),       # strip().casefold()，唯一性以此为准
+    sa.Column('password_hash', sa.String(255), nullable=False),  # scrypt$n$r$p$salt$hash；明文绝不入库
+    sa.Column('is_admin', sa.Integer(), nullable=False, default=0),
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Column('updated_at', sa.String(32), nullable=False, default=''),
+    sa.UniqueConstraint('username_key', name='uq_users_username_key'),
+    )
+
+wb_sessions = sa.Table('wb_sessions', METADATA,
+    sa.Column('session_id', BinV(36), primary_key=True),
+    sa.Column('user_id', BinV(36), sa.ForeignKey('wb_users.user_id'), nullable=False),
+    sa.Column('token_hash', BinV(64), nullable=False),         # 只存摘要；Cookie 令牌不入库
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Column('last_seen_at', sa.String(32), nullable=False, default=''),
+    sa.Column('expires_at', sa.String(32), nullable=False, default=''),
+    sa.UniqueConstraint('token_hash', name='uq_sessions_token_hash'),
+    sa.Index('ix_sessions_user', 'user_id'),
+    )
+
+wb_user_settings = sa.Table('wb_user_settings', METADATA,
+    sa.Column('user_id', BinV(36), sa.ForeignKey('wb_users.user_id'), primary_key=True),
+    sa.Column('setting_key', BinV(80), primary_key=True),
+    sa.Column('value_json', LongText(), nullable=False, default='{}'),
+    sa.Column('revision', sa.Integer(), nullable=False, default=0),
+    sa.Column('updated_at', sa.String(32), nullable=False, default=''),
+    )
+
 # 预建 guard 行（迁移/初始化时插入，INSERT OR IGNORE 语义由调用方处理）
 GUARD_KEYS = ('asset-name:model', 'asset-name:project', 'asset-name:flow', 'model-default')
 
 ALL_TABLES = (wb_assets, wb_snapshots, wb_asset_heads, wb_releases, wb_project_refs,
               wb_definition_index, wb_reference_index, wb_catalog_cache, wb_model_configs,
               wb_credentials, wb_settings, wb_artifacts, wb_import_items, wb_requests,
-              wb_write_guards)
+              wb_write_guards, wb_users, wb_sessions, wb_user_settings)

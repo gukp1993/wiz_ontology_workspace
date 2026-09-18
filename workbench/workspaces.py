@@ -8,6 +8,7 @@ hash 分离（workspaces.revision_of 仅用于审计/导出与无 head 时的空
 import copy
 from uuid import uuid4
 
+from workbench import auth
 from workbench import storage
 from workbench.storage import assets as store
 from workbench.storage.engine import read_connection, write_tx
@@ -44,11 +45,16 @@ def clean_id(identifier=None):
 
 def describe(identifier=None):
     identifier = clean_id(identifier)
+    owner = auth.require_user_id()
     if identifier == DEFAULT_ID:
-        return {'id': DEFAULT_ID, 'name': DEFAULT_NAME}
+        # 默认本体：仅在本账号已持有其草稿/登记时可见（未使用时按“未创建”处理）
+        storage.ensure_ready()
+        with read_connection() as conn:
+            asset = store.get_asset(conn, KIND, DEFAULT_ID, owner)
+        return {'id': DEFAULT_ID, 'name': (asset or {}).get('name') or DEFAULT_NAME}
     storage.ensure_ready()
     with read_connection() as conn:
-        asset = store.get_asset(conn, KIND, identifier)
+        asset = store.get_asset(conn, KIND, identifier, owner)
     if asset is None:
         raise WorkspaceNotFound('本体不存在')
     if not asset['name']:
@@ -57,10 +63,11 @@ def describe(identifier=None):
 
 
 def listing():
-    """默认 storage 本体只在持有草稿时出现（与文件版语义一致：资产行随首次保存建立）。"""
+    """当前账号的本体清单；默认 storage 本体只在持有草稿时出现（资产行随首次保存建立）。"""
+    owner = auth.require_user_id()
     storage.ensure_ready()
     with read_connection() as conn:
-        rows = store.list_assets(conn, KIND)
+        rows = store.list_assets(conn, KIND, owner)
     return [{'id': row['external_id'], 'name': row['name']}
             for row in rows if row['name']]
 
@@ -69,6 +76,7 @@ def create(name, blank):
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
         raise ValueError('本体名称需要填写 1～80 个字符')
     name = name.strip()
+    owner = auth.require_user_id()
     storage.ensure_ready()
     identifier = str(uuid4())
     state = copy.deepcopy(blank)
@@ -77,14 +85,14 @@ def create(name, blank):
 
     def body(conn):
         store.bump_guard(conn, 'asset-name:model')
-        if store.name_taken(conn, KIND, name):
+        if store.name_taken(conn, KIND, name, owner_user_id=owner):
             raise DuplicateName('已存在同名本体，请换一个名称')
         return store._save_draft_in_conn(conn, KIND, identifier, _payload_of(state),
                                          store.PAYLOAD_FORMAT_ONTOLOGY, expected_token=None,
                                          name=name, summary=summary_of(state), project_ref=None,
                                          purpose='draft', legacy_revision='',
                                          allow_create=True, allow_advance=False,
-                                         now=None, conflict={})
+                                         now=None, conflict={}, owner_user_id=owner)
 
     with write_tx() as tx:
         tx.run(body)
@@ -110,7 +118,7 @@ def _state_of_payload(payload, identifier):
 
 def draft_exists(identifier):
     storage.ensure_ready()
-    return store.read_head(KIND, clean_id(identifier)) is not None
+    return store.read_head(KIND, clean_id(identifier), owner_user_id=auth.require_user_id()) is not None
 
 
 def revision_of(state):
@@ -123,14 +131,14 @@ def revision_of(state):
 
 
 def current_token(identifier):
-    """head 的不透明 revision token；无草稿返回 None。"""
+    """head 的不透明 revision token；无草稿（或非本账号）返回 None。"""
     storage.ensure_ready()
-    return store.current_token(KIND, clean_id(identifier))
+    return store.current_token(KIND, clean_id(identifier), owner_user_id=auth.require_user_id())
 
 
 def read_draft(identifier):
     storage.ensure_ready()
-    current = store.read_current(KIND, clean_id(identifier))
+    current = store.read_current(KIND, clean_id(identifier), owner_user_id=auth.require_user_id())
     if current is None:
         return None
     return _state_of_payload(current['snapshot']['payload'], identifier)
@@ -145,12 +153,14 @@ def write_draft(state, expected_token=None, blank_baseline=False):
     此处直接建立首个 head。
     """
     identifier = clean_id(state.get('workspaceId'))
+    owner = auth.require_user_id()
     storage.ensure_ready()
     result = store.save_draft(KIND, identifier, _payload_of(state),
                               store.PAYLOAD_FORMAT_ONTOLOGY,
                               expected_token=None if blank_baseline else expected_token,
                               name=None, summary=summary_of(state),
-                              allow_create=True, allow_advance=(expected_token is None))
+                              allow_create=True, allow_advance=(expected_token is None),
+                              owner_user_id=owner)
     return {'revision': result['revision'], 'seq': result['seq']}
 
 

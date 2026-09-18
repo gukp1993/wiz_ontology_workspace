@@ -17,6 +17,12 @@ from workbench import projects  # noqa: E402
 from workbench.calc_functions import evaluate, check_function, validate_expression  # noqa: E402
 from workbench.project_routes import post_calc_eval  # noqa: E402
 
+# 账号体系（20260918）：域级测试需绑定测试账号作为当前用户
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parent))
+import auth_client as _auth_client
+_auth_client.bind_fixture_user()
+
 PT = {'inp_a': 'number', 'inp_b': 'number'}
 
 

@@ -39,7 +39,7 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 ## 目录
 
-- `workbench/` — 后端。`server.py`（安全边界+路由分派，业务在 `model_routes.py`/`project_routes.py`）；`paths.py`（CODE_ROOT/DATA_ROOT 唯一定义，核心模块不得从演示模块取路径）；`locking.py`（全局写锁唯一定义）；`storage/`（**在线权威存储库**，见架构边界第 13 条）；`projects.py`（项目存储/升级预检）+ `project_validation.py`（校验组织+分职责函数）+ `project_mapping.py`（共用纯辅助）；`model_format.py`（本体 JSON schema ↔ JSON-LD 双向转换）、`contracts.py`、`versions.py`（发布登记，DB）、`workspaces.py`（本体资产/草稿，DB）、`flows.py`（编排，DB）、`dbdrivers.py`（连接探测，仅固定只读操作）、`secrets.py`/`api_credentials.py`/`llm_providers.py`/`catalogs.py`（凭据与缓存，DB）；`migrations/`（Alembic）；`demo/`（演示执行器）
+- `workbench/` — 后端。`server.py`（安全边界+鉴权门+路由分派，业务在 `model_routes.py`/`project_routes.py`）；`auth.py`（口令与会话、请求用户上下文）+ `auth_routes.py`（登录/注册/退出/登录态）；`paths.py`（CODE_ROOT/DATA_ROOT 唯一定义，核心模块不得从演示模块取路径）；`locking.py`（全局写锁唯一定义）；`storage/`（**在线权威存储库**，见架构边界第 13 条）；`projects.py`（项目存储/升级预检）+ `project_validation.py`（校验组织+分职责函数）+ `project_mapping.py`（共用纯辅助）；`model_format.py`（本体 JSON schema ↔ JSON-LD 双向转换）、`contracts.py`、`versions.py`（发布登记，DB）、`workspaces.py`（本体资产/草稿，DB）、`flows.py`（编排，DB）、`dbdrivers.py`（连接探测，仅固定只读操作）、`secrets.py`/`api_credentials.py`/`llm_providers.py`/`catalogs.py`（凭据与缓存，DB）；`migrations/`（Alembic）；`demo/`（演示执行器）
 - `frontend/src/` — Vue3 单页。`app/`：`http.ts`（唯一请求与错误解析层，409 带 currentRevision/.data）、`saveCoordinator.ts`（保存队列）、`navigation.ts`、`workspace.ts`；`ontology/`：`modelFormat.ts`（前后端协议层，与 model_format.py 镜像，两边必须同步改）+ 本体页；`project/`：`bindingModel.ts`（来源制适配层）+ `api.ts`（stripCatalogs 唯一实现）+ 项目页；`shared/` 通用控件；`tools/` 辅助页。页面不得自写 fetch/错误解析
 - `ontology/` — 全部数据（见下方存储规则），**用户数据，勿手改勿删**；`ontology/vault/` 是连接密码受保护存储（服务自动管理）
 - `tests/` — 回归套件 + `fixtures/validation_golden.json`（项目校验金样）+ `ts_hooks.mjs`（Node 跑 TS 的解析钩子）
@@ -77,6 +77,8 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
     - 初始化/迁移/备份必须显式 CLI：`python3 -m workbench.storage.transfer init|inspect|import|verify|export|backup`。服务启动与请求路径**绝不隐式 DDL/导入/回退文件**；真实根未初始化直接拒启。隔离根（WIZ_WORKBENCH_ROOT 已设）允许惰性建空库（测试专用）。
     - 改 `storage/schema.py` 必须新增 Alembic 迁移（程序化，`workbench/migrations/`）；存储契约测试 `tests/test_storage_contract.py`（45 项，含故障注入；设 WIZ_MYSQL_TEST_URL 加跑 MySQL），迁移演练 `tests/test_storage_transfer.py`。
     - 实施事实与冻结契约全文见 `文档/需求/20260918_SQLite存储迁移与MySQL预留/开发计划.md` §9。
+
+14. **登录与账号体系（2026-09-18 新增，已实施）**：`/api/*` 除 4 个免登录认证端点（`auth-state/auth-login/auth-register/auth-logout`）外**全部要求登录**，未登录 401 `UNAUTHENTICATED`；身份来自 Cookie `wiz_session`（HttpOnly+SameSite=Strict，库中只存令牌摘要，30 天滑动续期）。**数据按账号完全隔离**：本体/项目/编排/模型配置与密钥/连接与 API 凭据全部按 `owner_user_id` 归属，跨账号 id 一律按不存在处理（404/空）；归属过滤收口在 `storage/assets.py`（对外函数必带 `owner_user_id`）与 `storage/configuration.py`（用户级设置走 `wb_user_settings`），域层统一 `auth.require_user_id()`。口令只存 PBKDF2-HMAC-SHA256 哈希（600000 轮；本机 Python 3.9 无 `hashlib.scrypt`，勿改回）。界面未登录只渲染登录页（`app/LoginView.vue` + `main.ts` 引导层），任意接口 401 自动回登录页；浏览器本地偏好按 `u:<用户名>:` 前缀隔离。迁移运维一律用 CLI：`transfer create-user` / `transfer assign-owner`（后者对 LLM 密钥按新 AAD **重加密**，不能直接 UPDATE owner_key）；协议全文见 `文档/接口文档/06-认证与账户接口.md`，实施记录见 `文档/需求/20260918_登录与账号体系/开发计划.md` §5。
 
 ## 前端约定
 

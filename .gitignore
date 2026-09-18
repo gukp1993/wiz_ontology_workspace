@@ -9,8 +9,10 @@ ontology/vault/
 
 # 工作台数据库与备份（运行时产物，不入 git）
 data/
-# 存储加密根密钥（库外 0600 文件，绝不入 git）
+# 存储加密根密钥（库外 0600 文件，绝不入 git；含备份目录里的副本）
 keys/
+wb-root.key
+*.key
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm

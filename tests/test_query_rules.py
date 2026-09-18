@@ -13,6 +13,12 @@ os.environ['WIZ_WORKBENCH_PORT'] = '18994'
 from make_validation_golden import project, binding, QUERY_RULE, QUERY_ONTOLOGY, REUSABLE_QUERY_RULE, V3_QUERY_RULE, V3_SCALAR_RULE
 from workbench import projects, project_routes
 
+# 账号体系（20260918）：域级测试需绑定测试账号作为当前用户
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parent))
+import auth_client as _auth_client
+_auth_client.bind_fixture_user()
+
 class QueryRules(unittest.TestCase):
     def state(self):
         rule=copy.deepcopy(QUERY_RULE)

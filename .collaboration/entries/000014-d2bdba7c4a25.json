@@ -1,0 +1,37 @@
+{
+  "ticket": "ca8025aca7964481b5b3c65ff09690a5",
+  "task": "登录与账号体系",
+  "status": "implemented",
+  "summary": "按用户确认的四项决定实施：完全隔离、开放注册、密钥按账号隔离、admin/admin。存储层新增 wb_users/wb_sessions/wb_user_settings，wb_assets 与 wb_model_configs 归属列 + 唯一约束改按账号（Alembic 0002，SQLite 表重建）；auth.py 提供 PBKDF2 口令、会话（库中只存摘要）与请求用户上下文；server.py 加鉴权门（仅 4 个认证端点免登录，其余 401）与 Set-Cookie；八个业务模块全部接线归属；前端加登录/注册页 + 启动引导 + 401 回落 + 偏好按账号前缀；transfer 新增 create-user/assign-owner（后者对 LLM 密钥重加密）。真实库已迁移并运行：备份→停服→init→create-user admin→assign-owner→启服；admin 可见全部存量数据。",
+  "decisions": [
+    "数据完全隔离（每账号独立本体/项目/编排/配置），跨账号 id 一律按不存在处理；开放注册",
+    "归属过滤收口在存储层（assets 对外函数必带 owner_user_id；用户级设置走新表 wb_user_settings），域层统一 auth.require_user_id()",
+    "免登录接口也解会话（auth-state 才能报告已登录用户，避免刷新误判）；退出与 401 走同一引导回调",
+    "口令 PBKDF2-HMAC-SHA256 600000 轮（Python 3.9 无 hashlib.scrypt，勿改回）；会话令牌随机 32 字节、库中只存摘要",
+    "assign-owner 改归属必须重加密 LLM 密钥（AES-GCM 的 AAD 绑定 owner_key），解密失败保留原行并明确报出"
+  ],
+  "verification": [
+    "新增 tests/test_auth.py 63 项全过；后端 tests/run.py all 30/30（既有套件改为带会话 Cookie/绑定测试账号）",
+    "前端 typecheck/build 通过；mjs 21/22（唯一败 mapping_forms 经基线对照为既有失败）；ontology_lazy_load 补登录态后 11/11",
+    "隔离实例浏览器全链路：登录页→注册→空白空间→建本体→刷新保持登录→退出回登录页→换账号只见自己数据→清会话后 401 自动回登录页",
+    "真实库迁移：备份（含根密钥 0600）→ schema 0001→0002 → admin 创建 → 归属 6 资产/2 模型配置/1 设置/2 密钥 → 启服；FK 空、integrity ok、317 快照不变；admin 见 2 本体/1 项目/2 编排/2 模型配置",
+    "修复实施中发现 4 个缺陷：auth-state 不解会话、退出不切界面、assign-owner 破坏密钥解密、start.sh 用业务接口探测就绪"
+  ],
+  "next": [
+    "用户验收；admin 弱口令建议更换（transfer create-user --username admin --password <新> --reset-password）",
+    "本期未做：忘记密码、账号禁用/删除、管理员用户管理页"
+  ],
+  "references": [
+    "文档/接口文档/06-认证与账户接口.md",
+    "文档/需求/20260918_登录与账号体系/开发计划.md",
+    "workbench/auth.py",
+    "tests/test_auth.py",
+    "AGENTS.md"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-18T12:33:35.245474+00:00",
+  "sequence": 14,
+  "filename": "000014-d2bdba7c4a25.json",
+  "record_hash": "9074f09cb02c9fcd2fc77bf96dbe0af3d1e8be53749838c61ad791431dcd7702",
+  "context_advanced": false
+}

@@ -268,12 +268,18 @@ def read_head(conn, asset_uid):
     return dict(row) if row else None
 
 
-def head_by_external(conn, kind, external_id):
-    row = conn.execute(text('SELECT h.asset_uid, h.snapshot_id, h.revision_token, h.generation, '
-                            'h.snapshot_seq, h.release_seq, h.updated_at FROM wb_asset_heads h '
-                            'JOIN wb_assets a ON a.asset_uid = h.asset_uid '
-                            "WHERE a.kind = :k AND a.external_id = :e AND a.deleted_at IS NULL"),
-                       {'k': kind, 'e': external_id}).mappings().first()
+def head_by_external(conn, kind, external_id, owner_user_id=None):
+    """按 (kind, external_id) 取 head；owner_user_id 非 None 时附加归属过滤
+    （跨账号按不存在处理；CLI/迁移路径传 None 不限定归属）。"""
+    params = {'k': kind, 'e': external_id}
+    sql = ('SELECT h.asset_uid, h.snapshot_id, h.revision_token, h.generation, '
+           'h.snapshot_seq, h.release_seq, h.updated_at FROM wb_asset_heads h '
+           'JOIN wb_assets a ON a.asset_uid = h.asset_uid '
+           "WHERE a.kind = :k AND a.external_id = :e AND a.deleted_at IS NULL")
+    if owner_user_id is not None:
+        sql += ' AND a.owner_user_id = :o'
+        params['o'] = owner_user_id or ''
+    row = conn.execute(text(sql), params).mappings().first()
     return dict(row) if row else None
 
 

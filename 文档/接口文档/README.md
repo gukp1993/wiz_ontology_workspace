@@ -23,6 +23,7 @@
 | 2026-09-18 | 规范修复（批次 B，R3/R4/R5）：① 错误信封**实装** `code` 字段（400 INVALID_ARGUMENT / 403 ORIGIN_REJECTED / 404 NOT_FOUND / 409 REVISION_CONFLICT·DUPLICATE_NAME / 413 / 415 / 503 / 新增 500 INTERNAL_ERROR），未知异常不再吞成 400，客户端只收通用消息，服务端留堆栈与 requestId；② 全部响应新增 `X-Request-Id` 头；③ GET 取消「全部接口统一按 ontology 定位工作区」的前置副作用，未知端点稳定 404，独立接口（flows / llm-providers / storage-status 等）不再依赖当前本体有效；④ `GET /api/projects` 筛选语义显式化（仅 `ontology` 参数控制范围，空值 400，无效本体 404，其他参数不隐式改变范围）。详见 2.2/2.3/2.4 与 03 分册 §1.1 | 全部 GET 接口、全部 POST 错误路径、GET /api/projects | — |
 | 2026-09-18 | 数据模型新增（函数编排取值）：属性取值来源新增 `kind='flow'`（结构、类型相容表、输入绑定来源与约束见 `01-通用约定与数据模型.md` §3.1，枚举见 §6）。项目侧只读引用编排 id + 输出 id + 输入绑定，不复制编排定义；编排删除按不存在处理；对象/列表输出与时间序列属性禁止绑定；属性间循环依赖在保存/发布校验阻断。历史 `kind='computed'`（直接 SQL / 引用规则 / 计算函数）**保留只读兼容**，前端不再提供新建入口。后端校验 `project_validation._check_flow_binding`，前端镜像 `PropertySources.vue`；新增回归 `tests/test_project_flow_source.py`（21 步）。**取值预览本期未打通编排执行** | POST /api/project-validate、POST /api/project-publish、POST /api/projects（项目状态内携带） | — |
 | 2026-09-18 | 新增 `POST /api/llm-provider-default`（§4.5）：仅切换默认提供方指针，供列表页「设为默认」按钮使用。原先只能通过 `POST /api/llm-provider-save` 携带全量字段 + `isDefault` 完成，会顺带覆盖配置并递增 `metadata_revision`，语义过重。新接口幂等（已是默认则直接 200）、与 `save`/`clear` 共用 `model-default` 护栏保证默认唯一、不触碰配置与密钥。前端对话框不再提供「设为默认」勾选项 | POST /api/llm-provider-default（新增）、POST /api/llm-provider-save（`isDefault` 保留，前端列表页不再使用） | — |
+| 2026-09-18 | **登录与账号体系**（需求 20260918_登录与账号体系）：新增 4 个免登录认证接口 （`GET /api/auth-state`、`POST /api/auth-login`、`POST /api/auth-register`、`POST /api/auth-logout`，会话 Cookie `wiz_session`，30 天滑动续期）；**其余全部 `/api/*` 接口未登录返回 401 `UNAUTHENTICATED`**；所有业务数据按账号完全隔离（本体/项目/编排/模型配置/连接与 API 凭据），跨账号 id 一律按不存在处理；存量数据经 `transfer create-user`/`assign-owner` 归属 admin（幂等，迁移前先 `transfer backup`）。详见 06 分册 | 全部接口（新增鉴权前置）、新增 4 个认证接口 | — |
 
 ---
 
@@ -153,6 +154,7 @@
 | [03-项目区接口](03-项目区接口.md) | 项目、数据连接、目录、凭据、取值预览、公式试算（17 个） |
 | [04-编排与LLM接口](04-编排与LLM接口.md) | 函数编排 CRUD、配置检查、运行、LLM 提供方（13 个） |
 | [05-接口清单与规范差距](05-接口清单与规范差距.md) | 全量速查表 + 现状与标准 HTTP/REST 规范的差距与演进路线 |
+| [06-认证与账户接口](06-认证与账户接口.md) | 登录/注册/退出/登录态、会话 Cookie、数据按账号隔离与迁移命令（4 个，2026-09-18） |
 
 ---
 

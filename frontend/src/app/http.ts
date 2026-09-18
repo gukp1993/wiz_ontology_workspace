@@ -23,6 +23,21 @@ export class SaveRequestError extends Error {
   }
 }
 
+// ── 认证（20260918 登录与账号体系）：401 统一处理入口 ──────────────────────────
+// 任何接口返回 401 UNAUTHENTICATED 都说明会话失效/未登录：这里只负责「通知」，
+// 由 app/auth.ts 注册的处理器把界面切回登录页；http 层不直接操作路由或 DOM。
+type UnauthenticatedHandler = () => void
+let onUnauthenticated: UnauthenticatedHandler | null = null
+
+/** 注册 401 处理器（幂等；页面启动时由 auth 模块注册一次）。 */
+export function setUnauthenticatedHandler(handler: UnauthenticatedHandler | null): void {
+  onUnauthenticated = handler
+}
+
+function isUnauthenticated(error: SaveRequestError): boolean {
+  return error.status === 401
+}
+
 /** 读取（GET）默认超时：集中配置，测试可通过 window.__WIZ_READ_TIMEOUT_MS 注入更短时间。 */
 export const READ_TIMEOUT_MS = 15000
 export interface RequestOptions { timeoutMs?: number; signal?: AbortSignal | null }
@@ -65,7 +80,11 @@ export async function requestJson(url: string, init?: RequestInit, opts: Request
       if (controller?.signal.aborted || external?.aborted) throw abortError()
       parsed = false
     }
-    if (!response.ok) throw new SaveRequestError(data?.error || (data?.errors || []).join('；') || `请求失败（${response.status}）`, response.status, data?.currentRevision ?? null, data, 'http')
+    if (!response.ok) {
+      const error = new SaveRequestError(data?.error || (data?.errors || []).join('；') || `请求失败（${response.status}）`, response.status, data?.currentRevision ?? null, data, 'http')
+      if (isUnauthenticated(error)) onUnauthenticated?.()  // 会话失效：通知登录引导（不抛出额外错误类型）
+      throw error
+    }
     // 2xx 但响应体不是合法 JSON：不能静默当成有效数据交给调用方
     if (!parsed) throw new SaveRequestError('服务返回的内容无法解析为有效数据，请稍后重试', response.status, null, null, 'http')
     return data
@@ -92,7 +111,9 @@ export async function postBlob(url: string, payload: any): Promise<Blob> {
   if (!response.ok) {
     let data: any = null
     try { data = await response.json() } catch { /* 非 JSON 错误体 */ }
-    throw new SaveRequestError(data?.error || `请求失败（${response.status}）`, response.status, data?.currentRevision ?? null)
+    const error = new SaveRequestError(data?.error || `请求失败（${response.status}）`, response.status, data?.currentRevision ?? null)
+    if (isUnauthenticated(error)) onUnauthenticated?.()
+    throw error
   }
   return response.blob()
 }

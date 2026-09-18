@@ -5,6 +5,11 @@
 安全边界不变：POST 白名单、Origin 校验、2MB 请求上限、JSON Content-Type；
 写操作的 LOCK 在业务模块内使用（workbench.locking 的同一把全局锁）。
 
+认证与账号（2026-09-18）：除 AUTH_FREE_GET/POST 四个接口外，全部 /api/* 要求登录
+（未登录 401 UNAUTHENTICATED）；身份来自 Cookie wiz_session（HttpOnly/SameSite=Strict），
+经 auth.resolve_session 解出后 auth.bind_request(user) 放进请求上下文，业务与存储层
+按 current_user_id 做数据归属过滤。契约见 文档/接口文档/06-认证与账户接口.md。
+
 V3: the ontology area and the project binding area are separate states with
 separate drafts and releases. Ontology publishes create immutable, classified
 version directories; projects pin one published version and upgrade proactively
@@ -17,19 +22,26 @@ project state/snapshots. /api/api-credential 登记项目级 API 凭据（动作
 """
 import json
 import os
+import threading
 import traceback
 import uuid
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
 
+from workbench import auth, auth_routes
 from workbench import model_routes, project_routes, projects, versions, workspaces
 from workbench import flow_routes, storage
 from workbench.paths import CODE_ROOT
 
 STATIC = CODE_ROOT / 'frontend/dist'
 
+# 免登录接口（接口文档 06 §2）：认证自身的四个端点；其余 /api/* 一律要求会话。
+AUTH_FREE_GET = {'/api/auth-state'}
+AUTH_FREE_POST = {'/api/auth-login', '/api/auth-register', '/api/auth-logout'}
+
 # GET 路由表：query 为 parse_qs(keep_blank_values=True) 的结果。
 GET_ROUTES = {
+    '/api/auth-state': auth_routes.get_auth_state,
     '/api/state': model_routes.get_state,
     '/api/versions': model_routes.get_versions,
     '/api/version-state': model_routes.get_version_state,
@@ -55,6 +67,9 @@ _MISSING = object()  # 路由表查不到时的唯一标记（键存在但值为
 
 # POST 路由表：payload 为解析后的 JSON。白名单即本表键集合。
 POST_ROUTES = {
+    '/api/auth-login': auth_routes.post_login,
+    '/api/auth-register': auth_routes.post_register,
+    '/api/auth-logout': lambda payload: auth_routes.post_logout(payload, _current_token()),
     '/api/ontologies': model_routes.post_ontologies,
     '/api/projects': project_routes.post_create_project,
     '/api/format-preview': model_routes.post_format_preview,
@@ -95,6 +110,27 @@ POST_ROUTES = {
 }
 
 
+_REQUEST_CTX = threading.local()  # 每请求线程独立（ThreadingHTTPServer 一线程一请求）
+
+
+def _current_token():
+    """从当前请求的 Cookie 取会话令牌（供 auth_routes.post_logout 等模块级调用）。"""
+    handler = getattr(_REQUEST_CTX, 'handler', None)
+    return _cookie_token(handler) if handler is not None else ''
+
+
+def _cookie_token(handler):
+    """解析 Cookie 头里的 wiz_session；缺失返回空串。"""
+    if handler is None:
+        return ''
+    header = handler.headers.get('Cookie', '') or ''
+    for part in header.split(';'):
+        name, _, value = part.strip().partition('=')
+        if name == auth.SESSION_COOKIE:
+            return value.strip()
+    return ''
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC), **kwargs)
@@ -109,10 +145,17 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def respond(self, payload, status=200, close=False):
+        # Cookie 指令（登录/注册/退出）由响应层消费：写成 Set-Cookie，响应体不含该键
+        cookie = payload.pop('cookie', None) if isinstance(payload, dict) else None
         data = json.dumps(payload, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Cache-Control', 'no-store')
+        if cookie:
+            max_age = int(cookie.get('maxAge') or 0)
+            parts = [f"{cookie['name']}={cookie.get('value', '')}", 'Path=/', 'HttpOnly',
+                     'SameSite=Strict', f'Max-Age={max_age}']
+            self.send_header('Set-Cookie', '; '.join(parts))
         request_id = getattr(self, '_request_id', None)
         if request_id:
             self.send_header('X-Request-Id', request_id)
@@ -126,6 +169,18 @@ class Handler(SimpleHTTPRequestHandler):
         if extra:
             payload.update(extra)
         return self.respond(payload, status, close=close)
+
+    def _resolve_user(self, path, free):
+        """解出当前会话用户（None=未登录）。
+
+        免登录路径也要解会话：/api/auth-state 必须能报告"带着有效 Cookie 的已登录用户"
+        （否则刷新页面会误判未登录、被弹回登录页）。是否**强制**要求会话由调用处按
+        free 决定（免登录接口允许 None）。
+        """
+        return auth.resolve_session(_cookie_token(self))
+
+    def _unauthorized(self):
+        return self._error(401, 'UNAUTHENTICATED', '请先登录')
 
     def _internal_error(self, exc):
         """未知程序错误：客户端只见通用消息 + requestId；完整堆栈只写服务端日志。
@@ -144,7 +199,13 @@ class Handler(SimpleHTTPRequestHandler):
         if not path.startswith('/api/'):
             return super().do_GET()
         self._request_id = uuid.uuid4().hex[:12]
+        _REQUEST_CTX.handler = self
         try:
+            # 鉴权门：除免登录白名单外一律要求有效会话；未登录 401（接口文档 06 §1）
+            user = self._resolve_user(path, free=path in AUTH_FREE_GET)
+            auth.bind_request(user)
+            if user is None and path not in AUTH_FREE_GET:
+                return self._unauthorized()
             if path == '/api/ontologies':
                 return self.respond(*model_routes.get_ontologies(parse_qs(url.query, keep_blank_values=True)))
             # 先判路由是否存在：未知端点稳定 404，不受后续任何校验影响（R4）。
@@ -156,6 +217,8 @@ class Handler(SimpleHTTPRequestHandler):
             # 均已在自己的边界校验：本体区 GET 自行 describe；项目区按 project 参数
             # 及其固定引用校验；flows/llm-providers/storage-status 与本体无关。
             return self.respond(*handler(parse_qs(url.query, keep_blank_values=True)))
+        except auth.AuthRequired:
+            return self._unauthorized()
         except projects.ProjectNotFound as exc:
             return self._error(404, 'NOT_FOUND', str(exc))
         except versions.VersionNotFound as exc:
@@ -178,6 +241,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         self._request_id = uuid.uuid4().hex[:12]
+        _REQUEST_CTX.handler = self
         path = urlsplit(self.path).path
         # 用哨兵区分「路由键不存在」与「路由已注册但值为可调用/二进制」，
         # 避免 None 既是「未注册」又是「二进制占位」导致已注册端点被判 404。
@@ -190,6 +254,11 @@ class Handler(SimpleHTTPRequestHandler):
         if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
             return self._error(415, 'UNSUPPORTED_MEDIA_TYPE', '需要JSON请求')
         try:
+            # 鉴权门：免登录白名单（login/register/logout）之外一律要求有效会话
+            user = self._resolve_user(path, free=path in AUTH_FREE_POST)
+            auth.bind_request(user)
+            if user is None and path not in AUTH_FREE_POST:
+                return self._unauthorized()
             length = int(self.headers.get('Content-Length', 0))
             if length > 2_000_000:
                 return self._error(413, 'PAYLOAD_TOO_LARGE', '请求超过大小限制（最大 2 MB）', close=True)
@@ -210,6 +279,15 @@ class Handler(SimpleHTTPRequestHandler):
                 self.end_headers(); self.wfile.write(data)
                 return
             return self.respond(*handler(payload))
+        except auth.DuplicateUsername as exc:
+            return self._error(409, 'DUPLICATE_NAME', str(exc))
+        except auth.InvalidCredentials as exc:
+            return self._error(401, 'UNAUTHENTICATED', str(exc))
+        except auth.AuthRequired:
+            return self._unauthorized()
+        except auth.AuthError as exc:
+            # 账号/口令规则校验（用户名或口令不符合规则）：客户端错误
+            return self._error(400, 'INVALID_ARGUMENT', str(exc))
         except projects.ProjectNotFound as exc:
             return self._error(404, 'NOT_FOUND', str(exc))
         except versions.VersionNotFound as exc:
@@ -251,5 +329,10 @@ if __name__ == '__main__':
     port = int(os.environ.get('WIZ_WORKBENCH_PORT') or 18765)
     if port == 8765:
         raise SystemExit('端口 8765 已保留给其他服务；本工作台固定 18765（可用 WIZ_WORKBENCH_PORT 覆盖为其他端口）')
+    # 过期会话清理（维护型，失败不影响启动：下次请求仍会按过期判定拒绝）
+    try:
+        auth.purge_expired()
+    except Exception:
+        pass
     print('本体工作台 http://127.0.0.1:' + str(port), flush=True)
     ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()

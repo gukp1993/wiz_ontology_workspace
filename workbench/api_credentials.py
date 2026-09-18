@@ -5,6 +5,7 @@ API 凭据（动作接口出站调用所需密钥）独立命名空间，与连�
 互不覆盖、不把连接标识当凭据标识。密钥只写不读回浏览器：HTTP 层只暴露
 list_metadata 的 id/name；密文经 SecretStore AES-GCM 加密，根密钥在库外。
 """
+from workbench import auth
 from workbench import storage
 from workbench.storage import configuration as config_store
 from workbench.storage.engine import read_connection, write_tx, utcnow
@@ -25,12 +26,12 @@ def _clean_id(project_id, credential_id):
 
 def _owner_uid(conn, project_id, create=False):
     from workbench.storage import assets as store
-    asset = store.get_asset(conn, 'project', project_id)
+    asset = store.get_asset(conn, 'project', project_id, auth.require_user_id())
     if asset is None:
         if not create:
             raise ValueError('项目不存在，无法保存凭据')
         # 与旧 vault 宽松行为一致：写路径允许先于项目草稿登记（资产行无 head，不出现在列表）
-        return store.ensure_asset(conn, 'project', project_id, '', None)
+        return store.ensure_asset(conn, 'project', project_id, '', None, owner_user_id=auth.require_user_id())
     return asset['asset_uid']
 
 

@@ -23,6 +23,13 @@ if not os.environ.get('WIZ_WORKBENCH_ROOT'):
 from workbench import projects  # noqa: E402
 from workbench.project_validation import validate_project  # noqa: E402
 
+# 账号体系（20260918）：validate_project 读取 flow/凭据按当前账号过滤，生成与回放必须同一账号
+from pathlib import Path as _P
+import sys as _sys
+_sys.path.insert(0, str(_P(__file__).resolve().parent))
+import auth_client as _auth_client
+_auth_client.bind_fixture_user()
+
 FIXTURE = Path(__file__).resolve().parent / 'fixtures' / 'validation_golden.json'
 FAILURES = []
 

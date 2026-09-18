@@ -33,6 +33,7 @@ import ListPager from '../shared/ListPager.vue'
 import { localProperties, effectiveProperty, propertyTypeLabel, propertyDataType, dataTypeLabel, valueShapeOf, copyAsPrivate, addReference, shapeConflict } from './propertyModel'
 import { useOntTable, type OntTable } from './ontList'
 import { appConfirm } from '../shared/appConfirm'
+import { prefGet, prefSet } from '../app/auth'
 import { graphReferences, shortType } from './editorModel'
 import { actionsOf, associationsOf, associationsOfObject, commitAssociations } from './actionModel'
 import { commitRuleAssociations, ruleAssociationsOf, rulesOf, rulesOfObject } from './businessRuleModel'
@@ -280,12 +281,12 @@ async function pickShared(id: string, action: string) {
 const listQuery = ref(''), starOnly = ref(false), asc = ref(true), page = ref(1), stackedDetail = ref(false)
 const pageSize = 12
 const ldRef = ref<HTMLElement | null>(null), ldH = ref(560)
-// 收藏是本地用户偏好，不写入本体语义模型（原型开发计划 §3：未确定偏好存储机制前不加后端字段）。
+// 收藏是本地用户偏好（按账号命名空间存储，20260918），不写入本体语义模型。
 const STARS_KEY = 'wiz-object-stars'
 const stars = ref<Set<string>>(readStars())
 function readStars(): Set<string> {
   try {
-    const raw = localStorage.getItem(STARS_KEY)
+    const raw = prefGet(STARS_KEY)
     const arr = raw ? JSON.parse(raw) : []
     return new Set(Array.isArray(arr) ? arr.filter((x: any) => typeof x === 'string') : [])
   } catch { return new Set<string>() }
@@ -294,7 +295,7 @@ function toggleStar(id: string) {
   const next = new Set(stars.value)
   if (next.has(id)) next.delete(id); else next.add(id)
   stars.value = next
-  try { localStorage.setItem(STARS_KEY, JSON.stringify([...next])) } catch { /* 隐私模式等场景静默降级：收藏不落盘 */ }
+  prefSet(STARS_KEY, JSON.stringify([...next]))  // 按账号命名空间；未登录/存储不可用静默降级
 }
 function clearFilters() { listQuery.value = ''; starOnly.value = false; page.value = 1 }
 function onSearch(v: string) { listQuery.value = v; page.value = 1 }

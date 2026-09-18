@@ -21,6 +21,10 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).resolve().parent))
+import auth_client
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -64,11 +68,18 @@ def shutdown():
         PROC = None
 
 
+AUTH_COOKIE = {'value': ''}  # 登录后写入（20260918 账号体系）
+
+
 def request(method, path, payload=None, origin=ORIGIN, raw_body=None, want_headers=False):
     """raw_body：发送非 JSON 原始字节（测 400 解析分支），优先于 payload。"""
     data = raw_body if raw_body is not None else (
         json.dumps(payload, ensure_ascii=False).encode() if payload is not None else None)
     headers = {'Content-Type': 'application/json'}
+
+    if AUTH_COOKIE['value']:
+
+        headers['Cookie'] = 'wiz_session=' + AUTH_COOKIE['value']
     if method == 'POST':
         headers['Origin'] = origin
     req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
@@ -110,7 +121,7 @@ def start_server():
             print(PROC.stdout.read().decode(errors='replace'))
             sys.exit(1)
         try:
-            status, _ = request('GET', '/api/ontologies')
+            status, _ = request('GET', '/api/auth-state')
             if status == 200:
                 ready = True
                 break
@@ -118,6 +129,8 @@ def start_server():
         except (urllib.error.URLError, ConnectionError, OSError):
             time.sleep(0.2)
     check(ready, '服务未在 20 秒内就绪', actual='未就绪', expected=200)
+    if ready:
+        AUTH_COOKIE['value'] = auth_client.auth_headers(BASE)['Cookie'].split('=', 1)[1]
     ok('0', f'隔离服务已就绪 WIZ_WORKBENCH_ROOT={TMP} 端口 {PORT}')
 
 
@@ -138,7 +151,10 @@ def unit_internal_error_injection():
     port = httpd.server_address[1]
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
-        req = urllib.request.Request(f'http://127.0.0.1:{port}/api/flows')
+        # 账号体系（20260918）：该注入实例独立端口，需要自己的会话 Cookie
+        _, token = auth_client.register_or_login(f'http://127.0.0.1:{port}')
+        req = urllib.request.Request(f'http://127.0.0.1:{port}/api/flows',
+                                     headers={'Cookie': 'wiz_session=' + token})
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 status, body, headers = resp.status, json.loads(resp.read().decode()), dict(resp.headers)

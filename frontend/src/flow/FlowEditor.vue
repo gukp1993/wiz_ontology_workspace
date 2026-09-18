@@ -7,6 +7,7 @@
      · 保存与撤销重做沿用 App 的 flow Saver；本页 emit before-change/changed。 -->
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { prefGet, prefSet } from '../app/auth'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import FlowCanvas from './FlowCanvas.vue'
@@ -460,7 +461,7 @@ function outJson(): string {
 function copyOut() { navigator.clipboard?.writeText(outJson()) }
 
 // ── 详情宽度拖拽（360–560，记忆到 localStorage；窄屏覆盖面板不拖拽） ────────────────
-const inspectorWidth = ref(Number(localStorage.getItem('wiz-flow-detail-w')) || 480)
+const inspectorWidth = ref(Number(prefGet('wiz-flow-detail-w')) || 480)
 let resizing = false
 function startResize(e: MouseEvent) {
   if (window.innerWidth < 1100) return
@@ -472,7 +473,7 @@ function startResize(e: MouseEvent) {
   }
   const up = () => {
     resizing = false
-    localStorage.setItem('wiz-flow-detail-w', String(inspectorWidth.value))
+    prefSet('wiz-flow-detail-w', String(inspectorWidth.value))
     document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up)
   }
   document.addEventListener('mousemove', move); document.addEventListener('mouseup', up)

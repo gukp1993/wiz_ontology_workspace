@@ -28,6 +28,10 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).resolve().parent))
+import auth_client
 import zipfile
 from pathlib import Path
 
@@ -75,9 +79,16 @@ def shutdown():
 
 # --- HTTP ---------------------------------------------------------------------
 
+AUTH_COOKIE = {'value': ''}  # 登录后写入（20260918 账号体系）
+
+
 def request(method, path, payload=None, origin=ORIGIN, raw=False):
     data = json.dumps(payload, ensure_ascii=False).encode() if payload is not None else None
     headers = {'Content-Type': 'application/json'}
+
+    if AUTH_COOKIE['value']:
+
+        headers['Cookie'] = 'wiz_session=' + AUTH_COOKIE['value']
     if method == 'POST':
         headers['Origin'] = origin
     req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
@@ -111,12 +122,14 @@ def db_call(fn):
 
 
 def put_release_zip(identifier, name, blob):
+    auth_client.bind_fixture_user()   # 测试进程直调存储层：绑定当前用户（20260918）
+
     def body():
         from workbench.storage import assets as store, artifacts as artifact_store
         from workbench.storage.engine import write_tx, utcnow
 
         def _inner(conn):
-            asset = store.get_asset(conn, 'model', identifier)
+            asset = store.get_asset(conn, 'model', identifier, auth_client.user_id_from_db(TMP))
             assert asset is not None, f'本体 {identifier} 的资产未创建'
             artifact_store.put_artifact(conn, blob, artifact_store.PURPOSE_RELEASE_ZIP,
                                         legacy_name=name, owner_asset_uid=asset['asset_uid'],
@@ -127,11 +140,13 @@ def put_release_zip(identifier, name, blob):
 
 
 def count_restore_backups(identifier):
+    auth_client.bind_fixture_user()
+
     def body():
         from workbench.storage import assets as store, artifacts as artifact_store
         from workbench.storage.engine import read_connection
         with read_connection() as conn:
-            asset = store.get_asset(conn, 'model', identifier)
+            asset = store.get_asset(conn, 'model', identifier, auth_client.user_id_from_db(TMP))
             if asset is None:
                 return 0
             rows = artifact_store.artifact_meta_list(conn, asset['asset_uid'],
@@ -165,7 +180,7 @@ def start_server():
             print(PROC.stdout.read().decode(errors='replace'))
             sys.exit(1)
         try:
-            status, _ = request('GET', '/api/ontologies')
+            status, _ = request('GET', '/api/auth-state')
             if status == 200:
                 ready = True
                 break
@@ -173,6 +188,8 @@ def start_server():
         except (urllib.error.URLError, ConnectionError, OSError):
             time.sleep(0.2)
     check(ready, '服务未在 20 秒内就绪', actual='未就绪', expected=200)
+    if ready:
+        AUTH_COOKIE['value'] = auth_client.auth_headers(BASE)['Cookie'].split('=', 1)[1]
     ok('0', f'隔离服务已就绪 WIZ_WORKBENCH_ROOT={TMP} 端口 {PORT}')
 
 

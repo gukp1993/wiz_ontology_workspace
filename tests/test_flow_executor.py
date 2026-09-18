@@ -182,6 +182,12 @@ ctx = {'project_id': 'p1', 'connections': {'c1': {'id': 'c1', 'engine': 'mysql',
                                                   'port': 3306, 'username': 'u', 'database': 'app'}}, 'credential_ids': set()}
 os.environ['WIZ_SECRET_FOR_TEST'] = ''
 from workbench import secrets as secrets_store  # noqa: E402
+
+# 账号体系（20260918）：域级测试需绑定测试账号作为当前用户
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parent))
+import auth_client as _auth_client
+_auth_client.bind_fixture_user()
 secrets_store.save('p1', 'c1', 'pass-123')
 
 result = flow_executor.run({'flowId': 'x', 'name': 'f', 'nodes': [sql_node], 'inputs': [], 'outputs': [],

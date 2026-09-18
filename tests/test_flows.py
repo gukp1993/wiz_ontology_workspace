@@ -20,6 +20,12 @@ os.environ['WIZ_WORKBENCH_ROOT'] = str(TMP)
 
 from workbench import flows, flow_routes  # noqa: E402  （临时根就位后再 import）
 
+# 账号体系（20260918）：域级测试需绑定测试账号作为当前用户
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parent))
+import auth_client as _auth_client
+_auth_client.bind_fixture_user()
+
 PASSED = []
 
 

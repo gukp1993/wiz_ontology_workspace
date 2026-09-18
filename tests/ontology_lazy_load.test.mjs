@@ -51,7 +51,10 @@ const PROJECT_B = { projectId: 'B', name: '项目B', ontologyId: '', ontologyVer
 function makeServer() {
   const calls = []
   let failPaths = [], items = [{ id: 'A', name: '项目A' }, { id: 'B', name: '项目B' }]
+  let user = { username: 'tester', isAdmin: false, createdAt: '' }
   const routes = {
+    // 账号体系（20260918）：启动先读登录态；本地偏好按账号命名空间读写
+    '/api/auth-state': () => ({ user }),
     '/api/state': () => ({ state: { ontology: { '@graph': [] }, workflow: {} }, revision: 'r1', latestVersion: 'v1' }),
     '/api/ontologies': () => ({ items: [{ id: 'storage', name: '储能本体' }] }),
     '/api/projects': () => ({ items }),
@@ -66,15 +69,19 @@ function makeServer() {
     if (!hit) return { ok: false, status: 404, json: async () => ({ error: 'not found: ' + path }) }
     return { ok: true, status: 200, json: async () => hit(String(url)) }
   }
-  return { calls, fetchStub, setFail: (...p) => { failPaths = p }, setItems: v => { items = v }, countOf: p => calls.filter(c => c.startsWith(p)).length }
+  return { calls, fetchStub, setFail: (...p) => { failPaths = p }, setItems: v => { items = v },
+           setUser: v => { user = v }, countOf: p => calls.filter(c => c.startsWith(p)).length }
 }
 
 const results = []
 const { Component, api } = await loadApp()
+// 账号体系：App 由引导层在登录后挂载；测试等价地先置登录态（偏好命名空间随账号生效）
+const { bootstrapAuth } = await import(pathToFileURL(resolve(SRC, 'app/auth.ts')).href)
 
 /** 每个场景一个全新的 App 实例（setup 重新执行），fetch 指向当前场景的受控服务端。 */
 async function scenario(server, fn) {
   globalThis.fetch = server.fetchStub
+  await bootstrapAuth()   // 读 /api/auth-state → 设置偏好命名空间（u:<user>:）
   const app = createSSRApp(Component, {})
   await renderToString(app)
   await fn(api())
@@ -122,7 +129,7 @@ try {
 
   await check('A6 有效记忆项目优先于默认选择', async (server, a) => {
     storage.clear()
-    storage.set('wiz-last-project', 'B')
+    storage.set('u:tester:wiz-last-project', 'B')  // 偏好按账号命名空间存储（20260918）
     a.space.value = 'project'
     a.view.value = 'binding'
     await a.settleInitialView()

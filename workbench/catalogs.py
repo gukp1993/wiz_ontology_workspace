@@ -7,6 +7,7 @@
 import hashlib
 import json
 
+from workbench import auth
 from workbench import storage
 from workbench.storage import assets as asset_store
 from workbench.storage import configuration as config_store
@@ -28,12 +29,12 @@ def config_fingerprint(conn_config):
 
 
 def _project_uid(conn, project_id, create=False):
-    asset = asset_store.get_asset(conn, 'project', project_id)
+    asset = asset_store.get_asset(conn, 'project', project_id, auth.require_user_id())
     if asset is None:
         if not create:
             raise ValueError('项目中不存在此数据连接，请先在数据连接页保存')
         # 与旧文件版宽松行为一致：写路径允许先于项目草稿登记（资产行无 head，不出现在列表）
-        return asset_store.ensure_asset(conn, 'project', project_id, '', None)
+        return asset_store.ensure_asset(conn, 'project', project_id, '', None, owner_user_id=auth.require_user_id())
     return asset['asset_uid']
 
 

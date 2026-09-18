@@ -143,6 +143,13 @@ def main():
     check(transfer.main(['import', '--source', str(ROOT)]) == 0, 'import 导入无错误')
     verify_rc = transfer.main(['verify', '--source', str(ROOT)])
     check(verify_rc == 0, 'verify 全部核对通过（语义对比非仅计数）')
+    # 账号体系（20260918）：导入的数据无归属，归属到测试账号后才可经域层（要求登录）读取
+    check(transfer.main(['create-user', '--username', 'tester', '--password', 'test1234']) == 0,
+          'create-user 建测试账号')
+    check(transfer.main(['assign-owner', '--username', 'tester']) == 0, 'assign-owner 归属存量数据')
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import auth_client as _ac
+    _ac_uid = _ac.bind_fixture_user('tester')
 
     from workbench import workspaces, projects, flows
     old_token = workspaces.current_token(ONT_ID)
@@ -165,13 +172,13 @@ def main():
     from workbench.storage import assets as store
     from workbench.storage.engine import read_connection
     with read_connection() as conn:
-        proj_uid = store.get_asset(conn, 'project', PROJ_ID)['asset_uid']
+        proj_uid = store.get_asset(conn, 'project', PROJ_ID, _ac_uid)['asset_uid']
         check(config_store.get_secret(conn, 'connection', proj_uid, 'conn1') == 'password-plaintext-1',
               '连接凭据迁移后可解密（工具进程内，不输出值）')
         check(config_store.get_secret(conn, 'api', proj_uid, 'cred-1') == 'sk-test-2',
               'API 凭据迁移后可解密')
-        check(config_store.get_secret(conn, 'model', 'global', 'llm-aaa') == 'sk-3',
-              '模型密钥迁移后可解密')
+        check(config_store.get_secret(conn, 'model', _ac_uid, 'llm-aaa') == 'sk-3',
+              '模型密钥迁移后可解密（owner_key 已随 assign-owner 指向账号）')
         check(config_store.get_setting(conn, config_store.DEFAULT_PROVIDER_KEY) == 'llm-aaa',
               '默认提供方设置迁移正确')
         check(config_store.read_catalog(conn, proj_uid, 'c1') is not None, '目录缓存迁移正确')

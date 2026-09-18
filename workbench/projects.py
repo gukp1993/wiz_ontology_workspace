@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 import copy
 
+from workbench import auth
 from workbench import storage
 from workbench.storage import assets as store
 from workbench.storage.engine import read_connection, write_tx, utcnow
@@ -82,9 +83,9 @@ def revision(state):
 
 
 def current_token(identifier):
-    """head 的不透明 revision token；项目不存在返回 None。"""
+    """head 的不透明 revision token；项目不存在（或非本账号）返回 None。"""
     storage.ensure_ready()
-    return store.current_token(KIND, clean_id(identifier))
+    return store.current_token(KIND, clean_id(identifier), owner_user_id=auth.require_user_id())
 
 
 def _project_ref_of(state):
@@ -127,7 +128,7 @@ def _state_from_payload(payload, identifier, payload_format=''):
 def read_draft(identifier):
     storage.ensure_ready()
     identifier = clean_id(identifier)
-    current = store.read_current(KIND, identifier)
+    current = store.read_current(KIND, identifier, owner_user_id=auth.require_user_id())
     if current is None:
         return None
     head, snapshot = current['head'], current['snapshot']
@@ -148,9 +149,10 @@ def load(identifier):
 
 
 def listing(ontology_id=None):
+    owner = auth.require_user_id()
     storage.ensure_ready()
     with read_connection() as conn:
-        rows = store.list_assets(conn, KIND)
+        rows = store.list_assets(conn, KIND, owner)
     items = []
     for row in rows:
         summary = row.get('summary') or {}
@@ -167,6 +169,7 @@ def create(name, ontology_id='', ontology_version=''):
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
         raise ValueError('项目名称需要填写 1～80 个字符')
     name = name.strip()
+    owner = auth.require_user_id()
     storage.ensure_ready()
     ontology_id = ontology_id or ''
     ontology_version = str(ontology_version or '')
@@ -177,7 +180,7 @@ def create(name, ontology_id='', ontology_version=''):
     def body(conn):
         store.bump_guard(conn, 'asset-name:project')
         # 名称唯一范围与旧行为一致：同名且（未指明本体 或 同一本体）才冲突
-        rows = store.list_assets(conn, KIND)
+        rows = store.list_assets(conn, KIND, owner)
         for row in rows:
             if row['name_key'] != store.name_key(name):
                 continue
@@ -189,7 +192,7 @@ def create(name, ontology_id='', ontology_version=''):
             expected_token=None, name=name, summary=summary_of(state),
             project_ref=_project_ref_of(state), purpose='imported-base',
             legacy_revision='', allow_create=True, allow_advance=False, now=utcnow(),
-            conflict={})
+            conflict={}, owner_user_id=owner)
         return result
 
     with write_tx() as tx:
@@ -202,6 +205,7 @@ def save_draft(state, expected_token=None):
     """保存项目草稿。expected_token：客户端基线（路由层必传）；None = 内部/测试
     路径，按当前 head 推进（旧文件版模块层不做 revision 检查，语义保持一致）。"""
     identifier = clean_id(state.get('projectId'))
+    owner = auth.require_user_id()
     storage.ensure_ready()
     try:
         result = store.save_draft(KIND, identifier, _payload_of(state),
@@ -209,7 +213,7 @@ def save_draft(state, expected_token=None):
                                   name=str(state.get('name') or identifier),
                                   summary=summary_of(state), project_ref=_project_ref_of(state),
                                   purpose='draft', allow_create=True,
-                                  allow_advance=(expected_token is None))
+                                  allow_advance=(expected_token is None), owner_user_id=owner)
     except storage.StorageUnavailable as exc:
         return {'error': '草稿保存失败：' + str(exc)}
     return {'revision': result['revision'], 'seq': result['seq']}
@@ -218,19 +222,20 @@ def save_draft(state, expected_token=None):
 def publish_draft(state, expected_token, note=''):
     """发布与草稿保存同一事务：CAS head → 草稿快照 → 发布快照 → 发布记录 → 引用。"""
     identifier = clean_id(state.get('projectId'))
+    owner = auth.require_user_id()
     storage.ensure_ready()
     now = utcnow()
     outcome = {}
 
     def body(conn, save_fn, conflict):
-        asset = store.get_asset(conn, KIND, identifier)
+        asset = store.get_asset(conn, KIND, identifier, owner)
         if asset is None:
             raise ProjectNotFound('项目不存在')
         save = save_fn(conn, kind=KIND, external_id=identifier,
                        payload=_payload_of(state), payload_format=store.PAYLOAD_FORMAT_PROJECT,
                        expected_token=expected_token, name=str(state.get('name') or identifier),
                        summary=summary_of(state), project_ref=_project_ref_of(state),
-                       purpose='draft', allow_create=True)
+                       purpose='draft', allow_create=True, owner_user_id=owner)
         labels = [row['version_label'] for row in store.release_rows(conn, asset['asset_uid'])]
         version = f'v{len(labels) + 1}'
         while version in labels:  # 唯一约束兜底前的防御
@@ -255,12 +260,13 @@ def publish_draft(state, expected_token, note=''):
 def publish(state):
     """兼容入口：直接为当前状态追加一条发布记录（不动草稿 head）。"""
     identifier = clean_id(state.get('projectId'))
+    owner = auth.require_user_id()
     storage.ensure_ready()
     now = utcnow()
     outcome = {}
 
     def body(conn):
-        asset = store.get_asset(conn, KIND, identifier)
+        asset = store.get_asset(conn, KIND, identifier, owner)
         if asset is None:
             raise ProjectNotFound('项目不存在')
         labels = [row['version_label'] for row in store.release_rows(conn, asset['asset_uid'])]
@@ -286,9 +292,10 @@ def publish(state):
 
 def published_versions(identifier):
     identifier = clean_id(identifier)
+    owner = auth.require_user_id()
     storage.ensure_ready()
     with read_connection() as conn:
-        asset = store.get_asset(conn, KIND, identifier)
+        asset = store.get_asset(conn, KIND, identifier, owner)
         if asset is None:
             return []
         return [row['manifest'] for row in store.release_rows(conn, asset['asset_uid'])]

@@ -23,13 +23,16 @@ def _ids(project_id, connection_id):
 
 
 def _owner_uid(conn, project_id, create=False):
+    """项目资产 uid（凭据 owner_key）；按当前账号归属解析，跨账号项目按不存在处理。"""
+    from workbench import auth
     from workbench.storage import assets as store
-    asset = store.get_asset(conn, 'project', project_id)
+    owner = auth.require_user_id()
+    asset = store.get_asset(conn, 'project', project_id, owner)
     if asset is None:
         if not create:
             raise ValueError('项目不存在，无法保存连接凭据')
         # 与旧 vault 宽松行为一致：写路径允许先于项目草稿登记（资产行无 head，不出现在列表）
-        return store.ensure_asset(conn, 'project', project_id, '', None)
+        return store.ensure_asset(conn, 'project', project_id, '', None, owner_user_id=owner)
     return asset['asset_uid']
 
 

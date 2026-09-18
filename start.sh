@@ -189,9 +189,10 @@ build_frontend() {
 # ---------- 服务启停 ----------
 
 wait_ready() {
+  # 账号体系（20260918）后业务接口需登录，这里探测免登录的登录态接口
   local _
   for _ in $(seq 1 30); do
-    curl -sf "http://127.0.0.1:$PORT/api/ontologies" >/dev/null 2>&1 && return 0
+    curl -sf "http://127.0.0.1:$PORT/api/auth-state" >/dev/null 2>&1 && return 0
     sleep 0.5
   done
   return 1
@@ -303,7 +304,7 @@ case "$1" in
     pid="$(recorded_pid)"
     if [ -n "$pid" ] && is_ours "$pid"; then
       echo "✔ 运行中: http://127.0.0.1:$PORT （PID ${pid}）"
-      curl -sf "http://127.0.0.1:$PORT/api/ontologies" | python3 -c "import json,sys; d=json.load(sys.stdin); print('  本体:', '、'.join(i['name'] for i in d['items']))" 2>/dev/null
+      curl -sf "http://127.0.0.1:$PORT/api/auth-state" | python3 -c "import json,sys; d=json.load(sys.stdin); print('  登录态:', ('已登录 ' + d['user']['username']) if d.get('user') else '未登录（浏览器打开后登录）')" 2>/dev/null
     else
       [ -n "$pid" ] && echo "pid 文件（$PID_FILE → ${pid}）指向的进程已退出或被其他程序复用"
       legacy="$(find_ours_on_port)" || true

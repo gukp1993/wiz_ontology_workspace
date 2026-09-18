@@ -24,6 +24,12 @@ os.environ['WIZ_WORKBENCH_ROOT'] = str(TMP)
 from workbench import storage  # noqa: E402
 from workbench.model_format import decode_state, encode_state  # noqa: E402
 
+# 账号体系（20260918）：域级测试需绑定测试账号作为当前用户
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parent))
+import auth_client as _auth_client
+_OWNER = _auth_client.bind_fixture_user()
+
 PASSED = []
 
 
@@ -104,7 +110,7 @@ def run_suite(tag):
             pass
     check(workspaces.current_token(created['id']) == token_before_fault, f'{tag} D03 快照失败后 head 不动')
     with read_connection() as conn:
-        asset = store.get_asset(conn, 'model', created['id'])
+        asset = store.get_asset(conn, 'model', created['id'], _OWNER)
         n_snap = conn.execute(sql('SELECT COUNT(*) FROM wb_snapshots WHERE asset_uid = :a'),
                               {'a': asset['asset_uid']}).scalar()
     with _patch.object(store, 'append_snapshot', side_effect=RuntimeError('注入故障2')):
@@ -158,14 +164,14 @@ def run_suite(tag):
             pass
     check(workspaces.current_token(created['id']) == token_pre, f'{tag} D04 发布失败草稿不落 head 不动')
     with read_connection() as conn:
-        asset = store.get_asset(conn, 'model', created['id'])
+        asset = store.get_asset(conn, 'model', created['id'], _OWNER)
         n_releases = conn.execute(sql('SELECT COUNT(*) FROM wb_releases WHERE asset_uid = :a'),
                                   {'a': asset['asset_uid']}).scalar()
     check(n_releases == 2, f'{tag} D04 注入后无半发布记录', n_releases)
 
     # --- D05 发布不可变 + 项目固定引用 ---------------------------------------------
     with read_connection() as conn:
-        _asset0 = store.get_asset(conn, 'model', created['id'])
+        _asset0 = store.get_asset(conn, 'model', created['id'], _OWNER)
         release_before = store.get_release_row(conn, _asset0['asset_uid'], '1.0.0')
     proj = projects.create('契约项目' + tag, created['id'], '1.0.0')
     pstate, _saved = projects.load(proj['id'])
@@ -175,7 +181,7 @@ def run_suite(tag):
     pstate2 = projects.load(proj['id'])[0]
     check(pstate2['ontologyVersion'] == '1.0.0', f'{tag} D05 项目引用固定')
     with read_connection() as conn:
-        asset = store.get_asset(conn, 'model', created['id'])
+        asset = store.get_asset(conn, 'model', created['id'], _OWNER)
         row_now = store.get_release_row(conn, asset['asset_uid'], '1.0.0')
     check(row_now['manifest'] == release_before['manifest'] and
           row_now['snapshot_id'] == release_before['snapshot_id'], f'{tag} D05 旧发布记录不可变')

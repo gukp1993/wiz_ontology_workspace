@@ -28,6 +28,12 @@ from workbench.project_validation import validate_project  # noqa: E402
 from workbench.workflow import (definition_errors, effective_action_associations,  # noqa: E402
                                 is_action_v2)
 
+# 账号体系（20260918）：域级测试需绑定测试账号作为当前用户
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parent))
+import auth_client as _auth_client
+_auth_client.bind_fixture_user()
+
 PASSED = []
 
 

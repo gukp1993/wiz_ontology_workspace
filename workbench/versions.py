@@ -7,6 +7,7 @@
 """
 import re
 
+from workbench import auth
 from workbench import storage
 from workbench.storage import assets as store
 from workbench.storage.engine import read_connection, write_tx, utcnow, read_head, read_snapshot
@@ -29,7 +30,7 @@ def listing(identifier):
     storage.ensure_ready()
     identifier = clean(identifier)
     with read_connection() as conn:
-        asset = store.get_asset(conn, KIND, identifier)
+        asset = store.get_asset(conn, KIND, identifier, auth.require_user_id())
         if asset is None:
             return []
         return [row['manifest'] for row in store.release_rows(conn, asset['asset_uid'])]
@@ -56,7 +57,7 @@ def read_state(identifier, version):
     storage.ensure_ready()
     identifier = clean(identifier)
     with read_connection() as conn:
-        asset = store.get_asset(conn, KIND, identifier)
+        asset = store.get_asset(conn, KIND, identifier, auth.require_user_id())
         if asset is None:
             raise VersionNotFound('本体版本不存在')
         row = store.get_release_row(conn, asset['asset_uid'], str(version))
@@ -102,6 +103,7 @@ def publish(identifier, state, meta, expected_token=None):
     返回 (entry, save_result)。
     """
     identifier = clean(identifier)
+    owner = auth.require_user_id()
     storage.ensure_ready()
     from workbench import workspaces
     change_type = meta.get('changeType') or 'initial'
@@ -110,12 +112,12 @@ def publish(identifier, state, meta, expected_token=None):
 
     def body(conn, save_fn, conflict):
         from workbench import workspaces as _ws
-        asset = store.get_asset(conn, KIND, identifier)
+        asset = store.get_asset(conn, KIND, identifier, owner)
         if asset is None:
             # 首次发布（无草稿）：与旧文件版一致，允许直接建立资产与首个草稿
             name = _ws.DEFAULT_NAME if identifier == _ws.DEFAULT_ID \
                 else str((state.get('workflow') or {}).get('objective', {}).get('name') or identifier)
-            asset_uid = store.ensure_asset(conn, KIND, identifier, name, {}, now)
+            asset_uid = store.ensure_asset(conn, KIND, identifier, name, {}, now, owner_user_id=owner)
         else:
             asset_uid = asset['asset_uid']
         head = read_head(conn, asset_uid)
@@ -129,7 +131,8 @@ def publish(identifier, state, meta, expected_token=None):
                        expected_token=expected_token if has_head else None,
                        summary=workspaces.summary_of(state),
                        allow_create=not has_head,
-                       allow_advance=(expected_token is None))
+                       allow_advance=(expected_token is None),
+                       owner_user_id=owner)
         release_snapshot = store.append_snapshot(conn, asset_uid, release_payload(state),
                                                  'release-state-1', 'release', now=now)
         entry = {'version': version, 'changeType': change_type,
@@ -145,18 +148,23 @@ def publish(identifier, state, meta, expected_token=None):
     return outcome['entry']
 
 
-def ensure_base_release(identifier):
+def ensure_base_release(identifier, owner_user_id=''):
     """显式迁移动作：从旧基础文件登记 1.0.0（imported），供项目引用历史版本。
 
     仅由迁移 CLI / 测试播种调用；在线读取路径不再触发文件扫描。
+    owner_user_id：迁移导入时指定归属（CLI 传目标账号）；在线路径不经此函数。
     """
     from workbench import workspaces
     from workbench.paths import DATA_ROOT
     import json
     import yaml
     identifier = clean(identifier)
-    if listing(identifier):
-        return None
+    # CLI/迁移路径没有请求上下文：按归属直查，不走需要登录态的 listing()
+    storage.ensure_ready()
+    with read_connection() as conn:
+        existing = store.get_asset(conn, KIND, identifier, owner_user_id)
+        if existing is not None and store.release_rows(conn, existing['asset_uid']):
+            return None
     if identifier != 'storage':
         return None
     sources = {'ontology.json': DATA_ROOT / 'ontology/models/storage/ontology.json',
@@ -176,7 +184,8 @@ def ensure_base_release(identifier):
              'imported': True, 'reasons': []}
 
     def body(conn):
-        asset_uid = store.ensure_asset(conn, KIND, identifier, workspaces.DEFAULT_NAME, {}, now)
+        asset_uid = store.ensure_asset(conn, KIND, identifier, workspaces.DEFAULT_NAME, {}, now,
+                                       owner_user_id=owner_user_id)
         snapshot = store.append_snapshot(conn, asset_uid, payload, 'legacy-release-v1',
                                          'imported-base', legacy_revision='imported', now=now)
         store.append_release(conn, asset_uid, '1.0.0', snapshot['snapshot_id'], entry, now=now)

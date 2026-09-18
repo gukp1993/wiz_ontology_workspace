@@ -555,10 +555,11 @@ def import_configuration(conn, root, batch, now, report):
             secret_id = config_store.put_secret(conn, 'model', 'global', provider_id,
                                                 str(data.get('api_key') or ''),
                                                 display_name=str(data.get('name') or ''), now=now)
+            # owner_user_id 留空 = 未归属（迁移期）；由 assign-owner 显式归属到目标账号
             conn.execute(sql_text(
-                'INSERT INTO wb_model_configs (provider_id, name, endpoint, model, timeout_seconds, '
-                'temperature, secret_id, metadata_revision, updated_at) '
-                'VALUES (:p, :n, :e, :m, :t, :tp, :s, 1, :now)'),
+                'INSERT INTO wb_model_configs (provider_id, owner_user_id, name, endpoint, model, '
+                'timeout_seconds, temperature, secret_id, metadata_revision, updated_at) '
+                "VALUES (:p, '', :n, :e, :m, :t, :tp, :s, 1, :now)"),
                 {'p': provider_id, 'n': str(data.get('name') or provider_id),
                  'e': str(data.get('endpoint') or ''), 'm': str(data.get('model') or ''),
                  't': int(data.get('timeout') or 60), 'tp': float(data.get('temperature') or 0),
@@ -1009,6 +1010,102 @@ def _atomic_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False) + '\n', encoding='utf-8')
 
 
+def cmd_create_user(args):
+    """创建账号（幂等）：已存在且未给 --reset-password 时不覆盖密码。密码不回显、不进日志。"""
+    from workbench import auth
+    url = args.url or dbengine.resolve_url()
+    storage.mark_unready(url)
+    storage.ensure_ready(url)
+    existing = [u for u in auth.list_users() if u['username'].casefold() == str(args.username).strip().casefold()]
+    if existing and not args.reset_password:
+        print(f'· 账号已存在，未改动密码：{existing[0]["username"]}'
+              f'（如需重置请加 --reset-password）')
+        return 0
+    if existing:
+        ok = auth.set_password(args.username, args.password)
+        print(f'✓ 已重置账号密码：{args.username}')
+        return 0 if ok else 1
+    created = auth.create_user(args.username, args.password, is_admin=bool(args.admin))
+    print(f'✓ 已创建账号：{created["username"]}'
+          f'{"（管理员）" if created["isAdmin"] else ""}')
+    return 0
+
+
+def cmd_assign_owner(args):
+    """把未归属（owner_user_id 为空）的资产/模型配置/用户级设置/LLM 凭据归属到指定账号。
+
+    只填空白、不改动已归属数据；可重复执行。用于存量数据一次性归属 admin。
+    凭据（connection/api）的 owner_key 是项目资产 uid，随资产一起归属即可；
+    model 命名空间的 owner_key 是账号 id（旧值为 'global'），需要显式重指向。
+    """
+    from workbench import auth
+    from workbench.storage import secret_store
+    from workbench.storage.engine import write_tx, utcnow
+    url = args.url or dbengine.resolve_url()
+    storage.mark_unready(url)
+    storage.ensure_ready(url)
+    username = str(args.username).strip()
+    user = next((u for u in auth.list_users() if u['username'].casefold() == username.casefold()), None)
+    if user is None:
+        print(f'✗ 账号不存在：{username}（先运行 create-user）', file=sys.stderr)
+        return 2
+    with dbengine.read_connection(url) as conn:
+        row = conn.execute(sql_text('SELECT user_id FROM wb_users WHERE username_key = :k'),
+                           {'k': username.casefold()}).first()
+    uid = row[0] if row else ''
+    if not uid:
+        print('✗ 账号标识读取失败', file=sys.stderr)
+        return 2
+    counts = {}
+
+    def body(conn):
+        counts['assets'] = conn.execute(sql_text(
+            "UPDATE wb_assets SET owner_user_id = :u WHERE owner_user_id = ''"),
+            {'u': uid}).rowcount or 0
+        counts['model_configs'] = conn.execute(sql_text(
+            "UPDATE wb_model_configs SET owner_user_id = :u WHERE owner_user_id = ''"),
+            {'u': uid}).rowcount or 0
+        counts['settings'] = conn.execute(sql_text(
+            "INSERT INTO wb_user_settings (user_id, setting_key, value_json, revision, updated_at) "
+            "SELECT :u, setting_key, value_json, revision, updated_at FROM wb_settings "
+            "WHERE setting_key NOT IN (SELECT setting_key FROM wb_user_settings WHERE user_id = :u)"),
+            {'u': uid}).rowcount or 0
+        # LLM 密钥的 AAD 绑定 owner_key：改归属必须**重加密**（先按旧 AAD 解密，再按新 AAD 加密），
+        # 直接 UPDATE owner_key 会导致凭据无法解密（根密钥不匹配）。
+        counts['llm_secrets'] = 0
+        rows = conn.execute(sql_text(
+            "SELECT secret_id, resource_id, key_id, nonce, ciphertext FROM wb_credentials "
+            "WHERE namespace = 'model' AND owner_key = 'global'")).mappings().all()
+        for row in rows:
+            try:
+                plaintext = secret_store.decrypt(row['key_id'], row['nonce'], row['ciphertext'],
+                                                 'model', 'global', row['resource_id'])
+            except secret_store.SecretKeyError:
+                # 解密失败（根密钥不匹配/密文损坏）：不静默丢弃，记入报告由调用方决定
+                counts.setdefault('llm_secret_failures', []).append(row['resource_id'])
+                continue
+            new_key_id, new_nonce, new_blob = secret_store.encrypt(
+                plaintext, 'model', uid, row['resource_id'])
+            conn.execute(sql_text(
+                'UPDATE wb_credentials SET owner_key = :u, key_id = :k, nonce = :n, '
+                'ciphertext = :c, secret_revision = secret_revision + 1, updated_at = :now '
+                'WHERE secret_id = :s'),
+                {'u': uid, 'k': new_key_id, 'n': new_nonce, 'c': new_blob,
+                 'now': utcnow(), 's': row['secret_id']})
+            counts['llm_secrets'] += 1
+
+    with write_tx(url) as tx:
+        tx.run(body)
+    print(f'✓ 存量数据已归属 {username}：资产 {counts["assets"]}、模型配置 {counts["model_configs"]}、'
+          f'设置 {counts["settings"]}、LLM 密钥 {counts["llm_secrets"]}')
+    if counts.get('llm_secret_failures'):
+        print(f'⚠ 有 {len(counts["llm_secret_failures"])} 条 LLM 密钥无法解密（根密钥不匹配？）：'
+              f'{", ".join(counts["llm_secret_failures"])}；已保留原行未改动，请在界面重新录入。',
+              file=sys.stderr)
+    print('  提示：连接/API 凭据以项目资产 uid 为归属，随资产归属自动隔离。')
+    return 0
+
+
 def cmd_backup(args):
     """SQLite 在线备份 API（WAL 一致），不运行中拷主文件。"""
     url = args.url or resolve_url()
@@ -1058,6 +1155,17 @@ def main(argv=None):
     p.add_argument('--output', required=True)
     p.add_argument('--url', default='')
     p.set_defaults(func=cmd_export)
+    p = sub.add_parser('create-user', help='创建账号（幂等；--reset-password 显式重置）')
+    p.add_argument('--username', required=True)
+    p.add_argument('--password', required=True)
+    p.add_argument('--admin', action='store_true', help='标记为管理员（展示用）')
+    p.add_argument('--reset-password', action='store_true', help='账号已存在时重置密码')
+    p.add_argument('--url', default='')
+    p.set_defaults(func=cmd_create_user)
+    p = sub.add_parser('assign-owner', help='把未归属的存量数据归属到指定账号（幂等，只填空白）')
+    p.add_argument('--username', required=True)
+    p.add_argument('--url', default='')
+    p.set_defaults(func=cmd_assign_owner)
     p = sub.add_parser('backup', help='SQLite 在线备份（备份 API，不是拷主文件）')
     p.add_argument('--output', required=True)
     p.add_argument('--url', default='')

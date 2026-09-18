@@ -6,6 +6,10 @@
 * revision_token 不透明且不复用：新保存一律 'r-<uuid>'；迁移/导入允许把旧内容
   hash 初始化为首个 token（一次兼容），此后永不生成内容 hash 形式的 token。
 * 快照与发布记录不可变：本模块不提供 update/delete 快照、发布的接口。
+* 2026-09-18 账号归属：资产按 owner_user_id 隔离。对外函数（ensure_asset/get_asset/
+  save_draft/read_current/read_head/current_token/head_by_external/name_taken/list_assets）
+  都带 owner_user_id；owner 不匹配与不存在同样处理（NotFound/空），不泄露他账号数据。
+  快照/发布/引用/索引由 asset_uid 级联，天然随资产归属隔离。
 """
 import json
 
@@ -22,28 +26,30 @@ def name_key(name):
     return str(name or '').strip().casefold()
 
 
-def ensure_asset(conn, kind, external_id, name, summary=None, now=None):
-    """取或建资产行（不建 head）。返回 asset_uid。"""
+def ensure_asset(conn, kind, external_id, name, summary=None, now=None, owner_user_id=''):
+    """取或建资产行（不建 head）。返回 asset_uid；归属按 (kind, owner, external_id) 隔离。"""
     now = now or sto.utcnow()
-    row = conn.execute(sto.text('SELECT asset_uid FROM wb_assets WHERE kind = :k AND external_id = :e'),
-                       {'k': kind, 'e': external_id}).first()
+    row = conn.execute(sto.text('SELECT asset_uid FROM wb_assets WHERE kind = :k AND external_id = :e '
+                                'AND owner_user_id = :o'),
+                       {'k': kind, 'e': external_id, 'o': owner_user_id or ''}).first()
     if row:
         return row[0]
     asset_uid = sto.new_id()
-    conn.execute(sto.text('INSERT INTO wb_assets (asset_uid, kind, external_id, name, name_key, '
-                          'summary_json, created_at, updated_at) '
-                          'VALUES (:u, :k, :e, :n, :nk, :s, :c, :u2)'),
-                 {'u': asset_uid, 'k': kind, 'e': external_id, 'n': name or '',
-                  'nk': name_key(name), 's': json.dumps(summary or {}, ensure_ascii=False),
-                  'c': now, 'u2': now})
+    conn.execute(sto.text('INSERT INTO wb_assets (asset_uid, owner_user_id, kind, external_id, name, '
+                          'name_key, summary_json, created_at, updated_at) '
+                          'VALUES (:u, :o, :k, :e, :n, :nk, :s, :c, :u2)'),
+                 {'u': asset_uid, 'o': owner_user_id or '', 'k': kind, 'e': external_id,
+                  'n': name or '', 'nk': name_key(name),
+                  's': json.dumps(summary or {}, ensure_ascii=False), 'c': now, 'u2': now})
     return asset_uid
 
 
-def get_asset(conn, kind, external_id):
-    row = conn.execute(sto.text('SELECT asset_uid, kind, external_id, name, summary_json, '
-                                'created_at, updated_at, deleted_at FROM wb_assets '
-                                'WHERE kind = :k AND external_id = :e'),
-                       {'k': kind, 'e': external_id}).mappings().first()
+def get_asset(conn, kind, external_id, owner_user_id=''):
+    """取资产行；归属不匹配返回 None（跨账号按不存在处理）。"""
+    row = conn.execute(sto.text('SELECT asset_uid, owner_user_id, kind, external_id, name, '
+                                'summary_json, created_at, updated_at, deleted_at FROM wb_assets '
+                                'WHERE kind = :k AND external_id = :e AND owner_user_id = :o'),
+                       {'k': kind, 'e': external_id, 'o': owner_user_id or ''}).mappings().first()
     if not row:
         return None
     out = dict(row)
@@ -59,11 +65,11 @@ def bump_guard(conn, key):
         raise sto.StorageUnavailable('存储未初始化：请先运行 python3 -m workbench.storage.transfer init')
 
 
-def name_taken(conn, kind, name, exclude_uid=None):
-    """同名（strip().casefold()）检查；范围性规则由业务层自行加条件。"""
-    params = {'k': kind, 'nk': name_key(name)}
+def name_taken(conn, kind, name, exclude_uid=None, owner_user_id=''):
+    """同名（strip().casefold()）检查；范围（当前账号）内判定。"""
+    params = {'k': kind, 'nk': name_key(name), 'o': owner_user_id or ''}
     sql = 'SELECT a.external_id FROM wb_assets a WHERE a.kind = :k AND a.name_key = :nk ' \
-          'AND a.deleted_at IS NULL'
+          'AND a.owner_user_id = :o AND a.deleted_at IS NULL'
     if exclude_uid:
         sql += ' AND a.asset_uid <> :x'
         params['x'] = exclude_uid
@@ -95,24 +101,30 @@ def new_token():
     return 'r-' + sto.new_id().replace('-', '')
 
 
-def _current_head(kind, external_id, url=None):
+def _current_head(kind, external_id, owner_user_id='', url=None):
     """CAS 失败后的补偿读取：在新的读连接上取最新 token（避免旧事务快照）。"""
     with sto.read_connection(url) as conn:
-        return sto.head_by_external(conn, kind, external_id)
+        return sto.head_by_external(conn, kind, external_id, owner_user_id=owner_user_id)
 
 
 def _save_draft_in_conn(conn, kind, external_id, payload, payload_format, expected_token,
                         name, summary, project_ref, purpose, legacy_revision,
-                        allow_create, allow_advance, now, conflict):
-    """在既有写事务内保存草稿；CAS 失败时置 conflict['head'] 并抛 RevisionConflict。"""
+                        allow_create, allow_advance, now, conflict, owner_user_id=''):
+    """在既有写事务内保存草稿；CAS 失败时置 conflict['head'] 并抛 RevisionConflict。
+
+    owner_user_id：资产归属（隔离维度）。既有资产归属不匹配按不存在处理（NotFound），
+    绝不允许把内容写进他账号资产。
+    """
     now = now or sto.utcnow()
     conflict.setdefault('kind', kind)
     conflict.setdefault('external_id', external_id)
-    asset = get_asset(conn, kind, external_id)
+    conflict.setdefault('owner_user_id', owner_user_id or '')
+    asset = get_asset(conn, kind, external_id, owner_user_id)
     if asset is None:
         if not allow_create:
             raise sto.NotFound(f'{kind} 资产不存在：{external_id}')
-        asset_uid = ensure_asset(conn, kind, external_id, name or '', summary, now)
+        asset_uid = ensure_asset(conn, kind, external_id, name or '', summary, now,
+                                 owner_user_id=owner_user_id)
     else:
         asset_uid = asset['asset_uid']
     head = sto.read_head(conn, asset_uid)
@@ -152,7 +164,8 @@ def _save_draft_in_conn(conn, kind, external_id, payload, payload_format, expect
 
 def save_draft(kind, external_id, payload, payload_format, expected_token=None,
                name=None, summary=None, project_ref=None, purpose='draft',
-               legacy_revision='', allow_create=True, allow_advance=False, now=None):
+               legacy_revision='', allow_create=True, allow_advance=False, now=None,
+               owner_user_id=''):
     """一次草稿保存事务：追加快照 → CAS 推进 head（→ 项目引用 → 摘要）。
 
     expected_token 指定客户端基线（CAS 校验）；None 仅允许两种情形：
@@ -166,14 +179,15 @@ def save_draft(kind, external_id, payload, payload_format, expected_token=None,
     def body(conn):
         return _save_draft_in_conn(conn, kind, external_id, payload, payload_format,
                                    expected_token, name, summary, project_ref, purpose,
-                                   legacy_revision, allow_create, allow_advance, now, conflict)
+                                   legacy_revision, allow_create, allow_advance, now, conflict,
+                                   owner_user_id)
 
     try:
         with sto.write_tx() as tx:
             return tx.run(body)
     except sto.RevisionConflict:
         if conflict.get('head'):
-            fresh = _current_head(kind, external_id)
+            fresh = _current_head(kind, external_id, owner_user_id)
             raise sto.RevisionConflict(current_revision=(fresh or {}).get('revision_token'),
                                        message='此内容已有新版本，请刷新后重试')
         raise
@@ -191,21 +205,22 @@ def run_in_write_tx(body):
         merged = {'kind': None, 'external_id': None, 'payload': None, 'payload_format': None,
                   'expected_token': None, 'name': None, 'summary': None, 'project_ref': None,
                   'purpose': 'draft', 'legacy_revision': '', 'allow_create': False,
-                  'allow_advance': False, 'now': None}
+                  'allow_advance': False, 'now': None, 'owner_user_id': ''}
         merged.update(kwargs)
         return _save_draft_in_conn(conn, merged['kind'], merged['external_id'], merged['payload'],
                                    merged['payload_format'], merged['expected_token'],
                                    merged['name'], merged['summary'], merged['project_ref'],
                                    merged['purpose'], merged['legacy_revision'],
                                    merged['allow_create'], merged['allow_advance'],
-                                   merged['now'], conflict)
+                                   merged['now'], conflict, merged['owner_user_id'])
 
     try:
         with sto.write_tx() as tx:
             return tx.run(lambda conn: body(conn, save_fn, conflict))
     except sto.RevisionConflict:
         if conflict.get('head'):
-            fresh = _current_head(conflict.get('kind'), conflict.get('external_id'))
+            fresh = _current_head(conflict.get('kind'), conflict.get('external_id'),
+                                  conflict.get('owner_user_id', ''))
             raise sto.RevisionConflict(current_revision=(fresh or {}).get('revision_token'),
                                        message='此内容已有新版本，请刷新后重试')
         raise
@@ -254,10 +269,10 @@ def get_project_ref(conn, snapshot_id):
     return dict(row) if row else None
 
 
-def read_current(kind, external_id, url=None):
-    """当前 head + 快照完整行（payload 已解析为 dict）；不存在返回 None。"""
+def read_current(kind, external_id, url=None, owner_user_id=''):
+    """当前 head + 快照完整行（payload 已解析为 dict）；不存在/跨账号返回 None。"""
     with sto.read_connection(url) as conn:
-        head = sto.head_by_external(conn, kind, external_id)
+        head = sto.head_by_external(conn, kind, external_id, owner_user_id=owner_user_id)
         if head is None:
             return None
         snapshot = sto.read_snapshot(conn, head['snapshot_id'])
@@ -275,24 +290,25 @@ def read_snapshot_parsed(snapshot_id, url=None):
         return snapshot
 
 
-def read_head(kind, external_id, url=None):
+def read_head(kind, external_id, url=None, owner_user_id=''):
     with sto.read_connection(url) as conn:
-        return sto.head_by_external(conn, kind, external_id)
+        return sto.head_by_external(conn, kind, external_id, owner_user_id=owner_user_id)
 
 
-def current_token(kind, external_id):
-    head = read_head(kind, external_id)
+def current_token(kind, external_id, owner_user_id=''):
+    head = read_head(kind, external_id, owner_user_id=owner_user_id)
     return head['revision_token'] if head else None
 
 
-def list_assets(conn, kind):
+def list_assets(conn, kind, owner_user_id=''):
     rows = conn.execute(sto.text('SELECT a.asset_uid, a.external_id, a.name, a.name_key, '
                                  'a.summary_json, a.created_at, h.revision_token, h.snapshot_id, '
                                  'h.updated_at, h.snapshot_seq, h.release_seq, s.purpose '
                                  'FROM wb_assets a JOIN wb_asset_heads h ON h.asset_uid = a.asset_uid '
                                  'JOIN wb_snapshots s ON s.snapshot_id = h.snapshot_id '
-                                 'WHERE a.kind = :k AND a.deleted_at IS NULL '
-                                 'ORDER BY a.name_key, a.external_id'), {'k': kind}).mappings().all()
+                                 'WHERE a.kind = :k AND a.owner_user_id = :o AND a.deleted_at IS NULL '
+                                 'ORDER BY a.name_key, a.external_id'),
+                       {'k': kind, 'o': owner_user_id or ''}).mappings().all()
     out = []
     for row in rows:
         item = dict(row)
@@ -307,6 +323,19 @@ def delete_asset_soft(kind, external_id, now=None):
 
 
 # --- 发布 -----------------------------------------------------------------------
+
+def asset_owned(conn, asset_uid, owner_user_id=''):
+    """按内部 uid 取资产并校验归属（发布/引用等按 uid 的路径用）；不匹配返回 None。"""
+    row = conn.execute(sto.text('SELECT asset_uid, owner_user_id, kind, external_id, name, '
+                                'summary_json, created_at, updated_at, deleted_at FROM wb_assets '
+                                'WHERE asset_uid = :u AND owner_user_id = :o'),
+                       {'u': asset_uid, 'o': owner_user_id or ''}).mappings().first()
+    if not row:
+        return None
+    out = dict(row)
+    out['summary'] = json.loads(out.pop('summary_json') or '{}')
+    return out
+
 
 def release_rows(conn, asset_uid):
     rows = conn.execute(sto.text('SELECT release_id, version_label, release_order, snapshot_id, '

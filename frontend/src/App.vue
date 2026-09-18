@@ -4,6 +4,7 @@
 // 顶栏不再有“保存草稿/发布”按钮：状态条 + 撤销/重做 + 校验快捷按钮；发布移入各区“校验与发布”页（P09）。
 // 画布已整体搬到 components/ObjectCanvas.vue（由 ObjectWorkspace/P03 挂载）。
 import { ref, computed, provide, onMounted, onBeforeUnmount, watch, shallowRef, nextTick, type Ref } from 'vue'
+import { authState, currentUser, logout as authLogout, prefGet, prefSet } from './app/auth'
 import OntologyHome from './ontology/OntologyHome.vue'
 import ObjectWorkspace from './ontology/ObjectWorkspace.vue'
 import SharedLibrary from './ontology/SharedLibrary.vue'
@@ -254,9 +255,9 @@ const historyScopeKey = computed(() => {
 const view = ref(initialView())
 // 空间切换器：本体空间处理本体建模，项目空间处理项目映射与函数编排；
 // 编排是项目空间的菜单项，但数据不依赖选中项目（页面白名单经 projectSpaceViews 判定归属）。
-const space = ref<('ontology' | 'project')>(initialSpace(location.hash, localStorage.getItem('wiz-space')))
+const space = ref<('ontology' | 'project')>(initialSpace(location.hash, prefGet('wiz-space')))
 // 侧栏收起为通用能力：由用户手动切换并记住偏好，任何页面不自动收起
-const railMini = ref(localStorage.getItem('wiz-rail-mini') === '1')
+const railMini = ref(prefGet('wiz-rail-mini') === '1')
 // ── 全局设置中心（20260918）：左下用户区、用户菜单、来源返回 ──
 const userMenuOpen = ref(false)
 const userMenuWrap = ref<HTMLElement | null>(null)
@@ -265,8 +266,9 @@ const userMenuTrigger = ref<HTMLButtonElement | null>(null)
 // 出现右侧缺边/文字截断。定位由触发器矩形计算（向上弹出），不再受侧栏裁剪。
 const userMenuCard = ref<HTMLElement | null>(null)
 const userMenuStyle = ref<Record<string, string>>({})
-const userName = '本地用户' // 当前无应用账户 API；数据库连接用户名不能当登录用户
-const hasAuthSession = false // 无认证服务：退出登录禁用并说明（接入认证后启用同一菜单项）
+// 账号来自会话（20260918 登录与账号体系）：用户名显示真实账号；退出登录走 /api/auth-logout。
+const userName = computed(() => currentUser.value?.username || '未登录')
+const hasAuthSession = computed(() => authState.value === 'authenticated')
 function placeUserMenu() {
   const el = userMenuTrigger.value
   if (!el) return
@@ -335,8 +337,8 @@ async function backToWorkspace() {
   const ret = settingsReturn.value
   settingsReturn.value = null
   if (ret && ret.view in pages && !isGlobalView(ret.view)) {
-    if (projectSpaceViews.includes(ret.view)) { space.value = 'project'; try { localStorage.setItem('wiz-space', 'project') } catch {} }
-    else { space.value = 'ontology'; try { localStorage.setItem('wiz-space', 'ontology') } catch {} }
+    if (projectSpaceViews.includes(ret.view)) { space.value = 'project'; try { prefSet('wiz-space', 'project') } catch {} }
+    else { space.value = 'ontology'; try { prefSet('wiz-space', 'ontology') } catch {} }
     if (ret.view === 'objects') {
       // 对象建模：缓存选中对象与页签，经 focus 参数恢复（组件卸载丢失内存状态）
       if (ret.node) { propertyFocusType.value = ret.node }
@@ -356,18 +358,25 @@ async function backToWorkspace() {
   await navigate(lastOntologyView.value || 'o-home')
 }
 async function logoutClick() {
-  // 无真实会话：禁用项不可达；兜底提示，不模拟注销、不清业务数据
-  if (!hasAuthSession) { notify('当前为本地模式，无登录会话；退出登录不可用。'); return }
+  // 真实退出：吊销服务端会话并清 Cookie；成功后引导层（main.ts）切回登录页。
+  // 不在前端清理任何业务数据——数据按账号隔离在服务端，换账号自然不可见。
+  if (!hasAuthSession.value) { notify('当前未登录；请重新登录。'); return }
+  closeUserMenu(false)
+  try {
+    await authLogout()
+  } catch (e: any) {
+    notify(e?.message || '退出登录失败，请重试', true)
+  }
 }
 function toggleRail() {
   railMini.value = !railMini.value
-  try { localStorage.setItem('wiz-rail-mini', railMini.value ? '1' : '0') } catch {}
+  try { prefSet('wiz-rail-mini', railMini.value ? '1' : '0') } catch {}
 }
 const lastOntologyView = ref('objects')
 const area = computed(() => space.value)
 const knowledgeFocus = ref(''), propertyFocusType = ref(''), propertyFocusId = ref(''), bindingFocusType = ref(''), contractFocusId = ref(''), implFocus = ref('')
 const objectDetailTab = ref('props') // 对象建模深链页签（动作库反向引用 → 对象动作页签）
-watch(space, s => { try { localStorage.setItem('wiz-space', s) } catch {}
+watch(space, s => { try { prefSet('wiz-space', s) } catch {}
   if (s === 'project') { if (!projectSpaceViews.includes(view.value)) navigate('p-home') }
   else if (projectSpaceViews.includes(view.value)) navigate(lastOntologyView.value) })
 async function switchSpace(s: 'ontology' | 'project') { if (s === space.value) return; if (!(await requestLeave())) return; space.value = s
@@ -413,8 +422,8 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
   if (view.value !== v) { message.value = ''; error.value = false }
   view.value = v; history.replaceState(null, '', '#' + v)
   // 跨区入口（如本体概览“进入项目映射”）同步侧栏工作区状态；先定 view 再切 space，避免 watch 递归导航
-  if (projectSpaceViews.includes(v) && space.value !== 'project') { space.value = 'project'; try { localStorage.setItem('wiz-space', 'project') } catch {} }
-  if (!projectSpaceViews.includes(v) && space.value !== 'ontology') { space.value = 'ontology'; try { localStorage.setItem('wiz-space', 'ontology') } catch {} }
+  if (projectSpaceViews.includes(v) && space.value !== 'project') { space.value = 'project'; try { prefSet('wiz-space', 'project') } catch {} }
+  if (!projectSpaceViews.includes(v) && space.value !== 'ontology') { space.value = 'ontology'; try { prefSet('wiz-space', 'ontology') } catch {} }
   if (v === 'instances') await runPreview()
   if (v === 'o-release') { await loadVersionList(); await loadReleases(); await checkWorkflow() }
   if (v === 'p-release') await validateProject(false)
@@ -533,7 +542,7 @@ async function openFlow(id: string) {
     if (flowState.value) { await flowSaver.flush(); if (flowSaver.status.value !== 'saved' && !(await appConfirm({ message: '当前编排自动保存未成功，切换将丢弃未保存修改。继续？', danger: true }))) return }
     flowId.value = id
     await flowSaver.reload()
-    try { localStorage.setItem(flowStoreKey, id) } catch {}
+    try { prefSet(flowStoreKey, id) } catch {}
     flowUndoArea.reset(); flowCheck.value = null; flowSaveErrors.value = []
     await navigate('f-editor')
   } catch (e) { notify((e as Error).message, true) } finally { busy.value = false }
@@ -643,7 +652,7 @@ async function loadProject(id: string, force = false): Promise<boolean> {
       projectId.value = id
       await projectSaver.reload() // Saver 内部 epoch 丢弃在途旧响应
       if (seq !== projectLoadSeq) return false // 旧响应不得覆盖后发起的新项目
-      try { localStorage.setItem(projectStoreKey, id) } catch {}
+      try { prefSet(projectStoreKey, id) } catch {}
       const d: any = projectState.value
       if (d.ontologyId && d.ontologyVersion) {
         migrationTodos.value = projectLoadMeta?.migrationTodos || []
@@ -667,7 +676,7 @@ async function loadProject(id: string, force = false): Promise<boolean> {
 async function ensureProjectContext(): Promise<boolean> {
   if (!(await ensureProjectList())) return false
   if (projectState.value && projectId.value) return true
-  const stored = localStorage.getItem(projectStoreKey)
+  const stored = prefGet(projectStoreKey)
   const initial = stored && projects.value.some(p => p.id === stored) ? stored : (projects.value[0]?.id || '')
   if (!initial) return false
   return loadProject(initial, true)
@@ -846,7 +855,7 @@ async function settleInitialView() {
     else { void ensureProjectList() } // 编排页等项目空间页面：侧栏项目列表后台加载，不阻塞页面
     // 函数编排：恢复上次打开的编排（编排页不依赖本体/项目状态）
     if (view.value === 'f-editor') {
-      const storedFlow = localStorage.getItem(flowStoreKey)
+      const storedFlow = prefGet(flowStoreKey)
       if (storedFlow) { try { await openFlow(storedFlow) } catch { view.value = 'f-home'; history.replaceState(null, '', '#f-home') } }
       else { view.value = 'f-home'; history.replaceState(null, '', '#f-home') }
     }

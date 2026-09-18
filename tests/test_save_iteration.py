@@ -29,6 +29,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import auth_client
+
 REPO = Path(__file__).resolve().parents[1]
 PORT = 18820
 ORIGIN = f'http://127.0.0.1:{PORT}'
@@ -72,11 +75,16 @@ def shutdown():
 
 # --- HTTP ---------------------------------------------------------------------
 
+AUTH = {'Cookie': ''}  # 登录后写入；request() 统一带上（20260918 账号体系）
+
+
 def request(method, path, payload=None):
     data = json.dumps(payload, ensure_ascii=False).encode() if payload is not None else None
     headers = {'Content-Type': 'application/json'}
     if method == 'POST':
         headers['Origin'] = ORIGIN
+    if AUTH['Cookie']:
+        headers['Cookie'] = AUTH['Cookie']
     req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -103,14 +111,16 @@ def start_service():
             print(PROC.stdout.read().decode(errors='replace'))
             sys.exit(1)
         try:
-            status, _ = request('GET', '/api/ontologies')
+            status, _ = request('GET', '/api/auth-state')  # 免登录探测（账号体系后 /api/ontologies 需会话）
             if status == 200:
                 ready = True
                 break
             time.sleep(0.2)
         except (urllib.error.URLError, ConnectionError, OSError):
             time.sleep(0.2)
-    check(ready, '服务未在 20 秒内就绪（/api/ontologies）', actual='未就绪', expected='200')
+    check(ready, '服务未在 20 秒内就绪（/api/auth-state）', actual='未就绪', expected='200')
+    if ready:
+        AUTH['Cookie'] = auth_client.auth_headers(BASE)['Cookie']  # 注册/登录测试账号，后续请求带会话
 
 
 # --- 种子（真实 ontology/ 只读，写入仅在临时根；与 test_project_api_roundtrip 同思路）---
@@ -269,6 +279,12 @@ def import_seed_into_db():
     from workbench.storage import transfer as _transfer
     rc = _transfer.main(['import', '--source', str(TMP)])
     check(rc == 0, '种子发布导入存储库', actual=rc, expected=0)
+    # 账号体系（20260918）：导入的数据无归属，需归属到测试账号才可被会话访问
+    rc = _transfer.main(['create-user', '--username', auth_client.DEFAULT_USER,
+                         '--password', auth_client.DEFAULT_PASSWORD])
+    check(rc == 0, '创建测试账号', actual=rc, expected=0)
+    rc = _transfer.main(['assign-owner', '--username', auth_client.DEFAULT_USER])
+    check(rc == 0, '种子数据归属测试账号', actual=rc, expected=0)
     _os.environ.pop('WIZ_DATABASE_URL', None)
 
 
@@ -434,6 +450,13 @@ def main():
     # --- 步骤 7/8：save_draft 异常不再假成功（单元级，服务已停止）-----------------------
     shutdown()
     sys.path.insert(0, str(REPO))
+    # 账号体系（20260918）：改为域级直调（服务已停），需恢复临时根上下文并绑定测试账号
+    os.environ['WIZ_WORKBENCH_ROOT'] = str(TMP)
+    os.environ.pop('WIZ_DATABASE_URL', None)
+    sys.modules.pop('workbench', None)  # 引擎单例按 URL 缓存：换根后需重新解析
+    for mod in [m for m in list(sys.modules) if m.startswith('workbench')]:
+        sys.modules.pop(mod, None)
+    auth_client.bind_fixture_user()
     from workbench import projects as projects_store
 
     unit = projects_store.create('保存失败单测项目', 'storage', version)

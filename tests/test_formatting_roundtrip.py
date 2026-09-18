@@ -19,6 +19,10 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).resolve().parent))
+import auth_client
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -66,9 +70,16 @@ def shutdown():
         PROC = None
 
 
+AUTH_COOKIE = {'value': ''}  # 登录后写入（20260918 账号体系）
+
+
 def request(method, path, payload=None):
     data = json.dumps(payload, ensure_ascii=False).encode() if payload is not None else None
     headers = {'Content-Type': 'application/json'}
+
+    if AUTH_COOKIE['value']:
+
+        headers['Cookie'] = 'wiz_session=' + AUTH_COOKIE['value']
     if method == 'POST':
         headers['Origin'] = ORIGIN
     req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
@@ -96,7 +107,7 @@ def start_service():
             print(PROC.stdout.read().decode(errors='replace'))
             sys.exit(1)
         try:
-            status, _ = request('GET', '/api/ontologies')
+            status, _ = request('GET', '/api/auth-state')
             if status == 200:
                 ready = True
                 break
@@ -104,6 +115,8 @@ def start_service():
         except (urllib.error.URLError, ConnectionError, OSError):
             time.sleep(0.2)
     check(ready, '服务未在 20 秒内就绪（/api/ontologies）', actual='未就绪', expected='200')
+    if ready:
+        AUTH_COOKIE['value'] = auth_client.auth_headers(BASE)['Cookie'].split('=', 1)[1]
 
 
 # --- 配置样例（阶段 0 冻结 schema；含未知扩展键与历史键）--------------------------------
@@ -260,7 +273,7 @@ def test_service_roundtrip():
     os.environ.setdefault('WIZ_DATABASE_URL', '')
     from workbench.storage.engine import resolve_url as _rurl
     with _rc(_rurl()) as _conn:
-        _head = store.read_current('model', 'storage')
+        _head = store.read_current('model', 'storage', owner_user_id=auth_client.user_id_from_db(TMP))
     check(_head is not None, '草稿应写入临时根数据库（storage 资产存在）', actual=str(TMP), expected='head 快照存在')
     if _head is not None:
         on_disk = _head['snapshot']['payload']

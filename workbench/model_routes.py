@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from workbench.demo import Demo
-from workbench import workspaces, versions, contracts, storage
+from workbench import auth, workspaces, versions, contracts, storage
 from workbench.locking import LOCK
 from workbench.model_format import encode_ontology, decode_state, encode_state
 from workbench.properties import effective, api_name, validate_properties
@@ -253,7 +253,7 @@ def restore_snapshot(identifier, release):
     from workbench.storage.engine import read_connection
     state = blank_state(workspaces.describe(identifier)['name']); state['workspaceId'] = identifier
     with read_connection() as conn:
-        asset = store.get_asset(conn, 'model', identifier)
+        asset = store.get_asset(conn, 'model', identifier, auth.require_user_id())
         owner_uid = asset['asset_uid'] if asset is not None else None
         data = artifact_store.read_by_name(conn, owner_uid,
                                            artifact_store.PURPOSE_RELEASE_ZIP, release) \
@@ -321,7 +321,7 @@ def get_model_definitions(query):
         return {'error': '分页参数无效'}, 400
     with read_connection() as conn:
         if version:
-            asset = store.get_asset(conn, 'model', identifier)
+            asset = store.get_asset(conn, 'model', identifier, auth.require_user_id())
             if asset is None:
                 raise versions.VersionNotFound('本体版本不存在')
             row = store.get_release_row(conn, asset['asset_uid'], version)
@@ -392,7 +392,7 @@ def get_releases(query):
     from workbench.storage import assets as store, artifacts as artifact_store
     from workbench.storage.engine import read_connection
     with read_connection() as conn:
-        asset = store.get_asset(conn, 'model', identifier)
+        asset = store.get_asset(conn, 'model', identifier, auth.require_user_id())
         rows = artifact_store.artifact_meta_list(conn, asset['asset_uid'],
                                                  artifact_store.PURPOSE_RELEASE_ZIP) \
             if asset is not None else []
@@ -408,7 +408,7 @@ def get_source_reference(query):
     from workbench.storage import assets as store, artifacts as artifact_store
     from workbench.storage.engine import read_connection
     with read_connection() as conn:
-        asset = store.get_asset(conn, 'model', 'storage')
+        asset = store.get_asset(conn, 'model', 'storage', auth.require_user_id())
         if asset is None:
             return {'nodes': []}, 200
         rows = artifact_store.artifact_meta_list(conn, asset['asset_uid'],
@@ -545,7 +545,7 @@ def post_restore(payload):
         backup_data = json.dumps(encode_state(current(identifier)), ensure_ascii=False,
                                  indent=2).encode()
         def body(conn):
-            asset = store.get_asset(conn, 'model', identifier)
+            asset = store.get_asset(conn, 'model', identifier, auth.require_user_id())
             if asset is not None:
                 artifact_store.put_artifact(conn, backup_data, artifact_store.PURPOSE_RESTORE_BACKUP,
                                             legacy_name=backup_name, owner_asset_uid=asset['asset_uid'],

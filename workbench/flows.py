@@ -12,6 +12,7 @@ import json
 import re
 from uuid import uuid4
 
+from workbench import auth
 from workbench import calc_functions, flow_http, flow_sql
 from workbench import storage
 from workbench.storage import assets as store
@@ -76,9 +77,9 @@ def revision_of(state):
 
 
 def current_token(identifier):
-    """head 的不透明 revision token；编排不存在返回 None。"""
+    """head 的不透明 revision token；编排不存在（或非本账号）返回 None。"""
     storage.ensure_ready()
-    return store.current_token(KIND, clean_id(identifier))
+    return store.current_token(KIND, clean_id(identifier), owner_user_id=auth.require_user_id())
 
 
 def ensure_structure(state):
@@ -103,7 +104,7 @@ def ensure_structure(state):
 
 def read_draft(identifier):
     storage.ensure_ready()
-    current = store.read_current(KIND, clean_id(identifier))
+    current = store.read_current(KIND, clean_id(identifier), owner_user_id=auth.require_user_id())
     if current is None:
         return None
     head, snapshot = current['head'], current['snapshot']
@@ -122,6 +123,7 @@ def save_draft(state, expected_token=None):
     """
     ensure_structure(state)
     identifier = clean_id(state['flowId'])
+    owner = auth.require_user_id()
     storage.ensure_ready()
     payload = {k: v for k, v in state.items() if not str(k).startswith('_')}
     result = store.save_draft(KIND, identifier, payload, store.PAYLOAD_FORMAT_FLOW,
@@ -129,7 +131,8 @@ def save_draft(state, expected_token=None):
                               name=str(state.get('name') or identifier),
                               summary={'nodeCount': sum(1 for n in payload.get('nodes', []) if isinstance(n, dict)),
                                        'status': payload.get('status') or 'active'},
-                              allow_create=True, allow_advance=(expected_token is None))
+                              allow_create=True, allow_advance=(expected_token is None),
+                              owner_user_id=owner)
     return {'revision': result['revision'], 'seq': result['seq']}
 
 
@@ -144,13 +147,14 @@ def create(name, description=''):
     if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
         raise ValueError('编排名称需要填写 1～80 个字符')
     name = name.strip()
+    owner = auth.require_user_id()
     storage.ensure_ready()
     identifier = uuid4().hex[:12]
     state = blank_flow(identifier, name, description)
 
     def body(conn):
         store.bump_guard(conn, 'asset-name:flow')
-        rows = store.list_assets(conn, KIND)
+        rows = store.list_assets(conn, KIND, owner)
         if any(row['name_key'] == store.name_key(name) for row in rows):
             raise ValueError('已存在同名编排，请换一个名称')
         return store._save_draft_in_conn(
@@ -158,7 +162,8 @@ def create(name, description=''):
             expected_token=None, name=name,
             summary={'nodeCount': 0, 'status': 'active'},
             project_ref=None, purpose='draft', legacy_revision='',
-            allow_create=True, allow_advance=False, now=utcnow(), conflict={})
+            allow_create=True, allow_advance=False, now=utcnow(), conflict={},
+            owner_user_id=owner)
 
     with write_tx() as tx:
         tx.run(body)
@@ -166,10 +171,11 @@ def create(name, description=''):
 
 
 def listing(include_deleted=False):
+    owner = auth.require_user_id()
     storage.ensure_ready()
     items = []
     with read_connection() as conn:
-        rows = store.list_assets(conn, KIND)
+        rows = store.list_assets(conn, KIND, owner)
     for row in rows:
         identifier = row['external_id']
         state = read_draft(identifier)
@@ -296,7 +302,7 @@ def soft_delete(identifier):
     """软删除：只追加一条 status=deleted 的快照，历史快照全部保留。"""
     storage.ensure_ready()
     identifier = clean_id(identifier)
-    current = store.read_current(KIND, identifier)
+    current = store.read_current(KIND, identifier, owner_user_id=auth.require_user_id())
     if current is None:
         raise FlowNotFound('编排不存在')
     state = copy.deepcopy(current['snapshot']['payload'])

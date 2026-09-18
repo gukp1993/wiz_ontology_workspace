@@ -21,6 +21,10 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).resolve().parent))
+import auth_client
 from pathlib import Path
 
 import yaml
@@ -68,9 +72,16 @@ def shutdown():
 
 # --- HTTP ---------------------------------------------------------------------
 
+AUTH_COOKIE = {'value': ''}  # 登录后写入（20260918 账号体系）
+
+
 def request(method, path, payload=None):
     data = json.dumps(payload, ensure_ascii=False).encode() if payload is not None else None
     headers = {'Content-Type': 'application/json'}
+
+    if AUTH_COOKIE['value']:
+
+        headers['Cookie'] = 'wiz_session=' + AUTH_COOKIE['value']
     if method == 'POST':
         headers['Origin'] = ORIGIN
     req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
@@ -175,9 +186,11 @@ def write_catalog(pid):
             {'name': 'metric_code', 'dataType': 'varchar', 'key': '', 'comment': '指标编码'},
             {'name': 'value', 'dataType': 'double', 'key': '', 'comment': '采样值'}]}]}
     # 库化后目录缓存存数据库：走与线上相同的 catalogs.store 路径写入同一存储库
+    # （账号体系 20260918：测试进程内直调需先绑定测试账号作为当前用户）
     import os as _os
     _os.environ['WIZ_DATABASE_URL'] = 'sqlite:///' + str(TMP / 'data' / 'workbench.sqlite3')
     sys.path.insert(0, str(REPO))
+    auth_client.bind_fixture_user()
     from workbench import catalogs as _catalogs
     _catalogs.store(pid, 'conn-mysql-01', catalog)
     _os.environ.pop('WIZ_DATABASE_URL', None)
@@ -256,6 +269,10 @@ def import_seed_into_db():
     from workbench.storage import transfer as _transfer
     rc = _transfer.main(['import', '--source', str(TMP)])
     check(rc == 0, '种子发布导入存储库', actual=rc, expected=0)
+    # 账号体系（20260918）：导入数据无归属 → 建测试账号并归属，否则会话读不到
+    check(_transfer.main(['create-user', '--username', auth_client.DEFAULT_USER,
+                          '--password', auth_client.DEFAULT_PASSWORD]) == 0, '创建测试账号')
+    check(_transfer.main(['assign-owner', '--username', auth_client.DEFAULT_USER]) == 0, '种子数据归属测试账号')
     _os.environ.pop('WIZ_DATABASE_URL', None)
 
 
@@ -287,14 +304,16 @@ def main():
             print(PROC.stdout.read().decode(errors='replace'))
             sys.exit(1)
         try:
-            status, payload = request('GET', '/api/ontologies')
+            status, payload = request('GET', '/api/auth-state')
             if status == 200:
                 ready = True
                 break
             time.sleep(0.2)
         except (urllib.error.URLError, ConnectionError, OSError):
             time.sleep(0.2)
-    check(ready, '服务未在 20 秒内就绪（/api/ontologies）', actual='未就绪', expected='200')
+    check(ready, '服务未在 20 秒内就绪（/api/auth-state）', actual='未就绪', expected='200')
+    if ready:
+        AUTH_COOKIE['value'] = auth_client.auth_headers(BASE)['Cookie'].split('=', 1)[1]
     ok('0', f'隔离服务已就绪 WIZ_WORKBENCH_ROOT={TMP} 端口 {PORT}')
 
     # a) 建项目（绑定 storage + 版本）
@@ -429,7 +448,7 @@ def main():
                                           read_snapshot as _rs, resolve_url as _rurl)
     import json as _json
     with _rc(_rurl()) as _conn:
-        _asset = _assets.get_asset(_conn, 'project', pid)
+        _asset = _assets.get_asset(_conn, 'project', pid, auth_client.user_id_from_db(TMP))
         _head = _rh(_conn, _asset['asset_uid']) if _asset else None
         snapshots = []
         if _head:
