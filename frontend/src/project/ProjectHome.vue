@@ -15,7 +15,7 @@ import {decodeState} from '../ontology/modelFormat'
 import {effectiveProperty} from '../ontology/propertyModel'
 import { listVersions, versionStateRaw } from '../ontology/api'
 import { projectPost, createProject as apiCreateProject } from './api'
-const props=defineProps<{defaultOntologyId:string;ontologyOptions:{value:string;label:string}[];projects:any[];projectState:any;projectDirty:boolean;migrationTodos:any[]}>()
+const props=defineProps<{defaultOntologyId:string;ontologyOptions:{value:string;label:string}[];projects:any[];projectState:any;projectDirty:boolean;migrationTodos:any[];createSignal?:number}>()
 // 兼容声明：App 仍绑定 select/reference/upgrade/open-* 等旧事件（侧栏与 p-upgrade 已承接其职责），
 // 此处声明以防监听器落到根 DOM；本页实际只发出 created 与 navigate。
 const emit=defineEmits(['created','navigate','select','reference','upgrade','open-implementations','open-connections','open-binding','before-change','changed'])
@@ -38,6 +38,8 @@ watch(()=>props.ontologyOptions,o=>{if(o.length===1&&!newProjectOntology.value)n
 async function loadNewVersions(id:string){if(!id){npVersions.value=[];return}
   try{const items=(await listVersions(id)).items||[];npVersions.value=items;newVersion.value=items[items.length-1]?.version||''}catch(e){message.value=(e as Error).message}}
 watch(newProjectOntology,id=>loadNewVersions(id))
+// 侧栏「＋ 新建」经 App 转发信号：挂载时已有待处理信号也要能打开（immediate）
+watch(()=>props.createSignal,v=>{if(v)openCreateDialog()},{immediate:true})
 const ontoName=(id:string)=>props.ontologyOptions.find(o=>o.value===id)?.label||id||''
 async function createProject(){if(busy.value||!newName.value.trim())return;busy.value=true;try{
   const d=await apiCreateProject({name:newName.value.trim(),ontology:newProjectOntology.value,version:newProjectOntology.value?newVersion.value:''})
@@ -159,8 +161,7 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
   <div class="panelhead"><div><h2>{{projectState.name}}</h2>
   <p class="muted">{{hasReference?('引用 '+ontoName(projectState.ontologyId)+' '+projectState.ontologyVersion+'；升级仅修改项目草稿'):'尚未绑定本体：可以先配置连接，对象映射与校验需要先绑定已发布版本'}}</p></div>
   <div class="tools"><span v-if="projectDirty" class="status-pill">未保存修改</span>
-  <button class="primary" @click="emit('navigate','p-upgrade')">{{hasReference?'管理引用版本':'绑定本体版本'}}</button>
-  <button @click="openCreateDialog">＋ 新建项目</button></div></div>
+  <button class="primary" @click="emit('navigate','p-upgrade')">{{hasReference?'管理引用版本':'绑定本体版本'}}</button></div></div>
 </section>
 
 <section class="card">
