@@ -248,7 +248,7 @@ POST /api/llm-provider-save
 | `apiKey` | string | 条件 | 首次配置必填；编辑时留空表示**沿用已保存密钥** |
 | `timeout` | number | 否 | 1–300 秒，默认 60 |
 | `temperature` | number | 否 | 0–2，默认 0 |
-| `isDefault` | boolean | 否 | 设为默认（首个提供方自动成为默认） |
+| `isDefault` | boolean | 否 | 设为默认；**首个提供方自动成为默认**。列表页的「设为默认」不经过本接口，走 `POST /api/llm-provider-default`（§4.5） |
 
 **响应** `200`
 
@@ -308,3 +308,33 @@ POST /api/llm-provider-test
 | 404 | `providerId` 对应的提供方不存在或已删除 |
 
 **约束**：真实网络探测，**不持全局写锁**；超时上限 30 s；发送极小请求（`ping`，`max_tokens=1`），2xx 即视为连通。
+
+### 4.5 设为默认提供方
+
+```http
+POST /api/llm-provider-default
+```
+
+> 只切换默认项，**不重写提供方配置**：用于列表页「设为默认」按钮。原先只能通过 §4.2 携带全部字段 + `isDefault` 完成，会顺带覆盖配置并递增 `metadata_revision`，语义过重。
+
+请求体：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `providerId` | string | 是 | 目标提供方 id |
+
+**响应** `200`
+
+```json
+{ "ok": true, "provider": { "id": "llm-xxxxx", "name": "本地模型", "isDefault": true } }
+```
+
+| 状态码 | 场景 |
+| --- | --- |
+| 400 | `providerId` 格式非法（非 `llm-…` 形态） |
+| 404 | `providerId` 对应的提供方不存在或已删除 |
+
+**约束**：
+- **幂等**：目标已是默认时直接返回 200，不重复写入；
+- 与 `save`/`clear` 共用 `model-default` 护栏行串行化，保证任何时刻**默认项唯一**；
+- 只改设置表指针，不触碰 `wb_model_configs` 与密钥，`metadata_revision` 不变。

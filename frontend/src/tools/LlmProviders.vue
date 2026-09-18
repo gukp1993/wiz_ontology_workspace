@@ -12,11 +12,14 @@ const loading = ref(true), loadError = ref('')
 const notice = ref('')
 let noticeTimer: any = null
 function warn(text: string) { notice.value = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => notice.value = '', 5000) }
+const DEFAULT_HINT = '未指定模型配置的节点将使用此默认配置；不影响已明确指定的配置。'
 
 const dialog = ref(false)
 const editingId = ref('')
-const form = ref({ name: '', endpoint: '', model: '', apiKey: '', timeout: 60, temperature: 0, isDefault: false })
-const testingId = ref(''), testResults = ref<Record<string, string>>({})
+const form = ref({ name: '', endpoint: '', model: '', apiKey: '', timeout: 60, temperature: 0 })
+// 连通性结果按结构化状态保存（不用文案前缀判断成功/失败，避免文案一改配色就错）
+const testingId = ref(''), testResults = ref<Record<string, { ok: boolean; text: string }>>({})
+const defaultingId = ref('')  // 「设为默认」请求进行中的行，防连点
 
 async function load() {
   loading.value = true; loadError.value = ''
@@ -26,14 +29,14 @@ onMounted(load)
 
 function openCreate() {
   editingId.value = ''
-  form.value = { name: '', endpoint: '', model: '', apiKey: '', timeout: 60, temperature: 0, isDefault: items.value.length === 0 }
+  form.value = { name: '', endpoint: '', model: '', apiKey: '', timeout: 60, temperature: 0 }
   formOriginal.value = JSON.stringify(form.value)
   dialog.value = true
 }
 function openEdit(item: any) {
   editingId.value = item.id
   form.value = { name: item.name, endpoint: item.endpoint || '', model: item.model, apiKey: '',
-                 timeout: item.timeout || 60, temperature: item.temperature ?? 0, isDefault: item.isDefault }
+                 timeout: item.timeout || 60, temperature: item.temperature ?? 0 }
   formOriginal.value = JSON.stringify(form.value)
   dialog.value = true
 }
@@ -49,13 +52,22 @@ async function save() {
   try {
     await llm.saveProvider({ providerId: editingId.value || undefined, name: form.value.name,
       endpoint: form.value.endpoint, model: form.value.model, apiKey: form.value.apiKey || undefined,
-      timeout: Number(form.value.timeout) || 60, temperature: Number(form.value.temperature) || 0,
-      isDefault: form.value.isDefault })
+      timeout: Number(form.value.timeout) || 60, temperature: Number(form.value.temperature) || 0 })
     testResults.value = {} // 配置已变化：旧连通性结果作废，待用户重新测试
     dialog.value = false
     warn('已保存模型配置。')
     await load()
   } catch (e: any) { warn(e?.message || '保存失败') }
+}
+/** 设为默认：排在列表页（不在编辑页），只切默认指针、不改配置本身。 */
+async function setDefault(item: any) {
+  if (item.isDefault || defaultingId.value) return
+  defaultingId.value = item.id
+  try {
+    await llm.setDefaultProvider(item.id)
+    warn(`已把「${item.name}」设为默认模型。`)
+    await load()   // 默认项排最前，刷新即呈现结果
+  } catch (e: any) { warn(e?.message || '设为默认失败') } finally { defaultingId.value = '' }
 }
 async function remove(item: any) {
   const isDefault = item.isDefault
@@ -64,11 +76,16 @@ async function remove(item: any) {
   try { await llm.deleteProvider(item.id); warn('已删除。'); await load() } catch (e: any) { warn(e?.message || '删除失败') }
 }
 async function test(item: any) {
-  testingId.value = item.id; testResults.value[item.id] = ''
+  testingId.value = item.id
+  delete testResults.value[item.id]
   try {
     const d = await llm.testProvider({ providerId: item.id })
-    testResults.value[item.id] = d.ok ? `最近一次连通成功（${d.latencyMs}ms）` : `最近一次连通失败：${d.message}`
-  } catch (e: any) { testResults.value[item.id] = '✗ ' + (e?.message || '测试失败') } finally { testingId.value = '' }
+    testResults.value[item.id] = d.ok
+      ? { ok: true, text: `连通成功（${d.latencyMs}ms）` }
+      : { ok: false, text: `连通失败：${d.message}` }
+  } catch (e: any) {
+    testResults.value[item.id] = { ok: false, text: `测试失败：${e?.message || '未知原因'}` }
+  } finally { testingId.value = '' }
 }
 </script>
 <template>
@@ -85,11 +102,12 @@ async function test(item: any) {
     <div v-for="item in items" :key="item.id" class="provider-row">
       <div class="grow">
         <strong>{{item.name}}</strong>
-        <span v-if="item.isDefault" class="pill">默认</span>
+        <span v-if="item.isDefault" class="pill" :title="DEFAULT_HINT">默认</span>
         <div class="muted small">模型：{{item.model}} · {{item.keyConfigured ? '密钥已配置' : '未配置密钥'}}</div>
       </div>
       <small v-if="testingId===item.id" class="muted">测试中…</small>
-      <small v-else-if="testResults[item.id]" :class="testResults[item.id].startsWith('✓')?'inline-success':'inline-error'">{{testResults[item.id]}}</small>
+      <small v-else-if="testResults[item.id]" :class="testResults[item.id].ok?'inline-success':'inline-error'" role="status" :title="testResults[item.id].text">{{testResults[item.id].text}}</small>
+      <button v-if="!item.isDefault" class="mini" :disabled="!!defaultingId" :title="DEFAULT_HINT" @click="setDefault(item)">{{defaultingId===item.id?'设置中…':'设为默认'}}</button>
       <button class="mini" :disabled="!!testingId" @click="test(item)">测试连通</button>
       <button class="mini" @click="openEdit(item)">编辑</button>
       <button class="mini danger" @click="remove(item)">删除</button>
@@ -104,8 +122,6 @@ async function test(item: any) {
       <label>接口地址（chat/completions 完整 URL）*<input v-model="form.endpoint" placeholder="https://…/v1/chat/completions"/></label>
       <label>模型标识 *<input v-model="form.model" placeholder="模型参数名，例如 deepseek-chat"/></label>
       <label>API Key{{editingId?'（留空沿用已保存密钥）':' *'}}<input v-model="form.apiKey" type="password" :placeholder="editingId?'留空 = 沿用已保存密钥（不回显）':'sk-…'"/></label>
-      <label class="check-line"><input v-model="form.isDefault" type="checkbox"/> 设为默认</label>
-      <p class="field-help">未指定模型配置的节点将使用此默认配置；不影响已明确指定的配置。</p>
       <details class="technical-section">
         <summary>高级设置</summary>
         <div class="form-row">
@@ -124,11 +140,17 @@ async function test(item: any) {
 <style scoped>
 .provider-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .provider-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:9px 14px}
-.provider-row .grow{flex:1}
+/* min-width:0：允许标题/模型名过长时收缩省略，而不是把右侧按钮挤出卡片 */
+.provider-row .grow{flex:1;min-width:0}
+.provider-row .grow strong{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .provider-row .small{font-size:12px}
+/* 连通性结果：限宽省略，出现长文案时不挤压按钮组、不撑高行 */
+.provider-row>small{flex:0 1 auto;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 操作按钮组：固定不收缩、文本不换行，三个按钮与内容块中线对齐 */
+.provider-row>button{flex:none;white-space:nowrap}
+/* 全局 .danger 带 margin-top:12px（为明细页底部按钮设计），在 flex 行内会造成删除按钮下移 6px，这里归零 */
+.provider-row .danger{margin-top:0}
 .pill{font-size:10px;border-radius:8px;padding:1px 8px;background:var(--blue-soft);color:var(--blue-ink);margin-left:6px}
-.check-line{display:flex;align-items:center;gap:6px}
-.check-line input{width:auto}
 .form-row{display:flex;gap:10px}
 .form-row label{flex:1}
 </style>

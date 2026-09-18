@@ -210,6 +210,19 @@ def post_llm_provider_delete(payload):
     return {'cleared': True}, 200
 
 
+def post_llm_provider_default(payload):
+    """切换默认提供方（幂等）；只改设置表指针，不重写配置。"""
+    try:
+        provider_id = str(payload.get('providerId') or '')
+        with LOCK:
+            provider = llm_providers.set_default(provider_id)
+    except ValueError as exc:
+        return {'error': str(exc)}, 400
+    if provider is None:
+        return {'error': 'LLM 提供方不存在或已被删除'}, 404
+    return {'ok': True, 'provider': provider}, 200
+
+
 def post_llm_provider_test(payload):
     """连通性探测：按已存 providerId 测试，或按请求携带的临时配置测试（不落盘）。"""
     try:

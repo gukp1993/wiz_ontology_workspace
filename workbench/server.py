@@ -89,6 +89,7 @@ POST_ROUTES = {
     '/api/flow-run': flow_routes.post_flow_run,
     '/api/llm-provider-save': flow_routes.post_llm_provider_save,
     '/api/llm-provider-delete': flow_routes.post_llm_provider_delete,
+    '/api/llm-provider-default': flow_routes.post_llm_provider_default,
     '/api/llm-provider-test': flow_routes.post_llm_provider_test,
     '/api/export': BINARY_ROUTE,  # 二进制响应：do_POST 内专用分支处理（哨兵 = 路由已注册）
 }

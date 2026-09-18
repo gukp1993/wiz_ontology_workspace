@@ -36,7 +36,7 @@ def _clean(provider_id):
 def _rows(conn):
     rows = conn.execute(
         sql_text('SELECT provider_id, name, endpoint, model, timeout_seconds, temperature, '
-                       'metadata_revision, updated_at FROM wb_model_configs')).mappings().all()
+                       'secret_id, metadata_revision, updated_at FROM wb_model_configs')).mappings().all()
     return [dict(row) for row in rows]
 
 
@@ -213,6 +213,30 @@ def save(name, endpoint, model, api_key='', timeout=60, temperature=0, is_defaul
         return {'id': provider_id, 'name': name, 'model': model,
                 'isDefault': bool(want_default or current_default == provider_id),
                 'keyConfigured': True}
+
+    with write_tx() as tx:
+        return tx.run(body)
+
+
+def set_default(provider_id):
+    """把已存在的提供方设为默认；幂等（已是默认时不重复写）。返回元数据。
+
+    只改设置表指针，不触碰 wb_model_configs 与密钥（metadata_revision 不变）。
+    标识非法抛 ValueError；提供方不存在返回 None（调用方按 404 处理）。
+    """
+    _clean(provider_id)
+    storage.ensure_ready()
+    with read_connection() as conn:
+        if not any(r['provider_id'] == provider_id for r in _load_all(conn)):
+            return None
+
+    def body(conn):
+        store.bump_guard(conn, 'model-default')
+        row = next(r for r in _load_all(conn) if r['provider_id'] == provider_id)
+        if config_store.get_setting(conn, config_store.DEFAULT_PROVIDER_KEY, '') != provider_id:
+            config_store.put_setting(conn, config_store.DEFAULT_PROVIDER_KEY, provider_id, now=utcnow())
+        return {'id': provider_id, 'name': row['name'], 'model': row['model'],
+                'isDefault': True, 'keyConfigured': bool(row.get('secret_id'))}
 
     with write_tx() as tx:
         return tx.run(body)

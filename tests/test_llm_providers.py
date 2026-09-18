@@ -151,5 +151,36 @@ check(tested[1] == 200 and tested[0]['ok'], '连通性测试（探测请求，�
 cleared = flow_routes.post_llm_provider_delete({'providerId': saved[0]['provider']['id']})
 check(cleared[1] == 200 and llm_providers.read(saved[0]['provider']['id']) is None, '删除生效')
 
+# 5) 设为默认（列表页按钮；只切指针，不重写配置） ------------------------------------
+a = flow_routes.post_llm_provider_save({'name': '默认甲', 'endpoint': 'https://x/a', 'model': 'ma',
+                                        'apiKey': 'sk-a', 'timeout': 60, 'temperature': 0})
+b = flow_routes.post_llm_provider_save({'name': '默认乙', 'endpoint': 'https://x/b', 'model': 'mb',
+                                        'apiKey': 'sk-b', 'timeout': 90, 'temperature': 0.3})
+a_id, b_id = a[0]['provider']['id'], b[0]['provider']['id']
+meta = {m['id']: m for m in llm_providers.list_metadata()}
+check(meta[a_id]['keyConfigured'] and meta[b_id]['keyConfigured'],
+      'keyConfigured 反映密钥已配置（SELECT 含 secret_id）', meta)
+before = llm_providers.read(b_id)
+switched = flow_routes.post_llm_provider_default({'providerId': b_id})
+check(switched[1] == 200 and switched[0]['provider']['isDefault'], '设为默认返回 200', switched[0])
+meta = {m['id']: m for m in llm_providers.list_metadata()}
+check(meta[b_id]['isDefault'] and not meta[a_id]['isDefault'], '默认项已切换', meta)
+check(llm_providers.list_metadata()[0]['id'] == b_id, '默认项排最前')
+check(llm_providers.default_provider()['id'] == b_id, 'default_provider 取到新默认')
+after = llm_providers.read(b_id)
+check(after['timeout'] == 90 and after['temperature'] == 0.3 and after['endpoint'] == 'https://x/b',
+      '设为默认不重写配置', after)
+check(after['api_key'] == 'sk-b' and after['api_key'] == before['api_key'], '设为默认不动密钥')
+check(sum(1 for m in llm_providers.list_metadata() if m['isDefault']) == 1, '默认仍然唯一')
+again = flow_routes.post_llm_provider_default({'providerId': b_id})
+check(again[1] == 200 and llm_providers.default_provider()['id'] == b_id, '重复设为默认幂等', again[0])
+check(flow_routes.post_llm_provider_default({'providerId': 'llm-0000000000'})[1] == 404, '不存在 → 404')
+check(flow_routes.post_llm_provider_default({'providerId': 'not-an-id'})[1] == 400, '标识非法 → 400')
+check(flow_routes.post_llm_provider_default({})[1] == 400, '缺 providerId → 400')
+llm_providers.clear(b_id)
+check(llm_providers.default_provider()['id'] in {first['id'], a_id}
+      and sum(1 for m in llm_providers.list_metadata() if m['isDefault']) == 1,
+      '删除默认后自动回退剩余提供方（回归）')
+
 print(f'\n全部通过：{len(PASSED)} 项')
 shutil.rmtree(TMP, ignore_errors=True)
