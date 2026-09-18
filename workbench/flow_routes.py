@@ -79,7 +79,7 @@ def post_flow_save(payload):
         if expected is None:
             return {'error': '编排不存在'}, 404
         if payload.get('revision') != expected:
-            return {'error': '此编排已有新版本，请刷新后重试', 'currentRevision': expected}, 409
+            return {'error': '此编排已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
         try:
             result = flows.save_draft(state, expected_token=expected)
         except ValueError as exc:
@@ -150,14 +150,14 @@ def post_flow_run(payload):
             return {'error': str(exc)}, 400
         mutex = flow_executor.flow_mutex(identifier)
         if not mutex.acquire(blocking=False):
-            return {'error': '此编排正在运行中，请等待本次运行完成后再试'}, 409
+            return {'error': '此编排正在运行中，请等待本次运行完成后再试', 'code': 'FLOW_RUNNING'}, 409
         try:
             with LOCK:  # 仅短暂持锁核对版本；执行阶段绝不持全局锁
                 expected = flows.current_token(identifier)
                 if expected is None:
                     return {'error': '编排不存在'}, 404
                 if payload.get('revision') != expected:
-                    return {'error': '此编排已有新版本，请刷新后重试', 'currentRevision': expected}, 409
+                    return {'error': '此编排已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
             report = flows.check_flow(state, _conn_context(payload), llm_meta, credential_ids)
             if report['errors']:
                 return {'error': '配置检查未通过，无法运行：' + '；'.join(report['errors'][:3]),

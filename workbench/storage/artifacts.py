@@ -77,13 +77,20 @@ def artifact_meta_list(conn, owner_asset_uid, purpose):
 
 def import_items_record(conn, batch_id, source_key, source_hash, entity_kind, target_id,
                         status='imported', summary=None, now=None):
-    """迁移清单登记；同 batch+source_key 已存在时返回 ('exists', same_hash)。"""
+    """迁移清单登记；同 source_key 已存在（任意批次）时返回 ('exists', same_hash)。
+
+    查重按 source_key **全局**，不限定 batch_id：迁移 key 是内容寻址的
+    （如 `model-release:{id}:{version}`），可重入与「源变化中止」语义必须跨批次
+    成立。原实现 `WHERE batch_id = :b AND source_key_hash = :h` 依赖两次 import
+    恰好落在同一秒（batch id 为秒级时间戳）才不重复导入——跨秒重入会绕过查重
+    直接触发唯一约束崩溃（2026-09-18 批次 C 回归中发现）。
+    """
     now = now or sto.utcnow()
     from workbench.storage.engine import stable_hash
     key_hash = stable_hash(source_key)
     row = conn.execute(sto.text('SELECT item_id, source_hash, target_id FROM wb_import_items '
-                                'WHERE batch_id = :b AND source_key_hash = :h'),
-                       {'b': batch_id, 'h': key_hash}).first()
+                                'WHERE source_key_hash = :h ORDER BY updated_at DESC'),
+                       {'h': key_hash}).first()
     if row:
         same = row[1] == source_hash
         return ('exists', same)

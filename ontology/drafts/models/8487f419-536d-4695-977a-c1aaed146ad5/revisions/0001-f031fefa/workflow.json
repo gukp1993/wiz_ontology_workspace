@@ -1,0 +1,15 @@
+{
+  "objective": {
+    "name": "测试本体",
+    "question": "",
+    "scope": "",
+    "acceptance": ""
+  },
+  "functions": [],
+  "actions": [],
+  "interfaces": [],
+  "release": {
+    "note": "",
+    "reviewer": ""
+  }
+}

@@ -531,15 +531,18 @@ def post_restore(payload):
     state, info = _decoded_state(payload)
     identifier = info['id']
     with LOCK:
+        head_token = workspaces.current_token(identifier)
         expected = _expected_revision(identifier)
         if payload.get('revision') != expected:
-            return {'error': '此本体已有新版本，请刷新后重试', 'currentRevision': expected}, 409
+            return {'error': '此本体已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
         restored = restore_snapshot(identifier, payload.get('release')); errors = validate(restored)
         storage.ensure_ready()
         from workbench.storage import assets as store, artifacts as artifact_store
         from workbench.storage.engine import write_tx, utcnow
         backup_name = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ') + '-' + str(expected)[:8] + '.json'
-        backup_data = json.dumps(encode_state(_server_current(identifier)), ensure_ascii=False,
+        # 备份当前草稿（恢复前的可回滚点）；失败语义：宁可留下未使用的备份，
+        # 也绝不向客户端谎报恢复成功——此处抛错会终止流程，不会继续写草稿。
+        backup_data = json.dumps(encode_state(current(identifier)), ensure_ascii=False,
                                  indent=2).encode()
         def body(conn):
             asset = store.get_asset(conn, 'model', identifier)
@@ -549,10 +552,11 @@ def post_restore(payload):
                                             media_type='application/json', now=utcnow())
         with write_tx() as tx:
             tx.run(body)
-        _head_token = workspaces.current_token(identifier)
-        workspaces.write_draft(restored, expected_token=_head_token,
-                               blank_baseline=(_head_token is None))
-        return {'revision': revision(restored), 'state': encode_state(restored), 'ontology': info, 'errors': errors, 'backup': backup_name,
+        # CAS 基线用已校验过的 head_token（不在此处重新读取），避免覆盖他人写入；
+        # 响应回传本次提交实际得到的 revision，而非提交后再查询到的 token。
+        committed = workspaces.write_draft(restored, expected_token=head_token,
+                                           blank_baseline=(head_token is None))
+        return {'revision': committed['revision'], 'state': encode_state(restored), 'ontology': info, 'errors': errors, 'backup': backup_name,
                 'release': payload['release'], 'note': '快照中的项目配置未恢复到项目草稿；项目数据由项目绑定区独立维护。'}, 200
 
 
@@ -575,7 +579,7 @@ def post_save(payload):
         head_token = workspaces.current_token(identifier)
         expected = _expected_revision(identifier)
         if payload.get('revision') != expected:
-            return {'error': '此本体已有新版本，请刷新后重试', 'currentRevision': expected}, 409
+            return {'error': '此本体已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
         errors = validate(state)
         workspaces.write_draft(state, expected_token=head_token,
                                blank_baseline=(head_token is None))
@@ -589,7 +593,7 @@ def post_publish(payload):
         head_token = workspaces.current_token(identifier)
         expected = _expected_revision(identifier)
         if payload.get('revision') != expected:
-            return {'error': '此本体已有新版本，请刷新后重试', 'currentRevision': expected}, 409
+            return {'error': '此本体已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
         errors = validate(state)
         if state.get('sourceGraph', {}).get('status') in ('pending_review', 'pending_field_verification'):
             errors.append('导入图谱存在未审核内容，请先完成业务口径确认；可保存草稿或导出审核包。')
@@ -624,7 +628,7 @@ def post_publish(payload):
                 receipt = config_store.get_request_receipt(conn, 'model-publish', identifier, request_key)
             if receipt is not None:
                 if receipt['request_hash'] != request_hash:
-                    return {'error': 'requestId 已被不同的发布请求使用，请刷新后重试'}, 409
+                    return {'error': 'requestId 已被不同的发布请求使用，请刷新后重试', 'code': 'REVISION_CONFLICT'}, 409
                 prior = receipt['response']
                 return {'revision': prior['revision'], 'errors': [], 'version': prior['version'],
                         'changeType': prior['changeType'], 'reasons': prior.get('reasons', []),

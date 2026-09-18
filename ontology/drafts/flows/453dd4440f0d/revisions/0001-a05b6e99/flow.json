@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "flowId": "453dd4440f0d",
+  "name": "采样值取值规则",
+  "description": "由取值规则库「采样值取值规则」(schemaVersion 2) 转换：定位测点 → 定位采样存储 → 读取采样记录，三步 SQL 动态定位 + 时间区间查询，输出时间序列（timestamp 升序）。",
+  "status": "active",
+  "inputs": [],
+  "outputs": [],
+  "connections": [],
+  "nodes": [],
+  "layout": {
+    "positions": {},
+    "zoom": 1,
+    "pan": {
+      "x": 0,
+      "y": 0
+    }
+  }
+}

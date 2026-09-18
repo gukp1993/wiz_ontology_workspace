@@ -23,10 +23,25 @@ def referenced_ontology(project_state):
 
 # --- GET 路由 -----------------------------------------------------------------------
 
-def get_projects(query, url_query_present=False):
-    """url_query_present 对应原实现的 `identifier if url.query else None` 语义。"""
-    identifier = query.get('ontology', ['storage'])[0]
-    items = projects.listing(identifier if url_query_present else None)
+def get_projects(query):
+    """GET /api/projects：显式筛选契约（2026-09-18 批次 B / R5）。
+
+    - 无 `ontology` 参数：返回全部项目（其他任何参数都不改变范围）；
+    - `?ontology=<有效ID>`：仅该本体的项目（不存在 → WorkspaceNotFound → 404）；
+    - `?ontology=`（空值）：400 参数错误（查询全部时应省略该参数）。
+
+    废除原「URL 带任意 query 串即按 ontology 参数过滤」的隐式语义
+    （前端 listProjects 无筛选时不带参数，已核实无兼容问题）。
+    """
+    if 'ontology' in query:
+        identifier = query['ontology'][0]
+        if not identifier:
+            return {'error': 'ontology 参数不能为空；查询全部项目时请省略该参数',
+                    'code': 'INVALID_ARGUMENT'}, 400
+        identifier = workspaces.describe(identifier)['id']
+    else:
+        identifier = None
+    items = projects.listing(identifier)
     for item in items:
         try:
             item['latestVersion'] = (versions.latest(item['ontologyId']) or {}).get('version', '')
@@ -127,7 +142,7 @@ def post_project_write(payload, path):
         existing, _ = projects.load(project_state['projectId'])
         expected = projects.current_token(project_state['projectId'])
         if payload.get('revision') != expected:
-            return {'error': '此项目已有新版本，请刷新后重试', 'currentRevision': expected}, 409
+            return {'error': '此项目已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
         if path == '/api/project-publish':
             if not has_reference:
                 return {'error': '该项目尚未绑定本体版本，无法发布：请先在项目信息中完成绑定。'}, 422

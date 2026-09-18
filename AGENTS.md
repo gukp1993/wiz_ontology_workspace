@@ -10,6 +10,8 @@ python3 -m workbench.server        # 直接启动后端（127.0.0.1:18765，同�
 cd frontend && npm run build       # 构建（vue-tsc 类型检查 + vite），改前端后必须执行
 cd frontend && npm run typecheck   # 仅类型检查
 cd frontend && npm run dev         # 开发模式（vite 热更新，/api 代理到 18765）
+python3 tests/run.py               # 后端一键回归（2026-09-18）：quick / http / unit / all / external 分组，独立子进程隔离运行；external 组需本机 MySQL
+python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 ```
 
 后端依赖：PyYAML + rdflib + SQLAlchemy/Alembic（存储库）+ cryptography（凭据加密）；数据连接探测为可选依赖 PyMySQL + redis（未安装时真实测试返回"驱动未安装"提示，其余功能不受影响）；前端 Vue3 + cytoscape + vite，无路由/无状态库。start.sh 只管理 `.runtime/server.pid` 记录的自身进程（防误杀）。
@@ -33,6 +35,17 @@ cd frontend && npm run dev         # 开发模式（vite 热更新，/api 代理
 - `tests/` — 回归套件 + `fixtures/validation_golden.json`（项目校验金样）+ `ts_hooks.mjs`（Node 跑 TS 的解析钩子）
 - 2026-09-15 已按用户要求删除根目录 `待删除_非运行资料/`、`tools/`、`service/`；`outputs/` 已不存在。不要重建旧兼容入口或引用已删归档作为必要步骤。`resources/` 保留来源参考所需 source.jsonId；`workbench/demo` 仍是运行依赖。`发布包/` 是精简交付副本，不含真实数据或密钥；不在包内开发。
 - `文档/` — 设计方案（以 `通用储能本体工作台设计方案_v3.md` 为准）；`文档/交付物/` 实施说明与指令；`文档/prototypes/` 原型；`文档/迁移清单_20260915.md` 目录迁移记录
+
+## 接口文档与前后端契约（2026-09-18，强制）
+
+前后端一律通过接口文档交互，接口文档是唯一契约来源。文档在 `文档/接口文档/`：`README.md`（HTTP 规范总纲 + 变更记录 + 索引）、`01-通用约定与数据模型.md`、`02-本体区接口.md`、`03-项目区接口.md`、`04-编排与LLM接口.md`、`05-接口清单与规范差距.md`。
+
+1. **接口变更必须先更新接口文档，再改代码。** 改文档 → 改后端 → 改前端 → 回归 → 提交；文档与代码进同一 commit，并在 `README.md` 的「变更记录」登记一行（日期/变更/影响接口）。
+2. **新增接口必须登记**：写进对应分册 + `05` 速查表 + `server.py` 的 `GET_ROUTES`/`POST_ROUTES` 白名单表（白名单即表键，未登记一律 404）。
+3. **前后端不得依赖文档之外的约定**：前端只按文档字段调用（唯一出口 `app/http.ts` + 各区 `api.ts`，页面禁止自写 `fetch`）；后端实现若与文档不符，按「文档 bug」处理——先确认实现，再修正文档或修正实现，不得搁置。
+4. **禁止的静默变更**：字段增删改名、状态码调整、路径调整、校验规则变化，未登记即视为违规。
+5. **协议层镜像同步**：改本体字段映射表时 `workbench/model_format.py` 与 `frontend/src/ontology/modelFormat.ts` 必须同步改（已有架构边界第 3 条）。
+6. **接口层红线**：校验失败不得写成 200 + 空数据；CAS/revision 冲突不得假成功（必须 409 + `currentRevision`）；密钥（连接密码/API 凭据/LLM Key）只写不读回，永不进响应、日志与快照。
 
 ## 架构边界（改动前必读）
 
