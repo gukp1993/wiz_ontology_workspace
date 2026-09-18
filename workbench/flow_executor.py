@@ -97,13 +97,17 @@ def topo_order(state, targets=None):
 
 
 def validate_chain(state, target_ids):
-    """链测试校验：被测集合内每个节点的节点依赖都在被测集合内（存在拓扑序）。"""
+    """链测试校验：多节点时要求被测集合内每个节点的节点依赖都在被测集合内（存在拓扑序）。
+    单节点测试不要求——上游绑定的输入由测试表单给值（mock）。"""
     index = {n['id']: n for n in state.get('nodes', []) if isinstance(n, dict)}
+    for nid in target_ids:
+        if nid not in index:
+            raise ValueError(f'被测节点 {nid} 不存在于当前编排')
+    if len(target_ids) <= 1:
+        return
     missing = []
     for nid in target_ids:
-        node = index.get(nid)
-        if node is None:
-            raise ValueError(f'被测节点 {nid} 不存在于当前编排')
+        node = index[nid]
         for dep in _node_dependencies(node):
             if dep not in target_ids:
                 missing.append(f'「{node.get("name") or nid}」依赖未选中的「{index[dep].get("name") or dep}」')
@@ -141,8 +145,12 @@ def _resolve_inputs(node, state, results, inputs):
             continue
         if kind in ('node', 'nodeField'):
             upstream = results.get(src.get('nodeId'))
+            if (not upstream or upstream.get('status') != 'success') and f'{node["id"]}.{name}' in inputs:
+                # 单节点测试：上游不在被测集合，其值由测试表单按「节点Id.输入技术名」提供
+                values[name] = inputs[f'{node["id"]}.{name}']
+                continue
             if not upstream or upstream.get('status') != 'success':
-                raise NodeFailure(f'输入「{label}」的上游节点尚未成功执行')
+                raise NodeFailure(f'输入「{label}」的上游节点尚未成功执行（单节点测试时请在表单中给值）')
             outputs = upstream.get('outputs', {})
             output_name = upstream.get('outputNames', {}).get(src.get('outputId'))
             if output_name is None or output_name not in outputs:

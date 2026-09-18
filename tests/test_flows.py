@@ -367,8 +367,11 @@ v2['nodes'][4]['inputs'].append({'id': 'in_rows', 'name': 'rows', 'label': 'rows
                                  'type': {'type': 'list', 'elementType': {'type': 'text'}}, 'source': None})
 v2['nodes'][4]['execution'] = {'timeoutMs': 99999999, 'maxRows': 0, 'allowWrite': 'yes'}
 errors = flows.check_flow(v2, [], [], None)['errors']
-check(any('超时无效' in e for e in errors) and any('行数上限无效' in e for e in errors)
-      and any('允许写' in e for e in errors), '执行参数越界报错', errors)
+def _flat(entries):  # 兼容纯文本与 (text, code, field) 结构化两种格式
+    return [' '.join(map(str, e)) if isinstance(e, (list, tuple)) else e for e in entries]
+flat = _flat(errors)
+check(any('超时无效' in e for e in flat) and any('行数上限无效' in e for e in flat)
+      and any('允许写' in e for e in flat), '执行参数越界报错', flat)
 
 print(f'\n全部通过：{len(PASSED)} 项')
 shutil.rmtree(TMP, ignore_errors=True)

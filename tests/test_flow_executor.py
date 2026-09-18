@@ -63,14 +63,19 @@ state = {'schemaVersion': 1, 'flowId': 'x1', 'name': 't', 'inputs': [], 'outputs
 order = [n['name'] for n in flow_executor.topo_order(state)]
 check(order == ['甲', '乙'], '拓扑序按依赖排列', order)
 flow_executor.validate_chain(state, ['nd_甲', 'nd_乙'])
-try:
-    flow_executor.validate_chain(state, ['nd_乙'])
-    check(False, '断链应被拦截')
-except ValueError:
-    check(True, '断链被拦截并给出缺失上游')
+flow_executor.validate_chain(state, ['nd_乙'])  # 单节点测试放行：上游值由表单提供
 result = flow_executor.run(state, ctx=CTX)
 check([r['status'] for r in result['nodeResults']] == ['success', 'success'], '全图执行成功', result)
 check(result['nodeResults'][1]['outputs'] == {'w': 43}, '6*7+1=43 逐节点传值', result['nodeResults'][1])
+state['nodes'].append(node('calc', '丙', inputs=[{'name': 'w', 'type': {'type': 'number'}, 'source': {'kind': 'node', 'nodeId': 'nd_乙', 'outputId': 'out_w'}}],
+                           outputs=[{'name': 'z', 'type': {'type': 'number'}}],
+                           impl={'mode': 'formula', 'formulas': {'z': '{w} + 1'}}))
+try:
+    flow_executor.validate_chain(state, ['nd_甲', 'nd_丙'])
+    check(False, '多节点断链应被拦截')
+except ValueError:
+    check(True, '多节点断链被拦截并给出缺失上游')
+
 
 # 2) 失败传播：上游失败 → 下游 skipped ------------------------------------------------
 bad = state['nodes'][0]
