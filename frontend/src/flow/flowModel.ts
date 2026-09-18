@@ -303,6 +303,86 @@ export function connectionRemovalImpact(state: any, connectionId: string): strin
   return impact
 }
 
+// --- 节点/链测试（/api/flow-run {targets}）辅助 ---------------------------------
+
+/** 配置签名：包含影响校验与执行的配置，排除 layout（缩放/坐标/视口）。
+ * 用于检查/运行结果的新鲜度判定——签名变了即“待重新检查/上次快照”。 */
+export function configSignature(state: any): string {
+  if (!state || typeof state !== 'object') return ''
+  return JSON.stringify([
+    state.flowId, state.name, state.description, state.inputs, state.outputs,
+    (state.nodes || []).map((n: any) => [n.id, n.kind, n.name, n.description, n.inputs, n.outputs, n.implementation, n.execution]),
+    state.connections,
+  ])
+}
+
+/** 需要补选的上游闭包：ids 执行所缺的全部传递上游（不包含 ids 自身）。 */
+export function missingUpstreams(state: any, ids: string[]): string[] {
+  const nodes = new Map<string, any>((state?.nodes || []).map((n: any) => [n.id, n]))
+  const have = new Set(ids.filter(id => nodes.has(id)))
+  const required: string[] = []
+  const queue = [...have]
+  while (queue.length) {
+    const id = queue.shift()!
+    const node = nodes.get(id)
+    for (const input of node?.inputs || []) {
+      const src = input?.source
+      if (src && (src.kind === 'node' || src.kind === 'nodeField') && src.nodeId && !have.has(src.nodeId)) {
+        have.add(src.nodeId)
+        required.push(src.nodeId)
+        queue.push(src.nodeId)
+      }
+    }
+  }
+  return required
+}
+
+/** 范围内会产生真实外部副作用的节点摘要（写 SQL/写 Redis/非 GET HTTP/LLM 推演）。 */
+export function writeCapabilities(state: any, ids: string[]): string[] {
+  const out: string[] = []
+  for (const id of ids) {
+    const node = (state?.nodes || []).find((n: any) => n.id === id)
+    if (!node) continue
+    const impl = node.implementation || {}
+    const exec = node.execution || {}
+    if (node.kind === 'sql') {
+      if (exec.allowWrite) out.push(`SQL 节点「${node.name}」将执行写操作（DML）`)
+    } else if (node.kind === 'redis') {
+      const writeCommands = new Set(['SET', 'SETEX', 'SETNX', 'DEL', 'INCR', 'DECR', 'HSET', 'HMSET', 'LPUSH', 'RPUSH', 'SADD', 'ZADD', 'EXPIRE'])
+      if (writeCommands.has(String(impl.command || '').toUpperCase())) out.push(`Redis 节点「${node.name}」将执行 ${impl.command} 写命令`)
+    } else if (node.kind === 'http') {
+      if (String(impl.method || 'GET').toUpperCase() !== 'GET') out.push(`HTTP 节点「${node.name}」将发送 ${impl.method} 请求`)
+    } else if (node.kind === 'python') {
+      out.push(`Python 节点「${node.name}」由大模型推演（非本地执行）`)
+    }
+  }
+  return out
+}
+
+export const SECTION_LABELS: Record<string, string> = { inputs: '输入', implementation: '实现', outputs: '输出', advanced: '高级' }
+
+/** 测试输入的类型校验与取值。布尔未选不算 false；对象/数组需合法 JSON。 */
+export function validateTestValue(decl: any, raw: any): { ok: boolean; value: any; error: string } {
+  const t = decl?.type
+  if (t === 'number') {
+    if (raw === '' || raw == null) return { ok: true, value: null, error: '' }
+    const num = Number(raw)
+    return Number.isFinite(num) ? { ok: true, value: num, error: '' } : { ok: false, value: null, error: '需要数值' }
+  }
+  if (t === 'boolean') {
+    if (raw === '' || raw == null) return { ok: false, value: null, error: '必填的是/否尚未选择' }
+    return { ok: true, value: raw === true || raw === 'true', error: '' }
+  }
+  if (t === 'object' || t === 'list') {
+    const sample = t === 'object' ? '{}' : '[]'
+    if (raw === '' || raw == null) return { ok: false, value: null, error: `必填的${t === 'object' ? '对象' : '数组'}尚未填写（示例 ${sample}）` }
+    try { return { ok: true, value: JSON.parse(String(raw)), error: '' } }
+    catch { return { ok: false, value: null, error: '不是合法 JSON' } }
+  }
+  if (raw === '' || raw == null) return { ok: true, value: '', error: '' }
+  return { ok: true, value: String(raw), error: '' }
+}
+
 export function ensureLayout(state: any): void {
   if (!state.layout || typeof state.layout !== 'object') state.layout = {}
   if (!state.layout.positions || typeof state.layout.positions !== 'object') state.layout.positions = {}

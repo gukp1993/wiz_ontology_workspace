@@ -41,6 +41,7 @@ import * as oapi from './ontology/api'
 import * as papi from './project/api'
 import * as fapi from './flow/api'
 import { stripCatalogs } from './project/api'
+import { configSignature } from './flow/flowModel'
 
 const clone = (x: any) => JSON.parse(JSON.stringify(x))
 const message = ref(''), error = ref(false), busy = ref(false)
@@ -114,7 +115,7 @@ const projectSaver = createSaver('项目草稿',
   })
 
 // --- 函数编排区 Saver：独立状态线（不携带本体/项目数据）；保存响应附带最新配置检查 ---
-const flowId = ref(''), flowSaveErrors = ref<string[]>([]), flowCheck = ref<any>(null)
+const flowId = ref(''), flowSaveErrors = ref<string[]>([]), flowCheck = ref<any>(null), flowCheckSig = ref('')
 const flowStoreKey = 'wiz-last-flow'
 const flowSaver = createSaver('编排草稿',
   async () => {
@@ -122,11 +123,16 @@ const flowSaver = createSaver('编排草稿',
     return { state: d.state, revision: d.revision }
   },
   async (working, baseRevision) => {
+    const sig = configSignature(working)
     const d = await fapi.saveFlow(working, baseRevision, projectConnections.value)
     flowSaveErrors.value = d.check?.errors || []   // 配置检查失败 ≠ 草稿保存失败：状态条按“待完善”呈现
-    if (d.check) flowCheck.value = d.check
+    if (d.check) { flowCheck.value = d.check; flowCheckSig.value = sig }
     return d
   })
+// 顶栏检查结论的新鲜度：配置再变动后旧结论不再展示（与编辑页快照规则一致）
+watch(() => [flowState.value && configSignature(flowState.value), flowCheckSig.value], () => {
+  if (flowCheck.value && flowCheckSig.value !== (flowState.value ? configSignature(flowState.value) : '')) flowCheck.value = null
+})
 
 // working 即旧 state/projectState 的替代（Saver 的同一个 ref，切换/撤销/重载都替换它）。
 const state = ontologySaver.working as Ref<WorkbenchState | null>
@@ -524,7 +530,10 @@ async function retryLocal() { if (!(await appConfirm({ message: '以当前屏幕
 function commitCurrent() { void (onFlowView.value ? flowSaver.commitNow() : area.value === 'project' ? projectSaver.commitNow() : ontologySaver.commitNow()) }
 provide('commit-now', () => onFlowView.value ? flowSaver.commitNow() : area.value === 'project' ? projectSaver.commitNow() : ontologySaver.commitNow())
 
-function keydown(e: KeyboardEvent) { const action = shortcutAction(e, { modal: showOntologyDialog.value || leaveDialog.value, graph: false }); if (!action) return; e.preventDefault(); ({ save: commitCurrent, undo: () => undo(), redo: () => redo(), escape: () => { showOntologyDialog.value = false; if (leaveResolver) keepEditing() } } as any)[action]?.() }
+function keydown(e: KeyboardEvent) { const action = shortcutAction(e, { modal: showOntologyDialog.value || leaveDialog.value, graph: false }); if (!action) return
+  const target = e.target as HTMLElement | null
+  if ((action === 'undo' || action === 'redo') && target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return // 文本撤销归输入控件
+  e.preventDefault(); ({ save: commitCurrent, undo: () => undo(), redo: () => redo(), escape: () => { showOntologyDialog.value = false; if (leaveResolver) keepEditing() } } as any)[action]?.() }
 const areaLabel = computed(() => area.value === 'project' ? '项目空间' : '本体空间')
 // 局部表单未提交时刷新/关闭也保护（工作区草稿由各 Saver 的 beforeunload 保护）
 function unloadGuard(e: BeforeUnloadEvent) { if (dirtyGuards().length) { e.preventDefault(); e.returnValue = '' } }
@@ -606,7 +615,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 </script>
 
 <template>
-<div class="topbar" :inert="modalOpen"><div class="topbar-crumb"><span class="crumb-path">{{crumbPath}}</span><h1 class="topbar-title">{{pages[view]}}</h1></div><div class="topbar-status">
+<div class="topbar" :class="{mini: onFlowView}" :inert="modalOpen"><div class="topbar-crumb"><span class="crumb-path">{{crumbPath}}</span><h1 class="topbar-title">{{pages[view]}}</h1></div><div class="topbar-status">
 <template v-if="booting||ontologyLoad==='loading'"><span class="save-pill">{{ontologySlow?'仍在加载，请稍候…':'加载中…'}}</span></template>
 <template v-else-if="(space==='project'&&((projectState||(flowViews.includes(view)&&flowState))))||(space==='ontology'&&hasOntology&&ontologyLoad==='ready')">
 <!-- G3：状态由真实 guard dirty + Saver 状态派生；摘要文案，完整错误在页面内持续可见 -->
@@ -620,9 +629,9 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 </div><div class="topbar-actions">
 <template v-if="(space==='project'&&(projectState||(flowViews.includes(view)&&flowState)))||(space==='ontology'&&hasOntology)"><button :disabled="!undoCount" title="撤销上一次修改" @click="undo">撤销</button><button :disabled="!redoCount" title="重做修改" @click="redo">重做</button></template>
 </div></div>
-<aside class="rail" :inert="modalOpen"><div class="brand">◇ <span>本体工作台</span><small>ONTOLOGY WORKSPACE</small></div><div class="ws-tabs" role="tablist" aria-label="切换工作区"><button role="tab" :class="{active:space==='ontology'}" :aria-selected="space==='ontology'" @click="switchSpace('ontology')">本体</button><button role="tab" :class="{active:space==='project'}" :aria-selected="space==='project'" @click="switchSpace('project')">项目</button></div><div class="space"><template v-if="booting"><div class="space-head"><div class="skeleton" style="height:13px;width:56px;margin:0"></div></div><div class="skeleton" style="height:42px"></div></template><template v-else-if="space==='ontology'"><div class="space-head"><label>当前本体</label><button type="button" class="space-new" @click="showOntologyDialog=true">＋ 新建</button></div><AppSelect :model-value="hasOntology?ontologyId:''" placeholder="未选择本体" :options="ontologyList.map(o=>({value:o.id,label:o.name}))" :disabled="busy||!ontologyList.length" aria-label="切换本体" @update:model-value="switchOntology"/></template>
+<aside class="rail" :class="{mini: onFlowView}" :inert="modalOpen"><div class="brand">◇ <span>本体工作台</span><small>ONTOLOGY WORKSPACE</small></div><div class="ws-tabs" role="tablist" aria-label="切换工作区"><button role="tab" :class="{active:space==='ontology'}" :aria-selected="space==='ontology'" @click="switchSpace('ontology')">本体</button><button role="tab" :class="{active:space==='project'}" :aria-selected="space==='project'" @click="switchSpace('project')">项目</button></div><div class="space"><template v-if="booting"><div class="space-head"><div class="skeleton" style="height:13px;width:56px;margin:0"></div></div><div class="skeleton" style="height:42px"></div></template><template v-else-if="space==='ontology'"><div class="space-head"><label>当前本体</label><button type="button" class="space-new" @click="showOntologyDialog=true">＋ 新建</button></div><AppSelect :model-value="hasOntology?ontologyId:''" placeholder="未选择本体" :options="ontologyList.map(o=>({value:o.id,label:o.name}))" :disabled="busy||!ontologyList.length" aria-label="切换本体" @update:model-value="switchOntology"/></template>
 <template v-else><div class="space-head"><label>当前项目</label><button v-if="projectListState==='error'" type="button" class="space-new" @click="retryProjectContext">重试</button></div><p v-if="projectListState==='error'" class="space-error" role="alert">项目列表加载失败</p><template v-else-if="projectListState!=='ready'||(projectLoading&&!projectState)"><div class="skeleton" style="height:42px"></div><p class="space-note">正在加载项目…</p></template><AppSelect v-else :model-value="projectState?.projectId||''" placeholder="未选择项目" :options="projectOptions" :disabled="busy" aria-label="切换项目" @update:model-value="$event&&loadProject($event)"/></template></div><nav aria-label="工作台导航"><template v-if="booting"><div v-for="n in 5" :key="n" class="nav-boot"><div class="skeleton" style="height:13px;width:64%"></div></div></template><template v-else-if="space==='ontology'"><template v-if="hasOntology"><button v-for="(label,key) in menuOntology" :key="key" :aria-current="view===key?'page':undefined" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><button :aria-current="view==='tools'?'page':undefined" :class="{active:view==='tools'}" @click="navigate('tools')"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons.tools||navIcons._default"/></svg>更多工具</button></template></template><template v-else><button v-for="(label,key) in menuProject" :aria-current="view===key?'page':undefined" :key="key" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><p v-if="!projectState" class="rail-hint">选择或新建项目后，可进行对象映射与项目校验；函数编排不依赖项目。</p></template></nav></aside>
-<div class="shell" :inert="modalOpen"><div v-if="message" id="feedback" :class="{error}" role="status">{{message}}</div>
+<div class="shell" :class="{mini: onFlowView}" :inert="modalOpen"><div v-if="message" id="feedback" :class="{error}" role="status">{{message}}</div>
 <main v-if="booting||ontologyLoad==='loading'"><section class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:92%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:96%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:78%"></div></section><p v-if="ontologySlow" class="muted" role="status">仍在加载，请稍候…（超过 {{ Math.round(READ_TIMEOUT_MS/1000) }} 秒仍未返回会给出重试入口）</p></main>
 <!-- G1/G2：本体必要读取失败——给出状态与恢复入口，不能渲染成「没有本体」 -->
 <main v-else-if="!state">
@@ -650,7 +659,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <QueryRuleManager v-if="view==='implements'&&projectState" :project-state="projectState" :ref-state="refState" :focus-impl="implFocus" @before-change="pushProjectUndo" @changed="projectChanged"/>
 <ProjectValidation :ref-state="refState" v-if="view==='p-release'&&projectState" :report="projectReport" :validate-error="projectValidateError" :busy="busy" :project-state="projectState" @open-ontology="openReferencedOntology" @refresh="validateProject(false)" @navigate="navigate" @published="onProjectPublished"/>
 <FlowList v-if="view==='f-home'" @open="openFlow" @created="onFlowCreated" @deleted="onFlowDeleted"/>
-<FlowEditor v-if="view==='f-editor'&&flowState" :state="flowState" :check="flowCheck" :project-connections="projectConnections" :project-id="projectId" :revision="flowSaver.revision.value" @update:check="flowCheck=$event" @before-change="pushFlowUndo" @changed="flowChanged"/>
+<FlowEditor v-if="view==='f-editor'&&flowState" :state="flowState" :project-connections="projectConnections" :project-id="projectId" :project-name="projectState?.name || ''" :revision="flowSaver.revision.value" :save-check="flowCheck" :save-check-sig="flowCheckSig" @navigate="navigate" @back="navigate('f-home')" @before-change="pushFlowUndo" @changed="flowChanged"/>
 <ToolsPage v-if="view==='tools'" @navigate="navigate"/>
 <OntologyDiscover v-if="view==='discover'" :state="state" @navigate="navigate" @graph="showKnowledge" @properties="openProperties"/>
 <KnowledgeExplorer v-if="view==='knowledge'" :state="state" :focus-id="knowledgeFocus" @navigate="navigate"/>
@@ -665,3 +674,17 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <div v-if="leaveDialog" class="modal-backdrop" @click.self="keepEditing"><section class="modal-card" role="dialog" aria-modal="true" aria-label="未保存的表单修改"><h2>当前表单还有未保存的修改</h2><p class="field-help">工作区已有草稿不会丢失。离开只会放弃本次表单修改。</p><div class="dialogtools"><button @click="discardEditing">放弃本次修改并离开</button><button class="primary" @click="keepEditing">继续编辑</button></div></section></div>
 <div v-if="showOntologyDialog" class="modal-backdrop" @click.self="showOntologyDialog=false"><form class="modal-card" role="dialog" aria-modal="true" aria-label="新建本体" @submit.prevent="createOntologyFromDialog"><h2>新建本体</h2><p class="field-help">从空白开始，不复制任何已有内容。</p><label>本体名称<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><div class="dialogtools"><button type="button" @click="showOntologyDialog=false">取消</button><button class="primary" :disabled="busy||!newOntologyName.trim()">创建</button></div></form></div>
 </template>
+
+<style>
+/* f-editor 专注布局：全局导航收起为 64px 图标轨（仅函数编排编辑页生效） */
+.rail.mini{width:64px;padding:14px 6px}
+.rail.mini .brand{text-align:center;padding:0}
+.rail.mini .brand span,.rail.mini .brand small,.rail.mini .space,.rail.mini .rail-hint{display:none}
+.rail.mini .ws-tabs{flex-direction:column}
+.rail.mini .ws-tabs button{padding:5px 0;font-size:12px}
+.rail.mini nav button{font-size:0;gap:0;justify-content:center;padding:11px 6px}
+.rail.mini nav button .nav-ico{width:18px;height:18px}
+.rail.mini nav p{display:none}
+.shell.mini{margin-left:64px}
+.topbar.mini{left:64px}
+</style>

@@ -125,6 +125,11 @@ def _resolve_inputs(node, state, results, inputs):
         if not isinstance(inp, dict) or not inp.get('name'):
             continue
         name, label = inp['name'], str(inp.get('label') or inp.get('name') or inp['name'])
+        # 测试/单节点运行可显式提供「节点Id.参数名」取值：优先于来源解析（不要求真实上游）
+        override = inputs.get(f"{node['id']}.{name}")
+        if override is not None or f"{node['id']}.{name}" in inputs:
+            values[name] = override
+            continue
         src = inp.get('source')
         if src is None:
             raise NodeFailure(f'输入「{label}」尚未绑定来源')
