@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`3668951ba44fa5cf`
+上下文版本：`8c8cebb686f18adb`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,40 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 本体列表统一设计-v1 · zcode · 已实施，待验收
+
+时间：2026-09-18T11:09:59.761351+00:00；记录：`.collaboration/entries/000008-e57bd03223c8.json`
+
+按四件套实施八处列表统一：新增 T1 公共层（ontList.ts 全量过滤后分页、OntologyList 标准表格、OntDrawer 只读抽屉、RowMenu 改 Teleport+fixed 浮层与 compact ⋯）；对象导航行高 58px 与计数文案；四页签全部表格化（列/操作/分页按 §6）；三资产库改全宽表格（规则库无更多菜单、动作库取消左列并保留历史格式转换与删除保护）；跨菜单维护/返回来源对象闭环。修复中发现的两个缺陷：动作/规则行缺统一 id 致返回不定位、行内菜单被滚动容器裁切。仅改前端本体区，无接口/后端/数据变更。
+
+- 决定：视图状态统一走 useOntTable：搜索/排序在全量记录上执行再分页，页码随结果收缩合法化；编辑一律复用既有表单；危险操作只收进 RowMenu 不改语义；共享删除仍走私有化+外部引用拦截；规则库不新增删除；动作删除受引用保护；历史动作只读保留可显式转换；RowMenu 浮层 Teleport 到 body 避免表格滚动容器裁切
+- 验证：typecheck 与 build 通过；新增 ont_list_unified 4 项全过；object_workspace 8/8；run.py quick 3/3；既有前端套件 20/21：唯一败 mapping_forms 经 stash 基线对照为本批之前已存在，未修如实保留；隔离实例 18890 浏览器 1440/1024/768：四页签表格与分页、跨页搜索、浮层完整可见、抽屉焦点归还、三库表格、跨菜单返回定位高亮、768 单栏无横向溢出；浏览期间 0 次 /api/save；全部夹具仅写隔离库；未测 100x200 规模浏览器压测（以分页逻辑用例+26 条夹具覆盖）
+- 下一步：用户/Codex 验收原型一致性；mapping_forms 既有失败属属性取值来源任务，需其负责人处理；真实 18765 服务未重启加载本次构建，验收通过后按发布流程处理
+- 依据/文档：frontend/src/ontology/ontList.ts；frontend/src/shared/OntologyList.vue；frontend/src/shared/OntDrawer.vue；frontend/src/shared/RowMenu.vue；文档/需求/20260918_本体列表统一设计/开发计划.md
+
+### 本体列表统一设计-共享属性库 SharedLibrary.vue 单文件改造 · zcode · 已实施，待验收
+
+时间：2026-09-18T10:32:38.145252+00:00；记录：`.collaboration/entries/000007-4a41782de8cd.json`
+
+按需求 §6.5/§5/§7/§8 重写 frontend/src/ontology/SharedLibrary.vue（仅此一文件）：条目卡片改 OntologyList 全宽表格（名称42%/数据类型20%/引用情况20%/操作18%，每页20，名称 zh-CN 排序，名称+业务定义搜索）；页头 ont-lib-head 右侧 RowMenu（粘贴多行/批量复用）+「＋ 新建共享属性」，删底部 details.library-more；#filter 数据类型分段筛选（9 项，propertyDataType 判定，时间序列不命中数值）；名称点击 OntDrawer 只读详情（定义/类型/单位/引用+编辑定义）；引用徽标 OntDrawer 引用位置列表（ont-ref-row 跳回对象属性，保留 externalReferencesOf 提示），usages 弹窗分支移除。编辑态/四弹窗/removeShared 私有化/feedback/locate 全保留。
+
+- 决定：引用计数口径不变：usageCount=referencesOf 记录数，非去重对象数；原「共 N 项 · M 处引用」信息移到表格下 ont-context 行；totalText 用组件默认；locate 适配分页：目标行不在筛选/当前页时清类型筛选、reset 并翻到所在页再高亮（data-lib-row 在 tr 上）；.ont-filters 样式写本文件 scoped（全局无此类）；timestamp 归「时间」筛选项；删除本文件未用的 valueShapeOf/shortType/typeLabel/rangeOf 死代码，业务逻辑零删减
+- 验证：npm run typecheck：SharedLibrary.vue 0 错误（唯一初错 aria-label kebab 未解析为 ariaLabel prop，已改 ariaLabel= 传参）；残留 8 错全在未触碰文件：ObjectWorkspace.vue 757/795/824/853 TS2345（同 aria-label 问题）；ontList.ts 29 行 source.value 应为 source()（运行时会崩）与 47 行 3 处接口类型不匹配；与并行交接 000006 所见一致，属公共层既有问题；按铁律未跑 git/build/服务，浏览器验收未做
+- 下一步：ontList.ts 与 ObjectWorkspace.vue 的公共层错误由各自负责人修复，否则 build 失败；整包构建后做隔离浏览器验收（保存定位、筛选组合、抽屉焦点归还）
+- 依据/文档：frontend/src/ontology/SharedLibrary.vue；frontend/src/shared/OntologyList.vue；frontend/src/ontology/ontList.ts；文档/需求/20260918_本体列表统一设计/需求说明.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 本体列表统一设计-动作定义库改造（单文件） · zcode · 已实施，待验收
+
+时间：2026-09-18T10:26:21.773328+00:00；记录：`.collaboration/entries/000006-f30026a04add.json`
+
+按 20260918 需求 §6.7/§5/§7/§8 重写 frontend/src/ontology/ActionLibrary.vue（仅此一文件）：取消 EditorLayout 左列表/右详情布局，改为 ont-lib-head 页头 + OntologyList 全宽表格（名称32%/业务效果33%/关联对象18%/操作17%，名称 zh-CN 排序、名称+业务定义搜索、引用情况分段筛选、分页）；名称点击打开 OntDrawer 只读详情（业务定义/业务效果/关联对象 ont-ref-row 可跳对象动作页签；历史动作保留历史字段只读区；footer V2=编辑、历史=转为新格式编辑，focusOrigin?.type 存在时加返回来源对象）；行内关联对象徽标打开关联对象抽屉；openEdit/openConvert/remove 改为按 id 参数调用，行内编辑对历史动作走既有转换确认；新增可选 prop focusOrigin，watch(focusId) 改为清筛选并打开详情抽屉；watch(rows) 等价改写为编辑目标一致性检查，guard 注册/注销与 onBeforeUnmount 保留；空态区分无数据/无匹配。
+
+- 决定：删除保护语义不变：V2 被对象引用禁止删除、graphReferences 检查、danger 确认，仅收入 RowMenu 更多菜单；编辑表单（mode edit card）整体保留独占整页宽，converting 替换旧字段逻辑与保存文案不动；ont-filters 分段按钮样式按需求规格写在本文件 scoped style（未改 style.css，未动任何其他文件）
+- 验证：cd frontend && npm run typecheck：ActionLibrary.vue 0 错误；typecheck 全量剩 8 个错误全部来自其他文件（非本任务范围，未动）：ObjectWorkspace.vue 757/795/824/853 四处 aria-label 未解析为 ariaLabel prop；ontList.ts 29 行 source.value 应为 source()、47 行 OntTable 接口返回类型不匹配（ref<string> 实例化表达式/ComputedRef vs WritableComputedRef）；按铁律未运行 git/npm build/服务，浏览器验收未做
+- 下一步：OntologyList/OntDrawer/RowMenu/ontList.ts 的公共契约属 T1 文件：ontList.ts 现存 4 个类型错误会让 npm run build 失败，需该文件负责人修复；ObjectWorkspace.vue 四处 aria-label 需同样改为 ariaLabel 传 prop；App.vue 后续接线 focusOrigin prop（本组件已支持）
+- 依据/文档：frontend/src/ontology/ActionLibrary.vue；frontend/src/shared/OntologyList.vue；frontend/src/ontology/ontList.ts；文档/需求/20260918_本体列表统一设计/需求说明.md
 
 ### 本体列表统一设计-v1 · codex · 需求已交付
 

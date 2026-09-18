@@ -1,0 +1,37 @@
+{
+  "ticket": "8c68a291908f44329e80c7b35a498272",
+  "task": "本体列表统一设计-v1",
+  "status": "implemented",
+  "summary": "按四件套实施八处列表统一：新增 T1 公共层（ontList.ts 全量过滤后分页、OntologyList 标准表格、OntDrawer 只读抽屉、RowMenu 改 Teleport+fixed 浮层与 compact ⋯）；对象导航行高 58px 与计数文案；四页签全部表格化（列/操作/分页按 §6）；三资产库改全宽表格（规则库无更多菜单、动作库取消左列并保留历史格式转换与删除保护）；跨菜单维护/返回来源对象闭环。修复中发现的两个缺陷：动作/规则行缺统一 id 致返回不定位、行内菜单被滚动容器裁切。仅改前端本体区，无接口/后端/数据变更。",
+  "decisions": [
+    "视图状态统一走 useOntTable：搜索/排序在全量记录上执行再分页，页码随结果收缩合法化",
+    "编辑一律复用既有表单；危险操作只收进 RowMenu 不改语义",
+    "共享删除仍走私有化+外部引用拦截；规则库不新增删除；动作删除受引用保护；历史动作只读保留可显式转换",
+    "RowMenu 浮层 Teleport 到 body 避免表格滚动容器裁切"
+  ],
+  "verification": [
+    "typecheck 与 build 通过；新增 ont_list_unified 4 项全过；object_workspace 8/8；run.py quick 3/3",
+    "既有前端套件 20/21：唯一败 mapping_forms 经 stash 基线对照为本批之前已存在，未修如实保留",
+    "隔离实例 18890 浏览器 1440/1024/768：四页签表格与分页、跨页搜索、浮层完整可见、抽屉焦点归还、三库表格、跨菜单返回定位高亮、768 单栏无横向溢出",
+    "浏览期间 0 次 /api/save；全部夹具仅写隔离库",
+    "未测 100x200 规模浏览器压测（以分页逻辑用例+26 条夹具覆盖）"
+  ],
+  "next": [
+    "用户/Codex 验收原型一致性",
+    "mapping_forms 既有失败属属性取值来源任务，需其负责人处理",
+    "真实 18765 服务未重启加载本次构建，验收通过后按发布流程处理"
+  ],
+  "references": [
+    "frontend/src/ontology/ontList.ts",
+    "frontend/src/shared/OntologyList.vue",
+    "frontend/src/shared/OntDrawer.vue",
+    "frontend/src/shared/RowMenu.vue",
+    "文档/需求/20260918_本体列表统一设计/开发计划.md"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-18T11:09:59.761351+00:00",
+  "sequence": 8,
+  "filename": "000008-e57bd03223c8.json",
+  "record_hash": "536c30901394b21f04b047eae69bc82fab678bcaa4efd2e46003b9ee9590c1c6",
+  "context_advanced": false
+}

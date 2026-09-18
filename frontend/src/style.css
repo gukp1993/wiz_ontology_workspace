@@ -144,7 +144,7 @@ button:active:not(:disabled){transform:translateY(1px)}
 .ld-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
 .ld-filters .ld-sort{margin-left:auto}
 .ld-items{flex:1;min-height:0;overflow:auto;padding:4px 8px 8px}
-.ld-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--r-sm);padding:10px 11px;min-height:56px;background:transparent;box-shadow:inset 3px 0 transparent}
+.ld-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--r-sm);padding:8px 11px;min-height:58px;background:transparent;box-shadow:inset 3px 0 transparent}
 .ld-row:hover{background:var(--paper-2)}
 .ld-row.active{background:var(--blue-soft);border-color:var(--blue-line);box-shadow:inset 3px 0 var(--blue);color:var(--blue-ink)}
 .ld-row-main{min-width:0;flex:1}
@@ -209,6 +209,8 @@ button:active:not(:disabled){transform:translateY(1px)}
 .row-menu-list button:hover{background:var(--paper-2)}
 .row-menu-list button.danger{color:var(--danger);border-top:1px solid var(--line);margin-top:4px;padding-top:10px;border-radius:0 0 var(--r-sm) var(--r-sm)}
 .row-menu-list button:disabled{opacity:.5}
+/* 20260918 列表统一：菜单浮层渲染到 body（表格滚动容器不再裁切），fixed 定位由组件计算 */
+.row-menu-float{position:fixed;z-index:120}
 
 /* ── 全局设置中心（20260918）：左下固定用户区、用户菜单、设置专用侧栏 ── */
 /* 底部用户区：两种形态都固定在侧栏底部，不随导航滚动 */
@@ -238,3 +240,65 @@ button:active:not(:disabled){transform:translateY(1px)}
 .settings-group{padding:8px 2px 0}
 .settings-group label{font-size:12px;color:var(--muted)}
 .settings-cat{margin:8px 0 2px;font-size:12px;color:var(--faint)}
+
+/* ═══ 本体区统一标准表格（20260918 本体列表统一设计 §5）═══
+   仅作用于 .ont-* 前缀类，不改全站 table/button 选择器，避免误伤项目映射与编排页面。
+   视觉令牌复用既有 CSS 变量：表头 40px、行最小 64px、工具栏控件 34px/6px 圆角、单层面板。 */
+.ont-block{display:flex;flex-direction:column;min-height:0;flex:1}
+.ont-tools{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.ont-search{position:relative;width:264px;max-width:100%}
+.ont-search input{width:100%;margin:0;padding-left:30px;background:var(--paper-2);font-size:13px}
+.ont-search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;padding:2px 6px;color:var(--muted);font-size:14px;line-height:1}
+.ont-search-clear:hover{background:var(--paper-2)}
+.ont-total{margin-left:auto;color:var(--muted);font-size:12px}
+.ont-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ont-scroll{flex:1;min-height:0;overflow:auto;position:relative}
+.ont-table{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-size:13px}
+.ont-table th{height:40px;padding:0 12px;background:var(--paper-2);color:#576d82;text-align:left;font-weight:600;font-size:13px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1}
+.ont-table th .ont-sort{height:30px;border:0;background:transparent;font-size:12px;color:inherit;padding:0}
+.ont-table th .ont-sort:hover{color:var(--blue);background:transparent}
+.ont-table td{height:64px;padding:10px 12px;border-bottom:1px solid #e7edf3;vertical-align:middle;overflow-wrap:anywhere}
+.ont-table tbody tr:hover td{background:#f8faff}
+.ont-table tbody tr.ont-selected td,.ont-table tbody tr.ow-flash-row td{background:var(--blue-soft)}
+.ont-name{display:block;max-width:100%;border:0;background:transparent;padding:0;text-align:left;color:var(--ink);font-weight:600;font-size:13px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ont-name:hover{color:var(--blue);text-decoration:underline;background:transparent}
+.ont-sub{display:block;font-size:12px;color:var(--muted);line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.ont-type{color:var(--ink-2);font-size:13px}
+.ont-badge{display:inline-flex;background:var(--paper-2);border:1px solid var(--line);border-radius:4px;font-size:12px;padding:2px 7px;color:var(--muted);line-height:18px}
+button.ont-badge{cursor:pointer}
+button.ont-badge:hover{color:var(--blue);border-color:var(--blue-line);background:var(--blue-soft)}
+.ont-clip{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:21px;font-size:13px;color:var(--ink-2)}
+.ont-ops{text-align:right;white-space:nowrap}
+.ont-ops .row-link+.row-link,.ont-ops .row-link+.row-menu,.ont-ops .row-menu+.row-menu{margin-left:10px}
+.ont-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;border-top:1px solid var(--line);color:var(--muted);font-size:12px;flex-wrap:wrap}
+.ont-pager-ctl{display:flex;align-items:center;gap:6px}
+.ont-pager button{padding:2px 9px}
+.ont-empty{padding:70px 20px;text-align:center;color:var(--muted)}
+.ont-empty-ico{margin:0 auto 14px;width:40px;height:40px;border-radius:8px;background:var(--paper-2);display:grid;place-items:center;font-size:23px;color:var(--faint)}
+.ont-empty h3{color:var(--ink);font-size:15px;margin:0 0 8px}
+.ont-empty p{margin:0;line-height:23px}
+.ont-empty button{margin-top:16px}
+.ont-context{font-size:12px;color:var(--muted);padding:10px 0 0;line-height:20px;margin:0}
+/* 资产库页头：标题/一句说明 + 右侧主操作（§3.2 单个白色内容面板） */
+.ont-lib-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+.ont-lib-head h2{margin:0 0 5px}
+.ont-lib-head p{margin:0;color:var(--muted);font-size:13px}
+.ont-lib-head .ont-actions{flex:none}
+/* 只读详情抽屉（§7）：右侧 480px，遮罩可点关 */
+.ont-overlay{position:fixed;inset:0;background:var(--backdrop);z-index:100;display:flex;justify-content:flex-end}
+.ont-drawer{width:480px;max-width:100vw;height:100%;background:var(--paper);box-shadow:var(--shadow-2);display:flex;flex-direction:column}
+.ont-drawer-head{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:flex-start}
+.ont-drawer-head small{color:var(--muted);font-size:12px}
+.ont-drawer-head h2{font-size:18px;line-height:26px;margin:4px 0 0;overflow-wrap:anywhere}
+.ont-drawer-close{margin-left:auto;border:0;background:none;font-size:20px;color:var(--muted);padding:2px 8px;border-radius:var(--r-sm)}
+.ont-drawer-close:hover{color:var(--ink);background:var(--paper-2)}
+.ont-drawer-body{padding:22px 24px;overflow-y:auto;flex:1}
+.ont-drawer-footer{border-top:1px solid var(--line);padding:14px 24px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.ont-field{margin-bottom:20px}
+.ont-field dt,.ont-field-label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.ont-field p,.ont-field dd{margin:0;font-size:14px;line-height:23px;white-space:pre-wrap;overflow-wrap:anywhere}
+.ont-ref-row{display:flex;width:100%;text-align:left;align-items:center;gap:10px;border:0;border-bottom:1px solid var(--line);border-radius:0;min-height:54px;padding:8px 0;background:none}
+.ont-ref-row:hover{background:var(--paper-2)}
+.ont-ref-row>span{flex:1;min-width:0}
+.ont-ref-row strong{display:block;font-size:13px;font-weight:600}
+.ont-drawer .ont-hint{color:var(--muted);font-size:12px;margin:0 0 12px}

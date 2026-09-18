@@ -1,0 +1,25 @@
+{
+  "ticket": "1c2de6a0049e4daf92d7b82a8fbd9039",
+  "task": "模型录入区分套餐类型",
+  "status": "decision",
+  "summary": "用户先提出模型录入优化（区分 GLM coding plan 与非 coding plan 端点），随即决定本期不改：录入表单保持现状，端点地址由用户自行手工录入。未做任何代码改动。",
+  "decisions": [
+    "本期模型录入不增加 coding plan/标准端点区分；用户手工填写接口地址（编码套餐 key 配 /api/coding/paas/v4/，普通充值 key 配 /api/paas/v4/）"
+  ],
+  "verification": [
+    "本轮无代码改动，无需验证"
+  ],
+  "next": [
+    "若后续版本再做此优化，可参考 000003 号记录中的确诊依据（1113 错误码与双端点实测）"
+  ],
+  "references": [
+    ".collaboration/entries/000003-ef5d34cac0b8.json",
+    "frontend/src/tools/LlmProviders.vue"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-18T08:07:09.406417+00:00",
+  "sequence": 4,
+  "filename": "000004-c657bede3352.json",
+  "record_hash": "a6e83f2d7bde21e808ef96c80ac2bdbbfcaf9a5f99cca5dd55f940c9b422eee3",
+  "context_advanced": false
+}

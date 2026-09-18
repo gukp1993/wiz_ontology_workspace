@@ -23,11 +23,14 @@ import ObjectCanvas from './ObjectCanvas.vue'
 import PropertyManager from './PropertyManager.vue'
 import Field from '../shared/EditorField.vue'
 import AppSelect from '../shared/AppSelect.vue'
-import BusinessRuleDialog from './BusinessRuleDialog.vue'
 import RulePicker from './RulePicker.vue'
 import PickerDialog, { type PickerRow } from './PickerDialog.vue'
 import { navIcons } from '../shared/icons'
-import { localProperties, effectiveProperty, propertyTypeLabel, valueShapeOf, copyAsPrivate, addReference, shapeConflict } from './propertyModel'
+import OntologyList from '../shared/OntologyList.vue'
+import OntDrawer from '../shared/OntDrawer.vue'
+import RowMenu from '../shared/RowMenu.vue'
+import { localProperties, effectiveProperty, propertyTypeLabel, propertyDataType, dataTypeLabel, valueShapeOf, copyAsPrivate, addReference, shapeConflict } from './propertyModel'
+import { useOntTable, type OntTable } from './ontList'
 import { appConfirm } from '../shared/appConfirm'
 import { graphReferences, shortType } from './editorModel'
 import { actionsOf, associationsOf, associationsOfObject, commitAssociations } from './actionModel'
@@ -36,7 +39,7 @@ import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 // focusType/focusProperty：共享属性库「查看引用」/校验问题/旧深链跳转定位
 // （propertyFocusId 存 apiName 或 @id，此处换算为节点 @id；指向共享定义时落到首个引用属性）。
-const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
+const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
 // 具名撤销（20260918）：emit('before-change', { actionLabel, target?, mergeKey? })；App 侧兼容字符串与对象
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
@@ -177,7 +180,7 @@ function onPropertySaved(payload: { id: string; targetTypeId?: string }) {
   editor.value = null
   selected.value = payload.targetTypeId || (e?.kind === 'property' ? e.targetTypeId : '') || selected.value
   detailTab.value = e?.kind === 'property' ? e.returnTab : 'props'
-  locate(payload.id)
+  locateRow(payload.id, propsList)
 }
 
 // ─── 链接表单（D06：起点/终点/正向名称/数量关系必填直展；反向名称与业务定义折叠） ───
@@ -267,7 +270,7 @@ async function pickShared(id: string, action: string) {
   if (!r.ok) { libraryError.value = r.message; return }
   libraryOpen.value = false
   detailTab.value = 'props'
-  locate(newId)
+  locateRow(newId, propsList)
 }
 
 // ─── 浏览态：列表/详情骨架（对齐 20260917 微软列表详情原型）───
@@ -310,8 +313,7 @@ const listRows = computed(() => pageRows.value.map((o: any) => {
   const id = o['@id']
   const propCount = localProperties(graph.value, id).length
   const linkCount = graph.value.filter((n: any) => n['@type'] === 'owl:ObjectProperty' && (n['rdfs:domain']?.['@id'] === id || n['rdfs:range']?.['@id'] === id)).length
-  const actionCount = associationsOfObject(props.state, id).length
-  return { id, label: o['rdfs:label'] || '', meta: `${propCount} 属性 · ${linkCount} 链接 · ${actionCount} 动作`, star: stars.value.has(id) }
+  return { id, label: o['rdfs:label'] || '', meta: `${propCount} 属性 · ${linkCount} 链接`, star: stars.value.has(id) }
 }))
 // 筛选结果不含当前对象时保持选中不变，只在详情提示（不静默换对象）。
 const selectedHidden = computed(() => !!current.value && !filteredObjects.value.some((o: any) => o['@id'] === selected.value))
@@ -383,13 +385,19 @@ const propRows = computed(() => {
   return localProperties(graph.value, current.value['@id']).map((p: any) => {
     const m = effectiveProperty(p, graph.value)
     const sharedId = String(p['mg:sharedProperty']?.['@id'] || '')
-    return { id: p['@id'], label: m['rdfs:label'] || '', type: propertyTypeLabel(p, graph.value), unit: m['mg:valueSuffix'] || '', isDisplayName: m['mg:isDisplayName']?.['@value'] === true, sharedId }
+    const dt = propertyDataType(p, graph.value)
+    return {
+      id: p['@id'], label: m['rdfs:label'] || '', desc: m['rdfs:comment'] || '',
+      type: propertyTypeLabel(p, graph.value),
+      typeMain: dt.type === 'timeSeries' ? '时间序列' : dataTypeLabel(dt),
+      valueType: dt.type === 'timeSeries' ? dataTypeLabel({ type: dt.valueType }) : '',
+      unit: m['mg:valueSuffix'] || '', isDisplayName: m['mg:isDisplayName']?.['@value'] === true, sharedId,
+    }
   })
 })
 // 共享来源详情（R5）：按稳定 ID 解析（重名不串联）；引用失效时只说明「共享定义不存在」，
 // 不回填、不转为私有、不提供编辑入口。
 const sharedDetailId = ref('')
-const sharedCard = ref<HTMLElement | null>(null)
 let sharedTrigger: HTMLElement | null = null
 const sharedDetail = computed(() => {
   const id = sharedDetailId.value
@@ -407,7 +415,6 @@ const sharedDetail = computed(() => {
 function openShared(id: string, event?: MouseEvent) {
   sharedTrigger = (event?.currentTarget as HTMLElement) || null
   sharedDetailId.value = id
-  void nextTick(() => sharedCard.value?.querySelector<HTMLElement>('button')?.focus())
 }
 function closeShared() { sharedDetailId.value = ''; sharedTrigger?.focus?.(); sharedTrigger = null }
 // 链接行（D06）：当前对象作为起点或终点的链接都展示；同一链接只维护一份，从任一端编辑同一节点。
@@ -450,7 +457,8 @@ const actionRows = computed(() => {
   if (!current.value) return []
   return associationsOfObject(props.state, current.value['@id']).map(r => {
     const a: any = actionById.value.get(r.actionId)
-    return { actionId: r.actionId, name: a?.name || '', effect: a?.effect || '', desc: a?.description || '', missing: !a, legacy: a && a.definitionVersion !== 2 }
+    // id：统一行标识（表格定位/高亮按稳定行 id 匹配）；actionId 保留给既有动作语义调用
+    return { id: r.actionId, actionId: r.actionId, name: a?.name || '', effect: a?.effect || '', desc: a?.description || '', missing: !a, legacy: a && a.definitionVersion !== 2 }
   })
 })
 // 添加动作：统一走 PickerDialog（多选 + 确认），已关联动作按禁用项列出，不重复关联。
@@ -467,7 +475,7 @@ async function confirmPick(ids: string[]) {
   }, { actionLabel: '关联动作到「' + (current.value['rdfs:label'] || '对象') + '」（' + ids.length + ' 项）', target: { kind: 'object', id: current.value['@id'] } })
   if (!r.ok) { message.value = r.message; return }
   pickerOpen.value = false
-  locate(ids[0])
+  locateRow(ids[0], actionsList)
 }
 async function removeAssociation(actionId: string) {
   if (!current.value) return
@@ -482,7 +490,10 @@ async function removeAssociation(actionId: string) {
 // ─── 规则页签（20260917 业务规则一期）：多选引用已有规则、查看、移除引用 ───
 const ruleRows = computed(() => {
   if (!current.value) return []
-  return rulesOfObject(props.state, current.value['@id']).map(r => ({ ruleId: r.ruleId, name: r.rule?.name || '', missing: !r.rule }))
+  return rulesOfObject(props.state, current.value['@id']).map(r => ({
+    id: r.ruleId, ruleId: r.ruleId, name: r.rule?.name || '', desc: r.rule?.description || '',
+    content: r.rule?.content || '', output: r.rule?.output || '', missing: !r.rule,
+  }))
 })
 const rulePickerOpen = ref(false)
 const ruleDetailId = ref('')
@@ -499,7 +510,7 @@ async function addRules(ids: string[]) {
   }, { actionLabel: '引用规则到「' + (current.value['rdfs:label'] || '对象') + '」（' + ids.length + ' 项）', target: { kind: 'object', id: typeId } })
   if (!r.ok) { message.value = r.message; return }
   rulePickerOpen.value = false
-  locate(ids[0])
+  locateRow(ids[0], rulesList)
 }
 async function removeRuleRef(ruleId: string) {
   if (!current.value) return
@@ -510,16 +521,75 @@ async function removeRuleRef(ruleId: string) {
   if (!r.ok) message.value = r.message
 }
 
+// ─── 四页签标准表格（20260918 列表统一 §5/§6）：搜索/排序/分页只是视图，不触发保存 ───
+// 切换对象或页签即重置视图状态（不残留上一个上下文的筛选）；定位会清除妨碍定位的筛选。
+const reuseFilter = ref('全部')
+const propsView = computed(() => reuseFilter.value === '全部' ? propRows.value : propRows.value.filter(p => reuseFilter.value === '共享' ? !!p.sharedId : !p.sharedId))
+const byName = (get: (r: any) => string) => (a: any, b: any) => get(a).localeCompare(get(b), 'zh-CN', { numeric: true })
+const propsList = useOntTable(() => propsView.value, { match: (r, q) => (r.label + ' ' + r.desc).toLowerCase().includes(q), sort: byName(r => r.label) })
+const linksList = useOntTable(() => linkRows.value, { match: (r, q) => (r.label + ' ' + r.reverse + ' ' + r.from + ' ' + r.to + ' ' + r.card).toLowerCase().includes(q), sort: byName(r => r.label) })
+const actionsList = useOntTable(() => actionRows.value, { match: (r, q) => (r.name + ' ' + r.desc + ' ' + r.effect).toLowerCase().includes(q), sort: byName(r => r.name) })
+const rulesList = useOntTable(() => ruleRows.value, { match: (r, q) => (r.name + ' ' + r.desc).toLowerCase().includes(q), sort: byName(r => r.name) })
+watch([selected, detailTab], () => {
+  reuseFilter.value = '全部'
+  for (const l of [propsList, linksList, actionsList, rulesList]) l.reset()
+})
+
+// 名称/查看 → 只读详情抽屉（§7）：只展示完整定义，不保存；编辑仍走原表单。
+const propDetailId = ref(''), linkDetailId = ref(''), actionDetailId = ref('')
+const propDetail = computed(() => propDetailId.value ? propRows.value.find(p => p.id === propDetailId.value) || null : null)
+const linkDetail = computed(() => linkDetailId.value ? linkRows.value.find(l => l.id === linkDetailId.value) || null : null)
+const actionDetail = computed(() => actionDetailId.value ? actionRows.value.find(r => r.actionId === actionDetailId.value) || null : null)
+
+function editPropFromDrawer() { if (propDetail.value && current.value) { propDetailId.value = ''; openPropertyEditor(current.value['@id'], propDetail.value.id) } }
+function editLinkFromDrawer() { if (linkDetail.value) { linkDetailId.value = ''; openLinkEditor(linkDetail.value.id) } }
+function goActionLibrary() { if (actionDetail.value && current.value) emit('navigate', 'actions', { definition: actionDetail.value.actionId, type: current.value['@id'], tab: 'actions' }) }
+function goRuleLibrary() { if (ruleDetail.value && current.value) emit('navigate', 'rules', { definition: ruleDetail.value.id, type: current.value['@id'], tab: 'rules' }) }
+// 行内更多（§6）：危险/低频操作收纳进菜单；只承载已有语义，不改引用检查与撤销。
+const propMenuItems = (p: { sharedId: string }) => p.sharedId
+  ? [{ id: 'remove', label: '移除引用', danger: true }]
+  : [{ id: 'remove', label: '删除属性', danger: true }]
+async function onPropMenu(p: { id: string; label: string; sharedId: string }) {
+  const msg = p.sharedId
+    ? '移除当前对象对共享属性「' + (p.label || '未命名属性') + '」的引用？共享定义与其他对象的引用不受影响；可通过撤销恢复。'
+    : '删除属性「' + (p.label || '未命名属性') + '」？可通过撤销恢复。'
+  await removeNode(p.id, p.label, msg)
+}
+async function removeLinkRow(l: { id: string; label: string; from: string; to: string }) {
+  await removeNode(l.id, l.label, '删除链接「' + l.from + ' → ' + (l.label || '未命名链接') + ' → ' + l.to + '」？该定义会从两端对象同时移除；可通过撤销恢复。')
+}
+
+// 行定位（保存/回跳后）：目标在过滤结果中时翻到所在页并滚动+闪烁；不在结果中则不动用户筛选。
+async function locateRow<T extends { id: string }>(id: string, list: OntTable<T>) {
+  if (!id) return
+  const idx = list.filtered.value.findIndex(r => r.id === id)
+  if (idx < 0) return
+  list.page.value = Math.floor(idx / 20) + 1
+  highlightId.value = id
+  await nextTick()
+  document.querySelector(`[data-row="${id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  if (highlightTimer) clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => { if (highlightId.value === id) highlightId.value = '' }, 2600)
+}
+// 从资产库返回原对象（App 传 focusDefinition）：定位到对应页签的行并闪烁，不自动打开抽屉。
+// 联表监听 detailTab：返回导航可能先设 focusDefinition 再切页签（或反之），单看一个信号会漏触发。
+watch([() => props.focusDefinition, detailTab], ([id, tab]) => {
+  if (!id) return
+  if (tab === 'actions') void locateRow(id, actionsList)
+  else if (tab === 'rules') void locateRow(id, rulesList)
+}, { immediate: true })
+
 // 引用检查与 EntityManager/画布同一套：有引用先提示，不静默断链；confirm 后删除，可撤销。
 // 动作关联随对象删除一并清理（需求 §5）；规则引用走引用保护——须先移除引用（业务规则一期 §5）。
-async function removeNode(id: string, label: string) {
+// confirmText：行语义化确认文案（移除引用/删除属性/删除链接各说各的影响），缺省沿用对象删除文案。
+async function removeNode(id: string, label: string, confirmText?: string) {
   const refs = graphReferences(props.state, id)
   if (refs.length) { message.value = '暂不能删除：请先处理引用（' + refs.join('、') + '）。'; return }
   const ruleRefs = ruleAssociationsOf(props.state).filter(a => a.objectTypeId === id || a.objectTypeId === 'mg:' + id.replace(/^mg:/, ''))
   if (ruleRefs.length) { message.value = `暂不能删除：此对象仍引用 ${ruleRefs.length} 条业务规则；请先到「规则」页签移除引用。`; return }
   const assocCount = associationsOfObject(props.state, id).length
   const extra = assocCount ? `此对象有 ${assocCount} 条动作关联，删除对象将同时移除这些关联（动作定义与项目绑定保留）。` : ''
-  if (!(await appConfirm({ message: '删除「' + (label || id) + '」？可通过撤销恢复。' + extra }))) return
+  if (!(await appConfirm({ message: (confirmText || '删除「' + (label || id) + '」？可通过撤销恢复。') + extra }))) return
   emit('before-change', { actionLabel: '删除「' + (label || id) + '」', target: { kind: 'object', id } })
   props.state.ontology['@graph'] = graph.value.filter((n: any) => n['@id'] !== id)
   if (assocCount) commitAssociations(props.state, associationsOf(props.state).filter(a => a.objectTypeId !== id && a.objectTypeId !== 'mg:' + id.replace(/^mg:/, '')))
@@ -633,9 +703,9 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
           </button>
           <div v-if="!listRows.length" class="empty-state">
             <p v-if="listQuery || starOnly">没有匹配的对象。试试更短的关键词，或清空筛选。</p>
-            <p v-else>还没有对象类型。</p>
+            <p v-else>还没有对象类型。用上方「＋ 新建对象」创建第一个。</p>
             <button v-if="listQuery || starOnly" type="button" @click="clearFilters">清空筛选</button>
-            <button v-else type="button" class="primary" @click="openObjectEditor(true)">＋ 新建对象</button>
+            <p v-else class="muted">用上方「＋ 新建对象」创建第一个对象类型。</p>
           </div>
         </div>
         <div v-if="showPager" class="ld-pager">
@@ -687,82 +757,127 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
           </div>
           <div class="ld-body" role="tabpanel" aria-label="对象详情内容">
           <template v-if="detailTab === 'props'">
-            <div class="section-heading"><span class="muted">定义属性的含义与数据类型</span><span class="ow-head-actions"><button @click="openLibraryEditor">从属性库添加</button><button @click="openPropertyEditor(current['@id'], '')">＋ 新增属性</button></span></div>
-            <table v-if="propRows.length">
-              <thead><tr><th>属性</th><th>数据类型</th><th>复用方式</th><th></th></tr></thead>
-              <tbody>
-                <tr v-for="p in propRows" :key="p.id" :data-row="p.id" :class="{ 'ow-flash-row': highlightId === p.id }">
-                  <td><strong>{{ p.label || '未命名属性' }}</strong><small v-if="p.isDisplayName || p.unit" class="muted" style="display:block">{{ [p.isDisplayName ? '显示名称' : '', p.unit ? '单位 ' + p.unit : ''].filter(Boolean).join(' · ') }}</small></td>
-                  <td>{{ p.type }}</td>
-                  <td>
-                    <button v-if="p.sharedId" type="button" class="row-link" :title="'查看共享属性「' + (p.label || '') + '」的来源定义'" @click="openShared(p.sharedId, $event)">共享</button>
-                    <span v-else class="muted">私有</span>
-                  </td>
-                  <td class="ow-row-tools">
-                    <button class="row-link" @click="openPropertyEditor(current['@id'], p.id)">编辑</button>
-                    <button class="row-link danger" @click="removeNode(p.id, p.label)">删除</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <!-- 空态只做说明，操作入口统一在右上角（避免同一组按钮出现两处） -->
-            <div v-else class="empty">
-              <p>还没有属性。用右上角「＋ 新增属性」新建，或「从属性库添加」复用共享定义。</p>
-            </div>
-            <p class="field-help">属性值从哪里来（数据字段或计算结果）属于项目实现，在项目映射的「属性取值」中维护。</p>
+            <OntologyList
+              :search="propsList.q.value" @update:search="propsList.q.value = $event"
+              :total="propsList.filtered.value.length" :page="propsList.page.value" :page-count="propsList.pageCount.value"
+              :sort-desc="propsList.dir.value < 0"
+              ariaLabel="对象属性列表" search-placeholder="搜索属性名称或定义"
+              :columns="[{ label: '名称', width: '42%', sort: true }, { label: '数据类型', width: '20%' }, { label: '复用方式', width: '20%' }, { label: '操作', width: '18%' }]"
+              :empty-title="propsList.q.value || reuseFilter !== '全部' ? '没有匹配的属性' : '还没有属性'"
+              :empty-hint="propsList.q.value || reuseFilter !== '全部' ? '调整关键词或筛选条件再试试。' : '用右上角「从属性库添加」复用共享定义，或「＋ 新增属性」新建。'"
+              @sort="propsList.toggleSort()" @page="propsList.page.value += $event" :has-filter="reuseFilter !== '全部'" @clear="propsList.q.value = ''; reuseFilter = '全部'">
+              <template #filter>
+                <div class="ont-filters" role="group" aria-label="按复用方式筛选">
+                  <button v-for="f in ['全部', '共享', '私有']" :key="f" type="button" :class="{ active: reuseFilter === f }" :aria-pressed="reuseFilter === f" @click="reuseFilter = f; propsList.page.value = 1">{{ f }}</button>
+                </div>
+              </template>
+              <template #actions>
+                <button type="button" @click="openLibraryEditor">从属性库添加</button>
+                <button type="button" class="primary" @click="openPropertyEditor(current['@id'], '')">＋ 新增属性</button>
+              </template>
+              <tr v-for="p in propsList.paged.value" :key="p.id" :data-row="p.id" :class="{ 'ow-flash-row': highlightId === p.id }">
+                <td>
+                  <button type="button" class="ont-name" @click="propDetailId = p.id">{{ p.label || '未命名属性' }}</button>
+                  <span v-if="p.desc" class="ont-sub" :title="p.desc">{{ p.desc }}</span>
+                  <span v-else-if="p.isDisplayName || p.unit" class="ont-sub">{{ [p.isDisplayName ? '显示名称' : '', p.unit ? '单位 ' + p.unit : ''].filter(Boolean).join(' · ') }}</span>
+                </td>
+                <td><span class="ont-type">{{ p.typeMain }}</span><span v-if="p.valueType" class="ont-sub">观测值：{{ p.valueType }}</span></td>
+                <td>
+                  <button v-if="p.sharedId" type="button" class="ont-badge" :title="'查看共享属性「' + (p.label || '') + '」的来源定义'" @click="openShared(p.sharedId, $event)">共享引用 ↗</button>
+                  <span v-else class="ont-badge">私有属性</span>
+                </td>
+                <td class="ont-ops">
+                  <button type="button" class="row-link" @click="openPropertyEditor(current['@id'], p.id)">编辑</button>
+                  <RowMenu compact :items="propMenuItems(p)" :aria-label="'更多操作 · ' + (p.label || '未命名属性')" @pick="onPropMenu(p)"/>
+                </td>
+              </tr>
+            </OntologyList>
+            <p class="ont-context">共享引用的名称、类型、单位随共享定义统一维护；数据来源在项目映射中配置。</p>
           </template>
           <template v-else-if="detailTab === 'links'">
-            <div class="section-heading"><span class="muted">一份链接定义，正反两个阅读方向</span><button @click="openLinkEditor()">＋ 新增链接</button></div>
-            <div v-if="linkRows.length" class="ow-link-rows">
-              <div v-for="l in linkRows" :key="l.id" class="ow-link-row" :data-row="l.id" :class="{ 'ow-flash-row': highlightId === l.id }">
-                <div class="row-main">
-                  <strong>{{ l.from }} → {{ l.label }} → {{ l.to }}</strong>
-                  <small>{{ l.card }}{{ l.reverse ? ' · 反向：' + l.reverse : '' }}</small>
-                </div>
-                <div class="ow-row-tools"><button class="row-link" @click="openLinkEditor(l.id)">编辑</button><button class="row-link danger" @click="removeNode(l.id, l.label)">删除</button></div>
-              </div>
-            </div>
-            <div v-else class="empty">
-              <p>还没有链接。用右上角「＋ 新增链接」添加，或在关系画布中用连线模式创建。</p>
-            </div>
+            <OntologyList
+              :search="linksList.q.value" @update:search="linksList.q.value = $event"
+              :total="linksList.filtered.value.length" :page="linksList.page.value" :page-count="linksList.pageCount.value"
+              :sort-desc="linksList.dir.value < 0"
+              ariaLabel="对象链接列表" search-placeholder="搜索链接名称、两端对象或反向名称"
+              :columns="[{ label: '链接名称', width: '29%', sort: true }, { label: '起点对象', width: '20%' }, { label: '终点对象', width: '20%' }, { label: '数量关系', width: '15%' }, { label: '操作', width: '16%' }]"
+              :empty-title="linksList.q.value ? '没有匹配的链接' : '还没有链接'"
+              :empty-hint="linksList.q.value ? '调整关键词再试试。' : '使用右上角「＋ 新增链接」添加，或在关系画布中用连线模式创建。'"
+              @sort="linksList.toggleSort()" @page="linksList.page.value += $event" @clear="linksList.q.value = ''">
+              <template #actions>
+                <button type="button" class="primary" @click="openLinkEditor()">＋ 新增链接</button>
+              </template>
+              <tr v-for="l in linksList.paged.value" :key="l.id" :data-row="l.id" :class="{ 'ow-flash-row': highlightId === l.id }">
+                <td>
+                  <button type="button" class="ont-name" @click="linkDetailId = l.id">{{ l.label || '未命名链接' }}</button>
+                  <span v-if="l.reverse" class="ont-sub">反向：{{ l.reverse }}</span>
+                </td>
+                <td>{{ l.from }}</td>
+                <td>{{ l.to }}</td>
+                <td>{{ l.card }}</td>
+                <td class="ont-ops">
+                  <button type="button" class="row-link" @click="openLinkEditor(l.id)">编辑</button>
+                  <RowMenu compact :items="[{ id: 'remove', label: '删除链接', danger: true }]" :aria-label="'更多操作 · ' + (l.label || '未命名链接')" @pick="removeLinkRow(l)"/>
+                </td>
+              </tr>
+            </OntologyList>
+            <p class="ont-context">一行是一份链接定义；正反向名称在同一行展示，不重复建两条链接。</p>
           </template>
           <template v-else-if="detailTab === 'actions'">
-            <div class="section-heading"><span class="muted">此类对象支持的动作</span><button @click="openPicker">＋ 添加动作</button></div>
-            <table v-if="actionRows.length">
-              <thead><tr><th>动作</th><th>业务效果</th><th></th></tr></thead>
-              <tbody>
-                <tr v-for="row in actionRows" :key="row.actionId" :data-row="row.actionId" :class="{ 'ow-flash-row': highlightId === row.actionId }">
-                  <td><strong>{{ row.name || '未命名动作' }}</strong><small v-if="row.missing" class="muted" style="display:block">动作定义不存在（悬空引用）</small><small v-else-if="row.legacy" class="muted" style="display:block">历史格式</small><small v-else class="muted" style="display:block">{{ row.desc }}</small></td>
-                  <td class="ow-effect-cell">{{ row.effect || '—' }}</td>
-                  <td class="ow-row-tools">
-                    <button v-if="!row.missing" class="row-link" @click="emit('navigate', 'actions', { definition: row.actionId })">查看定义</button>
-                    <button class="row-link danger" @click="removeAssociation(row.actionId)">移除关联</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="empty">
-              <p>尚未添加动作，可从动作库选择此对象支持的动作。</p>
-            </div>
+            <OntologyList
+              :search="actionsList.q.value" @update:search="actionsList.q.value = $event"
+              :total="actionsList.filtered.value.length" :page="actionsList.page.value" :page-count="actionsList.pageCount.value"
+              :sort-desc="actionsList.dir.value < 0"
+              ariaLabel="对象动作列表" search-placeholder="搜索动作名称、定义或效果"
+              :columns="[{ label: '名称', width: '43%', sort: true }, { label: '业务效果', width: '39%' }, { label: '操作', width: '18%' }]"
+              :empty-title="actionsList.q.value ? '没有匹配的动作' : '还没有动作'"
+              :empty-hint="actionsList.q.value ? '调整关键词再试试。' : '尚未添加动作，可从动作库选择此对象支持的动作。'"
+              @sort="actionsList.toggleSort()" @page="actionsList.page.value += $event" @clear="actionsList.q.value = ''">
+              <template #actions>
+                <button type="button" class="primary" @click="openPicker">＋ 添加动作</button>
+              </template>
+              <tr v-for="row in actionsList.paged.value" :key="row.actionId" :data-row="row.actionId" :class="{ 'ow-flash-row': highlightId === row.actionId }">
+                <td>
+                  <button type="button" class="ont-name" :disabled="row.missing" @click="actionDetailId = row.actionId">{{ row.name || '未命名动作' }}</button>
+                  <span v-if="row.missing" class="ont-sub">动作定义不存在（悬空引用）</span>
+                  <span v-else-if="row.legacy" class="ont-sub">历史格式</span>
+                  <span v-else-if="row.desc" class="ont-sub" :title="row.desc">{{ row.desc }}</span>
+                </td>
+                <td><span class="ont-clip" :title="row.effect">{{ row.effect || '—' }}</span></td>
+                <td class="ont-ops">
+                  <button v-if="!row.missing" type="button" class="row-link" @click="actionDetailId = row.actionId">查看</button>
+                  <RowMenu compact :items="[{ id: 'remove', label: '移除关联', danger: true }]" :aria-label="'更多操作 · ' + (row.name || '未命名动作')" @pick="removeAssociation(row.actionId)"/>
+                </td>
+              </tr>
+            </OntologyList>
+            <p class="ont-context">移除关联仅影响当前对象，动作定义与其他对象的关联仍保留。</p>
           </template>
           <template v-else-if="detailTab === 'rules'">
-            <div class="section-heading"><span class="muted">引用规则库中的通用业务规则；移除引用不会删除规则。</span><button @click="rulePickerOpen = true">＋ 添加规则</button></div>
-            <table v-if="ruleRows.length">
-              <thead><tr><th>名称</th><th></th></tr></thead>
-              <tbody>
-                <tr v-for="row in ruleRows" :key="row.ruleId" :data-row="row.ruleId" :class="{ 'ow-flash-row': highlightId === row.ruleId }">
-                  <td><strong>{{ row.name || '未命名规则' }}</strong><small v-if="row.missing" class="muted" style="display:block">规则不存在（悬空引用）</small></td>
-                  <td class="ow-row-tools">
-                    <button v-if="!row.missing" class="row-link" @click="ruleDetailId = row.ruleId">查看</button>
-                    <button class="row-link danger" @click="removeRuleRef(row.ruleId)">移除引用</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="empty">
-              <p>还没有引用规则。点击「＋ 添加规则」从规则库选择。</p>
-            </div>
-            <p class="field-help">一条规则可被多个对象类型引用；引用使用稳定标识，规则重命名后引用保持。规则的正文维护在「业务规则」页。</p>
+            <OntologyList
+              :search="rulesList.q.value" @update:search="rulesList.q.value = $event"
+              :total="rulesList.filtered.value.length" :page="rulesList.page.value" :page-count="rulesList.pageCount.value"
+              :sort-desc="rulesList.dir.value < 0"
+              ariaLabel="对象规则列表" search-placeholder="搜索规则名称或业务定义"
+              :columns="[{ label: '名称', width: '45%', sort: true }, { label: '业务定义', width: '37%' }, { label: '操作', width: '18%' }]"
+              :empty-title="rulesList.q.value ? '没有匹配的规则' : '还没有规则'"
+              :empty-hint="rulesList.q.value ? '调整关键词再试试。' : '点击右上角「＋ 添加规则」引用规则库中的通用业务规则。'"
+              @sort="rulesList.toggleSort()" @page="rulesList.page.value += $event" @clear="rulesList.q.value = ''">
+              <template #actions>
+                <button type="button" class="primary" @click="rulePickerOpen = true">＋ 添加规则</button>
+              </template>
+              <tr v-for="row in rulesList.paged.value" :key="row.ruleId" :data-row="row.ruleId" :class="{ 'ow-flash-row': highlightId === row.ruleId }">
+                <td>
+                  <button type="button" class="ont-name" :disabled="row.missing" @click="ruleDetailId = row.ruleId">{{ row.name || '未命名规则' }}</button>
+                  <span v-if="row.missing" class="ont-sub">规则不存在（悬空引用）</span>
+                </td>
+                <td><span class="ont-clip" :title="row.desc">{{ row.desc || '—' }}</span></td>
+                <td class="ont-ops">
+                  <button v-if="!row.missing" type="button" class="row-link" @click="ruleDetailId = row.ruleId">查看</button>
+                  <RowMenu compact :items="[{ id: 'remove', label: '移除引用', danger: true }]" :aria-label="'更多操作 · ' + (row.name || '未命名规则')" @pick="removeRuleRef(row.ruleId)"/>
+                </td>
+              </tr>
+            </OntologyList>
+            <p class="ont-context">移除引用仅影响当前对象，规则正文在业务规则库中维护；引用使用稳定标识，规则重命名后引用保持。</p>
           </template>
 
           </div>
@@ -782,34 +897,64 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
     empty-text="共享属性库为空。" empty-hint="先在对象中建立私有属性，再到「共享属性库」转为共享定义。"
     @close="libraryOpen = false" @action="pickShared"/>
   <RulePicker v-if="rulePickerOpen" :rules="pickerAvailable" :object-name="current?.['rdfs:label'] || ''" @close="rulePickerOpen = false" @confirm="addRules"/>
-  <BusinessRuleDialog v-if="ruleDetail" mode="detail" :rule="ruleDetail" :allow-edit="false" @close="ruleDetailId = ''"/>
-  <!-- 共享属性来源（R5）：只读详情，按稳定 ID 解析；引用失效时只说明，不回填也不转为私有 -->
-  <div v-if="sharedDetailId" class="modal-backdrop" @click.self="closeShared" @keydown.esc.stop="closeShared">
-    <section ref="sharedCard" class="modal-card dialog-md" role="dialog" aria-modal="true" aria-label="共享属性来源定义" @keydown.esc.stop="closeShared">
-      <div class="panelhead"><h2>共享属性来源</h2><button type="button" aria-label="关闭" @click="closeShared">×</button></div>
-      <template v-if="sharedDetail.missing">
-        <p class="inline-warning">共享定义不存在（引用失效）。该引用不会被回填或转为对象私有属性；可删除此属性后重新建立。</p>
-        <p class="muted">引用标识：{{ sharedDetail.id }}</p>
-      </template>
-      <template v-else>
-        <dl class="definition-list shared-def">
-          <dt>名称</dt><dd>{{ sharedDetail.name }}</dd>
-          <dt>业务定义</dt><dd>{{ sharedDetail.comment }}</dd>
-          <dt>数据类型</dt><dd>{{ sharedDetail.type }}</dd>
-          <dt v-if="sharedDetail.unit">单位</dt><dd v-if="sharedDetail.unit">{{ sharedDetail.unit }}</dd>
-          <dt>引用情况</dt><dd>{{ sharedDetail.usage }} 个对象属性引用</dd>
-        </dl>
-        <p class="field-help">名称、数据类型与单位随共享定义统一维护；本对象只保留引用关系。需要独立修改请改用「复制为私有」。</p>
-      </template>
-      <div class="dialogtools"><button type="button" class="primary" @click="closeShared">关闭</button></div>
-    </section>
-  </div>
+  <!-- 共享属性来源（R5）：只读详情抽屉，按稳定 ID 解析；引用失效时只说明，不回填也不转为私有 -->
+  <OntDrawer v-if="sharedDetailId" :title="sharedDetail.missing ? '共享属性来源（引用失效）' : (sharedDetail.name || '共享属性来源')" subtitle="共享属性来源" @close="closeShared">
+    <template v-if="sharedDetail.missing">
+      <p class="inline-warning">共享定义不存在（引用失效）。该引用不会被回填或转为对象私有属性；可移除此引用后重新建立。</p>
+      <p class="muted">引用标识：{{ sharedDetail.id }}</p>
+    </template>
+    <template v-else>
+      <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ sharedDetail.comment }}</p></div>
+      <div class="ont-field"><span class="ont-field-label">数据类型</span><p>{{ sharedDetail.type }}</p></div>
+      <div v-if="sharedDetail.unit" class="ont-field"><span class="ont-field-label">单位</span><p>{{ sharedDetail.unit }}</p></div>
+      <div class="ont-field"><span class="ont-field-label">引用情况</span><p>{{ sharedDetail.usage }} 个对象属性引用</p></div>
+      <p class="ont-hint">名称、数据类型与单位随共享定义统一维护；本对象只保留引用关系。需要独立修改请改用「复制为私有」。</p>
+    </template>
+    <template #footer><button type="button" class="primary" @click="closeShared">关闭</button></template>
+  </OntDrawer>
+  <!-- 属性 / 链接 / 动作 / 规则：行名称与「查看」共用的只读详情抽屉（§7） -->
+  <OntDrawer v-if="propDetail" :title="propDetail.label || '未命名属性'" @close="propDetailId = ''">
+    <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ propDetail.desc || '暂无业务定义。' }}</p></div>
+    <div class="ont-field"><span class="ont-field-label">数据类型</span><p>{{ propDetail.type }}</p></div>
+    <div v-if="propDetail.unit" class="ont-field"><span class="ont-field-label">单位</span><p>{{ propDetail.unit }}</p></div>
+    <div class="ont-field"><span class="ont-field-label">复用方式</span><p>{{ propDetail.sharedId ? '共享引用（名称与类型由共享库统一维护）' : '对象私有属性' }}</p></div>
+    <template #footer><button type="button" class="primary" @click="editPropFromDrawer">编辑属性</button></template>
+  </OntDrawer>
+  <OntDrawer v-if="linkDetail" :title="linkDetail.label || '未命名链接'" @close="linkDetailId = ''">
+    <div class="ont-field"><span class="ont-field-label">正向关系</span><p>{{ linkDetail.from }} → {{ linkDetail.label }} → {{ linkDetail.to }}</p></div>
+    <div class="ont-field"><span class="ont-field-label">反向名称</span><p>{{ linkDetail.reverse || '未定义反向阅读名称。' }}</p></div>
+    <div class="ont-field"><span class="ont-field-label">数量关系</span><p>{{ linkDetail.card }}</p></div>
+    <template #footer><button type="button" class="primary" @click="editLinkFromDrawer">编辑链接</button></template>
+  </OntDrawer>
+  <OntDrawer v-if="actionDetail" :title="actionDetail.name || '未命名动作'" @close="actionDetailId = ''">
+    <p v-if="actionDetail.missing" class="inline-warning">动作定义不存在（悬空引用）；只能移除关联或到动作库重建。</p>
+    <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ actionDetail.desc || '暂无业务定义。' }}</p></div>
+    <div class="ont-field"><span class="ont-field-label">业务效果</span><p>{{ actionDetail.effect || '暂未填写。' }}</p></div>
+    <p v-if="actionDetail.legacy" class="ont-hint">历史格式动作：字段只读保留，可在动作定义库显式转换后编辑。</p>
+    <template #footer>
+      <button v-if="!actionDetail.missing" type="button" class="primary" @click="goActionLibrary">到动作定义维护</button>
+    </template>
+  </OntDrawer>
+  <OntDrawer v-if="ruleDetail" :title="ruleDetail.name || '未命名规则'" @close="ruleDetailId = ''">
+    <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ ruleDetail.description || '暂无业务定义。' }}</p></div>
+    <div class="ont-field"><span class="ont-field-label">规则内容</span><p>{{ ruleDetail.content || '暂无规则内容。' }}</p></div>
+    <div class="ont-field"><span class="ont-field-label">输出结果</span><p>{{ ruleDetail.output || '暂无输出说明。' }}</p></div>
+    <template #footer>
+      <button type="button" class="primary" @click="goRuleLibrary">到业务规则维护</button>
+    </template>
+  </OntDrawer>
 </div>
 </template>
 
 <style scoped>
 /* 浏览态的列表/详情骨架在全局 .ld-*（style.css）：两区独立滚动，窄屏单栏。 */
 .ow-root{display:block}
+/* 对象详情页签内的统一表格：ld-detail 整体滚动，表头不再单独吸顶（避免钻到页签下面）；
+   复用方式筛选沿用紧凑分段按钮（§4）。 */
+.ld-body :deep(.ont-table th){position:static}
+.ont-filters{display:flex;gap:6px;flex-wrap:wrap}
+.ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
+.ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
 .ow-canvas-tabs{max-width:360px}
 .ow-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .ow-toolbar .ow-mode-tabs{display:flex;gap:6px;margin-bottom:0}

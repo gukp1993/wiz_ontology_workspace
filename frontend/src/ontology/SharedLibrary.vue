@@ -1,48 +1,49 @@
-<!-- ─── 共享属性库（T03/D05/D10 对齐原型 libraryView + editorView 的 shared 分支）───
+<!-- ─── 共享属性库（20260918 本体列表统一设计 §6.5/§5/§7：统一标准表格视图）───
      挂载点：App.vue view==='library'。
      props：state — 当前本体草稿（JSON-LD 内存形态；共享属性为 '@type':'mg:SharedProperty' 记录）。
      emits（协议冻结，勿改）：
        before-change — 写内存前发出（App 撤销快照）；
        changed       — 已写入内存（App 自动保存）；
-       navigate(view, focus?:{type?,property?,...}) — 「查看引用」跳回具体对象属性：
+       navigate(view, focus?:{type?,property?,...}) — 引用位置抽屉跳回具体对象属性：
                        navigate('objects',{type:对象类型id, property:属性id})。
-     主入口是列表（原型 libraryView 非挑选态）：每行「维护定义」「查看引用」及
-     引用/复制/删除次级动作；「维护定义」「＋ 新建共享属性」进入独立属性表单
-     （PropertyManager kind='shared'，主内容整体替换；新建不先插入空记录，
-     保存走 form-save 一次落盘，取消不产生记录——T00 契约）。
+     结构：.ont-lib-head 页头（左侧标题+一句说明；右侧更多操作菜单：粘贴多行/批量复用，
+     及「＋ 新建共享属性」主入口）+ OntologyList 统一表格（名称/数据类型/引用情况/操作，
+     搜索+数据类型筛选+每页 20 分页）。
+     「编辑」「＋ 新建共享属性」进入独立属性表单（PropertyManager kind='shared'，主内容整体
+     替换；新建不先插入空记录，保存走 form-save 一次落盘，取消不产生记录——T00 契约）。
+     名称点击 → 只读详情抽屉；引用徽标 → 引用位置抽屉（可定位回对象属性行）。
      「为某对象添加属性」的挑选态（原型 libraryView(true)）在 ObjectWorkspace 编辑态内完成，
      本页不再承担；本页保留跨对象批量能力：引用到对象、复制为私有、粘贴多行、批量复用，
-     低频项收进「更多操作」。修改共享定义的引用影响在表单内如实展示（usage 信息）；
-     单值与序列不能引用同一份形态不兼容的共享定义（shapeConflict）。 -->
+     低频项收进页头「更多操作」。修改共享定义的引用影响在表单内如实展示（usage 信息）；
+     单值与序列不能引用同一份形态不兼容的共享定义（shapeConflict）。
+     删除定义沿用原语义：契约/接口/项目映射直接引用时拦截；仅本地引用时先私有化再删。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import RowMenu from '../shared/RowMenu.vue'
+import OntologyList from '../shared/OntologyList.vue'
+import OntDrawer from '../shared/OntDrawer.vue'
 import PropertyManager from './PropertyManager.vue'
-import { shortType } from './editorModel'
-import { listShared, referencesOf, externalReferencesOf, shapeConflict, copyAsPrivate, propertyTypeLabel, valueShapeOf, detachProperty, makeProperty, localProperties, effectiveProperty, addReference, asShared, parsePropertyRows } from './propertyModel'
+import { listShared, referencesOf, externalReferencesOf, shapeConflict, copyAsPrivate, propertyDataType, dataTypeLabel, propertyTypeLabel, detachProperty, makeProperty, localProperties, effectiveProperty, addReference, asShared, parsePropertyRows } from './propertyModel'
+import { useOntTable } from './ontList'
 
 const props = defineProps<{ state: any }>()
 const emit = defineEmits(['before-change', 'changed', 'navigate'])
 
 // 编辑态：维护定义 / 新建共享定义 → 独立属性表单整体替换主内容（id='' 为新建）。
 const editor = ref<null | { id: string }>(null)
-const query = ref(''), feedback = ref(''), dialog = ref(''), acting = ref<any>(null)
+const feedback = ref(''), dialog = ref(''), acting = ref<any>(null)
 const targets = ref<string[]>([]), copyTarget = ref('')
-// 更多操作（低频批量能力收在列表页，不占属性表单主流程）
+// 更多操作（低频批量能力收在页头菜单，不占属性表单主流程）
 const pasteTarget = ref(''), pasted = ref('')
 const batchSource = ref(''), batchProps = ref<string[]>([]), batchTargets = ref<string[]>([])
-const highlightId = ref('')
+const highlightId = ref(''), detailId = ref(''), usagesId = ref('')
+const typeFilter = ref('全部')
 
 const graph = computed(() => props.state.ontology['@graph'])
 const types = computed(() => graph.value.filter((n: any) => n['@type'] === 'owl:Class'))
 const definitions = computed(() => listShared(graph.value))
-const filtered = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  if (!q) return definitions.value
-  return definitions.value.filter((s: any) => ((s['rdfs:label'] || '') + ' ' + (s['rdfs:comment'] || '')).toLowerCase().includes(q))
-})
 const typeOptions = computed(() => types.value.map((t: any) => ({ value: t['@id'], label: t['rdfs:label'] || t['@id'] })))
 const batchSourceProps = computed(() => batchSource.value ? localProperties(graph.value, batchSource.value) : [])
 watch(batchSource, () => { batchProps.value = [] })
@@ -51,26 +52,76 @@ function before(named?: { actionLabel: string; target?: { kind: string; id: stri
 function changed() { emit('changed') }
 function mutate(fn: any, actionLabel?: string, target?: { kind: string; id: string; ownerId?: string }) { before(actionLabel ? { actionLabel, target } : undefined); fn(); changed() }
 const typeName = (id: string) => types.value.find((n: any) => n['@id'] === id)?.['rdfs:label'] || id
-const rangeOf = (s: any) => s['rdfs:range']?.['@id'] || 'xsd:string'
-const typeLabel = (s: any) => shortType(rangeOf(s))
 const summary = (s: any) => { const c = s['rdfs:comment'] || ''; return c.length > 60 ? c.slice(0, 60) + '…' : (c || '暂无业务定义') }
+// 引用计数口径（§6.5）：referencesOf 的对象属性引用记录数，不是去重对象类型数。
 const usageCount = (s: any) => referencesOf(graph.value, s['@id']).length
 const totalUsages = computed(() => definitions.value.reduce((n: number, s: any) => n + usageCount(s), 0))
+
+// ── 列表视图状态（§5/§9）：视图行 + 类型筛选 + 搜索（全量上匹配）+ 名称 zh-CN 排序 + 每页 20 ──
+interface SharedRow { id: string; label: string; comment: string; dt: any; typeMain: string; valueType: string; refs: number; raw: any }
+const rows = computed<SharedRow[]>(() => definitions.value.map((s: any) => {
+  const dt = propertyDataType(s, graph.value)
+  return {
+    id: String(s['@id']), label: s['rdfs:label'] || '', comment: s['rdfs:comment'] || '',
+    dt,
+    typeMain: dt.type === 'timeSeries' ? '时间序列' : dataTypeLabel(dt),
+    valueType: dt.type === 'timeSeries' ? dataTypeLabel({ type: dt.valueType }) : '',
+    refs: usageCount(s),
+    raw: s,
+  }
+}))
+// 数据类型筛选：以 propertyDataType 规范化类型判定；时间序列只命中「时间序列」，不命中「数值」。
+const TYPE_FILTERS: { key: string; test: (dt: any) => boolean }[] = [
+  { key: '文本', test: dt => dt.type === 'string' },
+  { key: '数值', test: dt => dt.type === 'double' || dt.type === 'decimal' || dt.type === 'integer' },
+  { key: '是／否', test: dt => dt.type === 'boolean' },
+  { key: '日期', test: dt => dt.type === 'date' },
+  { key: '时间', test: dt => dt.type === 'dateTime' || dt.type === 'timestamp' },
+  { key: '数组', test: dt => dt.type === 'array' },
+  { key: '结构体', test: dt => dt.type === 'struct' },
+  { key: '时间序列', test: dt => dt.type === 'timeSeries' },
+]
+const typeFilterKeys = ['全部', ...TYPE_FILTERS.map(f => f.key)]
+const typeFiltered = computed(() => {
+  if (typeFilter.value === '全部') return rows.value
+  const f = TYPE_FILTERS.find(x => x.key === typeFilter.value)
+  return f ? rows.value.filter(r => f.test(r.dt)) : rows.value
+})
+const list = useOntTable<SharedRow>(() => typeFiltered.value, {
+  match: (r, q) => (r.label + ' ' + r.comment).toLowerCase().includes(q),
+  sort: (a, b) => a.label.localeCompare(b.label, 'zh-CN', { numeric: true }),
+})
+function setTypeFilter(key: string) { typeFilter.value = key; list.page.value = 1 }
+// 空态（§8）：初始无数据指向右上角唯一主入口；有筛选条件时引导调整而不是重复新建。
+const hasFilter = computed(() => typeFilter.value !== '全部' || !!list.q.value.trim())
+const emptyTitle = computed(() => hasFilter.value ? '没有匹配的共享定义' : '共享属性库为空')
+const emptyHint = computed(() => hasFilter.value ? '调整关键词或筛选条件再试试。' : '点击右上角「＋ 新建共享属性」新建，或在对象属性中选择「转为共享属性」。')
 
 // ── 维护定义 / 新建：独立表单（PropertyManager kind='shared'），保存成功后定位行 ──
 function openEditor(id = '') { editor.value = { id }; feedback.value = '' }
 function onSaved(payload: { id: string }) { editor.value = null; locate(payload.id) }
+// 保存后定位行：必要时清筛选并翻到目标行所在页，再高亮滚动（data-lib-row 在 <tr> 上）。
 async function locate(id: string) {
   if (!id) return
+  let idx = list.filtered.value.findIndex(r => r.id === id)
+  if (idx < 0) { typeFilter.value = '全部'; list.reset(); idx = list.filtered.value.findIndex(r => r.id === id) }
+  if (idx >= 0) list.page.value = Math.floor(idx / 20) + 1
   highlightId.value = id
   await nextTick()
   document.querySelector(`[data-lib-row="${id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   setTimeout(() => { if (highlightId.value === id) highlightId.value = '' }, 2600)
 }
 
-// ── 查看引用：引用位置清单，可跳回具体对象属性（D05 反向链路） ──
-const usageRows = computed(() => acting.value ? referencesOf(graph.value, acting.value['@id']).map((p: any) => ({ id: p['@id'], domain: p['rdfs:domain']?.['@id'] || '', name: typeName(p['rdfs:domain']?.['@id']), api: p['mg:apiName'] || String(p['@id']).replace(/^mg:/, '') })) : [])
-function openRef(r: { domain: string; id: string }) { dialog.value = ''; emit('navigate', 'objects', { type: r.domain, property: r.id }) }
+// ── 只读详情抽屉（§7）：名称入口；引用位置抽屉（D05 反向链路）：引用徽标入口 ──
+const detail = computed(() => detailId.value ? definitions.value.find((s: any) => s['@id'] === detailId.value) || null : null)
+const usageTarget = computed(() => usagesId.value ? definitions.value.find((s: any) => s['@id'] === usagesId.value) || null : null)
+const usageRows = computed(() => usageTarget.value ? referencesOf(graph.value, usageTarget.value['@id']).map((p: any) => ({ id: p['@id'], domain: p['rdfs:domain']?.['@id'] || '', name: typeName(p['rdfs:domain']?.['@id']), api: p['mg:apiName'] || String(p['@id']).replace(/^mg:/, '') })) : [])
+function editFromDetail() { const id = detailId.value; detailId.value = ''; openEditor(id) }
+function openRef(r: { domain: string; id: string }) { usagesId.value = ''; emit('navigate', 'objects', { type: r.domain, property: r.id }) }
+
+// ── 页头更多操作：粘贴多行 / 批量复用（功能不删，入口从页面底部 details 收进菜单）──
+const pageMenuItems = [{ id: 'paste', label: '粘贴多行属性到对象' }, { id: 'batch', label: '批量复用对象属性' }]
+function onPageMenu(id: string) { openDialog(id) }
 
 function openDialog(name: string, s: any = null) { dialog.value = name; acting.value = s; targets.value = []; copyTarget.value = ''; pasted.value = ''; batchProps.value = []; batchTargets.value = []; feedback.value = '' }
 
@@ -174,54 +225,57 @@ function distribute() {
 <!-- 编辑态：主内容整体替换为独立共享属性表单 -->
 <PropertyManager v-if="editor" :key="editor.id || 'new'" :state="state" kind="shared" :property-id="editor.id" @close="editor = null" @saved="onSaved"/>
 <template v-else>
-<section class="card library-head"><div class="panelhead"><div><h2>共享属性库</h2><p class="muted">集中维护跨对象复用的属性定义：一处修改，所有引用同步。复制后独立维护；引用时沿用共享定义。各项目的取值实现按对象分别配置。</p></div><button class="primary" @click="openEditor('')">＋ 新建共享属性</button></div></section>
-<div class="library-toolbar">
-  <input v-model="query" type="search" placeholder="搜索名称或业务定义…" aria-label="搜索共享属性">
-  <span class="library-note">共 {{ definitions.length }} 项共享定义 · {{ totalUsages }} 处引用</span>
-</div>
-<section v-if="filtered.length" class="card library-rows">
-  <div v-for="s in filtered" :key="s['@id']" class="line-row" :class="{ 'lib-flash': highlightId === s['@id'] }" :data-lib-row="s['@id']">
-    <div class="row-main">
-      <strong>{{ s['rdfs:label'] || '未命名共享属性' }}</strong>
-      <small>{{ propertyTypeLabel(s, graph) }}{{ s['mg:valueSuffix'] ? ' · 单位 ' + s['mg:valueSuffix'] : '' }} · {{ usageCount(s) }} 处引用</small>
-      <small class="muted">{{ summary(s) }}</small>
-    </div>
-    <div class="tools lib-row-actions">
-      <button class="primary" @click="openEditor(s['@id'])">维护定义</button>
-      <button class="row-link" @click="openDialog('usages', s)">查看引用</button>
-      <!-- G4：引用到对象／复制为私有／删除定义收进更多操作（能力不变，删除置底且危险色） -->
-      <RowMenu :items="rowMenuItems(s)" :aria-label="'更多操作 · ' + (s['rdfs:label'] || '未命名共享属性')" @pick="onRowMenu(s, $event)"/>
-    </div>
+<!-- 页头（§3.2 资产库）：标题+一句说明在左，更多操作与唯一主入口在右 -->
+<section class="ont-lib-head">
+  <div>
+    <h2>共享属性库</h2>
+    <p>集中维护跨对象复用的属性定义：一处修改，所有引用同步。复制后独立维护；引用时沿用共享定义。各项目的取值实现按对象分别配置。</p>
+  </div>
+  <div class="ont-actions">
+    <RowMenu :items="pageMenuItems" aria-label="页面更多操作" @pick="onPageMenu"/>
+    <button type="button" class="primary" @click="openEditor('')">＋ 新建共享属性</button>
   </div>
 </section>
-<section v-else class="card">
-  <div class="empty-state">
-    <span class="empty-state-ico">◇</span>
-    <p>{{ query ? '没有匹配的共享定义，可调整搜索条件。' : '共享属性库为空。可新建共享定义，或在对象属性中选择「转为共享属性」。' }}</p>
-    <button v-if="!query" type="button" class="primary" @click="openEditor('')">＋ 新建共享属性</button>
-  </div>
+<!-- 统一标准表格（§5/§6.5）：单个白色内容面板；工具栏/表头/空态/分页由 OntologyList 渲染 -->
+<section class="card">
+  <OntologyList
+    :search="list.q.value" @update:search="list.q.value = $event"
+    :total="list.filtered.value.length" :page="list.page.value" :page-count="list.pageCount.value"
+    :sort-desc="list.dir.value < 0"
+    ariaLabel="共享属性列表" search-placeholder="搜索名称或业务定义"
+    :columns="[{ label: '名称', width: '42%', sort: true }, { label: '数据类型', width: '20%' }, { label: '引用情况', width: '20%' }, { label: '操作', width: '18%' }]"
+    :empty-title="emptyTitle" :empty-hint="emptyHint"
+    @sort="list.toggleSort()" @page="list.page.value += $event" @clear="list.q.value = ''">
+    <template #filter>
+      <div class="ont-filters" role="group" aria-label="按数据类型筛选">
+        <button v-for="f in typeFilterKeys" :key="f" type="button" :class="{ active: typeFilter === f }" :aria-pressed="typeFilter === f" @click="setTypeFilter(f)">{{ f }}</button>
+      </div>
+    </template>
+    <tr v-for="r in list.paged.value" :key="r.id" :data-lib-row="r.id" :class="{ 'lib-flash': highlightId === r.id }">
+      <td>
+        <button type="button" class="ont-name" @click="detailId = r.id">{{ r.label || '未命名共享属性' }}</button>
+        <span class="ont-sub" :title="r.comment">{{ summary(r.raw) }}</span>
+      </td>
+      <td>
+        <span class="ont-type">{{ r.typeMain }}</span>
+        <span v-if="r.valueType" class="ont-sub">观测值：{{ r.valueType }}</span>
+      </td>
+      <td><button type="button" class="ont-badge" :aria-label="'查看引用位置 · ' + (r.label || '未命名共享属性')" @click="usagesId = r.id">{{ r.refs }} 处引用</button></td>
+      <td class="ont-ops">
+        <button type="button" class="row-link" @click="openEditor(r.id)">编辑</button>
+        <!-- G4：引用到对象／复制为私有／删除定义收进更多操作（能力不变，删除置底且危险色） -->
+        <RowMenu compact :items="rowMenuItems(r.raw)" :aria-label="'更多操作 · ' + (r.label || '未命名共享属性')" @pick="onRowMenu(r.raw, $event)"/>
+      </td>
+    </tr>
+  </OntologyList>
+  <p v-if="definitions.length" class="ont-context">共 {{ definitions.length }} 项共享定义 · {{ totalUsages }} 处引用。引用属性的名称、类型、单位随共享定义统一维护；数据来源在项目映射中配置。</p>
 </section>
-
-<!-- 更多操作：粘贴多行、批量复用等低频能力（功能不删，不占属性表单主流程） -->
-<details class="technical-section library-more">
-  <summary>更多操作</summary>
-  <p class="field-help">粘贴多行、批量复用等跨对象操作收在这里；单个定义的维护在每行「维护定义」中完成。</p>
-  <div class="tools">
-    <button @click="openDialog('paste')">粘贴多行属性到对象</button>
-    <button @click="openDialog('batch')">批量复用对象属性</button>
-  </div>
-</details>
 <p v-if="feedback" :class="feedback.startsWith('已') ? 'inline-success' : 'inline-error'" role="status">{{ feedback }}</p>
 
 <div v-if="dialog" class="modal-backdrop" @click.self="dialog = ''" @keydown.esc.stop="dialog = ''">
-  <section class="modal-card sheet-dialog dialog-lg" role="dialog" aria-modal="true" :aria-label="dialog === 'usages' ? '查看引用' : dialog === 'reference' ? '引用共享属性到对象' : dialog === 'copy' ? '复制为私有属性' : dialog === 'paste' ? '粘贴多行属性' : '批量复用对象属性'">
-    <div class="panelhead"><h2>{{ { usages: '查看引用 · ' + (acting?.['rdfs:label'] || ''), reference: '引用共享属性到对象', copy: '复制为私有属性', paste: '粘贴多行属性到对象', batch: '批量复用对象属性' }[dialog] }}</h2><button aria-label="关闭" @click="dialog = ''">×</button></div>
-    <template v-if="dialog === 'usages'">
-      <p v-if="!usageRows.length" class="field-help">当前没有共享引用；对象上复制的私有副本不跟随此定义更新。</p>
-      <div v-for="r in usageRows" :key="r.id" class="line-row"><div class="row-main"><strong>{{ r.name }}</strong><small class="code-like">{{ r.api }}</small></div><button class="row-link" @click="openRef(r)">{{ r.name }} 的属性 →</button></div>
-      <p v-if="acting && externalReferencesOf(state, acting['@id']).length" class="inline-error">此定义还被以下内容直接引用，删除前需先处理：{{ externalReferencesOf(state, acting['@id']).join('、') }}</p>
-    </template>
-    <template v-else-if="dialog === 'reference'">
+  <section class="modal-card sheet-dialog dialog-lg" role="dialog" aria-modal="true" :aria-label="dialog === 'reference' ? '引用共享属性到对象' : dialog === 'copy' ? '复制为私有属性' : dialog === 'paste' ? '粘贴多行属性' : '批量复用对象属性'">
+    <div class="panelhead"><h2>{{ { reference: '引用共享属性到对象', copy: '复制为私有属性', paste: '粘贴多行属性到对象', batch: '批量复用对象属性' }[dialog] }}</h2><button aria-label="关闭" @click="dialog = ''">×</button></div>
+    <template v-if="dialog === 'reference'">
       <p>把「{{ acting?.['rdfs:label'] }}」引用到以下对象；引用属性的名称、类型、单位跟随此定义统一维护。已有同名属性或引用的对象会跳过。</p>
       <label v-for="t in types" :key="t['@id']" class="check-option"><input v-model="targets" type="checkbox" :value="t['@id']"><span>{{ t['rdfs:label'] }}<small v-if="shapeConflict(graph, acting, t['@id'])" class="field-help">已有同名但形态不同的属性，无法引用</small></span></label>
       <p v-if="!types.length" class="field-help">还没有对象类型，请先到「对象建模」创建。</p>
@@ -258,27 +312,37 @@ function distribute() {
     </template>
   </section>
 </div>
+
+<!-- 只读详情抽屉（§7）：名称入口，不做任何保存；「编辑定义」进入原属性表单 -->
+<OntDrawer v-if="detail" :title="detail['rdfs:label'] || '未命名共享属性'" subtitle="共享属性定义" @close="detailId = ''">
+  <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ detail['rdfs:comment'] || '暂无业务定义。' }}</p></div>
+  <div class="ont-field"><span class="ont-field-label">数据类型</span><p>{{ propertyTypeLabel(detail, graph) }}</p></div>
+  <div v-if="detail['mg:valueSuffix']" class="ont-field"><span class="ont-field-label">单位</span><p>{{ detail['mg:valueSuffix'] }}</p></div>
+  <div class="ont-field"><span class="ont-field-label">引用情况</span><p>{{ usageCount(detail) }} 处引用</p></div>
+  <p class="ont-hint">修改此定义后所有引用同步更新；需要独立维护请用行内「复制为私有」。</p>
+  <template #footer><button type="button" class="primary" @click="editFromDetail">编辑定义</button></template>
+</OntDrawer>
+<!-- 引用位置抽屉（D05）：对象类型 + 属性 apiName，点击定位回对象属性行 -->
+<OntDrawer v-if="usageTarget" :title="'引用位置 · ' + (usageTarget['rdfs:label'] || '未命名共享属性')" subtitle="引用情况" @close="usagesId = ''">
+  <p v-if="!usageRows.length" class="ont-hint">当前没有共享引用；对象上复制的私有副本不跟随此定义更新。</p>
+  <button v-for="r in usageRows" :key="r.id" type="button" class="ont-ref-row" @click="openRef(r)">
+    <span><strong>{{ r.name }}</strong><small class="code-like">{{ r.api }}</small></span>→
+  </button>
+  <p v-if="usageTarget && externalReferencesOf(state, usageTarget['@id']).length" class="inline-error">此定义还被以下内容直接引用，删除前需先处理：{{ externalReferencesOf(state, usageTarget['@id']).join('、') }}</p>
+</OntDrawer>
 </template>
 </template>
 
 <style scoped>
-.library-head .panelhead{margin-bottom:0}
-.library-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0;flex-wrap:wrap}
-.library-toolbar input[type=search]{width:min(300px,100%);margin:0}
-.library-toolbar .library-note{margin:0}
-.library-rows{padding:8px 20px}
-.line-row{display:flex;align-items:center;gap:14px;padding:13px 4px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.line-row:last-child{border-bottom:0}
-.line-row>.tools{flex:none;flex-wrap:wrap}
-.row-main{flex:1;min-width:0}
-.row-main strong{display:block;font-size:14px;font-weight:600}
-.row-main small{display:block;margin-top:3px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
-.lib-row-actions .primary{padding:5px 10px;font-size:12px}
-.lib-flash{outline:2px solid var(--focus);outline-offset:-2px;border-radius:7px}
-.library-more .tools{margin-top:8px}
+/* 结构样式走全局 .ont-*（style.css 本体列表段），这里只补本页细节。 */
+.ont-filters{display:flex;gap:6px;flex-wrap:wrap}
+.ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
+.ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
+/* 保存/操作后的行定位高亮（data-lib-row 在 <tr> 上，locate 滚动定位） */
+.ont-table tr.lib-flash td{background:var(--blue-soft)}
+/* 引用位置抽屉：对象名下的属性 apiName 副标题 */
+.ont-ref-row small{display:block;margin-top:2px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .code-like{font-family:ui-monospace,SFMono-Regular,monospace}
-.sheet-import-preview{max-height:240px;overflow:auto;margin:15px 0}
 .batch-panel{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
 .batch-panel .check-option{font-size:13px}
-@media(max-width:800px){.line-row{align-items:flex-start;flex-direction:column}.lib-row-actions{width:100%}}
 </style>

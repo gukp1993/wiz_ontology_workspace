@@ -1,0 +1,29 @@
+{
+  "ticket": "c7a4c8112e5745a4882faf7ce27a6a45",
+  "task": "GLM模型端点配置修复",
+  "status": "verified",
+  "summary": "用户 GLM 提供方连通失败根因确诊并修复：该 key 为编码套餐（GLM Coding Plan）密钥，标准 API 路径无余额（直连实测 HTTP 429 错误码 1113「余额不足或无可用资源包」），同一 key 走 coding 专用路径返回 200。已把 llm-5021bee500 的端点改为 https://open.bigmodel.cn/api/coding/paas/v4/chat/completions（其余字段未动、密钥沿用已存值），工作台连通测试转为通过。附带证实 temperature=0 在该模型可用（此前怀疑不成立）。",
+  "decisions": [
+    "编码套餐 key 必须配 coding 端点（/api/coding/paas/v4/），标准 paas/v4 仅适用于充值了标准 API 的密钥"
+  ],
+  "verification": [
+    "直连标准端点复刻工作台请求：429 + {\"code\":\"1113\",\"message\":\"余额不足或无可用资源包\"}",
+    "直连 coding 端点同 key 同请求：HTTP 200 模型响应（temperature=0 与 0.1 均 200）",
+    "经工作台 /api/llm-provider-save 改端点（未带 apiKey，沿用已存值，keyConfigured=true）后 /api/llm-provider-test：ok=true 连通正常 1527ms",
+    "诊断调用共 5 次，密钥未写入任何文件、git 或交接记录"
+  ],
+  "next": [
+    "提示用户：该 key 已在聊天明文出现过，建议之后在 bigmodel 控制台轮换",
+    "编码套餐按套餐限速，若编排高并发调用再遇 429（1302/1304）属套餐限流而非配置问题"
+  ],
+  "references": [
+    "workbench/llm_client.py",
+    "frontend/src/tools/LlmProviders.vue"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-18T08:05:04.092918+00:00",
+  "sequence": 3,
+  "filename": "000003-ef5d34cac0b8.json",
+  "record_hash": "0927f3ec44cd7d950faf4a74755c7293189ecfb4a34954c8ed5b84449cd43356",
+  "context_advanced": false
+}
