@@ -25,7 +25,9 @@ function openDialog(opts: AppConfirmOptions): Promise<boolean> {
     const previousFocus = document.activeElement as HTMLElement | null
 
     const backdrop = document.createElement('div')
-    backdrop.className = 'modal-backdrop'
+    // app-confirm-backdrop：确认框必须压过一切业务弹层（如导入弹窗 .imp-backdrop z-120），
+    // 否则从高层弹层里触发的确认框会被盖住——不可见且整屏吞点击，页面表现为"点了没反应"。
+    backdrop.className = 'modal-backdrop app-confirm-backdrop'
     const card = document.createElement('section')
     card.className = 'modal-card'
     card.setAttribute('role', 'dialog')

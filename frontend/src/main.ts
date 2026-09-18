@@ -14,7 +14,7 @@ import './style.css'
 // "Failed to fetch dynamically imported module" 或压缩后的 TDZ 类 ReferenceError，
 // 用户完全看不懂。这里在入口统一识别这类错误并给出「刷新页面」的明确指引，
 // 覆盖所有懒加载路径（当前为 Excel 解析分块的动态 import），不让它只留在控制台。
-const STALE_PAGE_HINT = '页面资源已更新（工作台可能刚重新构建过），请刷新页面后重试。'
+const STALE_PAGE_HINT = '页面资源已更新（工作台可能刚重新构建过），请刷新页面后重试。若刷新后仍出现，请按 F12 打开控制台，截图完整报错信息反馈。'
 const STALE_PATTERNS = [
   /dynamically imported module/i,
   /cannot access '?[A-Za-z_$][\w$]*'? before initialization/i,
