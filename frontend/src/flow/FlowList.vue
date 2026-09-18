@@ -13,10 +13,9 @@ const search = ref('')
 const showCreate = ref(false)
 const newName = ref(''), newDescription = ref('')
 const busy = ref(false)
-const showDeleted = ref(false)
 async function refresh() {
   loading.value = true; error.value = ''
-  try { items.value = (await listFlows(showDeleted.value)).items }
+  try { items.value = (await listFlows()).items }
   catch (e: any) { error.value = e?.message || '加载编排列表失败' }
   finally { loading.value = false }
 }
@@ -70,10 +69,6 @@ async function remove(item: any) {
   <div class="library-toolbar">
     <label class="list-search" style="margin:0">搜索编排
       <input v-model="search" type="search" aria-label="搜索编排" placeholder="按名称或说明搜索"/>
-    </label>
-    <label class="check-option" style="margin:0">
-      <input v-model="showDeleted" type="checkbox" @change="refresh"/>
-      显示已删除
     </label>
     <button :disabled="loading" @click="refresh">{{loading?'加载中…':'刷新'}}</button>
   </div>
