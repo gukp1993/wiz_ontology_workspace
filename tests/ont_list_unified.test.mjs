@@ -1,8 +1,8 @@
 // 本体列表统一（20260918 需求 §5/§6/§7）新增风险用例：
 //   ① 搜索/筛选在【全量记录】上执行后再分页（不是只搜当前页），页码随结果收缩回到合法范围；
 //   ② 链接行显示定义中的真实方向：从任一端查看同一行、数量关系不交换，自链接不重复两行；
-//   ③ 行内更多菜单不改删除语义：共享引用是「移除引用」且共享定义保留，私有是「删除属性」；
-//     对象动作移除关联只删当前对象关联、动作定义与其它对象关联保留；
+//   ③ 行内删除按钮不改语义：共享引用是「移除引用」且共享定义保留，私有是「删除属性」；
+//     对象动作删除动作只删当前对象关联、动作定义与其它对象关联保留；
 //   ④ 对象规则只读详情按稳定 ID 取到完整四字段（名称/业务定义/规则内容/输出结果）。
 // 运行（仓库根）：node --import ./tests/ts_hooks.mjs tests/ont_list_unified.test.mjs
 // 用真实组件 <script setup>（.vue 子组件桩化），不发请求、不写真实 ontology。
@@ -132,12 +132,12 @@ try {
     owApi().selected.value = 'mg:cluster'
 
     // 删除语义（20260918 用户变更：四页签删除/移除改为行内直接显示，不进更多菜单）：
-    // 共享引用→「移除引用」；私有→「删除属性」；动作→「移除关联」；规则→「移除引用」。
+    // 共享引用→「移除引用」；私有→「删除属性」；动作→「删除动作」；规则→「删除规则」。
     assert.equal(owApi().propRemoveLabel({ sharedId: 'mg:sp' }), '移除引用')
     assert.equal(owApi().propRemoveLabel({ sharedId: '' }), '删除属性')
     const owSrc = readFileSync(resolve('frontend/src/ontology/ObjectWorkspace.vue'), 'utf8')
     assert.ok(!/RowMenu/.test(owSrc), '四页签行操作不得再依赖更多菜单')
-    for (const label of ['删除链接', '移除关联', '移除引用']) assert.ok(owSrc.includes('>' + label + '</button>'), '缺少行内操作：' + label)
+    for (const label of ['删除链接', '删除动作', '删除规则']) assert.ok(owSrc.includes('>' + label + '</button>'), '缺少行内操作：' + label)
 
     // 共享引用「移除引用」只删当前对象上的引用记录，共享定义保留
     const before = state.ontology['@graph'].length

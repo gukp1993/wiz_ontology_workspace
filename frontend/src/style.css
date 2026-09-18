@@ -269,7 +269,7 @@ button:active:not(:disabled){transform:translateY(1px)}
 button.ont-badge{cursor:pointer}
 button.ont-badge:hover{color:var(--blue);border-color:var(--blue-line);background:var(--blue-soft)}
 .ont-clip{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:21px;font-size:13px;color:var(--ink-2)}
-.ont-ops{text-align:right;white-space:nowrap}
+.ont-ops{text-align:left;white-space:nowrap}
 .ont-ops .row-link+.row-link,.ont-ops .row-link+.row-menu,.ont-ops .row-menu+.row-menu{margin-left:10px}
 .ont-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;border-top:1px solid var(--line);color:var(--muted);font-size:12px;flex-wrap:wrap}
 .ont-pager-ctl{display:flex;align-items:center;gap:6px}

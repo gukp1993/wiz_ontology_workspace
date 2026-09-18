@@ -478,15 +478,16 @@ async function confirmPick(ids: string[]) {
 }
 async function removeAssociation(actionId: string) {
   if (!current.value) return
-  if (!(await appConfirm({ message: '仅移除当前对象与该动作的关联？动作定义保留，其他对象的关联不受影响；项目里已有的绑定会显示关联失效并保留配置。' }))) return
+  const actionName = actionById.value.get(actionId)?.name || '此动作'
+  if (!(await appConfirm({ message: '删除「' + actionName + '」在当前对象上的关联？动作定义保留，其他对象的关联不受影响；项目里已有的绑定会显示关联失效并保留配置。' }))) return
   const typeId = current.value['@id']
   const r = await formSave.submitForm('ontology', () => {
     commitAssociations(props.state, associationsOf(props.state).filter(a => !(a.actionId === actionId && (a.objectTypeId === typeId || a.objectTypeId === 'mg:' + typeId.replace(/^mg:/, '')))))
-  }, { actionLabel: '移除对象「' + (current.value['rdfs:label'] || '') + '」的动作关联', target: { kind: 'object', id: typeId } })
+  }, { actionLabel: '删除对象「' + (current.value['rdfs:label'] || '') + '」的动作关联', target: { kind: 'object', id: typeId } })
   if (!r.ok) message.value = r.message
 }
 
-// ─── 规则页签（20260917 业务规则一期）：多选引用已有规则、查看、移除引用 ───
+// ─── 规则页签（20260917 业务规则一期）：多选引用已有规则、查看、删除规则关联 ───
 const ruleRows = computed(() => {
   if (!current.value) return []
   return rulesOfObject(props.state, current.value['@id']).map(r => ({
@@ -516,7 +517,7 @@ async function removeRuleRef(ruleId: string) {
   const typeId = current.value['@id']
   const r = await formSave.submitForm('ontology', () => {
     commitRuleAssociations(props.state, ruleAssociationsOf(props.state).filter(a => !(a.ruleId === ruleId && (a.objectTypeId === typeId || a.objectTypeId === 'mg:' + typeId.replace(/^mg:/, '')))))
-  }, { actionLabel: '移除对象「' + (current.value['rdfs:label'] || '') + '」的规则引用', target: { kind: 'object', id: typeId } })
+  }, { actionLabel: '删除对象「' + (current.value['rdfs:label'] || '') + '」的规则引用', target: { kind: 'object', id: typeId } })
   if (!r.ok) message.value = r.message
 }
 
@@ -580,12 +581,12 @@ watch([() => props.focusDefinition, detailTab], ([id, tab]) => {
 
 // 引用检查与 EntityManager/画布同一套：有引用先提示，不静默断链；confirm 后删除，可撤销。
 // 动作关联随对象删除一并清理（需求 §5）；规则引用走引用保护——须先移除引用（业务规则一期 §5）。
-// confirmText：行语义化确认文案（移除引用/删除属性/删除链接各说各的影响），缺省沿用对象删除文案。
+// confirmText：行语义化确认文案（删除属性/删除链接/删除动作各说各的影响），缺省沿用对象删除文案。
 async function removeNode(id: string, label: string, confirmText?: string) {
   const refs = graphReferences(props.state, id)
   if (refs.length) { message.value = '暂不能删除：请先处理引用（' + refs.join('、') + '）。'; return }
   const ruleRefs = ruleAssociationsOf(props.state).filter(a => a.objectTypeId === id || a.objectTypeId === 'mg:' + id.replace(/^mg:/, ''))
-  if (ruleRefs.length) { message.value = `暂不能删除：此对象仍引用 ${ruleRefs.length} 条业务规则；请先到「规则」页签移除引用。`; return }
+  if (ruleRefs.length) { message.value = `暂不能删除：此对象仍引用 ${ruleRefs.length} 条业务规则；请先到「规则」页签删除规则引用。`; return }
   const assocCount = associationsOfObject(props.state, id).length
   const extra = assocCount ? `此对象有 ${assocCount} 条动作关联，删除对象将同时移除这些关联（动作定义与项目绑定保留）。` : ''
   if (!(await appConfirm({ message: (confirmText || '删除「' + (label || id) + '」？可通过撤销恢复。') + extra }))) return
@@ -845,11 +846,11 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
                 <td><span class="ont-clip" :title="row.effect">{{ row.effect || '—' }}</span></td>
                 <td class="ont-ops">
                   <button v-if="!row.missing" type="button" class="row-link" @click="actionDetailId = row.actionId">查看</button>
-                  <button type="button" class="row-link danger" @click="removeAssociation(row.actionId)">移除关联</button>
+                  <button type="button" class="row-link danger" @click="removeAssociation(row.actionId)">删除动作</button>
                 </td>
               </tr>
             </OntologyList>
-            <p class="ont-context">移除关联仅影响当前对象，动作定义与其他对象的关联仍保留。</p>
+            <p class="ont-context">删除动作仅移除当前对象的关联；动作定义与其他对象的关联仍保留。</p>
           </template>
           <template v-else-if="detailTab === 'rules'">
             <OntologyList
@@ -872,11 +873,11 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
                 <td><span class="ont-clip" :title="row.desc">{{ row.desc || '—' }}</span></td>
                 <td class="ont-ops">
                   <button v-if="!row.missing" type="button" class="row-link" @click="ruleDetailId = row.ruleId">查看</button>
-                  <button type="button" class="row-link danger" @click="removeRuleRef(row.ruleId)">移除引用</button>
+                  <button type="button" class="row-link danger" @click="removeRuleRef(row.ruleId)">删除规则</button>
                 </td>
               </tr>
             </OntologyList>
-            <p class="ont-context">移除引用仅影响当前对象，规则正文在业务规则库中维护；引用使用稳定标识，规则重命名后引用保持。</p>
+            <p class="ont-context">删除规则仅移除当前对象的引用；规则正文在业务规则库中维护，其他对象的引用不受影响。</p>
           </template>
 
           </div>
@@ -926,7 +927,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
     <template #footer><button type="button" class="primary" @click="editLinkFromDrawer">编辑链接</button></template>
   </OntDrawer>
   <OntDrawer v-if="actionDetail" :title="actionDetail.name || '未命名动作'" @close="actionDetailId = ''">
-    <p v-if="actionDetail.missing" class="inline-warning">动作定义不存在（悬空引用）；只能移除关联或到动作库重建。</p>
+    <p v-if="actionDetail.missing" class="inline-warning">动作定义不存在（悬空引用）；只能删除本对象的关联，或到动作库重建。</p>
     <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ actionDetail.desc || '暂无业务定义。' }}</p></div>
     <div class="ont-field"><span class="ont-field-label">业务效果</span><p>{{ actionDetail.effect || '暂未填写。' }}</p></div>
     <p v-if="actionDetail.legacy" class="ont-hint">历史格式动作：字段只读保留，可在动作定义库显式转换后编辑。</p>
