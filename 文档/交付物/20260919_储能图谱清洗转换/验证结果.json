@@ -1,0 +1,14 @@
+{
+  "schemaValidation": "passed",
+  "encodeDecodeRoundtrip": "passed",
+  "manifestAndHash": "passed",
+  "isolatedImportPreview": "passed",
+  "isolatedImportAndReadback": "passed",
+  "originalGraphPreserved": 134,
+  "expectedPublishBlockers": [
+    "规则 充放电计划 缺少规则内容",
+    "规则 充放电计划 缺少输出结果"
+  ],
+  "realWorkbenchModified": false,
+  "browserTested": false
+}

@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`4ab0787c79980537`
+上下文版本：`d0fa5096e431b6d6`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 储能jsonId图谱清洗转当前本体数据 · codex · 已验证
+
+时间：2026-09-19T13:12:36.994572+00:00；记录：`.collaboration/entries/000053-1c0abf190305.json`
+
+生成独立清洗审阅稿及工作台可导入ZIP：6对象、16共享属性、35对象属性引用、7对象链接、21业务规则、7对象规则关联。未写真实工作台数据。
+
+- 决定：SOC拆实时数值和采样时间序列；动作建议计算保留业务规则，不自动生成控制动作。；保留全部原始134条记录、92条边的转换去向；项目取值说明另出参考，不生成可执行项目。；园区/电站、可调能力量纲、偏差单位、SOC百分比等歧义已标注；充放电计划规则保持不完整草稿，不虚构规则。
+- 验证：当前模型协议校验及encode/decode无损往返通过；包manifest和SHA256通过。；临时根和独立SQLite中调用当前配置迁移服务上传、预览、导入、读回通过，本体与工作流一致，新本体ID分配正确。；发布校验仅返回预期两条：充放电计划缺少规则内容、输出结果。未进行浏览器验收或业务公式运行验证。
+- 下一步：用户审阅清洗说明中的口径问题后，可通过配置迁移导入清洗待确认ZIP并继续补齐。
+- 依据/文档：文档/交付物/20260919_储能图谱清洗转换/清洗说明.md；文档/交付物/20260919_储能图谱清洗转换/储能本体_清洗待确认.zip；文档/交付物/20260919_储能图谱清洗转换/验证结果.json
 
 ### 编排列表操作平铺+列宽+说明截断（用户截图反馈） · zcode · 已实施，待验收
 
@@ -144,14 +155,3 @@
 - 下一步：用户验收：编排列表→编辑→测试片段（默认起止为首末节点，按需改 B→D）体验独立测试视图；限制（如实记录）：F09 侧路分支/F16 属性返回往返/F18 大数据/F19 写节点确认帧未浏览器实测（后端语义均有断言；F16 机制未动且 test_project_flow_source 21 步过）；跨账号用例由 storage owner 既有测试覆盖；mapping_forms 既有基线失败待负责人处理
 - 依据/文档：workbench/flow_test_plan.py + flow_routes.py + flow_executor.py（isolated 全链路）；frontend/src/flow/FlowTestWorkspace.vue + FlowEditor.vue + NodeConfig.vue + flowModel.ts；tests/test_flow_test_plan.py（51 项）+ tests/flow_model.test.mjs（镜像用例）；文档/需求/20260919_函数编排配置与调试优化/开发计划.md §11 实施记录；文档/接口文档/04-编排与LLM接口.md §3.1 + README 变更记录
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 安装 leftopen 端口查看工具 · zcode · 已验证
-
-时间：2026-09-19T10:47:42.556057+00:00；记录：`.collaboration/entries/000041-2a71434da83c.json`
-
-用户要求从 GitHub 找到并安装 leftopen（SonghaiFan/leftopen，macOS 菜单栏工具：查看监听端口/进程/关联项目并安全关闭开发服务器）。经 brew install --cask songhaifan/tap/leftopen 安装 v0.3.0：App 位于 /Applications/LeftOpen.app，CLI 链接到 /opt/homebrew/bin/leftopen。本轮为机器环境工具安装，未改动工作台任何代码、接口文档或真实 ontology/ 数据。
-
-- 决定：安装方式选 Homebrew cask（README 推荐方式）而非手动下载 Releases
-- 验证：leftopen --version 输出 LeftOpen 0.3.0；/Applications/LeftOpen.app 存在；leftopen 首次运行正常：37 个监听端口/32 进程/7 项目，正确识别 wiz_kq_builder_v2 于 18765
-- 下一步：LeftOpen.app 为菜单栏应用，用户可自行从应用程序文件夹打开 GUI；CLI 常用：leftopen / leftopen <port> / leftopen open <port> / leftopen close <port>
-- 依据/文档：https://github.com/SonghaiFan/leftopen/blob/main/README.zh-CN.md

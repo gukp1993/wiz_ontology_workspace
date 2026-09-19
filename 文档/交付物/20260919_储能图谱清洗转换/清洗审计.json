@@ -1,0 +1,1114 @@
+{
+  "sourceSha256": "fa096ed40520a96e7b737a00a315ffd2056246432b61ec6080575edaaa1a5c86",
+  "sourceNodes": 42,
+  "sourceRelationships": 92,
+  "changes": [
+    {
+      "path": "czy:rule:01.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:01.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:02.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:02.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:03.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:04.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:04.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:05.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:06.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:07.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:07.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:08.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:08.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:09.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:09.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:10.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:10.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:11.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:11.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:12.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:12.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:13.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:13.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:14.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:14.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:15.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:15.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:16.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:16.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:17.rule_content",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    },
+    {
+      "path": "czy:rule:17.param_intro",
+      "change": "清理首尾空白、行尾空白或末尾不配对引号"
+    }
+  ],
+  "notes": {
+    "czy:entity:01": "源定义称簇为设备集合，但关系明确设备包含簇；本次按关系整理为设备的组成单元。",
+    "czy:entity:04": "待确认：名称为园区，实例表和说明却表示储能电站。本次保留名称，不把电站和园区合并认定。",
+    "czy:entity:06": "源文件缺少业务定义；本次不补造。",
+    "czy:attribute:03": "待确认：容量(kWh)减功率(kW)量纲不一致；包含上调/下调多个量，暂用结构体，不定义可执行公式或字段契约。",
+    "czy:attribute:05": "待确认：原单位kW，但计算示例是百分比；对象适用说明仅系统，连线却包含设备及簇。本次按连线保留关联。",
+    "czy:attribute:06": "待确认：设备status和簇alarm的编码不一致，尚未定义统一状态枚举。",
+    "czy:attribute:07": "同时包含充电量、放电量，暂用结构体；最终是否拆属性及统计区间需确认。",
+    "czy:attribute:15": "SOC定义采用0–100%，剩余电量计算需要 capacity × SOC / 100；原取值说明省略了 /100，本次只标注问题，不生成执行公式。",
+    "czy:rule:17": "参数说明与按簇聚合的SOC口径有冲突，需确认簇SOC是否参与设备SOC计算。",
+    "czy:rule:18": "项目层取值规则：仅保留文本参考，不代表本体有可执行SQL。应在项目配置中落实。",
+    "czy:rule:20": "原文件归为规则，但只有计划结果表说明、缺少生成规则。保留为不完整草稿，建议确认后建计划对象。",
+    "czy:rule:05": "策略描述15分钟96点，但计划结果表说明5分钟点；需确认生成粒度、落库粒度及转换关系。"
+  },
+  "relations": [
+    {
+      "sourceRelationId": "czy:relation:1",
+      "source": "czy:attribute:11",
+      "relation": "作为输入",
+      "target": "czy:rule:21",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:2",
+      "source": "czy:attribute:12",
+      "relation": "计算规则",
+      "target": "czy:rule:18",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:3",
+      "source": "czy:entity:06",
+      "relation": "接入",
+      "target": "czy:entity:03",
+      "disposition": "对象链接（基数待确认）",
+      "targetIds": [
+        "mg:07f9a8c5-795e-4317-a7bf-03f6dd8605a9"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:4",
+      "source": "czy:attribute:07",
+      "relation": "计算规则",
+      "target": "czy:rule:18",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:5",
+      "source": "czy:entity:04",
+      "relation": "包含",
+      "target": "czy:entity:06",
+      "disposition": "对象链接（基数待确认）",
+      "targetIds": [
+        "mg:c76eb960-119b-4c0c-8392-072b05a9d122"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:6",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:10",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:03a37eaa-131c-4eda-9838-7b7a94c0e978"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:7",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:12",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:afca46cc-83f0-4b23-a9cb-e8dd36a7933a"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:8",
+      "source": "czy:entity:02",
+      "relation": "包含",
+      "target": "czy:entity:03",
+      "disposition": "对象链接（基数待确认）",
+      "targetIds": [
+        "mg:f5894444-066d-4f88-8c8f-4e5fd4d7a6b8"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:9",
+      "source": "czy:entity:03",
+      "relation": "包含",
+      "target": "czy:entity:01",
+      "disposition": "对象链接（基数待确认）",
+      "targetIds": [
+        "mg:a2ecb0c8-1b31-4576-b66d-1019bcbc7738"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:10",
+      "source": "czy:entity:04",
+      "relation": "包含",
+      "target": "czy:entity:02",
+      "disposition": "对象链接（基数待确认）",
+      "targetIds": [
+        "mg:4d2cc7e8-a63b-49b8-ba7b-d8fb6467b4fe"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:11",
+      "source": "czy:entity:01",
+      "relation": "具有属性",
+      "target": "czy:attribute:01",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:c625899c-9eee-4c26-ae74-11c1f7dba381",
+        "mg:016eb8bb-9365-4f11-b61c-22f2ed2965be"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:12",
+      "source": "czy:entity:01",
+      "relation": "具有属性",
+      "target": "czy:attribute:07",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:65c712fb-fd17-46ca-8b4f-e4f40c78711d"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:13",
+      "source": "czy:entity:01",
+      "relation": "具有属性",
+      "target": "czy:attribute:02",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:132ec94e-d706-438d-a560-0060629df962"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:14",
+      "source": "czy:entity:01",
+      "relation": "具有属性",
+      "target": "czy:attribute:06",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:fbde38b9-0576-4212-a8ae-c97d01f337d2"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:15",
+      "source": "czy:entity:02",
+      "relation": "具有属性",
+      "target": "czy:attribute:01",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:5bafecbc-002b-4fb6-8359-3cdde5bb4f84",
+        "mg:6da844fc-deaa-41e7-bde4-a3f5407f050f"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:16",
+      "source": "czy:entity:02",
+      "relation": "具有属性",
+      "target": "czy:attribute:07",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:4a1ae5b9-5d7d-46d0-b56b-6293fb369baf"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:17",
+      "source": "czy:entity:02",
+      "relation": "具有属性",
+      "target": "czy:attribute:02",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:195af578-4a5b-480d-8e62-9de295208162"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:18",
+      "source": "czy:entity:02",
+      "relation": "具有属性",
+      "target": "czy:attribute:03",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:21ccdf24-d590-4dca-95fe-730b5b5d5edb"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:19",
+      "source": "czy:entity:02",
+      "relation": "具有属性",
+      "target": "czy:attribute:04",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:b8992e02-2785-4932-bbff-ee392aaf43c9"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:20",
+      "source": "czy:entity:02",
+      "relation": "具有属性",
+      "target": "czy:attribute:05",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:2b757237-63dd-44fd-917c-dfc5b7d85523"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:21",
+      "source": "czy:entity:02",
+      "relation": "具有属性",
+      "target": "czy:attribute:06",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:30653a55-3499-464f-bebf-fc3c12682cf8"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:22",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:01",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:4a4702f3-8efa-43b1-a05e-6ad843fad289",
+        "mg:38e663e7-ab29-4fa6-913a-ced0afe273f0"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:23",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:07",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:f40d2ab9-28ff-4737-b103-2837e3b7ae07"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:24",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:02",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:bd56b52b-1214-44d7-8805-1ba3149d76fe"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:25",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:03",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:81e77ab2-76f4-40f0-8e56-ec33aa55bf18"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:26",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:06",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:0d5659c7-72b2-4e59-8d1d-35823f7e7e6e"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:27",
+      "source": "czy:entity:02",
+      "relation": "适用规则",
+      "target": "czy:rule:02",
+      "disposition": "对象规则关联",
+      "targetIds": [
+        "mg:ffe735a2-a158-4a37-bc66-b6da941a8cb8",
+        "6ef239c2-d5c8-44e6-b390-74283300087b"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:28",
+      "source": "czy:entity:02",
+      "relation": "适用规则",
+      "target": "czy:rule:05",
+      "disposition": "对象规则关联",
+      "targetIds": [
+        "mg:ffe735a2-a158-4a37-bc66-b6da941a8cb8",
+        "a530d957-725d-40e4-a1cf-025fbb812452"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:29",
+      "source": "czy:entity:02",
+      "relation": "适用规则",
+      "target": "czy:rule:11",
+      "disposition": "对象规则关联",
+      "targetIds": [
+        "mg:ffe735a2-a158-4a37-bc66-b6da941a8cb8",
+        "7d01a2b6-55eb-4799-8f15-560266d8c01f"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:30",
+      "source": "czy:entity:03",
+      "relation": "适用规则",
+      "target": "czy:rule:02",
+      "disposition": "对象规则关联",
+      "targetIds": [
+        "mg:868dba37-1ac5-4e0a-bf2b-025ab0f2f58c",
+        "6ef239c2-d5c8-44e6-b390-74283300087b"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:31",
+      "source": "czy:entity:03",
+      "relation": "适用规则",
+      "target": "czy:rule:07",
+      "disposition": "对象规则关联",
+      "targetIds": [
+        "mg:868dba37-1ac5-4e0a-bf2b-025ab0f2f58c",
+        "a112ba2a-21fe-4cfd-b491-fd365c09ba53"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:32",
+      "source": "czy:entity:04",
+      "relation": "适用规则",
+      "target": "czy:rule:12",
+      "disposition": "对象规则关联",
+      "targetIds": [
+        "mg:abc99644-8ec7-4c86-b128-0e7e4d69322e",
+        "cb4798ca-0eb7-4cb4-8e26-15a6325b9bad"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:33",
+      "source": "czy:attribute:01",
+      "relation": "作为输入",
+      "target": "czy:rule:05",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:34",
+      "source": "czy:attribute:01",
+      "relation": "作为输入",
+      "target": "czy:rule:13",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:35",
+      "source": "czy:attribute:01",
+      "relation": "校验规则",
+      "target": "czy:rule:08",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:36",
+      "source": "czy:attribute:07",
+      "relation": "作为输入",
+      "target": "czy:rule:03",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:37",
+      "source": "czy:attribute:07",
+      "relation": "计算规则",
+      "target": "czy:rule:04",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:38",
+      "source": "czy:attribute:02",
+      "relation": "作为输入",
+      "target": "czy:rule:04",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:39",
+      "source": "czy:attribute:02",
+      "relation": "校验规则",
+      "target": "czy:rule:08",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:40",
+      "source": "czy:attribute:03",
+      "relation": "作为输入",
+      "target": "czy:rule:05",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:41",
+      "source": "czy:attribute:03",
+      "relation": "计算规则",
+      "target": "czy:rule:13",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:42",
+      "source": "czy:attribute:04",
+      "relation": "计算规则",
+      "target": "czy:rule:03",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:43",
+      "source": "czy:attribute:05",
+      "relation": "反馈",
+      "target": "czy:rule:05",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:44",
+      "source": "czy:attribute:05",
+      "relation": "计划对比对象",
+      "target": "czy:rule:05",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:45",
+      "source": "czy:attribute:06",
+      "relation": "作为输入",
+      "target": "czy:rule:05",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:46",
+      "source": "czy:attribute:06",
+      "relation": "作为输入",
+      "target": "czy:rule:13",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:47",
+      "source": "czy:attribute:06",
+      "relation": "校验规则",
+      "target": "czy:rule:08",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:48",
+      "source": "czy:attribute:05",
+      "relation": "实际对比项",
+      "target": "czy:attribute:02",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:49",
+      "source": "czy:rule:01",
+      "relation": "约束规则",
+      "target": "czy:rule:07",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:50",
+      "source": "czy:rule:01",
+      "relation": "约束规则",
+      "target": "czy:rule:11",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:51",
+      "source": "czy:rule:02",
+      "relation": "判定边界",
+      "target": "czy:rule:07",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:52",
+      "source": "czy:rule:02",
+      "relation": "触发",
+      "target": "czy:rule:01",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:53",
+      "source": "czy:rule:02",
+      "relation": "触发",
+      "target": "czy:rule:10",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:54",
+      "source": "czy:rule:02",
+      "relation": "识别规则",
+      "target": "czy:rule:08",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:55",
+      "source": "czy:rule:03",
+      "relation": "电价规则",
+      "target": "czy:rule:12",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:56",
+      "source": "czy:rule:04",
+      "relation": "数据选取规则",
+      "target": "czy:rule:09",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:57",
+      "source": "czy:rule:05",
+      "relation": "执行条件",
+      "target": "czy:rule:06",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:58",
+      "source": "czy:rule:05",
+      "relation": "数据选取规则",
+      "target": "czy:rule:09",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:59",
+      "source": "czy:rule:05",
+      "relation": "校验规则",
+      "target": "czy:rule:16",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:60",
+      "source": "czy:rule:05",
+      "relation": "生成",
+      "target": "czy:rule:01",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:61",
+      "source": "czy:rule:05",
+      "relation": "生成",
+      "target": "czy:rule:10",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:62",
+      "source": "czy:rule:05",
+      "relation": "生成",
+      "target": "czy:rule:15",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:63",
+      "source": "czy:rule:05",
+      "relation": "电价规则",
+      "target": "czy:rule:12",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:64",
+      "source": "czy:rule:05",
+      "relation": "约束规则",
+      "target": "czy:rule:07",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:65",
+      "source": "czy:rule:05",
+      "relation": "约束规则",
+      "target": "czy:rule:11",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:66",
+      "source": "czy:rule:10",
+      "relation": "执行条件",
+      "target": "czy:rule:06",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:67",
+      "source": "czy:rule:12",
+      "relation": "匹配规则",
+      "target": "czy:rule:14",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:68",
+      "source": "czy:rule:13",
+      "relation": "约束规则",
+      "target": "czy:rule:07",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:69",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:04",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:fb77fdbd-b516-41d1-94ff-7f7101eb71ce"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:70",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:05",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:f8f45259-ce9e-4761-b134-c87de4f0197e"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:71",
+      "source": "czy:entity:01",
+      "relation": "具有属性",
+      "target": "czy:attribute:04",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:aca92545-60b7-43b1-8360-01b8ea7dcbd2"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:72",
+      "source": "czy:entity:01",
+      "relation": "具有属性",
+      "target": "czy:attribute:03",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:98a6ef7f-52d0-498d-bf2a-251c4aa13ff8"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:73",
+      "source": "czy:entity:01",
+      "relation": "具有属性",
+      "target": "czy:attribute:05",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:36aac5f4-51e1-4753-8b78-3c3bfe0f3f93"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:74",
+      "source": "czy:attribute:01",
+      "relation": "计算规则",
+      "target": "czy:rule:17",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:75",
+      "source": "czy:attribute:01",
+      "relation": "计算规则",
+      "target": "czy:rule:18",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:76",
+      "source": "czy:attribute:01",
+      "relation": "计算规则",
+      "target": "czy:rule:21",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:77",
+      "source": "czy:entity:01",
+      "relation": "直接读取",
+      "target": "czy:attribute:01",
+      "disposition": "同一对象属性去重；读取方式保留在项目映射参考",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:78",
+      "source": "czy:entity:04",
+      "relation": "包含",
+      "target": "czy:entity:05",
+      "disposition": "对象链接（基数待确认）",
+      "targetIds": [
+        "mg:edd95f16-a697-4b5b-8628-e785bac7306b"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:79",
+      "source": "czy:entity:05",
+      "relation": "接入",
+      "target": "czy:entity:03",
+      "disposition": "对象链接（基数待确认）",
+      "targetIds": [
+        "mg:b1975270-735e-450a-ad21-ea1b82cbfcc9"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:80",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:08",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:889c838a-d6ff-4733-8263-002f83fc573b"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:81",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:09",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:02097276-3caa-4598-91af-b620f141c91f"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:82",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:11",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:df37089a-ded5-441f-93a9-e2b472654988"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:83",
+      "source": "czy:entity:03",
+      "relation": "包含",
+      "target": "czy:attribute:13",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:6341e83b-fc99-4cc0-aec2-b01dc194c7e4"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:84",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:14",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:8a634115-8c45-4426-87d9-2313f6883711"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:85",
+      "source": "czy:attribute:13",
+      "relation": "计算规则",
+      "target": "czy:rule:18",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:86",
+      "source": "czy:attribute:14",
+      "relation": "计算规则",
+      "target": "czy:rule:18",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:87",
+      "source": "czy:entity:03",
+      "relation": "具有规则",
+      "target": "czy:rule:20",
+      "disposition": "对象规则关联",
+      "targetIds": [
+        "mg:868dba37-1ac5-4e0a-bf2b-025ab0f2f58c",
+        "a871e6cf-ccf1-4702-9f27-58cf3231b942"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:88",
+      "source": "czy:entity:01",
+      "relation": "具有属性",
+      "target": "czy:attribute:15",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:8ec3f392-e2f9-46db-8128-ca7a61e01be0"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:89",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:15",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:98c8c737-fafc-4dc6-bda2-de958f86f441"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:90",
+      "source": "czy:entity:01",
+      "relation": "具有属性",
+      "target": "czy:attribute:13",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:a5b8f2bc-4e4e-44ed-9bd1-7a1060f1c5f6"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:91",
+      "source": "czy:entity:03",
+      "relation": "具有属性",
+      "target": "czy:attribute:14",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:f684e49c-23fa-40ff-a2ac-757d0b200caa"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:92",
+      "source": "czy:attribute:15",
+      "relation": "作为输入",
+      "target": "czy:rule:21",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    }
+  ],
+  "sourceIdToTargetIds": {
+    "czy:entity:01": [
+      "mg:8026a48f-da94-4436-b5a1-0aa638679605"
+    ],
+    "czy:entity:02": [
+      "mg:ffe735a2-a158-4a37-bc66-b6da941a8cb8"
+    ],
+    "czy:entity:03": [
+      "mg:868dba37-1ac5-4e0a-bf2b-025ab0f2f58c"
+    ],
+    "czy:entity:04": [
+      "mg:abc99644-8ec7-4c86-b128-0e7e4d69322e"
+    ],
+    "czy:attribute:01": [
+      "mg:06e90e69-c6b5-4faa-a186-a066d628e133",
+      "mg:4e4c5e72-bedf-4f15-8142-cf27c62cbe49"
+    ],
+    "czy:attribute:02": [
+      "mg:067d8444-5bec-49b7-9d44-8497bf29f483"
+    ],
+    "czy:attribute:03": [
+      "mg:dfbf9465-2c6e-42c2-be81-d39133c9f498"
+    ],
+    "czy:attribute:04": [
+      "mg:0e2922e3-4cc6-4617-9706-5145d9e63ab7"
+    ],
+    "czy:attribute:05": [
+      "mg:482456d7-c302-4919-bd70-4b855af8e514"
+    ],
+    "czy:attribute:06": [
+      "mg:416af2d1-5d27-4136-ae5c-45dc2fe5b0aa"
+    ],
+    "czy:rule:01": [
+      "mg:5936194c-6e03-4802-bf39-090fefefd0ad"
+    ],
+    "czy:rule:02": [
+      "mg:6ef239c2-d5c8-44e6-b390-74283300087b"
+    ],
+    "czy:rule:03": [
+      "mg:e745d371-6ec7-49ee-8295-443f92d49b47"
+    ],
+    "czy:rule:04": [
+      "mg:8e3a03f7-0398-4036-a9cc-f07bb6129cce"
+    ],
+    "czy:rule:05": [
+      "mg:a530d957-725d-40e4-a1cf-025fbb812452"
+    ],
+    "czy:rule:06": [
+      "mg:76f7207d-8343-423c-8825-260b0f6019fc"
+    ],
+    "czy:rule:07": [
+      "mg:a112ba2a-21fe-4cfd-b491-fd365c09ba53"
+    ],
+    "czy:rule:08": [
+      "mg:4cf4b4a1-d323-4bd0-84ba-c33809593145"
+    ],
+    "czy:rule:09": [
+      "mg:5c764ad0-bb3e-4001-ab23-2c7f2de181e3"
+    ],
+    "czy:rule:10": [
+      "mg:0caf2e71-8bc8-42f0-9218-d0b387408d47"
+    ],
+    "czy:rule:11": [
+      "mg:7d01a2b6-55eb-4799-8f15-560266d8c01f"
+    ],
+    "czy:rule:12": [
+      "mg:cb4798ca-0eb7-4cb4-8e26-15a6325b9bad"
+    ],
+    "czy:rule:13": [
+      "mg:a9f41239-939b-42bc-84a2-756227998edb"
+    ],
+    "czy:rule:14": [
+      "mg:bed0eb76-2105-4c09-983a-3a22709d219e"
+    ],
+    "czy:rule:15": [
+      "mg:3bf0e8f0-d0ea-4878-8612-249ca933a616"
+    ],
+    "czy:rule:16": [
+      "mg:6476eab2-785b-47f3-b51d-b45d3bd91a9e"
+    ],
+    "czy:attribute:07": [
+      "mg:b3e3d3f6-0df4-4c63-9ccd-6e923c02030f"
+    ],
+    "czy:rule:17": [
+      "mg:613f5b4b-1ab8-4e17-9f9c-79a4e9fb8fb8"
+    ],
+    "czy:entity:05": [
+      "mg:b85e9fc3-aa34-4878-8028-0b9838e86dfe"
+    ],
+    "czy:attribute:08": [
+      "mg:f922dfec-0b0e-42b7-957b-aac1f0121faa"
+    ],
+    "czy:attribute:09": [
+      "mg:a9138558-8216-4d66-8124-ac5faedf87e7"
+    ],
+    "czy:attribute:10": [
+      "mg:dc05adab-70a4-4e57-b6cf-12a9763c408a"
+    ],
+    "czy:attribute:11": [
+      "mg:8e9be10e-e0fb-4254-ab53-b6a725c4d108"
+    ],
+    "czy:attribute:12": [
+      "mg:a24dc336-df09-431c-b047-f35608ca337a"
+    ],
+    "czy:rule:18": [
+      "mg:af68bb56-9293-4b01-af31-bb918386b0cf"
+    ],
+    "czy:rule:19": [
+      "mg:a741feef-47ff-45fc-ab3d-bf5e81c5118e"
+    ],
+    "czy:entity:06": [
+      "mg:2a433fbb-e101-4014-bab1-a4912fa1b8d5"
+    ],
+    "czy:attribute:13": [
+      "mg:06597467-a436-4ad7-8d9d-38911cc6ddc4"
+    ],
+    "czy:attribute:14": [
+      "mg:cd11c605-e60f-44ba-bdbc-8b9fdb086dda"
+    ],
+    "czy:rule:20": [
+      "mg:a871e6cf-ccf1-4702-9f27-58cf3231b942"
+    ],
+    "czy:attribute:15": [
+      "mg:0301a872-2c23-4d2f-adb3-b92b2a31e7cb"
+    ],
+    "czy:rule:21": [
+      "mg:8e928d1a-586b-4f6b-b53d-0527bd045b46"
+    ]
+  }
+}
