@@ -20,6 +20,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
 import ObjectCanvas from './ObjectCanvas.vue'
+import OntologyGraph from './OntologyGraph.vue'
 import PropertyManager from './PropertyManager.vue'
 import Field from '../shared/EditorField.vue'
 import AppSelect from '../shared/AppSelect.vue'
@@ -46,7 +47,7 @@ const props = defineProps<{ state: any; focusType?: string; focusProperty?: stri
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
 
-const mode = ref<'list' | 'canvas'>('list'), selected = ref(''), message = ref('')
+const mode = ref<'list' | 'canvas' | 'graph'>('list'), selected = ref(''), message = ref('')
 const canvasRef = ref<any>(null)
 
 const graph = computed(() => props.state?.ontology?.['@graph'] || [])
@@ -632,9 +633,19 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
     <div class="ow-mode-tabs ow-canvas-tabs" role="tablist" aria-label="对象建模模式">
       <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
       <button role="tab" class="active" :aria-selected="true">关系画布</button>
+      <button role="tab" :aria-selected="false" @click="mode = 'graph'">本体图谱</button>
     </div>
     <ObjectCanvas ref="canvasRef" :state="state" @before-change="emit('before-change')" @changed="emit('changed')" @select="selectById"
       @create-object="createFromCanvas" @edit-definition="editFromCanvas" @create-link="linkFromCanvas"/>
+  </div>
+  <!-- 本体图谱（20260919）：只读全量视图，五类内容上图；与画布同款页签，独立于编辑保存路径 -->
+  <div v-else-if="mode === 'graph' && !editor" class="ow-canvas-wrap">
+    <div class="ow-mode-tabs ow-canvas-tabs" role="tablist" aria-label="对象建模模式">
+      <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
+      <button role="tab" :aria-selected="false" @click="showCanvas">关系画布</button>
+      <button role="tab" class="active" :aria-selected="true">本体图谱</button>
+    </div>
+    <OntologyGraph :state="state" :ontology-id="state?.workspaceId || ''"/>
   </div>
   <!-- 编辑态：主内容整体替换为一个完整表单（原型 ui.editor ? editorView() : pageView()）；列表与画布共用同一套 -->
   <template v-if="editor">
@@ -683,6 +694,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
       <div class="ow-mode-tabs" role="tablist" aria-label="对象建模模式">
         <button role="tab" class="active" :aria-selected="true">对象列表</button>
         <button role="tab" :aria-selected="false" @click="showCanvas">关系画布</button>
+        <button role="tab" :aria-selected="false" @click="mode = 'graph'">本体图谱</button>
       </div>
       <button class="primary" @click="openObjectEditor(true)">＋ 新建对象</button>
     </div>
