@@ -97,33 +97,37 @@ def _extract_json(text):
     except ValueError:
         pass
     for opener, closer in (('{', '}'), ('[', ']')):
-        start = text.find(opener)
-        if start < 0:
-            continue
-        depth = 0
-        in_str = False
-        escaped = False
-        for i in range(start, len(text)):
-            ch = text[i]
-            if in_str:  # 引号内的括号/引号不参与配对（值含不成对括号时不再截错块）
-                if escaped:
-                    escaped = False
-                elif ch == '\\':
-                    escaped = True
-                elif ch == '"':
-                    in_str = False
-                continue
-            if ch == '"':
-                in_str = True
-            elif ch == opener:
-                depth += 1
-            elif ch == closer:
-                depth -= 1
-                if depth == 0:
-                    try:
-                        return json.loads(text[start:i + 1])
-                    except ValueError:
+        pos = text.find(opener)
+        while pos >= 0:
+            depth = 0
+            in_str = False
+            escaped = False
+            end = -1
+            for i in range(pos, len(text)):
+                ch = text[i]
+                if in_str:  # 引号内的括号/引号不参与配对（值含不成对括号时不再截错块）
+                    if escaped:
+                        escaped = False
+                    elif ch == '\\':
+                        escaped = True
+                    elif ch == '"':
+                        in_str = False
+                    continue
+                if ch == '"':
+                    in_str = True
+                elif ch == opener:
+                    depth += 1
+                elif ch == closer:
+                    depth -= 1
+                    if depth == 0:
+                        end = i
                         break
+            if end < 0:
+                break  # 无平衡块：换下一种括号类型
+            try:
+                return json.loads(text[pos:end + 1])
+            except ValueError:
+                pos = text.find(opener, end + 1)  # 该块不可解析：回退继续找后续候选块
     raise ValueError('输出不含可解析的 JSON')
 
 
