@@ -1,0 +1,32 @@
+{
+  "ticket": "b50f2ea720e1403fb5fc5a2d34908358",
+  "task": "函数编排列表输出绑定时间序列属性（用户反馈下拉禁选）",
+  "status": "implemented",
+  "summary": "用户反馈对象映射选「采样值取值规则」后取值输出「采样序列·列表」禁选。根因：原规则一刀切禁止 list/object 编排输出绑定属性（前后端镜像），恰好挡住时间序列属性主场景（该编排输出 list<object{timestamp,value}> 正是序列形状）。按契约先行放开：kind='flow' 新增可选 result:{valueField,timestampField}（元素对象字段稳定 id），时间序列属性可绑 list<object{fields}> 输出；标量属性绑列表、对象输出仍拒绝；标量输出绑定形状不变。提交 1854e5d。",
+  "decisions": [
+    "result 仅在列表输出绑时间序列时使用：取值字段须 number、时间字段须 datetime，缺失/不存在/类型不符阻断（前后端镜像）；执行语义随编排取值执行能力一并实现，本轮仅配置与校验",
+    "bindingModel 解码严格校验 result 结构（偏离走 unknown 零丢失），提交仅在有映射时写出，既有标量绑定存储形状不变（金样/旧数据不受影响）；金样夹具不含 flow 样例（编排在临时根不可重放），该分支回归以 test_project_flow_source 为准 21→29 步",
+    "顺带修复 README 变更记录表上一轮 R06 行误插于表头之前的问题"
+  ],
+  "verification": [
+    "build（vue-tsc）通过；test_project_flow_source 29 步、test_validation_split 金样 97 样例逐字节等价、test_value_shape、test_property_sources、test_project_api_roundtrip 13 步全过；mapping_forms 为既有他人基线失败（菜单文案断言，与本次无关）",
+    "隔离实例 18902 种子脚本复现用户场景（本体 timeSeries 属性+列表输出编排+flow 绑定）：project-save 与 project-validate 零错误；浏览器实测：取值输出下拉「采样序列·列表」可选中、取值字段/时间字段展示「采样值·数值/时间戳·日期时间」、属性清单摘要含字段映射且状态已配置",
+    "临时实例/临时目录/种子脚本/浏览器标签页已清理；18765 已 restart（后端校验变更生效）返回 200；真实数据零写入"
+  ],
+  "next": [
+    "用户在 18765 对 采样soc 重新配置取值输出（选采样序列→选字段→保存）"
+  ],
+  "references": [
+    "workbench/project_validation.py",
+    "frontend/src/project/bindingModel.ts",
+    "frontend/src/project/PropertySources.vue",
+    "tests/test_project_flow_source.py",
+    "git 1854e5d + 接口文档 01 §3.1"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-19T13:18:47.417667+00:00",
+  "sequence": 54,
+  "filename": "000054-a7852dbf43bf.json",
+  "record_hash": "d616236d862dc85ef3870cf2611c6eeb73e1c8995d98bd3ddb52239d84699f6f",
+  "context_advanced": true
+}

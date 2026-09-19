@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`d0fa5096e431b6d6`
+上下文版本：`99eb70fc487c8ab3`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,18 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 函数编排列表输出绑定时间序列属性（用户反馈下拉禁选） · zcode · 已实施，待验收
+
+时间：2026-09-19T13:18:47.417667+00:00；记录：`.collaboration/entries/000054-a7852dbf43bf.json`
+
+用户反馈对象映射选「采样值取值规则」后取值输出「采样序列·列表」禁选。根因：原规则一刀切禁止 list/object 编排输出绑定属性（前后端镜像），恰好挡住时间序列属性主场景（该编排输出 list<object{timestamp,value}> 正是序列形状）。按契约先行放开：kind='flow' 新增可选 result:{valueField,timestampField}（元素对象字段稳定 id），时间序列属性可绑 list<object{fields}> 输出；标量属性绑列表、对象输出仍拒绝；标量输出绑定形状不变。提交 1854e5d。
+
+- 决定：result 仅在列表输出绑时间序列时使用：取值字段须 number、时间字段须 datetime，缺失/不存在/类型不符阻断（前后端镜像）；执行语义随编排取值执行能力一并实现，本轮仅配置与校验；bindingModel 解码严格校验 result 结构（偏离走 unknown 零丢失），提交仅在有映射时写出，既有标量绑定存储形状不变（金样/旧数据不受影响）；金样夹具不含 flow 样例（编排在临时根不可重放），该分支回归以 test_project_flow_source 为准 21→29 步；顺带修复 README 变更记录表上一轮 R06 行误插于表头之前的问题
+- 验证：build（vue-tsc）通过；test_project_flow_source 29 步、test_validation_split 金样 97 样例逐字节等价、test_value_shape、test_property_sources、test_project_api_roundtrip 13 步全过；mapping_forms 为既有他人基线失败（菜单文案断言，与本次无关）；隔离实例 18902 种子脚本复现用户场景（本体 timeSeries 属性+列表输出编排+flow 绑定）：project-save 与 project-validate 零错误；浏览器实测：取值输出下拉「采样序列·列表」可选中、取值字段/时间字段展示「采样值·数值/时间戳·日期时间」、属性清单摘要含字段映射且状态已配置；临时实例/临时目录/种子脚本/浏览器标签页已清理；18765 已 restart（后端校验变更生效）返回 200；真实数据零写入
+- 下一步：用户在 18765 对 采样soc 重新配置取值输出（选采样序列→选字段→保存）
+- 依据/文档：workbench/project_validation.py；frontend/src/project/bindingModel.ts；frontend/src/project/PropertySources.vue；tests/test_project_flow_source.py；git 1854e5d + 接口文档 01 §3.1
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### 储能jsonId图谱清洗转当前本体数据 · codex · 已验证
 
@@ -142,16 +154,4 @@
 - 验证：原型47项jsdom检查通过，含同名、回滚演示、再次主动导入、丢响应回执及跨页保留；无浏览器视觉或正式产品迁移验证。；四份文件相互链接、M01-M24完整性、无网络/本地持久化、空白检查通过。；未改产品代码、正式接口、用户数据；未运行产品build或后端测试。交付前重新读取并核对zcode最新函数编排交接，不修改其实施内容及其他未提交记录。
 - 下一步：执行者按本目录执行指令实施，先接口/映射矩阵，再依赖包/暂存预检/单事务导入/UI，完成隔离M01-M24验收。
 - 依据/文档：文档/需求/20260919_本体与项目配置迁移/交互原型_v1.html；文档/需求/20260919_本体与项目配置迁移/需求说明.md；文档/需求/20260919_本体与项目配置迁移/开发计划.md；文档/需求/20260919_本体与项目配置迁移/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 执行 20260919_函数编排配置与调试优化/执行指令.md（T0–T5，F01–F20） · zcode · 已实施，待验收
-
-时间：2026-09-19T10:53:37.518061+00:00；记录：`.collaboration/entries/000042-c44fa2336769.json`
-
-接口文档先行登记（04 §3.1 testMode=isolated/inputOverrides/inputs 预览/错误码分层/传递 skipped/[] 恒 400；01 §4 交叉引用；05 条目；README 变更记录），再改代码。后端新增 flow_test_plan.py 纯范围计划（结构 400→被测节点配置 422→边界取值 422 全部先于执行；后端终审 0/false 有效、NaN 拒绝、对象列表按声明递归、缺字段≠显式 null；有界预览 ≤100 条/64KiB），flow-run isolated 分支仅以 orderedTargets 交执行器（范围外 A/E 配置错误不阻断），执行器 isolated 解析（稳定 ID 覆盖仅限范围外/未绑定输入，内部严格取真实结果，不接受旧技术名绕过）+失败传递性 skipped（修正旧版下游 failed）+每节点 inputs/inputsTruncated。前端新增 FlowTestWorkspace 独立测试视图（左输入右结果、范围=整条/单节点/连续片段、起止按 dependencyPaths、多路径显式选集、结果绑定配置签名+项目+范围+输入签名+请求代次、晚回包丢弃、v-show 保留状态），FlowEditor 设计/测试双视图+显式运行项目+测试入口（移除旧画布下测试面板与测试勾选模式），NodeConfig 连续区块（名称说明/输入/实现/输出/高级，能力零删减），FlowList 名称说明同列+更多菜单。
-
-- 决定：契约分层：结构/集合 400 → check_flow 仅过滤被测节点 422 → 取值预检 422，全部先于任何执行；覆盖键=节点稳定 ID+输入稳定 ID；范围内内部依赖与固定/入口来源禁止覆盖（400）；失败沿所选范围传递性 skipped 为全模式语义（已登记契约），修正旧版传递下游以 failed 呈现的问题；测试视图 v-show 保持挂载：设计↔测试往返保留画布视口/选中节点/输入/范围/结果；结果新鲜度=配置签名+项目+范围+输入签名+请求代次，晚回包按序号丢弃；运行项目显示当前项目上下文，为空给「选择项目→」走既有链路，不静默重绑连接；整条范围沿用 revision/409/互斥既有约束；单节点与片段统一走 isolated 模式（新 UI 不再用旧技术名覆盖）
-- 验证：tests/test_flow_test_plan.py 新增 51 项全过：B–D 输入10→12/36/18 且 A/E 不在 nodeResults（执行计数0结构证据）、预检缺值/类型错 422 零执行、内部/固定/入口覆盖与未知项 400、环/断开/重复/不存在/空 targets 400、传递跳过、旧调用兼容、预览截断；既有回归全绿：test_flow_executor 33、test_flows 85、test_flow_sql_dialect 25、test_project_flow_source 21、flow_model.test.mjs（含新增镜像用例）全过；前端 22 套件 21 过（mapping_forms 为他人 v2.1 既有基线）；typecheck+build 通过；隔离实例 18879 浏览器验收：B–D 12/36/18 逐节点输出与输入切换（B{x:10}/C{x:12}/D{x:36}）；A/E『本次不执行』；缺值前置拒绝；B 失败→C/D 未执行、C 失败→B 保留；范围外 A 公式清空不阻断；配置/输入变化旧结果徽标；整条 X=10→E=1800；运行项目真实显示；1440/1280/1024 截图+768 可用；设计↔测试往返保留画布/选中/输入/结果；真实 18765 实例与用户数据零写入，隔离实例与临时根已清理
-- 下一步：用户验收：编排列表→编辑→测试片段（默认起止为首末节点，按需改 B→D）体验独立测试视图；限制（如实记录）：F09 侧路分支/F16 属性返回往返/F18 大数据/F19 写节点确认帧未浏览器实测（后端语义均有断言；F16 机制未动且 test_project_flow_source 21 步过）；跨账号用例由 storage owner 既有测试覆盖；mapping_forms 既有基线失败待负责人处理
-- 依据/文档：workbench/flow_test_plan.py + flow_routes.py + flow_executor.py（isolated 全链路）；frontend/src/flow/FlowTestWorkspace.vue + FlowEditor.vue + NodeConfig.vue + flowModel.ts；tests/test_flow_test_plan.py（51 项）+ tests/flow_model.test.mjs（镜像用例）；文档/需求/20260919_函数编排配置与调试优化/开发计划.md §11 实施记录；文档/接口文档/04-编排与LLM接口.md §3.1 + README 变更记录
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
