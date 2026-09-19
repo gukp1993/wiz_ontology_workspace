@@ -56,8 +56,11 @@ async function loadSfc(path, moduleOverrides) {
   } else {
     code = raw
   }
+  // 未知 .vue 子组件统一桩化（本测试只测被测组件自身的状态与渲染）
+  const vueStub = await stubGenericComponent()
   code = code.replace(/from (['"])([^'"]+)\1/g, (_, q, spec) => {
     if (moduleOverrides[spec]) return 'from ' + JSON.stringify(moduleOverrides[spec])
+    if (spec.endsWith('.vue')) return 'from ' + JSON.stringify(vueStub)
     const target = spec === 'vue' ? require.resolve('vue') : resolve('frontend/src', spec + '.ts')
     return 'from ' + JSON.stringify(pathToFileURL(target).href)
   })
@@ -167,10 +170,24 @@ export function conflictSuggestions() { return [] }
   return file
 }
 
+async function stubGenericComponent() {
+  const file = join(root, 'generic_stub.mjs')
+  const resolvedVue = pathToFileURL(resolve('frontend/node_modules/vue/dist/vue.runtime.esm-bundler.js')).href
+  writeFileSync(file, ts.transpileModule(`
+import { h } from ${JSON.stringify(resolvedVue)}
+export default { props: ['value', 'placeholder', 'ariaLabel'], emits: ['update:value', 'clear'],
+  render() { return h('span', this.$slots.default ? this.$slots.default() : []) } }
+`, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText)
+  return file
+}
+
 async function stubAppError() {
   const file = join(root, 'apperror_stub.mjs')
+  const resolvedVue = pathToFileURL(resolve('frontend/node_modules/vue/dist/vue.runtime.esm-bundler.js')).href
   writeFileSync(file, ts.transpileModule(`
-export default { props: ['title', 'reason', 'hint', 'retryLabel'], template: '<div class="stub-error">{{title}}</div>' }
+import { h } from ${JSON.stringify(resolvedVue)}
+export default { props: ['title', 'reason', 'hint', 'retryLabel'],
+  render() { return h('div', { class: 'stub-error' }, String(this.title || '')) } }
 `, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText)
   return file
 }

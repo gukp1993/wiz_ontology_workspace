@@ -6,6 +6,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppError from '../shared/AppError.vue'
+import SearchField from '../shared/SearchField.vue'
 import {
   conflictSuggestions, discard, exportDownload, exportPreview, importConfirm, importPreview,
   importResult, stageUpload,
@@ -266,32 +267,32 @@ function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) 
     <p v-if="listsError" class="inline-error" role="alert">{{ listsError }} <button type="button" @click="loadLists(true)">重试</button></p>
     <div class="ct-pickhead">
       <h3>选择要导出的内容</h3>
-      <input v-model="searchText" type="search" class="ct-search" placeholder="搜索本体或项目…" aria-label="搜索本体或项目">
+      <div class="ct-search"><SearchField :value="searchText" placeholder="搜索本体或项目" aria-label="搜索本体或项目" @update:value="searchText = $event"/></div>
     </div>
     <div class="ct-columns">
       <div class="ct-col">
         <h4>本体（可多选）</h4>
         <p v-if="!filteredOntologies.length" class="muted">还没有本体。</p>
-        <label v-for="o in filteredOntologies" :key="o.id" class="ct-item">
+        <label v-for="o in filteredOntologies" :key="o.id" class="check-option ct-item">
           <input type="checkbox" :checked="selectedModels.includes(o.id)" @change="invalidateExportPreview(); toggle(selectedModels, o.id)">
-          <span>{{ o.name }}</span>
+          <span class="ct-item-name">{{ o.name }}</span>
         </label>
       </div>
       <div class="ct-col">
         <h4>相关项目（可多选，默认不全选）</h4>
         <p v-if="!filteredProjects.length" class="muted">还没有项目；可只导出本体。</p>
-        <label v-for="p in filteredProjects" :key="p.id" class="ct-item">
+        <label v-for="p in filteredProjects" :key="p.id" class="check-option ct-item">
           <input type="checkbox" :checked="selectedProjects.includes(p.id)" @change="invalidateExportPreview(); toggle(selectedProjects, p.id)">
-          <span>{{ p.name }}</span>
+          <span class="ct-item-name">{{ p.name }}</span>
         </label>
       </div>
     </div>
     <details class="ct-extra" :open="showExtra" @toggle="showExtra = ($event.target as HTMLDetailsElement).open">
       <summary>额外编排（可选，未绑定到项目的编排）</summary>
       <p v-if="!extraFlows.length" class="muted">当前没有编排。</p>
-      <label v-for="f in extraFlows" :key="f.id" class="ct-item">
+      <label v-for="f in extraFlows" :key="f.id" class="check-option ct-item">
         <input type="checkbox" :checked="selectedExtraFlows.includes(f.id)" @change="invalidateExportPreview(); toggle(selectedExtraFlows, f.id)">
-        <span>{{ f.name }}</span>
+        <span class="ct-item-name">{{ f.name }}</span>
       </label>
     </details>
     <div class="tools ct-actions">
@@ -372,7 +373,7 @@ function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) 
       <div class="ct-drop">
         <strong>{{ fileName ? '已选择文件' : '选择配置包' }}</strong>
         <button type="button" :disabled="busyImport" @click="pickFile">{{ fileName ? '更换文件' : '选择文件' }}</button>
-        <input ref="fileInput" type="file" accept=".zip" hidden @change="onFileChange">
+        <input ref="fileInput" type="file" accept=".zip" class="ct-file-input" @change="onFileChange">
         <p v-if="fileName" class="note">{{ fileName }}（{{ formatSize(fileSize) }}）
           <template v-if="uploading"> · 正在上传 {{ uploadDone }}/{{ uploadTotal }} 分片…</template>
           <template v-else-if="busy && uploadId"> · 正在检查配置包…</template>
@@ -431,11 +432,15 @@ function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) 
 .ct-tabs button.active{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
 .ct-card{padding:20px 22px}
 .ct-pickhead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
-.ct-search{max-width:260px}
+.ct-search{max-width:280px}
+.ct-search .search-field{width:100%}
 .ct-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.ct-col h4{margin:0 0 8px;font-size:13px}
-.ct-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer}
+.ct-col h4{margin:0 0 4px;font-size:13px}
+.ct-item{margin:0;padding:9px 10px;border-radius:var(--r-sm);cursor:pointer;color:var(--ink);font-size:14px}
 .ct-item:hover{background:var(--paper-2)}
+.ct-item input[type="checkbox"]{margin:3px 0 0}
+.ct-item-name{color:var(--ink);overflow-wrap:anywhere}
+.ct-file-input{display:none!important}
 .ct-extra{margin-top:12px}
 .ct-extra summary{cursor:pointer;font-size:13px;color:var(--ink-2)}
 .ct-actions{margin-top:14px;align-items:center;flex-wrap:wrap}
@@ -453,7 +458,7 @@ function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) 
 .ct-confirm-banner{background:var(--blue-soft);color:var(--blue-ink);border:1px solid var(--blue);border-radius:var(--r-sm);padding:8px 12px;margin-bottom:12px;font-size:13px}
 .ct-result{width:100%;border-collapse:collapse}
 .ct-result th,.ct-result td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;font-size:13px}
-.ct-name-input{width:100%;max-width:240px}
+.ct-name-input{width:100%;max-width:240px;margin:0;min-height:36px;padding:7px 10px}
 .ct-reason{color:var(--muted)}
 .ct-success{padding:4px 0}
 .ct-success h3{margin:0 0 8px;color:var(--ok)}
