@@ -15,8 +15,10 @@ import { useOntTable } from './ontList'
 import { graphReferences } from './editorModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
-const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string } }>()
+// canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
+const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string }>()
 const emit = defineEmits(['before-change', 'changed', 'navigate'])
+function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
 
@@ -181,7 +183,10 @@ async function remove(id: string) {
       <h2>动作定义</h2>
       <p>集中维护共享动作库：只写名称、业务定义、业务效果。对象建模中选择哪些对象支持此动作；具体执行由项目绑定配置。</p>
     </div>
-    <div class="ont-actions"><button type="button" class="primary" @click="openNew">＋ 新建动作</button></div>
+    <div class="ont-actions">
+      <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
+      <button type="button" class="primary" @click="openNew">＋ 新建动作</button>
+    </div>
   </div>
   <template v-if="mode === 'list'">
     <p v-if="message" :class="message.startsWith('已') ? 'inline-success' : 'inline-error'" role="alert">{{ message }}</p>

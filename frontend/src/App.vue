@@ -73,6 +73,15 @@ function stopSlowHint() { if (ontologySlowTimer) { clearTimeout(ontologySlowTime
 const definitionFocusId = ref('')
 // 资产库「返回来源对象」上下文（§7）：进入动作/规则库时记录来源对象与页签
 const definitionOrigin = ref<{ type?: string; tab?: string } | null>(null)
+// 图谱「打开定义」返回上下文（20260919 画布优化，前端可选参数）：携带 canvas 的跳转在目标页
+// 显示「返回图谱」；返回时 ObjectWorkspace 直接落在图谱视图并按 canvasNode 定位（不改任何接口）。
+const canvasReturn = ref<{ nodeId: string } | null>(null)
+// 返回图谱标记：交给 ObjectWorkspace 直接落在图谱视图并按目标定位
+const objectGraphReturn = ref(false)
+const objectGraphFocus = ref('')
+function passCanvasReturn(focus?: { canvas?: boolean; canvasNode?: string }) {
+  canvasReturn.value = focus?.canvas ? { nodeId: String(focus.canvasNode || '') } : null
+}
 function friendlyIssue(text: string) {
   const records = [...(state.value?.ontology?.['@graph'] || []), ...['functions', 'actions', 'interfaces'].flatMap(k => state.value?.workflow?.[k] || [])]
   return records.sort((a: any, b: any) => String(b['@id'] || b.id).length - String(a['@id'] || a.id).length).reduce((out: string, n: any) => { const id = n['@id'] || n.id; if (!id) return out; const kind = ({ 'owl:Class': '对象类型', 'owl:ObjectProperty': '链接类型', 'owl:DatatypeProperty': '属性', 'mg:SharedProperty': '共享属性', 'mg:ValueType': '值类型' } as any)[n['@type']] || '定义'; return out.split(id).join(`${n['rdfs:label'] || n.name || '未命名' + kind}（${id}）`) }, String(text))
@@ -397,7 +406,7 @@ async function switchSpace(s: 'ontology' | 'project') { if (s === space.value) r
   // 进入项目区：侧栏需要项目列表；项目状态由 navigate 的主路径按需加载（等待中仍可切回本体）
   if (s === 'project') void ensureProjectList() }
 
-async function navigate(v: string, focus?: { type?: string; property?: string; impl?: string; connection?: string; contract?: string; definition?: string; tab?: string; create?: boolean; preselect?: { ontologyId?: string; projectId?: string } }) {
+async function navigate(v: string, focus?: { type?: string; property?: string; impl?: string; connection?: string; contract?: string; definition?: string; tab?: string; create?: boolean; preselect?: { ontologyId?: string; projectId?: string }; canvas?: boolean; canvasNode?: string; graph?: boolean; graphFocus?: string }) {
   v = normalizeView(v); if (!(v in pages)) return
   if (v === view.value && !focus) { /* 同页重入不触发离开保护 */ }
   else if (!(await requestLeave())) return
@@ -421,6 +430,10 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
   if (focus?.definition) definitionFocusId.value = focus.definition
   if (focus?.tab) objectDetailTab.value = focus.tab
   if (focus?.create) objectCreateFocus.value = true
+  // 图谱返回上下文（可选前端参数）：从画布跳转/返回图谱时设置，其他进入方式一律清除
+  passCanvasReturn(focus)
+  objectGraphReturn.value = !!focus?.graph
+  objectGraphFocus.value = focus?.graph ? String(focus.graphFocus || canvasReturn.value?.nodeId || '') : ''
   // 列表统一 §7：从对象页签进入资产库时记录来源（返回按钮用）；从其他入口进库则清空，避免陈旧来源
   if (v === 'actions' || v === 'rules' || v === 'library') definitionOrigin.value = focus?.type ? { type: focus.type, tab: typeof focus.tab === 'string' ? focus.tab : '' } : null
   // 「前往模型设置」携带编排上下文：记录节点与页签供返回恢复（来源取当前页；不写 lastOntologyView）
@@ -974,10 +987,10 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div><button type="button" class="dl-template" @click="downloadTemplate">下载 Excel 模板</button></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>
 <OntologyHome v-if="view==='o-home'" :state="state" @navigate="navigate" @open-project="openProjectFromOverview"/>
-<ObjectWorkspace v-if="view==='objects'" :state="state" :focus-type="propertyFocusType" :focus-property="propertyFocusId" :initial-tab="objectDetailTab" :focus-definition="definitionFocusId" :focus-create="objectCreateFocus" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
+<ObjectWorkspace v-if="view==='objects'" :state="state" :focus-type="propertyFocusType" :focus-property="propertyFocusId" :initial-tab="objectDetailTab" :focus-definition="definitionFocusId" :focus-create="objectCreateFocus" :graph-return="objectGraphReturn" :graph-focus="objectGraphFocus" :canvas-return="canvasReturn?.nodeId || ''" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
 <FunctionManager v-if="view==='contracts'" :state="state" :focus-id="contractFocusId" @properties="openProperties" @before-change="pushUndo" @changed="changed"/>
-<SharedLibrary v-if="view==='library'" :state="state" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
-<BusinessRuleLibrary v-if="view==='rules'" :state="state" :focus-id="definitionFocusId" :focus-origin="definitionOrigin" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
+<SharedLibrary v-if="view==='library'" :state="state" :canvas-return="canvasReturn?.nodeId || ''" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
+<BusinessRuleLibrary v-if="view==='rules'" :state="state" :focus-id="definitionFocusId" :focus-origin="definitionOrigin" :canvas-return="canvasReturn?.nodeId || ''" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
 <OntologyRelease v-if="view==='o-release'" :state="state" @before-change="pushUndo" @changed="changed" @published="onOntologyPublished" @navigate="navigate"/>
 <ProjectHome v-if="view==='p-home'" :create-signal="projectCreateSignal" :default-ontology-id="hasOntology?ontologyId:''" :ontology-options="ontologyOptions" :projects="projects" :project-state="projectState" :project-dirty="projectDirty" :migration-todos="migrationTodos" @select="id=>loadProject(id)" @created="createProjectDone" @reference="applyProjectReference" @upgrade="upgradeProject" @open-implementations="navigate('implements')" @open-connections="navigate('connections')" @open-binding="t=>t?openBindings(t):navigate('binding')" @navigate="navigate" @before-change="pushProjectUndo" @changed="projectChanged"/>
 <ConnectionManager v-if="view==='connections'&&projectState" :project-state="projectState" @before-change="pushProjectUndo" @changed="projectChanged"/>
@@ -992,7 +1005,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <KnowledgeExplorer v-if="view==='knowledge'" :state="state" :focus-id="knowledgeFocus" @navigate="navigate"/>
 <InstanceExplorer v-if="view==='explorer'" :state="state" :project-state="projectState" @navigate="navigate"/>
 <DefinitionManager v-if="view==='interfaces'" :key="view" kind="interfaces" :state="state" :project-state="projectState" :focus-id="definitionFocusId" @before-change="pushUndo" @changed="changed" />
-<ActionLibrary v-if="view==='actions'" :state="state" :focus-id="definitionFocusId" :focus-origin="definitionOrigin" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
+<ActionLibrary v-if="view==='actions'" :state="state" :focus-id="definitionFocusId" :focus-origin="definitionOrigin" :canvas-return="canvasReturn?.nodeId || ''" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
 <ValueTypeManager v-if="view==='valuetypes'" :state="state" @properties="openProperties" @before-change="pushUndo" @changed="changed"/>
 <section v-if="view==='learning' && !state.learning" class="card empty">此本体暂无导入或教学材料。</section><section v-if="view==='learning' && state.learning"><div class="card"><div class="badge">LEARNING PATH · 储能业务示例</div><h2>{{state.learning.title}}</h2><p>先理解“是什么”，再定义“怎么算”，最后绑定“数据在哪里”。你不需要先参与现场审核。</p><ol><li v-for="step in state.learning.steps" :key="step">{{step}}</li></ol><div class="tools"><button class="primary" @click="navigate('objects')">① 看对象建模</button><button @click="navigate('contracts')">② 看SOC规则</button><button @click="navigate('instances')">③ 看70%结果</button></div></div><div class="card"><h2>旧图42个节点，哪些属于本体？</h2><p class="muted">对象类型才是默认画布节点。属性挂在对象上；观测、指标与算法有各自的定义文件。</p><div class="scroll"><table><thead><tr><th>原节点</th><th>归类</th><th>新表达</th><th>为什么</th></tr></thead><tbody><tr v-for="item in state.learning.classification" :key="item.source_id"><td>{{item.original_name}}</td><td><strong>{{item.category}}</strong></td><td>{{item.name}}</td><td>{{item.reason}}</td></tr></tbody></table></div></div><div class="card"><h2>教学假设</h2><ul><li v-for="a in state.learning.assumptions" :key="a">{{a}}</li></ul><p class="muted">这些假设让例子可理解、可验证；不代表现场数据已经核实。</p></div></section>
 <section v-if="view==='instances'"><div v-if="!preview" class="card"><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div></div><div v-else-if="preview.errors.length" class="card">{{preview.errors.join('；')}}</div><template v-else><div class="columns"><div class="card"><h2>南区储能系统 SOC</h2><div class="result">{{preview.result.value??'—'}}<small> %</small></div><p>{{preview.result.reason||'质量有效 · 模拟快照'}}</p><p class="muted">2026-09-08 10:00 +08:00</p></div><div class="card"><h2>计算血缘</h2><p v-for="r in preview.result.lineage">{{r.object_id}}<br>{{r.soc_pct}}% × {{r.capacity_basis_kwh}} kWh<br><small class="muted">{{r.sampled_at}} · {{r.source_table}}</small></p></div></div><div class="card scroll"><h2>项目实例</h2><table><thead><tr><th>名称</th><th>类型</th><th>归属</th></tr></thead><tbody><tr v-for="o in preview.objects"><td>{{o.display_name||o.properties.name}}</td><td>{{o.type}}</td><td>{{Object.values(o.parents).join(', ')||'—'}}</td></tr></tbody></table></div></template></section>

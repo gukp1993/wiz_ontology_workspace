@@ -28,8 +28,10 @@ import PropertyManager from './PropertyManager.vue'
 import { listShared, referencesOf, externalReferencesOf, shapeConflict, copyAsPrivate, propertyDataType, dataTypeLabel, propertyTypeLabel, detachProperty, makeProperty, localProperties, effectiveProperty, addReference, asShared, parsePropertyRows } from './propertyModel'
 import { useOntTable } from './ontList'
 
-const props = defineProps<{ state: any }>()
+// canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
+const props = defineProps<{ state: any; canvasReturn?: string }>()
 const emit = defineEmits(['before-change', 'changed', 'navigate'])
+function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
 
 // 编辑态：维护定义 / 新建共享定义 → 独立属性表单整体替换主内容（id='' 为新建）。
 const editor = ref<null | { id: string }>(null)
@@ -221,6 +223,7 @@ function distribute() {
     <p>集中维护跨对象复用的属性定义：一处修改，所有引用同步。复制后独立维护；引用时沿用共享定义。各项目的取值实现按对象分别配置。</p>
   </div>
   <div class="ont-actions">
+    <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
     <RowMenu :items="pageMenuItems" aria-label="页面更多操作" @pick="onPageMenu"/>
     <button type="button" class="primary" @click="openEditor('')">＋ 新建共享属性</button>
   </div>

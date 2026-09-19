@@ -15,7 +15,9 @@ import { useOntTable } from './ontList'
 import { objectsOfRule, RULE_FIELDS, rulesOf } from './businessRuleModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
-const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string } }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
+// canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
+const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
+function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
 
@@ -127,6 +129,7 @@ function goObject(objectTypeId: string) {
       <p>用自然语言维护通用业务规则；对象建模中引用，项目实现与执行不在本期范围。</p>
     </div>
     <div class="ont-actions">
+      <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
       <button type="button" class="primary" @click="openEdit()">＋ 新建规则</button>
     </div>
   </div>

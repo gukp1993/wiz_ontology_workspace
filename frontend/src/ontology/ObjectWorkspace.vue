@@ -39,12 +39,21 @@ import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 // focusType/focusProperty：共享属性库「查看引用」/校验问题/旧深链跳转定位
 // （propertyFocusId 存 apiName 或 @id，此处换算为节点 @id；指向共享定义时落到首个引用属性）。
-const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string; focusCreate?: boolean }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
+// graphReturn/graphFocus（20260919 图谱画布优化）：图谱「打开定义」跳转后的返回上下文——
+// graphReturn=true 直接落在图谱视图（视图记忆由 OntologyGraph 按账号 + 本体恢复），
+// graphFocus 为目标业务稳定 ID，用于返回后在画布中定位（目标已删除则清空选择并提示）。
+const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string; focusCreate?: boolean; graphReturn?: boolean; graphFocus?: string; canvasReturn?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
 // 具名撤销（20260918）：emit('before-change', { actionLabel, target?, mergeKey? })；App 侧兼容字符串与对象
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
 
-const mode = ref<'list' | 'graph'>('list'), selected = ref(''), message = ref('')
+const mode = ref<'list' | 'graph'>(props.graphReturn ? 'graph' : 'list'), selected = ref(''), message = ref('')
+// 图谱返回：直接落在图谱视图（视图记忆由 OntologyGraph 恢复）；图谱跳转到定义时切回列表/详情。
+// 该 watch 必须排在其他定位 watch 之前（Vue 按创建顺序触发），保证定位发生时视图已就位。
+watch(() => props.graphReturn, (on) => { if (on) mode.value = 'graph' }, { immediate: true })
+watch(() => props.canvasReturn, (id) => { if (id) mode.value = 'list' }, { immediate: true })
+function onGraphNavigate(view: string, focus?: Record<string, any>) { emit('navigate', view, focus as any) }
+function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
 
 const graph = computed(() => props.state?.ontology?.['@graph'] || [])
 const objects = computed(() => graph.value.filter((n: any) => n['@type'] === 'owl:Class'))
@@ -576,6 +585,7 @@ watch([() => props.focusDefinition, detailTab], ([id, tab]) => {
   if (!id) return
   if (tab === 'actions') void locateRow(id, actionsList)
   else if (tab === 'rules') void locateRow(id, rulesList)
+  else if (tab === 'links') void locateRow(id, linksList)
 }, { immediate: true })
 
 // 引用检查与 EntityManager 同一套：有引用先提示，不静默断链；confirm 后删除，可撤销。
@@ -604,7 +614,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
       <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
       <button role="tab" class="active" :aria-selected="true">本体图谱</button>
     </div>
-    <OntologyGraph :state="state" :ontology-id="state?.workspaceId || ''"/>
+    <OntologyGraph :state="state" :ontology-id="state?.workspaceId || ''" :focus-domain-id="props.graphFocus || ''" @navigate="onGraphNavigate"/>
   </div>
   <!-- 编辑态：主内容整体替换为一个完整表单（原型 ui.editor ? editorView() : pageView()） -->
   <template v-if="editor">
@@ -654,6 +664,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
         <button role="tab" class="active" :aria-selected="true">对象列表</button>
         <button role="tab" :aria-selected="false" @click="mode = 'graph'">本体图谱</button>
       </div>
+      <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
       <button class="primary" @click="openObjectEditor(true)">＋ 新建对象</button>
     </div>
     <div ref="ldRef" class="ld" :class="{ 'ld-stacked': isStacked, 'ld-detail-open': stackedDetail }" :style="{ '--ld-h': ldH + 'px' }">
