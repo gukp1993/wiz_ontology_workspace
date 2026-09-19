@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`b166e2322ec2d1b6`
+上下文版本：`416c77be2ec3c85f`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,18 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 执行 本体与项目配置迁移（T0–T5，M01–M24） · zcode · 已实施，待验收
+
+时间：2026-09-19T11:36:28.117549+00:00；记录：`.collaboration/entries/000047-f82213c3f9f2.json`
+
+按执行指令完成配置迁移全链路：07 分册先登记 7 接口（export-preview/export/stage/import-preview/import/import-result/discard，ZIP 包 formatVersion=1，分片 512KiB/包≤20MiB/解压≤100MiB），后端 config_package_format/packages/routes 三模块（闭包收集含 M04 历史本体补齐与 M07 上下文分组、ZIP 有界安全解析、命名（导入）后缀、单事务原子导入：资产级新 ID+业务稳定 ID 恒等+跨资产引用重写+发布副本 origin 追溯+requestId 幂等+待补凭据声明持久化），前端设置中心「数据管理/配置迁移」双页签+两概览快捷预选。后端 7 步+前端 5 步+旧导出/Excel/CAS/存储/编排回归全绿；隔离实例浏览器全流程（导出→B 导入（导入）→打开编辑保存→再次导入（导入2））1440/1024 截图 4 张。提交 781ffaa。
+
+- 决定：资产身份全部新建（本体 uuid/项目编排 12hex/provider llm-*），业务稳定 ID（mg:*/节点/连接/apiName/definitionOrder/表名字段）恒等保留；导入归属当前登录账号不读包内 owner；manifest 不自登记（hash 无法自包含）；发布副本保 version 标签/顺序、附 originPackageId/sourceVersion/sourceHash，新 revision token 不调 versions.publish；待补凭据声明持久化在 wb_user_settings 键 config-package.pending-credentials（重启保留，按声明 ID 去重合并），未加表未动 schema；仅 import 持 locking.LOCK；上传/预检/压缩不持锁；TokenError 404/410、包问题 415/422、名称冲突 409 带建议名
+- 验证：tests/test_config_packages.py 7 步全过（登记 http 组）：格式安全/闭包（未选项目不入包/历史本体补齐/口令不入包）/分片幂等与409/导入核验（版本保序+引用新本体 ref_row=ok+恒等 ID+flow 重写）/M14 幂等409回执/M13 二次导入独立性/M19 穿越422+401；tests/config_transfer.test.mjs 5/5（导航注册/分片切片hash/请求体/SSR 渲染 mapping_forms 同款/无覆盖合并文案红线）；global_settings_nav 7/7（分类断言随需求扩展更新为两项）；旧回归全绿：test_export_restore_http、test_storage_contract、test_flows、ontology_import 18、save_queue 22、ontology_home 27、object_workspace 7/7 等；typecheck+build 通过；隔离实例 18890 浏览器：exporter 导出预览（1 发布版本+凭据警告）→下载 blob 真实触发→importer 导入预检「储能本体（导入）/当前账号已有同名」→确认→结果页打开新本体（新 ID URL）→编辑保存成功→再次导入得（导入2）/（导入）两套独立（数据核验：项目分别引用两套新本体 1.0.0 且 ref resolution=ok、编辑互不影响、exporter 原资产不动）；1440/1024 截图 4 张在需求目录/截图/
+- 下一步：用户验收：18765 刷新后 设置→数据管理→配置迁移 体验导出/导入（勿用真实资产试导入，先在隔离环境验证）；限制如实记录在开发计划 §11.4：默认模型显式化转换未实现（仅映射显式 providerId）；M07 拆副本/M15 故障注入/M02 空本体/M05 规则动作登记实例逐项/M12 并发竞态/M14 重启回执/M21 导入后发布递增未专项实测；mapping_forms 既有基线失败待其负责人；test_property_preview 需本机 MySQL
+- 依据/文档：文档/接口文档/07-配置迁移接口.md；workbench/config_packages.py；frontend/src/settings/ConfigurationTransfer.vue；tests/test_config_packages.py；文档/需求/20260919_本体与项目配置迁移/开发计划.md §11
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### 函数编排优化独立审阅与修正需求 · codex · 需求已交付
 
@@ -142,14 +154,3 @@
 - 验证：只读源码与既有实施文档核对；未运行编排、未访问业务数据库，未进行本轮浏览器视觉验收。
 - 下一步：与用户确认优化优先级后再产出原型与需求。
 - 依据/文档：frontend/src/flow/FlowEditor.vue；frontend/src/flow/NodeConfig.vue；frontend/src/flow/BindingEditor.vue；frontend/src/project/PropertySources.vue；workbench/flow_executor.py
-
-### 本体工作概览优化原型-v1 · codex · 需求已交付
-
-时间：2026-09-19T08:45:07.473655+00:00；记录：`.collaboration/entries/000032-80452187a27d.json`
-
-在当前原型增加可操作的当前本体下拉：空本体与储能本体。储能本体展示已有定义统计、五项对象入口、校验和版本引用；配套三份文档同步补充H13。正式代码及数据未修改。
-
-- 决定：当前本体切换保留本页示例状态，刷新重置；正式版复用真实本体切换/保存逻辑。；已有本体展示最多5项紧凑对象入口；已有内容不代表已通过校验。
-- 验证：52项DOM/源码检查通过，含下拉切换、对象入口、各本体临时状态隔离；未进行浏览器视觉验收。
-- 下一步：用户在左侧当前本体选择储能本体评审。
-- 依据/文档：文档/需求/20260919_本体工作概览优化/交互原型_v1.html；文档/需求/20260919_本体工作概览优化/需求说明.md
