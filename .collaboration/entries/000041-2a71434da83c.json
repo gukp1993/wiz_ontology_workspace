@@ -1,0 +1,27 @@
+{
+  "ticket": "026a00efac8644d9be7cb3a84a8e2ca5",
+  "task": "安装 leftopen 端口查看工具",
+  "status": "verified",
+  "summary": "用户要求从 GitHub 找到并安装 leftopen（SonghaiFan/leftopen，macOS 菜单栏工具：查看监听端口/进程/关联项目并安全关闭开发服务器）。经 brew install --cask songhaifan/tap/leftopen 安装 v0.3.0：App 位于 /Applications/LeftOpen.app，CLI 链接到 /opt/homebrew/bin/leftopen。本轮为机器环境工具安装，未改动工作台任何代码、接口文档或真实 ontology/ 数据。",
+  "decisions": [
+    "安装方式选 Homebrew cask（README 推荐方式）而非手动下载 Releases"
+  ],
+  "verification": [
+    "leftopen --version 输出 LeftOpen 0.3.0",
+    "/Applications/LeftOpen.app 存在",
+    "leftopen 首次运行正常：37 个监听端口/32 进程/7 项目，正确识别 wiz_kq_builder_v2 于 18765"
+  ],
+  "next": [
+    "LeftOpen.app 为菜单栏应用，用户可自行从应用程序文件夹打开 GUI",
+    "CLI 常用：leftopen / leftopen <port> / leftopen open <port> / leftopen close <port>"
+  ],
+  "references": [
+    "https://github.com/SonghaiFan/leftopen/blob/main/README.zh-CN.md"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-19T10:47:42.556057+00:00",
+  "sequence": 41,
+  "filename": "000041-2a71434da83c.json",
+  "record_hash": "2188151eb294b133381e0e660a67df67e9d99445ba8d978f01ced31ef0428ea4",
+  "context_advanced": false
+}

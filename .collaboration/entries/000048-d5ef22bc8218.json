@@ -1,0 +1,29 @@
+{
+  "ticket": "0024d7a14bbe4ee6bac821d7eca69a6c",
+  "task": "配置迁移页 UI 风格修复（用户截图反馈）",
+  "status": "implemented",
+  "summary": "用户指出配置迁移页 UI 异常：导出复选框与文字间距巨大且文字竖排断行；导入页原生文件控件泄露。根因是全局 style.css 的 input{display:block;width:100%} 把 checkbox 拉满整行、并覆盖 hidden 属性的 UA display:none。修复：导出复选改用工作台现成 .check-option 样式、搜索框换共用 SearchField 组件、文件控件显式 .ct-file-input{display:none}、预检名称输入框去全局 margin/宽度拉伸。隔离实例截图核对三页（导出选择/导入页签/预检表格）均与工作台风格一致；config_transfer 5/5、global_settings_nav 7/7；typecheck+build 通过。提交 e895d1c。",
+  "decisions": [
+    "复选列表复用全局 .check-option（17px 蓝色 accent、flex+gap）而非自定义样式；搜索框复用 shared/SearchField——与工作台既有列表视觉完全一致",
+    "hidden 属性在全局 input 样式下不可靠：本页文件控件改显式 class display:none!important（其他页面历史行为不动）"
+  ],
+  "verification": [
+    "18891 隔离实例截图 05/06/07：checkbox 紧跟文字、无原生控件、搜索框带图标、预检表格名称输入框正常",
+    "config_transfer.test.mjs 5/5（stub 改 render 函数适配 SSR ESM）；global_settings_nav 7/7；typecheck+build 通过",
+    "隔离实例与临时目录已清理"
+  ],
+  "next": [
+    "用户在 18765 刷新查看修复后的配置迁移页"
+  ],
+  "references": [
+    "frontend/src/settings/ConfigurationTransfer.vue",
+    "tests/config_transfer.test.mjs",
+    "文档/需求/20260919_本体与项目配置迁移/截图/"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-19T11:50:04.265443+00:00",
+  "sequence": 48,
+  "filename": "000048-d5ef22bc8218.json",
+  "record_hash": "e0fc615b5952ea656c4a32f40a6be9b719767f30bb5c79396fa4a7e4b187af32",
+  "context_advanced": false
+}

@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`416c77be2ec3c85f`
+上下文版本：`8dfaff69325b05e9`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 配置迁移页 UI 风格修复（用户截图反馈） · zcode · 已实施，待验收
+
+时间：2026-09-19T11:50:04.265443+00:00；记录：`.collaboration/entries/000048-d5ef22bc8218.json`
+
+用户指出配置迁移页 UI 异常：导出复选框与文字间距巨大且文字竖排断行；导入页原生文件控件泄露。根因是全局 style.css 的 input{display:block;width:100%} 把 checkbox 拉满整行、并覆盖 hidden 属性的 UA display:none。修复：导出复选改用工作台现成 .check-option 样式、搜索框换共用 SearchField 组件、文件控件显式 .ct-file-input{display:none}、预检名称输入框去全局 margin/宽度拉伸。隔离实例截图核对三页（导出选择/导入页签/预检表格）均与工作台风格一致；config_transfer 5/5、global_settings_nav 7/7；typecheck+build 通过。提交 e895d1c。
+
+- 决定：复选列表复用全局 .check-option（17px 蓝色 accent、flex+gap）而非自定义样式；搜索框复用 shared/SearchField——与工作台既有列表视觉完全一致；hidden 属性在全局 input 样式下不可靠：本页文件控件改显式 class display:none!important（其他页面历史行为不动）
+- 验证：18891 隔离实例截图 05/06/07：checkbox 紧跟文字、无原生控件、搜索框带图标、预检表格名称输入框正常；config_transfer.test.mjs 5/5（stub 改 render 函数适配 SSR ESM）；global_settings_nav 7/7；typecheck+build 通过；隔离实例与临时目录已清理
+- 下一步：用户在 18765 刷新查看修复后的配置迁移页
+- 依据/文档：frontend/src/settings/ConfigurationTransfer.vue；tests/config_transfer.test.mjs；文档/需求/20260919_本体与项目配置迁移/截图/
 
 ### 执行 本体与项目配置迁移（T0–T5，M01–M24） · zcode · 已实施，待验收
 
@@ -143,14 +154,3 @@
 - 下一步：用户验收：18765 刷新后查看新概览（空本体欢迎卡/储能本体统计与版本引用）；导入后自动重校、概览重进显示尚未校验为既定口径，如需跨页保留校验结果属后续需求；mapping_forms 既有基线失败待负责人处理；test_property_preview 需本机 MySQL 补测（历史遗留）
 - 依据/文档：frontend/src/ontology/OntologyHome.vue；frontend/src/App.vue；frontend/src/ontology/ObjectWorkspace.vue；tests/ontology_home.test.mjs；文档/需求/20260919_本体工作概览优化/开发计划.md §6
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 函数编排优化讨论 · codex · 已确认决定
-
-时间：2026-09-19T08:55:33.842962+00:00；记录：`.collaboration/entries/000033-802cf124bc01.json`
-
-只读审阅当前编排列表/编辑器/节点绑定/执行器/属性接入代码，提出UI、交互及功能优化建议。尚未确认方案，未修改业务代码、数据或生成新需求四件套。
-
-- 决定：事实：独立编排资产，运行使用项目连接/凭据；SQL/Redis/HTTP/公式可执行，Python通过LLM推演；单节点/范围/整图测试已存在。；事实：属性接入目前只支持标量输出，明确拒绝列表和时间序列；节点列表参数与递归类型配置较重；结果为本次内存结果。；待讨论建议：减少编辑器模式和页签跳转、显式运行项目上下文、统一输入来源选择与类型继承、整合测试数据与结果；确定性列表加工及时间序列接入优先于扩充节点种类。；上述建议不是用户已确认需求，不授权执行者据此实施。
-- 验证：只读源码与既有实施文档核对；未运行编排、未访问业务数据库，未进行本轮浏览器视觉验收。
-- 下一步：与用户确认优化优先级后再产出原型与需求。
-- 依据/文档：frontend/src/flow/FlowEditor.vue；frontend/src/flow/NodeConfig.vue；frontend/src/flow/BindingEditor.vue；frontend/src/project/PropertySources.vue；workbench/flow_executor.py
