@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`b0d9dec0dbeb5319`
+上下文版本：`477363a4c9531373`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 函数编排原型对齐修正（用户反馈「没有参考原型」） · zcode · 已实施，待验收
+
+时间：2026-09-19T11:04:44.426206+00:00；记录：`.collaboration/entries/000044-f53fe2a6fcb9.json`
+
+逐项比对交互原型_v1.html 后修正设计视图页头：紧凑单行（标题 h1+✎改名弹窗替代名称输入框、运行项目改为页头下拉（App 传项目清单、切换经既有 loadProject 含保存/离开保护）、检查配置/测试片段/▷测试编排），说明改页头第二行内联编辑；检查状态移工具栏 tag；常驻模式栏仅绑定模式显示。测试视图对齐：范围下拉并入「单节点·各节点」选项、标量输出大数值+JSON 对照、结果头项目行。同时修复画布高度链缺陷：flow-body 原依赖节点列表内容撑高（列表收起/窄视口画布塌 0，84c78ef 已存在被本轮暴露），flow-page 改显式 height:calc(100vh-96px)。
+
+- 决定：页头运行项目下拉选项来自 App projects 清单，切换经 loadProject（含保存/离开保护），不静默重绑连接；flow-page 显式视口高度替代 height:100% 百分比链（该链在列表收起时本就断裂）；范围下拉按原型合并单节点选项；标量输出保留大数值+JSON 双展示
+- 验证：typecheck/build 通过；flow_model/global_interaction/object_workspace 回归过；18880 隔离实例（已清理）截图核对：设计视图（标题+✎/说明行/运行项目下拉/工具栏 tag/画布满高 A→E 连线）与测试视图（合并范围下拉/起止 B–D/路径 chips/B.x=10→C=36 大数值+JSON/项目行）与原型形态一致；工作区 config_packages/07 分册/server.py 等为其他执行者在途改动，未触碰未提交
+- 下一步：用户在 18765 刷新查看对齐后的编排设计/测试视图（注意 18879/18880 为已清理的临时隔离实例）
+- 依据/文档：frontend/src/flow/FlowEditor.vue；frontend/src/flow/FlowTestWorkspace.vue；frontend/src/App.vue；文档/需求/20260919_函数编排配置与调试优化/开发计划.md §11 补充
 
 ### 本体与项目配置迁移-v1需求交付 · codex · 需求已交付
 
@@ -142,14 +153,3 @@
 - 验证：test_mapping_descriptions.py 13 步全过（D01–D12 后端面：回环/隔离/一键/省略保留/显式清空/409/超限拒绝/发布快照/升级预检/纯说明警告/预览拦截/无说明不变）；test_project_api_roundtrip、test_validation_split（金样 62 样例）、test_property_sources、test_action_http 全过；test_property_preview 未测（需本机 MySQL，环境不具备）；前端 typecheck/build 通过；mapping_forms 修组件 stub 后回到既有基线失败点（/实现输出/，与本任务无关）；object_sources/action_model/query_rules/list_controls/ont_list_unified/object_workspace/global_interaction/save_queue/undo_history 全过；隔离实例 18854 浏览器验收：对象说明编辑→折叠保留→保存→刷新回读；属性清单说明列；只说明保存与回读；链接卡片两端共用显示；API 写四类说明后四页显示与对象隔离正确；1024/768 布局正常。动作绑定浏览器面未演练（种子本体无对象-动作关联，组件与属性同构、后端已过）
 - 下一步：用户验收：真实项目上试用四类说明（18765 刷新即有）；说明仅结构与引用校验，语义不验证；按说明自动取值/大模型解释/设备动作执行属 10.3 后续迭代，本期未实现，不宣称可自动执行；mapping_forms 既有基线失败待其负责人处理；test_property_preview 需本机 MySQL 环境补测
 - 依据/文档：workbench/mapping_descriptions.py；frontend/src/project/MappingDescription.vue；frontend/src/project/bindingModel.ts；tests/test_mapping_descriptions.py；文档/需求/20260919_项目映射双模式协同/开发计划.md §7
-
-### 共享属性/业务规则/动作定义库行内操作平铺 · zcode · 已实施，待验收
-
-时间：2026-09-19T07:11:17.124551+00:00；记录：`.collaboration/entries/000028-57c7e778a2a4.json`
-
-延续共享属性库行内平铺（编辑/引用到对象/复制为私有/删除，列宽 18%→32% 修截断，删除保护语义不变，页头「更多操作」保留），动作定义库同理把「删除定义」从 ⋯ 菜单平铺为行内红色删除（V2 被引用拦截语义不变）；业务规则库核实本就只有行内「编辑」无需改。测试 ont_list_unified ④ 共享库断言从 rowMenuItems 改为行内按钮断言。中断事故处理：上轮验收在共享库点了删除后 cell 被取消，确认框残留在 body（SPA hash 导航不清除），本轮进入动作页时仍挂着——已点取消，确认共享属性未被误删。另发现 goto hash 变化不重载页面导致看到旧 bundle，reload 后验证通过。
-
-- 决定：三资产库行内操作统一平铺展示，低频批量能力（粘贴多行/批量复用）仍收页头菜单；删除按钮文案统一「删除」红字；appConfirm 残留问题：确认框挂 body 不随 SPA 导航清理，属已知行为，验收/使用中靠取消关闭；后续若成为困扰可评估路由守卫统一清理
-- 验证：typecheck/build 通过；ont_list_unified 4/4、list_controls 4/4、object_workspace 7/7；全量前端套件通过（mapping_forms 既有基线除外）；18765 浏览器实测：共享库操作列四按钮完整（删除红字不被截断）、动作库 [编辑/删除] 平铺零菜单、规则库 [编辑] 不变；删除点击仍弹保护确认框
-- 下一步：若对象建模四页签与三资产库的行内删除/操作样式需再统一文案（如「删除定义」vs「删除」），属后续微调
-- 依据/文档：frontend/src/ontology/SharedLibrary.vue；frontend/src/ontology/ActionLibrary.vue；tests/ont_list_unified.test.mjs

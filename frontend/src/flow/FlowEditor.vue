@@ -21,13 +21,28 @@ import { checkFlow } from './api'
 import * as llm from '../tools/llm'
 import { getJson } from '../app/http'
 
-const props = defineProps<{ state: any; projectConnections?: any[]; projectId?: string; revision?: string; projectName?: string; saveCheck?: any; saveCheckSig?: string; restoreTab?: string; restoreNode?: { id: string; token: number } | null; providersRefresh?: number }>()
-const emit = defineEmits(['before-change', 'changed', 'navigate', 'back'])
+const props = defineProps<{ state: any; projectConnections?: any[]; projectId?: string; revision?: string; projectName?: string; projects?: any[]; saveCheck?: any; saveCheckSig?: string; restoreTab?: string; restoreNode?: { id: string; token: number } | null; providersRefresh?: number }>()
+const emit = defineEmits(['before-change', 'changed', 'navigate', 'back', 'switch-project'])
 // 具名撤销（20260918）：emit('before-change', { actionLabel, target?, mergeKey? })
 const canvasRef = ref<any>(null)
 const testRef = ref<any>(null)
 // 设计/测试视图切换（20260919）：测试视图保持挂载，输入/范围/结果跨往返保留（F05）
 const viewMode = ref<'design' | 'test'>('design')
+// 页头运行项目下拉（原型 3.2）：选项来自项目清单；切换经 App 既有 loadProject（含保存/离开保护）
+const projectOptions = computed(() => (props.projects || []).map((p: any) => ({ value: p.id, label: p.name || p.id })))
+// 编排改名（原型 ✎ → 模态；取消不改动）
+const renameOpen = ref(false)
+const renameBuffer = ref('')
+function openRename() { renameBuffer.value = String(props.state.name || ''); dialogDirty.value = false; openDialog(); renameOpen.value = true }
+function applyRename() {
+  const next = renameBuffer.value.trim()
+  if (!next) return
+  emit('before-change', { actionLabel: '重命名编排「' + next + '」' })
+  props.state.name = next
+  emit('changed')
+  renameOpen.value = false
+  closeDialog(true)
+}
 function openTestView(kind: 'all' | 'single' | 'segment', nodeId?: string) {
   viewMode.value = 'test'
   testRef.value?.openScope(kind, nodeId)
@@ -213,12 +228,13 @@ async function closeDialog(force = false, onClosed?: () => void) {
     if (!(await appConfirm({ message: '弹窗中有未提交的修改，放弃并关闭？', danger: true, confirmLabel: '放弃关闭' }))) return
   }
   expandDialog.value = null
+  renameOpen.value = false
   dialogDirty.value = false
   onClosed?.()
   lastFocused?.focus?.()
   lastFocused = null
 }
-function anyModalOpen() { return !!expandDialog.value }
+function anyModalOpen() { return !!expandDialog.value || renameOpen.value }
 const dockOpen = ref(false)
 
 // ── 绑定（唯一 binding 真相；取消零改动；删除有确认） ────────────────────────────
@@ -364,18 +380,17 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   <header class="flow-head">
     <div class="head-row">
       <button class="quiet" @click="emit('back')">← 编排列表</button>
-      <input class="name-input" :value="state.name" aria-label="编排名称" placeholder="编排名称" @input="emit('before-change');state.name=($event.target as HTMLInputElement).value;emit('changed')"/>
-      <details class="desc-details">
-        <summary>说明</summary>
-        <textarea :value="state.description" rows="2" aria-label="编排说明" placeholder="这个编排做什么（选填）" @input="emit('before-change');state.description=($event.target as HTMLTextAreaElement).value;emit('changed')"/>
-      </details>
-      <span class="run-project" :title="'连接与凭据按此项目上下文解析；切换经侧栏项目选择链路，不静默重绑'">运行项目：<b>{{ projectName || '未选择' }}</b></span>
-      <button v-if="!projectName" class="linklike" @click="emit('navigate','p-home')">选择项目 →</button>
+      <h1 class="flow-title">{{ state.name || '未命名编排' }}<button class="quiet rename-btn" title="修改编排名称" aria-label="修改编排名称" @click="openRename">✎</button></h1>
       <span class="push"></span>
+      <span class="context" title="连接与凭据按此项目上下文解析；切换走既有项目加载（保存/离开保护），不静默重绑">运行项目
+        <AppSelect :model-value="projectId || ''" :options="projectOptions" :disabled="!projectOptions.length" placeholder="未选择项目" aria-label="运行项目" @update:model-value="id => emit('switch-project', id)"/>
+      </span>
       <button :disabled="checking" @click="runCheck">{{checking?'检查中…':'检查配置'}}</button>
-      <button class="quiet" :class="checkStateClass" :title="'打开问题面板'" @click="dockOpen=true">{{checkStateText}}</button>
       <button :disabled="checking" @click="openTestView('segment')">测试片段</button>
       <button class="primary-run" :disabled="checking" @click="openTestView('all')">▷ 测试编排</button>
+    </div>
+    <div class="head-sub">
+      <input class="desc-inline" :value="state.description" aria-label="编排说明" placeholder="这个编排做什么（选填）" @input="emit('before-change');state.description=($event.target as HTMLInputElement).value;emit('changed')"/>
     </div>
   </header>
   <div class="flow-toolbar">
@@ -388,14 +403,15 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
     </div>
     <button :class="{active: mode==='bind'}" @click="setMode('bind')">建立绑定</button>
     <span class="push"></span>
+    <button class="quiet check-tag" :class="checkStateClass" :title="'打开问题面板'" @click="dockOpen=true">{{checkStateText}}</button>
     <button @click="canvasRef?.autoLayout()">整理</button>
     <button @click="canvasRef?.fitAll()">全图</button>
     <button @click="canvasRef?.zoom100()">100%</button>
   </div>
-  <div class="flow-modebar">
-    <strong v-if="mode!=='inspect'">建立绑定</strong>
+  <div v-if="mode==='bind'" class="flow-modebar">
+    <strong>建立绑定</strong>
     <span>{{modebarText}}</span>
-    <button v-if="mode!=='inspect'" class="quiet" @click="setMode(mode)">退出 · Esc</button>
+    <button class="quiet" @click="setMode(mode)">退出 · Esc</button>
   </div>
   <p v-if="notice" class="property-feedback flow-notice" role="status">{{notice}}</p>
   <section class="flow-body">
@@ -468,6 +484,17 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
     </section>
   </div>
 
+  <div v-if="renameOpen" class="modal-backdrop" @click.self="renameOpen=false">
+    <form class="flow-modal" role="dialog" aria-modal="true" aria-label="编排名称" @submit.prevent="applyRename">
+      <h2>编排名称</h2>
+      <label>名称<input v-model="renameBuffer" required maxlength="80" aria-label="编排名称" @input="dialogDirty=true"/></label>
+      <div class="dialogtools">
+        <button type="button" @click="renameOpen=false">取消</button>
+        <button type="submit" class="primary">确定</button>
+      </div>
+    </form>
+  </div>
+
   <div v-if="expandDialog" class="modal-backdrop" @click.self="closeDialog()">
     <section class="flow-modal wide" role="dialog" aria-modal="true" :aria-label="expandDialog.title">
       <h2>{{expandDialog.title}} · {{expandDialog.nodeName}}</h2>
@@ -483,7 +510,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 </div>
 </template>
 <style scoped>
-.flow-page{display:flex;flex-direction:column;height:100%;min-height:0}
+.flow-page{display:flex;flex-direction:column;height:calc(100vh - 96px);min-height:480px}
 .design-root{display:flex;flex-direction:column;flex:1;min-height:0}
 .ftw-host{flex:1;min-height:0}
 .run-project{font-size:12px;color:var(--muted);white-space:nowrap}
@@ -491,7 +518,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 .linklike{border:0;background:none;color:var(--blue);font-size:12px;padding:2px 0;cursor:pointer}
 .flow-head{background:var(--paper);border-bottom:1px solid var(--line);padding:10px 16px}
 .head-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.name-input{max-width:280px;font-weight:600}
+.flow-title{font-size:19px;font-weight:650;margin:0;display:flex;align-items:center;gap:4px;min-width:0}
+.rename-btn{font-size:13px;padding:2px 6px}
+.context{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.context .app-select{min-width:170px}
+.head-sub{margin-top:6px}
+.desc-inline{border:1px solid transparent;background:transparent;padding:3px 6px;font-size:12px;color:var(--muted);max-width:640px}
+.desc-inline:hover{border-color:var(--line)}
+.check-tag{font-size:12px;white-space:nowrap}
 .desc-details{flex:1;min-width:200px;font-size:12px;color:var(--muted)}
 .desc-details summary{cursor:pointer;user-select:none}
 .desc-details textarea{margin-top:6px}

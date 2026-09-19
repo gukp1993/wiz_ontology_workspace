@@ -31,6 +31,17 @@ const segPaths = computed<string[][]>(() => {
   return dependencyPaths(props.state, segStart.value, segEnd.value)
 })
 function onSegChange() { explicitIds.value = [] }
+// 范围下拉（原型形态）：整条 / 连续片段 / 单节点·各节点（单节点并入同一下拉）
+const scopeValue = computed(() => scopeKind.value === 'single' ? 'single:' + singleId.value : scopeKind.value)
+const scopeOptions = computed(() => [
+  { value: 'all', label: '整条编排' },
+  { value: 'segment', label: '连续片段' },
+  ...procNodes.value.map((n: any) => ({ value: 'single:' + n.id, label: '单节点 · ' + (n.name || n.id) })),
+])
+function onScopeChange(v: string) {
+  if (v === 'all' || v === 'segment') { scopeKind.value = v; singleId.value = ''; onSegChange(); return }
+  if (v.startsWith('single:')) { scopeKind.value = 'single'; singleId.value = v.slice(7); onSegChange() }
+}
 const segRangeIds = computed<string[]>(() => {
   if (scopeKind.value !== 'segment') return []
   if (explicitIds.value.length) return [...explicitIds.value]
@@ -232,13 +243,7 @@ defineExpose({ openScope })
     <!-- 左：范围与输入 -->
     <aside class="ftw-input" aria-label="测试输入">
       <h3>测试范围</h3>
-      <AppSelect :model-value="scopeKind" :options="[
-        { value: 'all', label: '整条编排' },
-        { value: 'single', label: '单节点' },
-        { value: 'segment', label: '连续片段' }]" aria-label="测试范围" @update:model-value="v => { scopeKind = v as any; onSegChange() }"/>
-      <label v-if="scopeKind === 'single'" class="ftw-field">测试节点
-        <AppSelect :model-value="singleId" placeholder="选择处理节点" :options="nodeOptions" aria-label="测试节点" @update:model-value="v => { singleId = v as string; onSegChange() }"/>
-      </label>
+      <AppSelect :model-value="scopeValue" :options="scopeOptions" aria-label="测试范围" @update:model-value="v => onScopeChange(v as string)"/>
       <template v-if="scopeKind === 'segment'">
         <template v-if="!explicitIds.length">
           <label class="ftw-field">起点（上游）
@@ -306,6 +311,7 @@ defineExpose({ openScope })
         <span v-else-if="staleInput" class="ftw-badge warn">尚未按当前输入/范围运行</span>
       </div>
       <p class="ftw-scope">{{ result ? `范围：${result.snapshot.scopeText} · 提交于 ${result.snapshot.submittedAt}` : '选择范围、填写输入后运行；范围内自动传递，范围外不执行。' }}</p>
+      <p class="ftw-meta">{{ projectName || '未选择项目' }} · 结果仅随本次响应返回，不落盘、不写编排草稿</p>
       <p v-if="freshnessText" class="ftw-fresh">{{ freshnessText }}</p>
 
       <template v-if="result && result.status === 'request-error'">
@@ -344,8 +350,13 @@ defineExpose({ openScope })
                     </table>
                     <p v-if="tableRows(out)!.truncated" class="ftw-hint">表格仅预览前 100 行；传给下游的实际数据未截断。</p>
                   </div>
-                  <pre v-else-if="out !== null && typeof out === 'object'" class="ftw-pre">{{ previewValue(out) }}</pre>
-                  <p v-else class="ftw-scalar">{{ out === null ? '—' : out }}</p>
+                  <template v-else-if="out !== null && typeof out === 'object'">
+                    <pre class="ftw-pre">{{ previewValue(out) }}</pre>
+                  </template>
+                  <template v-else>
+                    <p class="ftw-scalar">{{ out === null ? '—' : out }}</p>
+                    <pre class="ftw-pre">{{ previewValue(currentNode.outputs) }}</pre>
+                  </template>
                 </template>
                 <p v-if="!Object.keys(currentNode.outputs || {}).length" class="ftw-hint">节点输出为空。</p>
               </template>
@@ -413,6 +424,7 @@ defineExpose({ openScope })
 .ftw-badge.run{color:var(--blue);background:var(--blue-soft);border-color:var(--blue-line)}
 .ftw-badge.warn{color:var(--warn);background:var(--warn-soft);border-color:var(--warn-line)}
 .ftw-scope{font-size:12px;color:var(--muted);margin:6px 0}
+.ftw-meta{font-size:11px;color:var(--faint);margin:2px 0 0}
 .ftw-fresh{font-size:12px;color:var(--warn);margin:4px 0}
 .ftw-chips{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
 .ftw-chips button{font-size:12px}
