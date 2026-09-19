@@ -1,0 +1,38 @@
+{
+  "ticket": "b3b3d3c6708b457d9e6b70ed4c000310",
+  "task": "执行 函数编排优化审阅修正/执行指令.md（R01–R06，A01–A14）",
+  "status": "implemented",
+  "summary": "按修正四件套定点修复测试视图六项缺陷：R01 运行生命周期（pendingConfirm 同步锁定先于异步确认、确认与请求共用冻结 payload/snapshot、取消/成功/失败/晚回包均释放、v-show 挂载无法绕过）；R02 多路径勾选区按路径存在性显示不再消失、testScopePlan 新增 requireConnected（整条/单节点允许并列分支，仅片段保持连通校验，默认 true 向后兼容）、禁用原因全模式可见；R03 入口稳定 ID 去重 + 全范围统一类型控件 +「使用空文本」显式区分空串与未提供；R04 主入口首次默认整条之后恢复上次范围/输入/结果、快捷入口才显式切换、快照新增 projectName/nodeNames、输入缓存按 flowId+projectId 隔离且声明签名变化失效；R05 describeOutput 分类渲染；R06 bounded_preview 精确预算（UTF-8 ≤65536 字节、列表 ≤100 项、previewTruncated 标记结构）。",
+  "decisions": [
+    "R02b 连通校验按范围类型区分：requireConnected 仅片段为 true，整条允许并列分支（合法 DAG），不放松片段校验",
+    "R03 不新增 nullable 体系：以 providedEmpty 勾选显式表达空文本，未提供一律报错；旧接口 null 兼容未动",
+    "R06 截断标记结构已先登记接口文档 04 §3.1 并记 README 变更记录；预算收紧兜底仅标记",
+    "R04 输入缓存按 flowId+projectId 隔离，声明签名变化即粗粒度失效（防同名错配优先）",
+    "保留唯一测试主入口与节点快捷入口；未恢复被用户否定的旧多入口"
+  ],
+  "verification": [
+    "tests/flow_test_workspace.test.mjs 21 项组件行为测试全过（真实 Vue 响应性+延迟 runFlow 桩+受控确认）",
+    "flow_model 29、flow_test_plan 60（6 组真实字节断言均 ≤65536 且原值不变）、flow_executor 33、test_flows 85、flow_sql_dialect 25、llm_providers 27、project_flow_source 21 全过",
+    "typecheck+build 通过",
+    "隔离实例 18999 浏览器验证：测试视图挂载、入口去重、片段 B–D chips、整条 A–E 运行成功、API 实测 B–D 输入 8→10/30/15 且 A/E 不在 nodeResults"
+  ],
+  "next": [
+    "用户验收：18765 刷新后进编排编辑 → ▷测试编排",
+    "A10 列表/对象输出浏览器视觉走查未覆盖（calc 恒标量，渲染由 describeOutput 单测锁定）",
+    "A13 的 1280×800/1024×768 逐尺寸截图未留存",
+    "环境代理 7890 偶发拦截本地请求返回 502 与工作台无关"
+  ],
+  "references": [
+    "frontend/src/flow/FlowTestWorkspace.vue",
+    "frontend/src/flow/flowModel.ts",
+    "workbench/flow_test_plan.py",
+    "tests/flow_test_workspace.test.mjs",
+    "文档/需求/20260919_函数编排优化审阅修正/开发计划.md §5.1"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-19T12:37:16.278527+00:00",
+  "sequence": 51,
+  "filename": "000051-a12d5de4b9a5.json",
+  "record_hash": "c4f55f826c18fc3e3b92083235b5f8d1d8a1fd175b7b17d2d5077b3c13a8f633",
+  "context_advanced": true
+}
