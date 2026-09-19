@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`477363a4c9531373`
+上下文版本：`92cbd4507f698ab7`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 编排测试入口唯一化（用户反馈三入口重复） · zcode · 已实施，待验收
+
+时间：2026-09-19T11:09:09.692814+00:00；记录：`.collaboration/entries/000045-be56e2faf838.json`
+
+用户在 18765 真实编排页指出页头「测试片段」「▷ 测试编排」与 dock「打开测试调试 ↗」三入口重复。按指示只保留页头「▷ 测试编排」为唯一测试入口（片段/单节点范围在测试视图范围下拉选择）；删除页头「测试片段」按钮与 dock「打开测试调试 ↗」按钮及配套提示文案。详情面板「▷ 测试此节点」为原型既有的单节点便捷入口，保留。
+
+- 决定：测试入口唯一化到页头「▷ 测试编排」；范围（整条/连续片段/单节点）全部在测试视图内下拉选择，页头不再重复放范围类入口；详情面板「测试此节点」保留（原型既有，直接以该节点为范围进入测试视图）
+- 验证：typecheck/build 通过；flow_model 回归过；grep 确认 FlowEditor 中「测试片段」「打开测试调试」零残留（仅开发计划记录中提及）
+- 下一步：用户刷新 18765 查看唯一入口后的页头与 dock
+- 依据/文档：frontend/src/flow/FlowEditor.vue；文档/需求/20260919_函数编排配置与调试优化/开发计划.md §11 补充 2
 
 ### 函数编排原型对齐修正（用户反馈「没有参考原型」） · zcode · 已实施，待验收
 
@@ -142,14 +153,3 @@
 - 验证：typecheck/build 通过；ont_list_unified 4/4、action_model 1/1；18765 浏览器实测动作定义页卡片背景与业务规则一致，行内操作（编辑/删除）不变
 - 下一步：用户刷新页面查看；共享属性库/规则库/动作库三页卡片样式已全部一致
 - 依据/文档：frontend/src/ontology/ActionLibrary.vue
-
-### 执行 20260919_项目映射双模式协同/执行指令.md（说明与配置 v2.1） · zcode · 已实施，待验收
-
-时间：2026-09-19T08:02:47.745318+00:00；记录：`.collaboration/entries/000029-5222b4ba9874.json`
-
-按执行指令完成 T0–T5：bindings.mappingDescriptions（schemaVersion=1，四类稳定 ID 键，properties/actions 二级结构）保存/读取/发布/升级全链路；接口文档先行（01 §3.4/03/05/README 变更记录），无新增接口与 schema 变更。后端新模块 mapping_descriptions.py：结构/长度 20000 码点校验、CAS 锁内省略保留、显式清空按删键、失效引用阻断发布、纯说明警告、升级预检定位、preview_block 消费拦截、context_of 上下文纯函数。前端 MappingDescription 最小组件（单 textarea/标题折叠/提示仅 placeholder）接入四页：对象浏览态说明前置+数据来源默认折叠+说明独立编辑态；属性/链接/动作清单加「项目说明」列（原摘要灰字保留）；编辑器说明在前+配置 details 默认折叠；未配置属性 kind=none 只说明可保存不创建来源（D10，对齐原型 addConfig）；全部复用 formGuard/form-save/撤销/409。property-preview 取数前拦截说明。
-
-- 决定：未配置属性编辑器初始 kind=none（原型 addConfig 模型），只说明保存不产生来源配置；说明键一律 mg: 前缀稳定 ID，属性用对象属性节点 ID 非 apiName；本期能改的官方消费入口仅 property-preview，外部旧执行器不承诺自动兼容（接口文档已标注）
-- 验证：test_mapping_descriptions.py 13 步全过（D01–D12 后端面：回环/隔离/一键/省略保留/显式清空/409/超限拒绝/发布快照/升级预检/纯说明警告/预览拦截/无说明不变）；test_project_api_roundtrip、test_validation_split（金样 62 样例）、test_property_sources、test_action_http 全过；test_property_preview 未测（需本机 MySQL，环境不具备）；前端 typecheck/build 通过；mapping_forms 修组件 stub 后回到既有基线失败点（/实现输出/，与本任务无关）；object_sources/action_model/query_rules/list_controls/ont_list_unified/object_workspace/global_interaction/save_queue/undo_history 全过；隔离实例 18854 浏览器验收：对象说明编辑→折叠保留→保存→刷新回读；属性清单说明列；只说明保存与回读；链接卡片两端共用显示；API 写四类说明后四页显示与对象隔离正确；1024/768 布局正常。动作绑定浏览器面未演练（种子本体无对象-动作关联，组件与属性同构、后端已过）
-- 下一步：用户验收：真实项目上试用四类说明（18765 刷新即有）；说明仅结构与引用校验，语义不验证；按说明自动取值/大模型解释/设备动作执行属 10.3 后续迭代，本期未实现，不宣称可自动执行；mapping_forms 既有基线失败待其负责人处理；test_property_preview 需本机 MySQL 环境补测
-- 依据/文档：workbench/mapping_descriptions.py；frontend/src/project/MappingDescription.vue；frontend/src/project/bindingModel.ts；tests/test_mapping_descriptions.py；文档/需求/20260919_项目映射双模式协同/开发计划.md §7

@@ -1,5 +1,6 @@
 <!-- FlowEditor — 函数编排编辑页（20260919 配置与调试优化版）：设计 / 测试双视图。
-     · 设计视图：头部（返回列表/名称/显式运行项目/检查配置/测试片段/▷测试编排）→
+     · 设计视图：头部（返回列表/名称/显式运行项目/检查配置/▷测试编排——唯一测试入口，
+     //   片段与单节点范围在测试视图下拉选择）→
        工具栏（节点列表/添加节点/建立绑定/整理/全图/100%）→ 可收起节点列表 / 画布 / 节点配置
        （连续区块：名称与说明/输入/实现/输出/高级）→ 配置问题 dock。
      · 测试视图（FlowTestWorkspace，保持挂载 v-show）：独立左右布局，整条/单节点/连续片段；
@@ -386,7 +387,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
         <AppSelect :model-value="projectId || ''" :options="projectOptions" :disabled="!projectOptions.length" placeholder="未选择项目" aria-label="运行项目" @update:model-value="id => emit('switch-project', id)"/>
       </span>
       <button :disabled="checking" @click="runCheck">{{checking?'检查中…':'检查配置'}}</button>
-      <button :disabled="checking" @click="openTestView('segment')">测试片段</button>
       <button class="primary-run" :disabled="checking" @click="openTestView('all')">▷ 测试编排</button>
     </div>
     <div class="head-sub">
@@ -452,8 +452,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
     <div class="dock-head">
       <strong>配置问题</strong>
       <small class="dock-state">{{!checkSnap ? '尚未检查' : checkStale ? '配置已修改，上次结论待重新检查' : (checkSnap.check.errors?.length ? `检查发现 ${checkSnap.check.errors.length} 个问题` : '检查通过')}}</small>
-      <button class="quiet" @click="openTestView('segment')">打开测试调试 ↗</button>
-      <small class="dock-state">测试在独立视图展示，不挤占画布</small>
       <button class="quiet push" @click="dockOpen=!dockOpen">{{dockOpen?'收起 ↓':'展开 ↑'}}</button>
     </div>
     <div v-if="dockOpen" class="dock-content">
