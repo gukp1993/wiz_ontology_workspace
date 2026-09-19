@@ -4,7 +4,7 @@
      focus 携带 parameterId/field 时展开对应参数并高亮字段。连接/LLM/凭据下拉区分
      加载中/失败/未配置/已加载；Python 固定显示 LLM 推演标识；代码支持展开编辑。 -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import TypeEditor from './TypeEditor.vue'
@@ -23,8 +23,11 @@ const isRedis = computed(() => kind.value === 'redis')
 const isHttp = computed(() => kind.value === 'http')
 const isCalc = computed(() => kind.value === 'calc')
 const needsLlm = computed(() => isPython.value || (isCalc.value && props.node.implementation?.mode === 'llm'))
-const impl = computed(() => props.node.implementation || (props.node.implementation = {}))
-const exec = computed(() => props.node.execution || (props.node.execution = {}))
+// 遗留节点可能缺 implementation/execution：显式 effect 初始化，computed 只读（避免渲染期写 props）
+watchEffect(() => { if (props.node && !props.node.implementation) props.node.implementation = {} })
+watchEffect(() => { if (props.node && !props.node.execution) props.node.execution = {} })
+const impl = computed(() => props.node.implementation || {})
+const exec = computed(() => props.node.execution || {})
 
 // ── 输入页签：参数摘要 + 展开编辑 ─────────────────────────────────────────────
 const expandedInputs = ref<Record<string, boolean>>({})
