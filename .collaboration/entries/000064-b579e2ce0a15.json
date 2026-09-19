@@ -1,0 +1,31 @@
+{
+  "ticket": "2d5179c96568461f80838fdf59fd8d55",
+  "task": "函数编排持续打磨（开发+子代理验收交替，≥50轮交互）",
+  "status": "implemented",
+  "summary": "按用户要求对函数编排做持续打磨：三路代码审查+两轮独立验收代理交替，命名轮 R01–R20，子代理有效交互 7 个（另 2 个大范围代理停滞失败后拆小重发），审查发现 45 条、修复 38 条（含画布白屏 P1、测试视图可选输入阻断 P1、后端校验漏洞 3 条 P2、LLM 异常路径 3 条 P2），不采纳 1 条（SSR F 黑名单，localhost 单机工具且会破坏本地模型场景，理由记日志）。共 11 个提交 38806d5→a5401a2。18765 已重启。",
+  "decisions": [
+    "列表配置状态区分「N 个问题/ N 项提示」（error/warning 分计）并按更新时间降序；空编排给 FLOW_EMPTY 提示不再假「检查通过」；列表 check 携带 llm_meta（每账号一次）",
+    "后端加固：链测试 422 门拦截流程级错误（成环不再退化 400）；重复节点 ID、Redis 缺命令、args 未声明名、HTTP 凭据与自填 Authorization 冲突均校验阻断；密钥库故障如实报错不伪装",
+    "画布 P1：悬挂输出绑定致 cy.add 抛错整块白屏——坏边按节点存在性过滤；拓扑签名剔 classes（勾选/运行态不再全量重建）；TypeEditor 按目标类型清理残留键；LLM 四条异常路径（非 dict JSON/HTTPException/超大响应/引号内括号提取）+endpoint 控制字符拒绝"
+  ],
+  "verification": [
+    "最终回归：run.py all 33/33、flow_model 46 项、flow_test_workspace 36 项全过；test_flows 85→94、flow_test_workspace 21→36 增量用例；build（vue-tsc）通过；两轮验收代理分别对 6 提交与 4 提交独立复验全过（含隔离实例 API 实证 NODE_ID_DUPLICATE/REDIS_COMMAND_MISSING/成环 422/endpoint 控制字符 400）",
+    "浏览器实测（隔离实例 18903，已清理）：列表四态文案、重命名弹窗脏守卫、画布加删节点同步、SQL 模板呈现、单节点测试错误路径、LLM 弹窗示例占位、HTTP/SQL 编排真实执行与失败传播；18765 与真实 ontology/ 零写入",
+    "18765 restart 200；临时实例/目录/种子脚本全部清理；在途他人文件（legacyGraph/tmp）未触碰"
+  ],
+  "next": [
+    "用户验收 18765：编排列表/编辑器/测试视图/LLM 配置页；未尽事项见打磨日志（flow 取值预览属执行能力未做、SSR F 黑名单留多租户评估、mapping_forms 既有基线失败属他人）"
+  ],
+  "references": [
+    "文档/需求/20260919_函数编排持续打磨/打磨日志.md",
+    "frontend/src/flow/（全部组件）",
+    "workbench/flows.py、flow_executor.py、flow_routes.py、flow_http.py、llm_client.py、llm_providers.py",
+    "git 38806d5..a5401a2（11 提交）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-19T21:55:00.055434+00:00",
+  "sequence": 64,
+  "filename": "000064-b579e2ce0a15.json",
+  "record_hash": "74ac7acc1bfb659d5b1b4575daee3b2632c6bc2c70ce528a79c470a142c13a34",
+  "context_advanced": true
+}

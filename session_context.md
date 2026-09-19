@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`82964069fdc21326`
+上下文版本：`cf47782bf0605618`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,40 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 函数编排持续打磨（开发+子代理验收交替，≥50轮交互） · zcode · 已实施，待验收
+
+时间：2026-09-19T21:55:00.055434+00:00；记录：`.collaboration/entries/000064-b579e2ce0a15.json`
+
+按用户要求对函数编排做持续打磨：三路代码审查+两轮独立验收代理交替，命名轮 R01–R20，子代理有效交互 7 个（另 2 个大范围代理停滞失败后拆小重发），审查发现 45 条、修复 38 条（含画布白屏 P1、测试视图可选输入阻断 P1、后端校验漏洞 3 条 P2、LLM 异常路径 3 条 P2），不采纳 1 条（SSR F 黑名单，localhost 单机工具且会破坏本地模型场景，理由记日志）。共 11 个提交 38806d5→a5401a2。18765 已重启。
+
+- 决定：列表配置状态区分「N 个问题/ N 项提示」（error/warning 分计）并按更新时间降序；空编排给 FLOW_EMPTY 提示不再假「检查通过」；列表 check 携带 llm_meta（每账号一次）；后端加固：链测试 422 门拦截流程级错误（成环不再退化 400）；重复节点 ID、Redis 缺命令、args 未声明名、HTTP 凭据与自填 Authorization 冲突均校验阻断；密钥库故障如实报错不伪装；画布 P1：悬挂输出绑定致 cy.add 抛错整块白屏——坏边按节点存在性过滤；拓扑签名剔 classes（勾选/运行态不再全量重建）；TypeEditor 按目标类型清理残留键；LLM 四条异常路径（非 dict JSON/HTTPException/超大响应/引号内括号提取）+endpoint 控制字符拒绝
+- 验证：最终回归：run.py all 33/33、flow_model 46 项、flow_test_workspace 36 项全过；test_flows 85→94、flow_test_workspace 21→36 增量用例；build（vue-tsc）通过；两轮验收代理分别对 6 提交与 4 提交独立复验全过（含隔离实例 API 实证 NODE_ID_DUPLICATE/REDIS_COMMAND_MISSING/成环 422/endpoint 控制字符 400）；浏览器实测（隔离实例 18903，已清理）：列表四态文案、重命名弹窗脏守卫、画布加删节点同步、SQL 模板呈现、单节点测试错误路径、LLM 弹窗示例占位、HTTP/SQL 编排真实执行与失败传播；18765 与真实 ontology/ 零写入；18765 restart 200；临时实例/目录/种子脚本全部清理；在途他人文件（legacyGraph/tmp）未触碰
+- 下一步：用户验收 18765：编排列表/编辑器/测试视图/LLM 配置页；未尽事项见打磨日志（flow 取值预览属执行能力未做、SSR F 黑名单留多租户评估、mapping_forms 既有基线失败属他人）
+- 依据/文档：文档/需求/20260919_函数编排持续打磨/打磨日志.md；frontend/src/flow/（全部组件）；workbench/flows.py、flow_executor.py、flow_routes.py、flow_http.py、llm_client.py、llm_providers.py；git 38806d5..a5401a2（11 提交）
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 四提交独立验收（4799bcb/b7bc31b/581b80c/c039746） · zcode · 已验证
+
+时间：2026-09-19T21:51:48.334963+00:00；记录：`.collaboration/entries/000063-601f9faadeee.json`
+
+独立验收通过：四提交回归全绿（flows 94/llm 40/executor 33/test_plan 70/flow_model 46/flow_test_workspace 36 全过，build vue-tsc+vite exit0）；五项重点 diff 审查全部通过；隔离实例 18933 API 断言 endpoint 带换行/制表符均 400「接口地址不能包含换行或控制字符」且未落库；无 P1/P2 新问题。
+
+- 决定：FlowCanvas nodeIds 过滤=渲染节点集精确闭合：derivedEdges 自滤悬挂引用、flowInput 边 source=INPUT_NODE 在集合内、output 悬挂 nodeId 正确丢弃；旧过滤因 el.group 恒真（普通对象无 group 字段），commit 描述准确；topologyOf 剔除 classes 自洽：run-failed/run-waiting/test-checked/bind-src 四动态类 refreshData 全量重算，boundary 静态，无仅在 sync 加类的路径；TypeEditor list→list/object→object 保留用户已配 elementType/fields（仅缺失才初始化默认）；llm_client read(_MAX_RESPONSE+1) 对恰好 1MB 无误判；非 dict 分支在解析成功后判，顺序正确；4799bcb parameterId 前后端同源（flows.py iid/oid ↔ row.input.id/out.id）；b7bc31b watchEffect setup 即时初始化收敛无循环；581b80c list_metadata 每调用读一次，快照语义不变
+- 验证：python3 tests/test_flows.py=94、test_llm_providers.py=40、test_flow_executor.py=33、test_flow_test_plan.py=70 全过；node ts_hooks 两套件 flow_model 46/flow_test_workspace 36 全过（后者计数大于任务书 29，为后续提交新增用例，非异常）；npm run build（vue-tsc）通过，仅存量 chunk>500kB 警告；隔离实例 18933（WIZ_WORKBENCH_ROOT+WIZ_DATABASE_URL 临时 sqlite+临时账号）llm-provider-save 断言过，llm-providers 列表空；实例/临时目录已清理，18765 与真实数据零写入
+- 下一步：P3：_extract_json 首个 opener 落在字符串内提取失败后不回退找后续块，极边缘不影响既有用例
+- 依据/文档：git 4799bcb b7bc31b 581b80c c039746；frontend/src/flow/FlowCanvas.vue、TypeEditor.vue、NodeConfig.vue；workbench/llm_client.py、llm_providers.py、flows.py
+
+### 函数编排打磨六提交独立验收（38806d5/8e5b7d2/75bc160/4341a7a/1e6aecc/5c3235b） · zcode · 已验证
+
+时间：2026-09-19T21:29:29.463026+00:00；记录：`.collaboration/entries/000062-f08da4796606.json`
+
+独立验收通过：六提交回归全绿（flows 94/executor 33/test_plan 70/sql_dialect 25/llm 40/project_flow_source 29/两个 node 套件/5c3235b 归档 build exit0）；隔离实例 18847 API 断言四项全过（NODE_ID_DUPLICATE、REDIS_COMMAND_MISSING、成环 flow-run 422、范围外节点错误不拦片段 200）；无 P1/P2 新问题。
+
+- 决定：75bc160 的 422 门只额外拦流程级全局错误，非 target 节点级错误不拦，API 实证 200；4341a7a 代次守卫自洽：cacheContext 先 runGen++ 再释放，晚回包不落新上下文；declSig 含 type，隐藏空文本勾选无残留死锁；1e6aecc 公式键随迁在 before/changed 之间符合快照机制，撤销整体一步，仅缺 actionLabel 回退通用文案（原有模式）；范围内 listing 逐编排查 LLM 元数据为 P3 性能瑕疵，已在此后提交 581b80c 修复
+- 验证：python3 tests/test_flows.py 等 6 套件全过；node --import tests/ts_hooks.mjs 两套件全过；git archive 5c3235b 到临时目录 npm run build exit 0（vue-tsc+vite）；隔离实例 18847（WIZ_WORKBENCH_ROOT/WIZ_DATABASE_URL 临时）flow-check/flow-run 四断言过，服务与临时目录已清理，18765 与真实数据零写入
+- 下一步：P3 建议：renameTechnical 补 actionLabel；calc 输出改名撞已有名时 formulas 同名键覆盖边缘
+- 依据/文档：git 38806d5..5c3235b；workbench/flow_routes.py；workbench/flows.py；frontend/src/flow/FlowTestWorkspace.vue；frontend/src/flow/NodeConfig.vue
 
 ### 图谱编辑器源码整体复用需求 · codex · 需求已交付
 
@@ -122,37 +156,3 @@
 - 验证：当前模型协议校验及encode/decode无损往返通过；包manifest和SHA256通过。；临时根和独立SQLite中调用当前配置迁移服务上传、预览、导入、读回通过，本体与工作流一致，新本体ID分配正确。；发布校验仅返回预期两条：充放电计划缺少规则内容、输出结果。未进行浏览器验收或业务公式运行验证。
 - 下一步：用户审阅清洗说明中的口径问题后，可通过配置迁移导入清洗待确认ZIP并继续补齐。
 - 依据/文档：文档/交付物/20260919_储能图谱清洗转换/清洗说明.md；文档/交付物/20260919_储能图谱清洗转换/储能本体_清洗待确认.zip；文档/交付物/20260919_储能图谱清洗转换/验证结果.json
-
-### 编排列表操作平铺+列宽+说明截断（用户截图反馈） · zcode · 已实施，待验收
-
-时间：2026-09-19T12:46:34.775066+00:00；记录：`.collaboration/entries/000052-b8655dd8cbc9.json`
-
-按用户截图反馈改 frontend/src/flow/FlowList.vue：操作列去掉「更多」下拉，编辑/复制/删除三按钮直接平铺（删除红色文本，复用原 copy/remove 处理器与软删除确认弹窗）；表格 table-layout:fixed 定列宽（处理节点 84/更新时间 150/配置状态 110/操作 148），其余宽度归编排名称列，其他字段不再被挤压；编排说明单行 text-overflow 省略号截断，全文放 title 悬停可见；顺手修空行 colspan 6→5 与实际列数一致。提交 a29aa2a。
-
-- 决定：沿用现有软删除+appConfirm 确认，不新增删除生效标准（用户说明删除标准统一后续再做）；未动任何 API 与数据契约，纯前端列表模板/样式；列宽用 table-layout:fixed 而非内容 max-width：表格自动布局下 nowrap 长文本仍可能撑宽列，固定布局才能保证省略号与列宽分配确定生效；首版处理节点列 70px 致四字表头换行，复查截图后改 84px+nowrap
-- 验证：npm run build（含 vue-tsc 类型检查）通过；node --import ./tests/ts_hooks.mjs tests/flow_model.test.mjs 全过；隔离实例 18901（WIZ_WORKBENCH_ROOT 临时目录+WIZ_DATABASE_URL 隔离 sqlite+临时账号）浏览器实测两条长说明编排：操作平铺、说明省略号截断且 DOM 快照可访问名（title）含全文、表头单行；点「复制」列表 2→3 行功能正常（截图核对）；grep dist 确认「更多 ⌄」零残留、table-layout:fixed 生效；18765 已 restart 返回 200；临时实例/临时目录/临时浏览器标签页（含上一轮遗留 18999 失效标签）已清理，真实数据与用户编排零写入
-- 下一步：用户在 18765 刷新查看编排列表新布局（a29aa2a）
-- 依据/文档：frontend/src/flow/FlowList.vue；git a29aa2a
-
-### 执行 函数编排优化审阅修正/执行指令.md（R01–R06，A01–A14） · zcode · 已实施，待验收
-
-时间：2026-09-19T12:37:16.278527+00:00；记录：`.collaboration/entries/000051-a12d5de4b9a5.json`
-
-按修正四件套定点修复测试视图六项缺陷：R01 运行生命周期（pendingConfirm 同步锁定先于异步确认、确认与请求共用冻结 payload/snapshot、取消/成功/失败/晚回包均释放、v-show 挂载无法绕过）；R02 多路径勾选区按路径存在性显示不再消失、testScopePlan 新增 requireConnected（整条/单节点允许并列分支，仅片段保持连通校验，默认 true 向后兼容）、禁用原因全模式可见；R03 入口稳定 ID 去重 + 全范围统一类型控件 +「使用空文本」显式区分空串与未提供；R04 主入口首次默认整条之后恢复上次范围/输入/结果、快捷入口才显式切换、快照新增 projectName/nodeNames、输入缓存按 flowId+projectId 隔离且声明签名变化失效；R05 describeOutput 分类渲染；R06 bounded_preview 精确预算（UTF-8 ≤65536 字节、列表 ≤100 项、previewTruncated 标记结构）。
-
-- 决定：R02b 连通校验按范围类型区分：requireConnected 仅片段为 true，整条允许并列分支（合法 DAG），不放松片段校验；R03 不新增 nullable 体系：以 providedEmpty 勾选显式表达空文本，未提供一律报错；旧接口 null 兼容未动；R06 截断标记结构已先登记接口文档 04 §3.1 并记 README 变更记录；预算收紧兜底仅标记；R04 输入缓存按 flowId+projectId 隔离，声明签名变化即粗粒度失效（防同名错配优先）；保留唯一测试主入口与节点快捷入口；未恢复被用户否定的旧多入口
-- 验证：tests/flow_test_workspace.test.mjs 21 项组件行为测试全过（真实 Vue 响应性+延迟 runFlow 桩+受控确认）；flow_model 29、flow_test_plan 60（6 组真实字节断言均 ≤65536 且原值不变）、flow_executor 33、test_flows 85、flow_sql_dialect 25、llm_providers 27、project_flow_source 21 全过；typecheck+build 通过；隔离实例 18999 浏览器验证：测试视图挂载、入口去重、片段 B–D chips、整条 A–E 运行成功、API 实测 B–D 输入 8→10/30/15 且 A/E 不在 nodeResults
-- 下一步：用户验收：18765 刷新后进编排编辑 → ▷测试编排；A10 列表/对象输出浏览器视觉走查未覆盖（calc 恒标量，渲染由 describeOutput 单测锁定）；A13 的 1280×800/1024×768 逐尺寸截图未留存；环境代理 7890 偶发拦截本地请求返回 502 与工作台无关
-- 依据/文档：frontend/src/flow/FlowTestWorkspace.vue；frontend/src/flow/flowModel.ts；workbench/flow_test_plan.py；tests/flow_test_workspace.test.mjs；文档/需求/20260919_函数编排优化审阅修正/开发计划.md §5.1
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 执行配置迁移 §12 修正（T01–T09） · zcode · 已实施，待验收
-
-时间：2026-09-19T12:29:19.370112+00:00；记录：`.collaboration/entries/000050-a5f8b86012e4.json`
-
-按开发计划 §12 Codex 验收意见完成 T01–T09 定点修正（提交 810afd1）：T01 编排导入同步 flowId/name 新身份可保存；T02 项目逐快照引用解析映射；T03 副本归属纯函数+预检歧义阻断；T04 敏感剥离收窄（认证头/URL 认证段，删键名误伤，模型地址覆盖）；T05 预检强依赖闭包/能力白名单/重复 JSON 键；T06 默认模型入包+导入显式绑定；T07 待补凭据按新项目定位+api-credentials pending+补填清除；T08 前端空名阻止/取消语义/返回导出/requestId 恢复/预检代次；T09 名称冲突按 (kind,name_key)+副本名预检一致。测试 13 步全过+前端回归全绿+build 通过；浏览器实测空名/取消/结果页。接口语义登记 07 §4.5/03 §4.1/README。
-
-- 决定：T04 剥离范围限定认证头键+URL userinfo，不按泛化键名清空；模型 endpoint 纳入 URL 检查；T07 未加表：待补仍存 wb_user_settings 键 config-package.pending-credentials，条目带 projectId/projectName，合并键 (declarationId, projectId)；api-credentials 响应新增 pending 字段（03 分册已登记）；T09 副本名（上下文N）在预检命名产出，事务不再暗改；名称冲突按 (kind, name_key)
-- 验证：tests/test_config_packages.py 13 步全过（含 §12.4 断言 1-7/9：T01 可保存且另一副本 hash 不变、T02 三处引用一致、T03 顺序无关+歧义 None+两项目不同副本、T04 哨兵剥离+业务 token 保持、T05 三类阻断零写入、T06 接收默认不变、T07 补填闭环、M21 发布递增 2.1.0）；前端 config_transfer 5/5、global_settings_nav 7/7、ontology_home/object_workspace/save_queue/ontology_import/flow_model 等回归全过；typecheck+build 通过；隔离实例 18892 浏览器：空名确认被阻止并定位、取消回初始态且暂存清理、确认导入成功页、返回导出切页签（截图 08）；实例已清理，真实数据零写入
-- 下一步：Codex 复核：按 §12.3 逐项重验（重点 T01 保存链路/T02 三处引用/T03 拆副本/T05 阻断/T07 补填闭环）；剩余未测（§13.4）：多进程同名竞争、附件迁移（M05 白名单）、M07 歧义包浏览器端到端、双账号待确认横幅串扰专项
-- 依据/文档：文档/需求/20260919_本体与项目配置迁移/开发计划.md §13；workbench/config_packages.py；tests/test_config_packages.py；frontend/src/settings/ConfigurationTransfer.vue；文档/接口文档/07-配置迁移接口.md §4.5
