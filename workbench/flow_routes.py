@@ -8,7 +8,7 @@
 绝不持全局锁（全图运行仅用进程内 per-flow 互斥 + 短暂持锁核对 revision）。
 LLM 密钥只写不读回：save/delete 响应只含元数据，test 只回连通结果。
 """
-from workbench import api_credentials, flow_executor, flows, llm_client, llm_providers, projects
+from workbench import api_credentials, flow_executor, flow_test_plan, flows, llm_client, llm_providers, projects
 from workbench.locking import LOCK
 
 
@@ -142,6 +142,34 @@ def post_flow_run(payload):
         return {'error': str(exc)}, 404
     llm_meta = llm_providers.list_metadata()
     credential_ids = ctx.get('credential_ids')
+
+    if payload.get('testMode') is not None or payload.get('inputOverrides') is not None:
+        # 隔离片段测试（20260919 契约 04 §3.1）：只执行所选节点；范围外输入由
+        # inputOverrides 手工提供，内部绑定照常传递，范围外节点不执行。
+        # 分层：结构/集合 400 → 被测节点自身配置 422 → 边界取值 422（全部先于执行）。
+        if payload.get('testMode') != 'isolated':
+            return {'error': 'testMode 仅支持 isolated'}, 400
+        if targets is None:
+            return {'error': 'isolated 测试必须提供 targets；省略 targets 是全图运行语义，不可与 testMode/inputOverrides 混用'}, 400
+        overrides = payload.get('inputOverrides') or {}
+        if not isinstance(overrides, dict):
+            return {'error': 'inputOverrides 必须是对象'}, 400
+        try:
+            plan = flow_test_plan.plan_scope(state, targets, overrides)
+        except flow_test_plan.PlanError as exc:
+            return {'error': exc.message}, exc.status
+        report = flows.check_flow(state, _conn_context(payload), llm_meta, credential_ids)
+        target_errors = [issue for item in report['items']
+                         if item['kind'] == 'node' and item['id'] in set(targets) and item['level'] == 'error'
+                         for issue in item['issues']]
+        if target_errors:
+            return {'error': '被测节点配置有误：' + '；'.join(target_errors[:3]), 'check': report}, 422
+        try:
+            entry_values, resolved = flow_test_plan.precheck_values(state, plan, payload.get('inputs'), overrides)
+        except flow_test_plan.PlanError as exc:
+            return {'error': exc.message}, exc.status
+        return flow_executor.run(state, plan['orderedTargets'], entry_values, ctx,
+                                 isolated_overrides=resolved), 200
 
     if targets is None:  # 全图运行：revision 并发 gate + errors gate + 进程内互斥
         try:

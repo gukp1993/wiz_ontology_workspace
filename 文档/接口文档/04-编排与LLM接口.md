@@ -177,11 +177,22 @@ POST /api/flow-run
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `state` | FlowState | 是 | — |
-| `revision` | string | 全图运行时必填 | 并发基线；单节点/链测试不需要 |
-| `targets` | string[] | 否 | 节点 ID 列表。**省略 = 全图运行**；指定 = 单节点/链测试（不落盘、无 revision 要求） |
-| `inputs` | object | 否 | 入口参数 |
+| `revision` | string | 全图运行时必填 | 并发基线；节点/链测试与隔离测试不需要 |
+| `targets` | string[] | 见说明 | 节点 ID 列表。**省略 = 全图运行**；指定 = 单节点/链测试（不落盘、无 revision 要求）。`[]` 一律 400，绝不被解释为全图 |
+| `inputs` | object | 否 | 入口参数取值（键为入口参数稳定 ID 或技术名，沿用既有兼容） |
 | `projectId` | string | 否 | 项目上下文（数据连接 + API 凭据，密钥不在此读取） |
 | `connections` | array | 否 | 连接元数据（校验引用） |
+| `testMode` | string | 否 | 2026-09-19 新增。省略 = 既有语义（全图 / 单节点 / 上游闭合链）。仅接受 `"isolated"`：隔离片段测试——只执行 `targets` 所选处理节点，范围外输入由 `inputOverrides` 手工提供，内部绑定照常传递，范围外节点（含上下游）不执行 |
+| `inputOverrides` | object | 否 | 2026-09-19 新增，仅 `testMode=isolated` 可用：`{ 目标节点稳定 ID: { 输入稳定 ID: 值 } }`。只允许覆盖本次范围的外部来源输入（来源节点在范围外的 `node`/`nodeField`）与未绑定输入；固定来源与范围内内部依赖不得覆盖；同一输入同时经 `inputs`（入口值）与本表赋值 → 400 歧义拒绝 |
+
+**`testMode=isolated` 语义（2026-09-19 登记，前端 20260919_函数编排配置与调试优化 需求）**：
+
+- `targets` 必填：非空、无重复、全部存在且为处理节点；被测集合自身必须无环且连通（集合内部依赖边意义下）。节点集非法/成环/不连通 → 400。
+- 范围外入边转为外部输入声明：目标输入的来源节点在范围外时，必须由 `inputOverrides[目标节点ID][输入ID]` 提供最终值（字段引用提供目标输入所需的最终值，不要求构造整个范围外输出对象）；未绑定输入可选提供。缺值或类型不符 → 422（含节点/输入定位），且**在任何节点真实执行前拒绝**（预检零执行）。
+- 固定来源照常取值，不接受覆盖；范围内上游输出自动传递，不允许测试值覆盖；内部输出类型/字段路径错误按节点失败返回，不退回人工输入。
+- 被测节点自身实现/连接/输出声明错误 → 422（响应带定位）；范围外节点（含编排输出未绑定、上游实现错误）不参与校验、不构成阻断。
+- 执行顺序按被测子图依赖拓扑排序，客户端提交顺序不决定执行顺序；不落盘、无 revision/进程内全图互斥要求。
+- 省略 `targets` 却携带 `testMode` 或 `inputOverrides` → 400。旧调用（无 `testMode`）语义不变：全图运行保留 revision/409/互斥；单节点沿用技术名覆盖；多节点链仍要求上游闭合。
 
 **响应** `200`
 
@@ -189,26 +200,33 @@ POST /api/flow-run
 {
   "status": "success",                 // success | error
   "nodeResults": [ { "nodeId": "n1", "status": "success", "outputs": {}, "outputNames": {},
-                     "rowCount": 12, "durationMs": 45, "logs": [] } ],
+                     "rowCount": 12, "durationMs": 45, "logs": [],
+                     "inputs": {"x": 10}, "inputsTruncated": false } ],
   "startedAt": "2026-09-18T05:00:00+00:00",
   "durationMs": 320
 }
 ```
 
-节点结果 `status`：`success` / `failed`（带 `error`）/ `skipped`（上游失败）。
+节点结果 `status`：`success` / `failed`（带 `error`）/ `skipped`（直接上游失败，或上游被跳过——失败沿所选范围**传递性**标记 skipped）。
+
+新增可选字段（2026-09-19）：
+
+- `nodeResults[].inputs`：该节点本次实际解析的输入值（键为输入技术名，命名与类型从提交快照读取）。输入解析前失败或未执行（skipped）时不返回该字段；执行器已收到输入后失败可返回。
+- `nodeResults[].inputsTruncated`：布尔，输入预览是否被截短。预览有界：每节点列表最多 100 条、序列化总量约 64 KiB；截短仅影响展示，不改变节点真实收到的数据，也不影响执行成功。预览不包含连接密码、认证头、API Key 等凭据。
 
 | 状态码 | 场景 |
 | --- | --- |
-| 400 | state 非法 / targets 无效 / 被测链路非法 |
+| 400 | state 非法 / targets 无效（空列表、重复、不存在、集合成环或不连通）/ `testMode` 值非法 / 省略 targets 却携带 isolated 或 overrides / overrides 结构非法或含未知节点/输入 / 同一输入经入口值与 overrides 重复赋值 / 被测链路非法（旧调用） |
 | 404 | 编排不存在（全图运行）/ 项目不存在 |
-| 409 | revision 过期（带 `currentRevision`）；或该编排正在运行中（进程内互斥） |
-| 422 | 配置检查未通过（响应体 `{"error": "...", "check": <CheckReport>}`） |
+| 409 | revision 过期（带 `currentRevision`）；或该编排正在运行中（进程内互斥，仅全图运行） |
+| 422 | 配置检查未通过（全图，响应体 `{"error": "...", "check": <CheckReport>}`）/ 被测节点自身配置错误 / isolated 模式边界输入缺值或类型不符（含节点与输入定位） |
 
 **约束（重要）**：
-- 仅**短暂持锁**核对 revision，**执行阶段绝不持有全局写锁**；
-- 全图运行有进程内 per-flow 互斥，同时只允许一个运行；
+- 仅**短暂持锁**核对 revision（全图），**执行阶段绝不持有全局写锁**；
+- 全图运行有进程内 per-flow 互斥；隔离片段测试无 revision/互斥要求，同样不落盘；
 - 执行**不落盘**；节点超时上限 300 s，SQL 行数上限 10000；
-- Redis 仅执行白名单命令（见 `workbench/flows.py` 的 `REDIS_COMMANDS`）。
+- Redis 仅执行白名单命令（见 `workbench/flows.py` 的 `REDIS_COMMANDS`）；
+- 节点执行阶段业务失败仍按 `200 + status:error + nodeResults` 返回，预检失败不包装成成功。
 
 ---
 

@@ -1,7 +1,8 @@
-<!-- NodeConfig — 处理节点详情内容（页签化：输入/实现/输出/高级）。由 FlowEditor 下发 tab，
-     只渲染当前页签；focus 携带 parameterId/field 时展开对应参数并高亮字段（问题定位入口）。
-     连接/LLM/凭据下拉区分 加载中/失败/未配置/已加载；Python 实现页固定显示 LLM 推演标识；
-     代码编辑支持换行切换与展开编辑（emit expand-code，缓冲由编辑页统一落盘）。 -->
+<!-- NodeConfig — 处理节点详情内容（20260919 连续区块版）：名称与说明（折叠）/输入/实现/
+     输出/高级设置（折叠）一次性连续展示，不再在页签间切换；多输入/多输出/复杂类型照常维护。
+     anchor 携带问题定位的区块（inputs/implementation/outputs/advanced），变化时滚动定位；
+     focus 携带 parameterId/field 时展开对应参数并高亮字段。连接/LLM/凭据下拉区分
+     加载中/失败/未配置/已加载；Python 固定显示 LLM 推演标识；代码支持展开编辑。 -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
@@ -9,7 +10,7 @@ import AppSelect from '../shared/AppSelect.vue'
 import TypeEditor from './TypeEditor.vue'
 import BindingEditor from './BindingEditor.vue'
 import { EXEC_DEFAULT_TIMEOUT, EXEC_MAX_TIMEOUT_MS, HTTP_METHODS, NODE_KIND_LABELS, REDIS_COMMAND_OPTIONS, SQL_MAX_ROWS_MAX, TYPE_LABELS, flowTypeToCalcType, outputRemovalImpact, pythonSkeleton, sourceSummary, uid } from './flowModel'
-const props = defineProps<{ state: any; node: any; tab: string; connections?: any[]; credentials?: any[]; providers?: any[]; providersStatus?: string; connectionsStatus?: string; focus?: { token: number; parameterId?: string; field?: string } }>()
+const props = defineProps<{ state: any; node: any; anchor?: string; connections?: any[]; credentials?: any[]; providers?: any[]; providersStatus?: string; connectionsStatus?: string; focus?: { token: number; parameterId?: string; field?: string } }>()
 const emit = defineEmits(['before-change', 'changed', 'expand-code', 'open-llm-config', 'open-connections', 'retry-providers'])
 const notice = ref('')
 let noticeTimer: any = null
@@ -31,12 +32,20 @@ const flashField = ref('')
 let flashTimer: any = null
 watch(() => props.focus, f => {
   if (!f?.token) return
-  if (props.tab === 'inputs' && f.parameterId) expandedInputs.value[f.parameterId] = true
+  if (f.parameterId) expandedInputs.value[f.parameterId] = true
   flashField.value = f.field || ''
   clearTimeout(flashTimer)
   flashTimer = setTimeout(() => { flashField.value = '' }, 2200)
   void nextTickScroll()
 }, { deep: true, immediate: true })
+// anchor（问题定位区块）：滚动到对应区块顶部（连续展示下的问题定位）
+watch(() => props.anchor, section => {
+  if (!section) return
+  void Promise.resolve().then(() => {
+    const el = document.querySelector(`.cfg-block[data-section="${section}"]`)
+    el?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  })
+}, { immediate: true })
 function nextTickScroll() {
   return Promise.resolve().then(() => {
     const el = document.querySelector('.field-flash')
@@ -172,6 +181,8 @@ function setExec(key: string, value: any) {
   emit('changed')
 }
 function setConnection(value: string) { emit('before-change'); impl.value.connectionId = value; emit('changed') }
+function setNodeName(value: string) { emit('before-change', { actionLabel: '重命名节点「' + (value || props.node.name || '') + '」', target: { kind: 'node', id: props.node.id }, mergeKey: 'node-name:' + props.node.id }); props.node.name = value; emit('changed') }
+function setNodeDesc(value: string) { emit('before-change', { actionLabel: '修改节点说明', target: { kind: 'node', id: props.node.id }, mergeKey: 'node-desc:' + props.node.id }); props.node.description = value; emit('changed') }
 async function refillSkeleton() {
   if (!isPython.value) return
   if (!(await appConfirm({ message: '重建 main 骨架将覆盖当前 Python 代码正文（按当前输入/输出参数生成）。确认覆盖？', danger: true, confirmLabel: '确认覆盖' }))) return
@@ -185,7 +196,16 @@ async function refillSkeleton() {
 <div class="node-config">
   <p v-if="notice" class="property-feedback" role="status">{{notice}}</p>
 
-  <template v-if="tab==='inputs'">
+  <details class="cfg-block" data-section="basics">
+    <summary>名称与说明</summary>
+    <div class="cfg-body">
+      <label>节点名称<input :value="node.name" aria-label="节点名称" placeholder="如 读取实时 SOC" @input="setNodeName(($event.target as HTMLInputElement).value)"/></label>
+      <label>说明<textarea :value="node.description || ''" rows="2" aria-label="节点说明" placeholder="这个节点做什么（选填）" @input="setNodeDesc(($event.target as HTMLTextAreaElement).value)"/></label>
+    </div>
+  </details>
+
+  <section class="cfg-block" data-section="inputs">
+    <h3>输入</h3>
     <p class="muted tight">每个输入只有一个来源；绑定即业务事实，画布连线由此派生。点击摘要展开配置。</p>
     <div v-for="(row,index) in inputRows" :key="row.input.id" class="param-fold" :class="{open: expandedInputs[row.input.id]}">
       <button class="param-summary" @click="expandedInputs[row.input.id]=!expandedInputs[row.input.id]">
@@ -202,9 +222,10 @@ async function refillSkeleton() {
       </div>
     </div>
     <button class="sheet-add" @click="addInput">＋ 添加输入参数</button>
-  </template>
+  </section>
 
-  <template v-else-if="tab==='implementation'">
+  <section class="cfg-block" data-section="implementation">
+    <h3>实现</h3>
     <template v-if="isPython">
       <div class="engine-note" role="note">由大模型推演执行，非本地 Python 运行；结果具非确定性，日志保留请求与响应摘要。</div>
       <div class="row-between"><label class="tight">Python 代码（def main(输入…) → dict | None）</label>
@@ -289,9 +310,10 @@ async function refillSkeleton() {
       <p v-else-if="providersStatus==='failed'" class="inline-error">LLM 提供方列表加载失败。<button class="mini" @click="emit('retry-providers')">重试</button></p>
       <p v-else-if="!llmReady" class="inline-error">尚未配置可用模型，此节点无法执行。<button class="mini" @click="emit('open-llm-config')">前往模型设置</button></p>
     </template>
-  </template>
+  </section>
 
-  <template v-else-if="tab==='outputs'">
+  <section class="cfg-block" data-section="outputs">
+    <h3>输出</h3>
     <p class="muted tight">输出参数名用于下游绑定；改名继续以稳定 ID 维持引用。</p>
     <div v-for="(out,index) in node.outputs" :key="out.id" class="param-card">
       <div class="mapping-row">
@@ -302,20 +324,28 @@ async function refillSkeleton() {
       <label>类型<TypeEditor :decl="out.type" @before-change="emit('before-change')" @changed="emit('changed')"/></label>
     </div>
     <button class="sheet-add" @click="addOutput">＋ 添加输出</button>
-  </template>
+  </section>
 
-  <template v-else-if="tab==='advanced'">
+  <details class="cfg-block" data-section="advanced">
+    <summary>高级设置（超时 / 行数上限 / 写权限）</summary>
     <div class="form-row">
       <label>超时（毫秒，留空 = {{EXEC_DEFAULT_TIMEOUT[kind] || 30000}}）<input type="number" :min="1000" :max="EXEC_MAX_TIMEOUT_MS" :value="exec.timeoutMs ?? ''" aria-label="节点超时" @change="setExec('timeoutMs', ($event.target as HTMLInputElement).value ? Number(($event.target as HTMLInputElement).value) : '')"/></label>
       <label v-if="kind==='sql'">行数上限（留空 = 1000，最多 {{SQL_MAX_ROWS_MAX}}）<input type="number" :min="1" :max="SQL_MAX_ROWS_MAX" :value="exec.maxRows ?? ''" aria-label="行数上限" @change="setExec('maxRows', ($event.target as HTMLInputElement).value ? Number(($event.target as HTMLInputElement).value) : '')"/></label>
     </div>
     <label v-if="kind==='sql'" class="check-line"><input type="checkbox" :checked="!!exec.allowWrite" @change="setExec('allowWrite', ($event.target as HTMLInputElement).checked)"/> 允许写（DML；默认只读会话，勾选后关闭）</label>
     <p class="muted tight">执行参数为可选项；测试与运行前都会经过配置检查。</p>
-  </template>
+  </details>
 </div>
 </template>
 <style scoped>
 .node-config{padding:0}
+.cfg-block{border:1px solid var(--line);border-radius:8px;margin:10px 0;overflow:hidden}
+.cfg-block>h3{font-size:13px;margin:0;padding:10px 12px;background:var(--paper-2);border-bottom:1px solid var(--line)}
+.cfg-block>summary{cursor:pointer;font-size:13px;font-weight:600;padding:10px 12px;user-select:none}
+.cfg-block>summary:hover{background:var(--paper-2)}
+.cfg-body{padding:0 12px 12px}
+.cfg-block>:not(h3):not(summary):not(.cfg-body){margin-left:12px;margin-right:12px}
+.cfg-block>:not(h3):not(summary):not(.cfg-body).param-fold,.cfg-block>:not(h3):not(summary):not(.cfg-body).param-card{margin-left:12px;margin-right:12px}
 .tight{margin:4px 0 8px}
 .engine-note{background:var(--blue-soft);color:var(--blue-ink);border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px}
 .param-fold{border:1px solid var(--line);border-radius:8px;margin:8px 0;overflow:hidden}

@@ -16,7 +16,7 @@ import time
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from workbench import api_credentials, calc_functions, dbdrivers, flow_http, flow_sql, flows
+from workbench import api_credentials, calc_functions, dbdrivers, flow_http, flow_sql, flow_test_plan, flows
 from workbench import llm_client, llm_providers, projects, secrets as secrets_store
 
 MUTEXES = {}
@@ -117,14 +117,53 @@ def validate_chain(state, target_ids):
 
 
 # ── 输入取值 ─────────────────────────────────────────────────────────────────
-def _resolve_inputs(node, state, results, inputs):
-    """解析节点全部输入值（技术名 → 值）。缺来源/缺值抛 NodeFailure。"""
+def _resolve_inputs(node, state, results, inputs, isolated=None):
+    """解析节点全部输入值（技术名 → 值）。缺来源/缺值抛 NodeFailure。
+
+    isolated：隔离片段测试的稳定 ID 覆盖（{节点ID: {输入ID: 值}}，已由
+    flow_test_plan 预检合法性与类型）。隔离模式下——
+    * 不再接受旧「节点Id.技术名」覆盖与「上游缺失时表单给值」的 mock 回退；
+    * 范围外/未绑定输入取覆盖值（显式 null 视为显式空值）；
+    * 范围内上游严格取真实结果，类型/字段路径错误按节点失败返回，不退回人工输入。
+    旧调用（isolated=None）行为保持不变。
+    """
     flow_inputs = {i.get('id'): i for i in state.get('inputs', []) if isinstance(i, dict)}
     values, logs = {}, []
     for inp in node.get('inputs', []) or []:
         if not isinstance(inp, dict) or not inp.get('name'):
             continue
         name, label = inp['name'], str(inp.get('label') or inp.get('name') or inp['name'])
+        if isolated is not None:
+            node_overrides = isolated.get(node['id']) or {}
+            input_id = inp.get('id')
+            if input_id is not None and input_id in node_overrides:
+                values[name] = node_overrides[input_id]  # 显式 null = 显式空值，有效
+                continue
+            src = inp.get('source')
+            if src is None:
+                raise NodeFailure(f'输入「{label}」尚未绑定来源，也未提供本次测试值')
+            if not isinstance(src, dict):
+                raise NodeFailure(f'输入「{label}」来源声明无效')
+            kind = src.get('kind')
+            if kind == 'fixed':
+                values[name] = src.get('value')
+                continue
+            if kind == 'flowInput':
+                entry = flow_inputs.get(src.get('inputId')) or {}
+                for key in (src.get('inputId'), entry.get('name')):
+                    if key is not None and key in inputs:
+                        values[name] = inputs[key]
+                        break
+                else:
+                    raise NodeFailure(f'输入「{label}」缺少入口参数取值（请在测试表单中提供）')
+                continue
+            if kind in ('node', 'nodeField'):
+                upstream = results.get(src.get('nodeId'))
+                if not upstream or upstream.get('status') != 'success':
+                    raise NodeFailure(f'输入「{label}」的上游节点尚未成功执行')
+                values[name] = _upstream_value(node, label, state, src, upstream)
+                continue
+            raise NodeFailure(f'输入「{label}」来源类型未知')
         # 测试/单节点运行可显式提供「节点Id.参数名」取值：优先于来源解析（不要求真实上游）
         override = inputs.get(f"{node['id']}.{name}")
         if override is not None or f"{node['id']}.{name}" in inputs:
@@ -156,34 +195,39 @@ def _resolve_inputs(node, state, results, inputs):
                 continue
             if not upstream or upstream.get('status') != 'success':
                 raise NodeFailure(f'输入「{label}」的上游节点尚未成功执行（单节点测试时请在表单中给值）')
-            outputs = upstream.get('outputs', {})
-            output_name = upstream.get('outputNames', {}).get(src.get('outputId'))
-            if output_name is None or output_name not in outputs:
-                raise NodeFailure(f'输入「{label}」引用了上游不存在的输出')
-            value = outputs[output_name]
-            if kind == 'nodeField':
-                # fieldPath 是上游输出声明里的字段稳定 ID：先按声明映射为字段技术名，再按名取值
-                # （SQL 节点的输出值按列名组织、Python/LLM 按返回键组织，都与声明技术名对应）
-                upstream_node = next((n for n in state.get('nodes', []) if isinstance(n, dict) and n.get('id') == src.get('nodeId')), None)
-                decl = next((o.get('type') for o in (upstream_node or {}).get('outputs', [])
-                             if isinstance(o, dict) and o.get('id') == src.get('outputId')), None)
-                if value is None:
-                    raise NodeFailure(f'输入「{label}」的上游输出值为空（可能没有查询到数据），无法按字段取值')
-                for fid in src.get('fieldPath') or []:
-                    match = next((f for f in (decl or {}).get('fields', [])
-                                  if isinstance(f, dict) and f.get('id') == fid), None) \
-                        if isinstance(decl, dict) and decl.get('type') == 'object' else None
-                    if match is None:
-                        raise NodeFailure(f'输入「{label}」引用的字段路径在输出声明中不存在')
-                    field_name = match['name']
-                    if not isinstance(value, dict) or field_name not in value:
-                        raise NodeFailure(f'输入「{label}」引用的对象字段「{field_name}」不存在于上游输出值')
-                    value = value[field_name]
-                    decl = match.get('type') or {}
-            values[name] = value
+            values[name] = _upstream_value(node, label, state, src, upstream)
             continue
         raise NodeFailure(f'输入「{label}」来源类型未知')
     return values, logs
+
+
+def _upstream_value(node, label, state, src, upstream):
+    """从成功的上游结果按来源声明取值（整体输出或对象字段路径）。"""
+    outputs = upstream.get('outputs', {})
+    output_name = upstream.get('outputNames', {}).get(src.get('outputId'))
+    if output_name is None or output_name not in outputs:
+        raise NodeFailure(f'输入「{label}」引用了上游不存在的输出')
+    value = outputs[output_name]
+    if src.get('kind') == 'nodeField':
+        # fieldPath 是上游输出声明里的字段稳定 ID：先按声明映射为字段技术名，再按名取值
+        # （SQL 节点的输出值按列名组织、Python/LLM 按返回键组织，都与声明技术名对应）
+        upstream_node = next((n for n in state.get('nodes', []) if isinstance(n, dict) and n.get('id') == src.get('nodeId')), None)
+        decl = next((o.get('type') for o in (upstream_node or {}).get('outputs', [])
+                     if isinstance(o, dict) and o.get('id') == src.get('outputId')), None)
+        if value is None:
+            raise NodeFailure(f'输入「{label}」的上游输出值为空（可能没有查询到数据），无法按字段取值')
+        for fid in src.get('fieldPath') or []:
+            match = next((f for f in (decl or {}).get('fields', [])
+                          if isinstance(f, dict) and f.get('id') == fid), None) \
+                if isinstance(decl, dict) and decl.get('type') == 'object' else None
+            if match is None:
+                raise NodeFailure(f'输入「{label}」引用的字段路径在输出声明中不存在')
+            field_name = match['name']
+            if not isinstance(value, dict) or field_name not in value:
+                raise NodeFailure(f'输入「{label}」引用的对象字段「{field_name}」不存在于上游输出值')
+            value = value[field_name]
+            decl = match.get('type') or {}
+    return value
 
 
 def _node_timeout(node):
@@ -543,28 +587,37 @@ def load_context(project_id):
     return ctx
 
 
-def run(state, targets=None, inputs=None, ctx=None, started_at=None):
-    """执行编排（全图或 targets 链）。返回响应结构；不落盘。"""
+def run(state, targets=None, inputs=None, ctx=None, started_at=None, isolated_overrides=None):
+    """执行编排（全图 / targets 链 / isolated 片段）。返回响应结构；不落盘。
+
+    isolated_overrides：隔离片段测试的稳定 ID 覆盖（flow_test_plan 预检后传入）；
+    传入时 targets 必须正是计划后的 orderedTargets。失败沿所选范围传递性跳过：
+    直接上游失败或被跳过的节点标记 skipped，不再尝试执行。
+    每个真实执行的节点附带 inputs/inputsTruncated（有界输入预览，仅展示用）。
+    """
     start = time.monotonic()
     if started_at is None:
         started_at = datetime.now(timezone.utc).isoformat()
     inputs = inputs if isinstance(inputs, dict) else {}
     order = topo_order(state, targets)
     results, ordered = {}, []
-    failed = set()
+    blocked = set()  # failed ∪ skipped：沿依赖向下游传递
     for node in order:
         nid = node.get('id')
         deps = [d for d in _node_dependencies(node) if d in {n['id'] for n in order}]
-        if any(dep in failed for dep in deps):
+        if any(dep in blocked for dep in deps):
             results[nid] = {'status': 'skipped'}
+            blocked.add(nid)
             ordered.append({'nodeId': nid, 'status': 'skipped'})
             continue
         entry = {'nodeId': nid, 'status': 'running'}
         results[nid] = entry
         started = time.monotonic()
         logs = []
+        resolved_preview = None
         try:
-            values, input_logs = _resolve_inputs(node, state, results, inputs)
+            values, input_logs = _resolve_inputs(node, state, results, inputs, isolated=isolated_overrides)
+            resolved_preview = flow_test_plan.bounded_preview(values)
             logs.extend(input_logs)
             executor = _EXECUTORS.get(node.get('kind'))
             if executor is None:
@@ -573,19 +626,24 @@ def run(state, targets=None, inputs=None, ctx=None, started_at=None):
             logs.extend(exec_logs)
             names_by_id, _decls = _output_slots(node)
             entry.update({'status': 'success', 'outputs': outputs, 'outputNames': names_by_id,
-                          'durationMs': int((time.monotonic() - started) * 1000), 'logs': logs})
+                          'durationMs': int((time.monotonic() - started) * 1000), 'logs': logs,
+                          'inputs': resolved_preview[0], 'inputsTruncated': resolved_preview[1]})
             primary = next((outputs[n] for n in _output_slots(node)[1] if outputs.get(n) is not None), None)
             entry['rowCount'] = len(primary) if isinstance(primary, list) else (1 if primary is not None else 0)
         except NodeFailure as exc:
-            failed.add(nid)
+            blocked.add(nid)
             entry.update({'status': 'failed', 'error': str(exc),
                           'durationMs': int((time.monotonic() - started) * 1000),
                           'logs': logs + list(exc.logs or [])})
+            if resolved_preview is not None:  # 执行器已收到输入后失败：可展示已解析输入
+                entry['inputs'], entry['inputsTruncated'] = resolved_preview
         except Exception as exc:  # 执行器兜底：任何意外都成为可读的节点失败，而不是 500
-            failed.add(nid)
+            blocked.add(nid)
             entry.update({'status': 'failed', 'error': '节点执行异常：' + _preview(str(exc), 300),
                           'durationMs': int((time.monotonic() - started) * 1000), 'logs': logs})
+            if resolved_preview is not None:
+                entry['inputs'], entry['inputsTruncated'] = resolved_preview
         ordered.append(entry)
-    status = 'success' if not failed else 'error'
+    status = 'success' if not blocked else 'error'
     return {'status': status, 'nodeResults': ordered, 'startedAt': started_at,
             'durationMs': int((time.monotonic() - start) * 1000)}

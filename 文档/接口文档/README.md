@@ -18,6 +18,7 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-19 | `/api/flow-run` 新增可选 `testMode="isolated"` 隔离片段测试与稳定 ID `inputOverrides`（只覆盖范围外/未绑定输入；入口值同键赋值 400 歧义拒绝）；响应节点结果新增可选 `inputs`/`inputsTruncated`（有界预览，≤100 条/≈64KiB，不含凭据）；skipped 语义明确为失败沿所选范围传递性标记；targets `[]` 一律 400。旧调用（无 testMode：全图 revision/409/互斥、单节点技术名覆盖、多节点上游闭合链）语义不变 | POST /api/flow-run | zcode |
 | 2026-09-19 | 项目映射新增 `bindings.mappingDescriptions`（四类说明，schemaVersion=1）：写入结构/长度校验、旧客户端省略整块保留、显式清空按删键表达；validate/publish 追加说明结构与失效引用检查（失效阻断）；property-preview 遇非空说明在取数前返回不支持 | project-state / project-save / project-validate / project-publish / project-upgrade-check / project-property-preview | zcode |
 | 2026-09-18 | 首次整理：梳理 40 个在线接口，统一规范描述 | 全部 | — |
 | 2026-09-18 | 缺陷修复（批次 A）：`POST /api/export` 路由表原以 `None` 占位，被 do_POST 的「路由不存在」判定拦截，恒定 404 不可达；改用独立哨兵 `BINARY_ROUTE` 区分「键不存在」与「二进制端点」。`POST /api/restore` 原调用不存在的 `_server_current()`（NameError → 400）；改为 `current()`，并按已校验基线 CAS、响应回传本次提交实际得到的 revision。两接口契约（请求/响应结构）不变，实现回归文档描述；新增回归测试 `tests/test_export_restore_http.py` | POST /api/export、POST /api/restore | — |

@@ -80,6 +80,13 @@ export function pythonSkeleton(inputs: any[], outputs: any[]): string {
 export const processingNodes = (state: any): any[] =>
   (state?.nodes || []).filter((n: any) => n && NODE_KINDS.includes(n.kind))
 
+/** 节点显示名（含边界节点）；测试视图与结果展示用。 */
+export function nameOfFlowNode(state: any, id: string): string {
+  if (id === INPUT_NODE) return '编排输入'
+  if (id === OUTPUT_NODE) return '编排输出'
+  return (state?.nodes || []).find((n: any) => n.id === id)?.name || id
+}
+
 /** 计算节点公式模式：每个数值/文本/是否输出一条公式，引用输入用 {技术名}。 */
 export const calcFormulaHint = (state: any, node: any): string => {
   const refs = (node?.inputs || []).filter((i: any) => flowTypeToCalcType(i.type?.type)).map((i: any) => `{${i.name}}`)
@@ -443,6 +450,118 @@ export function chainExternalInputs(state: any, ids: string[]): { nodeId: string
     }
   }
   return rows
+}
+
+// --- 隔离片段测试（20260919）：范围计划纯函数，与 workbench/flow_test_plan.py 镜像 ----
+
+export interface TestExternalInput { nodeId: string; nodeName: string; inputId: string; label: string; type: any; kind: 'external' | 'unbound'; required: boolean }
+export interface TestScopePlan { order: string[]; externalInputs: TestExternalInput[]; entryNeeds: { inputId: string; label: string }[]; excluded: { id: string; name: string }[]; error: string }
+
+/** 被测集合的隔离测试计划（客户端镜像，服务端 flow_test_plan 仍是权威）：
+ * 拓扑序、环/连通校验、范围外输入分类（external 必填 / unbound 可选）、入口参数需求。 */
+export function testScopePlan(state: any, targets: string[]): TestScopePlan {
+  const empty: TestScopePlan = { order: [], externalInputs: [], entryNeeds: [], excluded: [], error: '' }
+  const index = new Map<string, any>((state?.nodes || []).map((n: any) => [n.id, n]))
+  if (!targets.length) return { ...empty, error: '请先选择要测试的节点' }
+  if (new Set(targets).size !== targets.length) return { ...empty, error: '被测节点存在重复' }
+  const missing = targets.filter(id => !index.has(id))
+  if (missing.length) return { ...empty, error: '被测节点不存在：' + missing.join('、') }
+  const selected = new Set(targets)
+  const deps = new Map<string, string[]>()
+  for (const id of targets) {
+    deps.set(id, [])
+    for (const input of index.get(id)!.inputs || []) {
+      const src = input?.source
+      if (src && (src.kind === 'node' || src.kind === 'nodeField') && selected.has(src.nodeId)) deps.get(id)!.push(src.nodeId)
+    }
+  }
+  // 拓扑序（含环检测）
+  const pending = new Map<string, Set<string>>(targets.map(id => [id, new Set(deps.get(id))]))
+  const order: string[] = []
+  let ready = targets.filter(id => !pending.get(id)!.size).sort()
+  while (ready.length) {
+    const id = ready.shift()!
+    order.push(id)
+    for (const [other, waiting] of pending) {
+      if (waiting.delete(id) && !waiting.size && other !== id && !order.includes(other) && !ready.includes(other)) ready.push(other)
+    }
+    ready = ready.filter(x => !order.includes(x))
+  }
+  if (order.length !== targets.length) return { ...empty, error: '被测节点集合存在循环依赖' }
+  // 连通性（无向）
+  const adjacency = new Map<string, Set<string>>(targets.map(id => [id, new Set()]))
+  for (const [id, sources] of deps) for (const src of sources) { adjacency.get(id)!.add(src); adjacency.get(src)!.add(id) }
+  const seen = new Set<string>()
+  let components = 0
+  for (const id of targets) {
+    if (seen.has(id)) continue
+    components++
+    const stack = [id]
+    seen.add(id)
+    while (stack.length) {
+      const cur = stack.pop()!
+      for (const nxt of adjacency.get(cur) || []) if (!seen.has(nxt)) { seen.add(nxt); stack.push(nxt) }
+    }
+  }
+  if (components > 1) return { ...empty, error: '被测节点集合不连通，请选择依赖相连的连续片段' }
+  // 外部输入分类与入口需求
+  const externalInputs: TestExternalInput[] = []
+  const entryNeeds: { inputId: string; label: string }[] = []
+  const entrySeen = new Set<string>()
+  for (const id of order) {
+    const node = index.get(id)!
+    for (const input of node.inputs || []) {
+      const src = input?.source
+      const kind = src?.kind
+      if (kind === 'fixed' || kind === 'flowInput') {
+        if (kind === 'flowInput' && !entrySeen.has(src.inputId)) {
+          const decl = (state.inputs || []).find((i: any) => i.id === src.inputId)
+          if (decl) { entryNeeds.push({ inputId: decl.id, label: decl.label || decl.name || decl.id }); entrySeen.add(decl.id) }
+        }
+        continue
+      }
+      if (kind === 'node' || kind === 'nodeField') {
+        if (selected.has(src.nodeId)) continue
+        externalInputs.push({ nodeId: id, nodeName: node.name || id, inputId: input.id, label: input.label || input.name || input.id, type: input.type, kind: 'external', required: true })
+        continue
+      }
+      externalInputs.push({ nodeId: id, nodeName: node.name || id, inputId: input.id, label: input.label || input.name || input.id, type: input.type, kind: 'unbound', required: false })
+    }
+  }
+  const excluded = processingNodes(state).filter((n: any) => !selected.has(n.id)).map((n: any) => ({ id: n.id, name: n.name || n.id }))
+  return { order, externalInputs, entryNeeds, excluded, error: '' }
+}
+
+/** start→end 沿依赖方向的全部简单路径（用于片段起止选择：多条路径时不猜测，要求显式选集）。 */
+export function dependencyPaths(state: any, start: string, end: string): string[][] {
+  if (start === end) return [[start]]
+  // 正向邻接：来源节点 → 引用其输出的下游节点
+  const forward = new Map<string, string[]>()
+  for (const node of state?.nodes || []) {
+    for (const i of node.inputs || []) {
+      const src = i?.source
+      if (src && (src.kind === 'node' || src.kind === 'nodeField') && src.nodeId) {
+        if (!forward.has(src.nodeId)) forward.set(src.nodeId, [])
+        if (!forward.get(src.nodeId)!.includes(node.id)) forward.get(src.nodeId)!.push(node.id)
+      }
+    }
+  }
+  const paths: string[][] = []
+  const walk = (current: string, trail: string[]) => {
+    if (paths.length > 32) return // 防御：路径数上限，超出按多路径处理
+    for (const next of forward.get(current) || []) {
+      if (trail.includes(next) || next === current) continue
+      if (next === end) { paths.push([...trail, current, end]); continue }
+      walk(next, [...trail, current])
+    }
+  }
+  walk(start, [])
+  return paths
+}
+
+/** 测试输入/范围的快照签名（结果新鲜度判定的一部分；不含画布布局）。 */
+export function testInputSignature(scope: { kind: string; targets: string[] }, values: Record<string, any>, entryValues: Record<string, any>): string {
+  return JSON.stringify([scope, values, entryValues])
 }
 
 /** 新节点的默认画布位置：按现有节点数排成网格，边界节点固定两端。 */

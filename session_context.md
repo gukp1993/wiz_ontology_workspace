@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`1d783802e2f9b32b`
+上下文版本：`c0d695687d00208e`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,29 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 执行 20260919_函数编排配置与调试优化/执行指令.md（T0–T5，F01–F20） · zcode · 已实施，待验收
+
+时间：2026-09-19T10:53:37.518061+00:00；记录：`.collaboration/entries/000042-c44fa2336769.json`
+
+接口文档先行登记（04 §3.1 testMode=isolated/inputOverrides/inputs 预览/错误码分层/传递 skipped/[] 恒 400；01 §4 交叉引用；05 条目；README 变更记录），再改代码。后端新增 flow_test_plan.py 纯范围计划（结构 400→被测节点配置 422→边界取值 422 全部先于执行；后端终审 0/false 有效、NaN 拒绝、对象列表按声明递归、缺字段≠显式 null；有界预览 ≤100 条/64KiB），flow-run isolated 分支仅以 orderedTargets 交执行器（范围外 A/E 配置错误不阻断），执行器 isolated 解析（稳定 ID 覆盖仅限范围外/未绑定输入，内部严格取真实结果，不接受旧技术名绕过）+失败传递性 skipped（修正旧版下游 failed）+每节点 inputs/inputsTruncated。前端新增 FlowTestWorkspace 独立测试视图（左输入右结果、范围=整条/单节点/连续片段、起止按 dependencyPaths、多路径显式选集、结果绑定配置签名+项目+范围+输入签名+请求代次、晚回包丢弃、v-show 保留状态），FlowEditor 设计/测试双视图+显式运行项目+测试入口（移除旧画布下测试面板与测试勾选模式），NodeConfig 连续区块（名称说明/输入/实现/输出/高级，能力零删减），FlowList 名称说明同列+更多菜单。
+
+- 决定：契约分层：结构/集合 400 → check_flow 仅过滤被测节点 422 → 取值预检 422，全部先于任何执行；覆盖键=节点稳定 ID+输入稳定 ID；范围内内部依赖与固定/入口来源禁止覆盖（400）；失败沿所选范围传递性 skipped 为全模式语义（已登记契约），修正旧版传递下游以 failed 呈现的问题；测试视图 v-show 保持挂载：设计↔测试往返保留画布视口/选中节点/输入/范围/结果；结果新鲜度=配置签名+项目+范围+输入签名+请求代次，晚回包按序号丢弃；运行项目显示当前项目上下文，为空给「选择项目→」走既有链路，不静默重绑连接；整条范围沿用 revision/409/互斥既有约束；单节点与片段统一走 isolated 模式（新 UI 不再用旧技术名覆盖）
+- 验证：tests/test_flow_test_plan.py 新增 51 项全过：B–D 输入10→12/36/18 且 A/E 不在 nodeResults（执行计数0结构证据）、预检缺值/类型错 422 零执行、内部/固定/入口覆盖与未知项 400、环/断开/重复/不存在/空 targets 400、传递跳过、旧调用兼容、预览截断；既有回归全绿：test_flow_executor 33、test_flows 85、test_flow_sql_dialect 25、test_project_flow_source 21、flow_model.test.mjs（含新增镜像用例）全过；前端 22 套件 21 过（mapping_forms 为他人 v2.1 既有基线）；typecheck+build 通过；隔离实例 18879 浏览器验收：B–D 12/36/18 逐节点输出与输入切换（B{x:10}/C{x:12}/D{x:36}）；A/E『本次不执行』；缺值前置拒绝；B 失败→C/D 未执行、C 失败→B 保留；范围外 A 公式清空不阻断；配置/输入变化旧结果徽标；整条 X=10→E=1800；运行项目真实显示；1440/1280/1024 截图+768 可用；设计↔测试往返保留画布/选中/输入/结果；真实 18765 实例与用户数据零写入，隔离实例与临时根已清理
+- 下一步：用户验收：编排列表→编辑→测试片段（默认起止为首末节点，按需改 B→D）体验独立测试视图；限制（如实记录）：F09 侧路分支/F16 属性返回往返/F18 大数据/F19 写节点确认帧未浏览器实测（后端语义均有断言；F16 机制未动且 test_project_flow_source 21 步过）；跨账号用例由 storage owner 既有测试覆盖；mapping_forms 既有基线失败待负责人处理
+- 依据/文档：workbench/flow_test_plan.py + flow_routes.py + flow_executor.py（isolated 全链路）；frontend/src/flow/FlowTestWorkspace.vue + FlowEditor.vue + NodeConfig.vue + flowModel.ts；tests/test_flow_test_plan.py（51 项）+ tests/flow_model.test.mjs（镜像用例）；文档/需求/20260919_函数编排配置与调试优化/开发计划.md §11 实施记录；文档/接口文档/04-编排与LLM接口.md §3.1 + README 变更记录
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 安装 leftopen 端口查看工具 · zcode · 已验证
+
+时间：2026-09-19T10:47:42.556057+00:00；记录：`.collaboration/entries/000041-2a71434da83c.json`
+
+用户要求从 GitHub 找到并安装 leftopen（SonghaiFan/leftopen，macOS 菜单栏工具：查看监听端口/进程/关联项目并安全关闭开发服务器）。经 brew install --cask songhaifan/tap/leftopen 安装 v0.3.0：App 位于 /Applications/LeftOpen.app，CLI 链接到 /opt/homebrew/bin/leftopen。本轮为机器环境工具安装，未改动工作台任何代码、接口文档或真实 ontology/ 数据。
+
+- 决定：安装方式选 Homebrew cask（README 推荐方式）而非手动下载 Releases
+- 验证：leftopen --version 输出 LeftOpen 0.3.0；/Applications/LeftOpen.app 存在；leftopen 首次运行正常：37 个监听端口/32 进程/7 项目，正确识别 wiz_kq_builder_v2 于 18765
+- 下一步：LeftOpen.app 为菜单栏应用，用户可自行从应用程序文件夹打开 GUI；CLI 常用：leftopen / leftopen <port> / leftopen open <port> / leftopen close <port>
+- 依据/文档：https://github.com/SonghaiFan/leftopen/blob/main/README.zh-CN.md
 
 ### 本体与项目配置打包导入导出-方案讨论 · codex · 已确认决定
 
@@ -129,25 +152,3 @@
 - 验证：三份文档相互链接、v2基准与单textarea范围检查通过；V01-V11及D01-D12共23项验收编号齐全。；git diff --check通过；本轮仅文档，无产品构建或实际执行验证。
 - 下一步：用户可将执行指令交给实施harness，按T0-T5完成并记录真实验收；协议如需适配现状须同步接口文档。
 - 依据/文档：文档/需求/20260919_项目映射双模式协同/需求说明.md；文档/需求/20260919_项目映射双模式协同/开发计划.md；文档/需求/20260919_项目映射双模式协同/执行指令.md；文档/需求/20260919_项目映射双模式协同/交互原型_v2.html
-
-### 项目映射说明与配置原型-v2 · codex · 需求已交付
-
-时间：2026-09-19T06:59:46.961631+00:00；记录：`.collaboration/entries/000026-994b2ce5c8c8.json`
-
-按用户要求再次简化 v2 原型：四类说明内部仅一个 textarea，删除插入上下文、说明连接选择/标签、字数及底部工具栏；保留说明折叠及下方原有具体配置。配套三份文档同步，正式工作台未改。
-
-- 决定：说明只用 textarea，不再附加插入变量或连接选择；提示仅放 placeholder。；下方已有配置及其数据连接选择保留。
-- 验证：更新后的 37 项 DOM/源码检查通过，覆盖无辅助工具及保存取消、折叠保留、链接共享。；未修改业务代码或数据，未运行产品构建，未完成浏览器视觉验收。
-- 依据/文档：文档/需求/20260919_项目映射双模式协同/交互原型_v2.html；文档/需求/20260919_项目映射双模式协同/需求说明.md
-
-### 删除关系画布功能 · zcode · 已实施，待验收
-
-时间：2026-09-19T06:38:30.331533+00:00；记录：`.collaboration/entries/000024-7cfd4f0010df.json`
-
-按用户要求移除对象建模页「关系画布」（ObjectCanvas 编辑画布）。删除 ObjectCanvas.vue 与 ObjectWorkspace 画布模式：mode 'canvas'、canvasRef、showCanvas/showInCanvas、画布语义事件转发、详情页「在画布查看」入口、表单 origin='canvas' 来源与返回逻辑（openLinkEditor 的画布连线 preset 参数一并移除）。对象/链接图形化查看统一走「本体图谱」只读页签；增删改全部走列表入口（表单本身不变）。App.vue 教学页文案同步。测试改造：画布来源用例改列表入口同断言（取消不落库/失败保留输入/必填逐项提示），删 R6 画布文案用例。草稿 state.layout（旧画布位置数据）保留不动，仅不再读写。工作区中文档/需求/20260919_项目映射双模式协同/ 的在途修改属 Codex，未夹带。
-
-- 决定：关系画布移除后对象/链接表单统一列表入口，Origin 类型收为 'list' 保留字段稳定 Editor 结构；图谱块样式类 ow-canvas-* 更名 ow-graph-wrap/ow-sub-tabs，避免误导；state.layout 历史数据不清理（用户数据不手改），代码不再读写
-- 验证：typecheck/build 通过；object_workspace 7/7；全量前端套件 21/22（唯一败 mapping_forms 既有基线）；18765 真实本体浏览器快验：页签「对象列表 | 本体图谱」，关系画布/在画布查看入口零残留，本体图谱统计「对象5·共享属性6·私有属性4·规则1·动作1·关系32」与切换正常
-- 下一步：用户侧刷新页面即可看到两页签；若后续需要从本体图谱跳转编辑对象/链接，属新需求；wiz_kq_builder（旧版参考项目）不受影响
-- 依据/文档：frontend/src/ontology/ObjectWorkspace.vue；frontend/src/App.vue；tests/object_workspace.test.mjs
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
