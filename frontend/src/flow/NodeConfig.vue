@@ -100,7 +100,10 @@ const bodyModeOptions = [{ value: 'none', label: '无请求体' }, { value: 'jso
 const calcModeOptions = [{ value: 'formula', label: '公式模式（确定性）' }, { value: 'llm', label: 'LLM 模式' }]
 const formulaOutputs = computed(() => (props.node.outputs || []).filter((o: any) => flowTypeToCalcType(o.type?.type)))
 const untitled = computed(() => (props.node.outputs || []).filter((o: any) => !flowTypeToCalcType(o.type?.type)))
-const wrapOn = ref(false)
+const wrapOn = ref<Record<string, boolean>>({})
+const wrapClass = (key: string) => ({ wrap: !!wrapOn.value[key] })
+const toggleWrap = (key: string) => { wrapOn.value[key] = !wrapOn.value[key] }
+const wrapLabel = (key: string) => (wrapOn.value[key] ? '不换行' : '自动换行')
 const codeField = computed<'code' | 'sql' | 'keyTemplate' | 'body' | 'llmInstruction' | null>(() =>
   isPython.value ? 'code' : isRedis.value ? 'keyTemplate' : isHttp.value ? 'body' : isCalc.value && (props.node.implementation?.mode || 'formula') === 'llm' ? 'llmInstruction' : 'sql')
 const codeValue = computed(() => codeField.value ? (props.node.implementation?.[codeField.value] || '') : '')
@@ -157,13 +160,29 @@ function renameTechnical(container: any, list: 'inputs' | 'outputs', index: numb
   if (old === next) return
   emit('before-change')
   item.name = next
-  emit('changed')
-  const body = isPython.value ? (props.node.implementation?.code || '') : isCalc.value ? JSON.stringify(props.node.implementation?.formulas || {}) : (props.node.implementation?.sql || '')
-  if (old && body.includes(isPython.value ? old : `:${old}`) && !isHttp.value && !isRedis.value) {
-    warn(`技术名「${old}」已改为「${next || '（空）'}」，实现正文仍引用旧名；请检查${isPython.value ? '代码参数' : 'SQL :参数'}，系统不会自动重写。`)
-  } else if (old && isCalc.value && body.includes(`"${old}"`)) {
-    warn(`技术名「${old}」已改为「${next || '（空）'}」，公式仍引用旧名，请检查计算定义。`)
+  // calc 输出改名随迁公式键（公式按输出技术名存键，不同步会留下孤儿公式）；新名为空则保留原键
+  if (isCalc.value && list === 'outputs' && old && next) {
+    const formulas = props.node.implementation?.formulas
+    if (formulas && typeof formulas === 'object' && Object.prototype.hasOwnProperty.call(formulas, old)) {
+      formulas[next] = formulas[old]
+      delete formulas[old]
+    }
   }
+  emit('changed')
+  const body = props.node.implementation || {}
+  const hints: string[] = []
+  if (old && isPython.value) { if (String(body.code || '').includes(old)) hints.push('代码参数') }
+  else if (old && isCalc.value) {
+    if (list === 'inputs' && JSON.stringify(body.formulas || {}).includes(`{${old}}`)) hints.push('公式表达式')
+    else if (list === 'outputs' && String(body.llmInstruction || '').includes(old)) hints.push('LLM 计算规则')
+  }
+  else if (old && kind.value === 'sql') { if (String(body.sql || '').includes(`:${old}`)) hints.push('SQL :参数') }
+  else if (old && isHttp.value) { if (String(body.url || '').includes(`{${old}}`) || String(body.body || '').includes(`{${old}}`)) hints.push('URL/请求体占位') }
+  else if (old && isRedis.value) {
+    const kt = String(body.keyTemplate || '')
+    if (kt.includes(`{{${old}}}`) || kt.includes(`\${${old}}`) || JSON.stringify(body.args || []).includes(`"${old}"`)) hints.push('Key 模板/命令参数占位')
+  }
+  if (hints.length) warn(`技术名「${old}」已改为「${next || '（空）'}」，实现仍引用旧名；请检查${hints.join('、')}，系统不会自动重写。`)
 }
 function setInputLabel(input: any, value: string) { emit('before-change', { actionLabel: '修改输入「' + (value || input.label || '') + '」名称', target: { kind: 'node', id: props.node.id } }); input.label = value; emit('changed') }
 function setOutputLabel(out: any, value: string) { emit('before-change', { actionLabel: '修改输出「' + (value || out.label || '') + '」名称', target: { kind: 'node', id: props.node.id } }); out.label = value; emit('changed') }
@@ -229,8 +248,8 @@ async function refillSkeleton() {
     <template v-if="isPython">
       <div class="engine-note" role="note">由大模型推演执行，非本地 Python 运行；结果具非确定性，日志保留请求与响应摘要。</div>
       <div class="row-between"><label class="tight">Python 代码（def main(输入…) → dict | None）</label>
-        <span class="code-tools"><button class="mini" @click="wrapOn=!wrapOn">{{wrapOn?'不换行':'自动换行'}}</button><button class="mini" @click="expandCode">展开编辑</button></span></div>
-      <textarea class="code-editor" :class="{wrap: wrapOn}" :value="node.implementation?.code || ''" rows="14" spellcheck="false" aria-label="Python 代码" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
+        <span class="code-tools"><button class="mini" @click="toggleWrap('code')">{{wrapLabel('code')}}</button><button class="mini" @click="expandCode">展开编辑</button></span></div>
+      <textarea class="code-editor" :class="[wrapClass('code'), fieldFlash('code')]" :value="node.implementation?.code || ''" rows="14" spellcheck="false" aria-label="Python 代码" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
       <button class="mini" @click="refillSkeleton">按当前参数重建 main 骨架…</button>
     </template>
     <template v-else-if="isCalc">
@@ -249,7 +268,7 @@ async function refillSkeleton() {
         <p class="muted tight">用自然语言描述计算规则，连同输入交给 LLM 计算（结果非确定性）。</p>
         <div class="row-between"><label class="tight">LLM 计算规则</label>
           <span class="code-tools"><button class="mini" @click="expandCode">展开编辑</button></span></div>
-        <textarea class="code-editor wrap" :value="impl.llmInstruction || ''" rows="4" aria-label="LLM 计算规则" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
+        <textarea class="code-editor wrap" :class="fieldFlash('llmInstruction')" :value="impl.llmInstruction || ''" rows="4" aria-label="LLM 计算规则" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
       </template>
     </template>
     <template v-else-if="isHttp">
@@ -259,39 +278,39 @@ async function refillSkeleton() {
         <label>请求体类型<AppSelect :model-value="impl.bodyMode || 'none'" :options="bodyModeOptions" aria-label="请求体类型" @before-change="emit('before-change')" @update:model-value="setField(impl,'bodyMode',($event as string))"/>
         </label>
       </div>
-      <label>URL 模板（{技术名} 占位将 URL 编码替换；占位参数必须已声明）<input :value="impl.url || ''" placeholder="https://host/api/items/{device_id}" aria-label="请求 URL" @input="setField(impl,'url',($event.target as HTMLInputElement).value)"/></label>
-      <label>请求头（每行「名: 值」）<textarea class="code-editor wrap" :value="headersText" rows="3" aria-label="请求头" @input="headersText=($event.target as HTMLTextAreaElement).value"/></label>
+      <label>URL 模板（{技术名} 占位将 URL 编码替换；占位参数必须已声明）<input :class="fieldFlash('url')" :value="impl.url || ''" placeholder="https://host/api/items/{device_id}" aria-label="请求 URL" @input="setField(impl,'url',($event.target as HTMLInputElement).value)"/></label>
+      <label>请求头（每行「名: 值」）<textarea class="code-editor wrap" :class="fieldFlash('headers')" :value="headersText" rows="3" aria-label="请求头" @input="headersText=($event.target as HTMLTextAreaElement).value"/></label>
       <template v-if="(impl.bodyMode||'none')==='json'">
         <div class="row-between"><label class="tight">JSON 请求体模板（{技术名} 占位；字符串占位请自带引号）</label>
-          <span class="code-tools"><button class="mini" @click="expandCode">展开编辑</button></span></div>
-        <textarea class="code-editor" :class="{wrap: wrapOn}" :value="impl.body || ''" rows="5" spellcheck="false" aria-label="请求体模板" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
+          <span class="code-tools"><button class="mini" @click="toggleWrap('httpbody')">{{wrapLabel('httpbody')}}</button><button class="mini" @click="expandCode">展开编辑</button></span></div>
+        <textarea class="code-editor" :class="[wrapClass('httpbody'), fieldFlash('body')]" :value="impl.body || ''" rows="5" spellcheck="false" aria-label="请求体模板" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
       </template>
-      <label>认证凭据（可选；项目 API 凭据，密钥只写不读回）<AppSelect :model-value="impl.credentialId || ''" :options="credentialOptions" aria-label="认证凭据" @before-change="emit('before-change')" @update:model-value="setField(impl,'credentialId',($event as string))"/>
+      <label :class="fieldFlash('credentialId')">认证凭据（可选；项目 API 凭据，密钥只写不读回）<AppSelect :model-value="impl.credentialId || ''" :options="credentialOptions" aria-label="认证凭据" @before-change="emit('before-change')" @update:model-value="setField(impl,'credentialId',($event as string))"/>
       </label>
-      <label>响应提取路径（点路径，留空 = 整个 JSON）<input :value="impl.responsePath || ''" placeholder="data" aria-label="响应提取路径" @input="setField(impl,'responsePath',($event.target as HTMLInputElement).value)"/></label>
+      <label :class="fieldFlash('responsePath')">响应提取路径（点路径，留空 = 整个 JSON）<input :value="impl.responsePath || ''" placeholder="data" aria-label="响应提取路径" @input="setField(impl,'responsePath',($event.target as HTMLInputElement).value)"/></label>
     </template>
     <template v-else-if="isRedis">
-      <label>数据连接
+      <label :class="fieldFlash('connectionId')">数据连接
         <AppSelect :model-value="node.implementation?.connectionId || ''" :options="connectionOptions" :disabled="connectionsStatus==='loading'" aria-label="数据连接" @before-change="emit('before-change')" @update:model-value="setConnection($event as string)"/>
       </label>
       <p v-if="connectionsStatus==='loading'" class="muted tight">数据连接加载中…</p>
       <p v-else-if="connectionsStatus==='failed'" class="inline-error">项目数据连接加载失败。<button class="mini" @click="emit('open-connections')">前往数据连接页</button></p>
       <p v-else-if="!hasConnectionOptions" class="inline-error">当前项目还没有 {{isRedis?'Redis':'MySQL'}} 数据连接。<button class="mini" @click="emit('open-connections')">前往数据连接页</button></p>
       <div class="form-row">
-        <label>命令（白名单）
+        <label :class="fieldFlash('command')">命令（白名单）
           <AppSelect :model-value="impl.command || ''" :options="[{value:'',label:'（旧草稿：按 key 模板推断 GET）'},...REDIS_COMMAND_OPTIONS]" aria-label="Redis 命令" @before-change="emit('before-change')" @update:model-value="setField(impl,'command',($event as string))"/>
         </label>
         <label>行模式<input type="checkbox" class="inline-check" :checked="!!impl.rowMode" @change="setField(impl,'rowMode',($event.target as HTMLInputElement).checked)"/>
         </label>
       </div>
       <div class="row-between"><label class="tight">Key 模板</label>
-        <span class="code-tools"><button class="mini" @click="expandCode">展开编辑</button></span></div>
-      <textarea class="code-editor" :class="{wrap: wrapOn}" :value="node.implementation?.keyTemplate || ''" rows="2" spellcheck="false" aria-label="Redis Key 模板" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
+        <span class="code-tools"><button class="mini" @click="toggleWrap('rediskey')">{{wrapLabel('rediskey')}}</button><button class="mini" @click="expandCode">展开编辑</button></span></div>
+      <textarea class="code-editor" :class="[wrapClass('rediskey'), fieldFlash('keyTemplate')]" :value="node.implementation?.keyTemplate || ''" rows="2" spellcheck="false" aria-label="Redis Key 模板" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
       <label>命令参数（逗号分隔：输入技术名 / 数字字面量 / 行模式 <span v-pre>{{字段}}</span>）<input :value="argsText" aria-label="命令参数" @input="argsText=($event.target as HTMLInputElement).value"/></label>
       <p class="muted tight">行模式：输入为列表时用 <b v-pre>{{行字段}}</b> 引用元素字段，逐行执行，输出列表按序对应。单键模式：用 <b v-pre>${参数}</b> 引用输入参数。</p>
     </template>
     <template v-else>
-      <label>数据连接
+      <label :class="fieldFlash('connectionId')">数据连接
         <AppSelect :model-value="node.implementation?.connectionId || ''" :options="connectionOptions" :disabled="connectionsStatus==='loading'" aria-label="数据连接" @before-change="emit('before-change')" @update:model-value="setConnection($event as string)"/>
       </label>
       <p v-if="connectionsStatus==='loading'" class="muted tight">数据连接加载中…</p>
@@ -299,8 +318,8 @@ async function refillSkeleton() {
       <p v-else-if="!hasConnectionOptions" class="inline-error">当前项目还没有 MySQL 数据连接。<button class="mini" @click="emit('open-connections')">前往数据连接页</button></p>
       <p class="muted tight">动态标签子集：&lt;if test&gt; &lt;choose&gt; &lt;where&gt; &lt;set&gt; &lt;foreach&gt;；参数用 <b v-pre>#{技术名}</b> 或旧写法 :技术名；<b v-pre>${技术名}</b> 为原文拼接（检查会提示注入风险）。</p>
       <div class="row-between"><label class="tight">SQL 模板</label>
-        <span class="code-tools"><button class="mini" @click="wrapOn=!wrapOn">{{wrapOn?'不换行':'自动换行'}}</button><button class="mini" @click="expandCode">展开编辑</button></span></div>
-      <textarea class="code-editor" :class="{wrap: wrapOn}" :value="node.implementation?.sql || ''" rows="12" spellcheck="false" aria-label="SQL 模板" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
+        <span class="code-tools"><button class="mini" @click="toggleWrap('sql')">{{wrapLabel('sql')}}</button><button class="mini" @click="expandCode">展开编辑</button></span></div>
+      <textarea class="code-editor" :class="[wrapClass('sql'), fieldFlash('sql')]" :value="node.implementation?.sql || ''" rows="12" spellcheck="false" aria-label="SQL 模板" @input="setBody(($event.target as HTMLTextAreaElement).value)"/>
     </template>
     <template v-if="needsLlm">
       <label>LLM 提供方（留空 = 默认）
