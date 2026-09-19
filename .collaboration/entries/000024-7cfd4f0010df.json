@@ -1,0 +1,30 @@
+{
+  "ticket": "a180e73780524961aac1de389f3a6bf4",
+  "task": "删除关系画布功能",
+  "status": "implemented",
+  "summary": "按用户要求移除对象建模页「关系画布」（ObjectCanvas 编辑画布）。删除 ObjectCanvas.vue 与 ObjectWorkspace 画布模式：mode 'canvas'、canvasRef、showCanvas/showInCanvas、画布语义事件转发、详情页「在画布查看」入口、表单 origin='canvas' 来源与返回逻辑（openLinkEditor 的画布连线 preset 参数一并移除）。对象/链接图形化查看统一走「本体图谱」只读页签；增删改全部走列表入口（表单本身不变）。App.vue 教学页文案同步。测试改造：画布来源用例改列表入口同断言（取消不落库/失败保留输入/必填逐项提示），删 R6 画布文案用例。草稿 state.layout（旧画布位置数据）保留不动，仅不再读写。工作区中文档/需求/20260919_项目映射双模式协同/ 的在途修改属 Codex，未夹带。",
+  "decisions": [
+    "关系画布移除后对象/链接表单统一列表入口，Origin 类型收为 'list' 保留字段稳定 Editor 结构",
+    "图谱块样式类 ow-canvas-* 更名 ow-graph-wrap/ow-sub-tabs，避免误导",
+    "state.layout 历史数据不清理（用户数据不手改），代码不再读写"
+  ],
+  "verification": [
+    "typecheck/build 通过；object_workspace 7/7；全量前端套件 21/22（唯一败 mapping_forms 既有基线）",
+    "18765 真实本体浏览器快验：页签「对象列表 | 本体图谱」，关系画布/在画布查看入口零残留，本体图谱统计「对象5·共享属性6·私有属性4·规则1·动作1·关系32」与切换正常"
+  ],
+  "next": [
+    "用户侧刷新页面即可看到两页签；若后续需要从本体图谱跳转编辑对象/链接，属新需求",
+    "wiz_kq_builder（旧版参考项目）不受影响"
+  ],
+  "references": [
+    "frontend/src/ontology/ObjectWorkspace.vue",
+    "frontend/src/App.vue",
+    "tests/object_workspace.test.mjs"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-19T06:38:30.331533+00:00",
+  "sequence": 24,
+  "filename": "000024-7cfd4f0010df.json",
+  "record_hash": "4d97aab535f0c036e65fb90041d286c4cf0304e5307156cc7151f55995f2efbb",
+  "context_advanced": true
+}
