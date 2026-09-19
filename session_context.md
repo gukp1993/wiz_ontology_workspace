@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`d39945057679abeb`
+上下文版本：`e4c06e0bd423f4aa`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -20,15 +20,26 @@
 
 ## 最近交接（新 → 旧）
 
+### 删除关系画布功能 · zcode · 已实施，待验收
+
+时间：2026-09-19T06:38:30.331533+00:00；记录：`.collaboration/entries/000024-7cfd4f0010df.json`
+
+按用户要求移除对象建模页「关系画布」（ObjectCanvas 编辑画布）。删除 ObjectCanvas.vue 与 ObjectWorkspace 画布模式：mode 'canvas'、canvasRef、showCanvas/showInCanvas、画布语义事件转发、详情页「在画布查看」入口、表单 origin='canvas' 来源与返回逻辑（openLinkEditor 的画布连线 preset 参数一并移除）。对象/链接图形化查看统一走「本体图谱」只读页签；增删改全部走列表入口（表单本身不变）。App.vue 教学页文案同步。测试改造：画布来源用例改列表入口同断言（取消不落库/失败保留输入/必填逐项提示），删 R6 画布文案用例。草稿 state.layout（旧画布位置数据）保留不动，仅不再读写。工作区中文档/需求/20260919_项目映射双模式协同/ 的在途修改属 Codex，未夹带。
+
+- 决定：关系画布移除后对象/链接表单统一列表入口，Origin 类型收为 'list' 保留字段稳定 Editor 结构；图谱块样式类 ow-canvas-* 更名 ow-graph-wrap/ow-sub-tabs，避免误导；state.layout 历史数据不清理（用户数据不手改），代码不再读写
+- 验证：typecheck/build 通过；object_workspace 7/7；全量前端套件 21/22（唯一败 mapping_forms 既有基线）；18765 真实本体浏览器快验：页签「对象列表 | 本体图谱」，关系画布/在画布查看入口零残留，本体图谱统计「对象5·共享属性6·私有属性4·规则1·动作1·关系32」与切换正常
+- 下一步：用户侧刷新页面即可看到两页签；若后续需要从本体图谱跳转编辑对象/链接，属新需求；wiz_kq_builder（旧版参考项目）不受影响
+- 依据/文档：frontend/src/ontology/ObjectWorkspace.vue；frontend/src/App.vue；tests/object_workspace.test.mjs
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
 ### 项目映射双模式协同原型-v1 · codex · 需求已交付
 
-时间：2026-09-19T06:34:24.194403+00:00；记录：`.collaboration/entries/000022-b7902c90e957.json`
+时间：2026-09-19T06:38:30.008722+00:00；记录：`.collaboration/entries/000023-dfcda4b1ab9d.json`
 
-用户确认普通与严格模式可在同一配置组合使用，已交付对象来源及属性取值两区域并列原型与配套四件套；无互斥模式开关，未实施产品代码。
+按用户反馈更新同版原型及配套文档：自然语言说明置于结构化配置之前并支持折叠。默认展开，折叠仅影响展示，不改变内容或生效规则。本轮未改正式工作台。
 
-- 决定：结构化配置与自然语言说明可单独或共同使用；普通模式原文供大模型理解，不强制转换编排。；原型以额定功率仅结构化、采样 SOC 仅自然语言、实时 SOC 组合使用展示；冲突与缺失反馈明确为固定示例。；正式执行与发布协议需后续冻结，不能将本轮配置原型视为自然语言已实际取值。
-- 验证：27 项 DOM/源码检查通过：保存取消、未保存守卫、移除保留文本、连接多选、时序输出、反馈弹窗等。；无网络及业务数据写入；浏览器本地文件访问此前受限，本轮未绕过，未完成视觉验收；未跑产品构建。
-- 下一步：用户评审原型布局与组合逻辑；获得实施授权后先冻结接口和执行/发布边界，再开发。
+- 决定：对象来源、属性取值编辑页均采用自然语言在前、结构化配置在后；对象来源只读摘要顺序同步。；同次编辑重绘保留折叠状态，重新打开默认展开；折叠不触发保存、不清空未保存文本。
+- 验证：原有 27 项 DOM/源码检查通过，新增 12 项折叠检查通过。；未改正式前端或业务数据，未运行产品构建；浏览器视觉验收尚未完成。
 - 依据/文档：文档/需求/20260919_项目映射双模式协同/交互原型_v1.html；文档/需求/20260919_项目映射双模式协同/需求说明.md；文档/需求/20260919_项目映射双模式协同/开发计划.md；文档/需求/20260919_项目映射双模式协同/执行指令.md
 
 ### 平移 wiz_kq_builder(5173) 图谱能力——本体图谱页签 · zcode · 已实施，待验收
@@ -140,15 +151,3 @@
 - 验证：18765 实测：菜单 rect 280px 完整可见、位于 body、position:fixed；展开态右缘 292 与收起态 295.5 均在视口内；Esc 关闭 + 焦点归还触发器（真实键盘事件）；点外关闭；菜单「设置」进入 #settings-models 且菜单关闭；npm run typecheck 与 npm run build 通过；global_settings_nav 测试补 ⑦ 用例锁定位计算与 Esc 行为：7/7 通过；全量前端套件 20/21：唯一败 mapping_forms 为既有基线失败（与本轮无关，未修）
 - 下一步：用户复核视觉效果；mapping_forms 既有失败仍待其负责人处理
 - 依据/文档：frontend/src/App.vue；frontend/src/style.css；tests/global_settings_nav.test.mjs
-
-### 本体列表统一设计-共享属性库 SharedLibrary.vue 单文件改造 · zcode · 已实施，待验收
-
-时间：2026-09-18T10:32:38.145252+00:00；记录：`.collaboration/entries/000007-4a41782de8cd.json`
-
-按需求 §6.5/§5/§7/§8 重写 frontend/src/ontology/SharedLibrary.vue（仅此一文件）：条目卡片改 OntologyList 全宽表格（名称42%/数据类型20%/引用情况20%/操作18%，每页20，名称 zh-CN 排序，名称+业务定义搜索）；页头 ont-lib-head 右侧 RowMenu（粘贴多行/批量复用）+「＋ 新建共享属性」，删底部 details.library-more；#filter 数据类型分段筛选（9 项，propertyDataType 判定，时间序列不命中数值）；名称点击 OntDrawer 只读详情（定义/类型/单位/引用+编辑定义）；引用徽标 OntDrawer 引用位置列表（ont-ref-row 跳回对象属性，保留 externalReferencesOf 提示），usages 弹窗分支移除。编辑态/四弹窗/removeShared 私有化/feedback/locate 全保留。
-
-- 决定：引用计数口径不变：usageCount=referencesOf 记录数，非去重对象数；原「共 N 项 · M 处引用」信息移到表格下 ont-context 行；totalText 用组件默认；locate 适配分页：目标行不在筛选/当前页时清类型筛选、reset 并翻到所在页再高亮（data-lib-row 在 tr 上）；.ont-filters 样式写本文件 scoped（全局无此类）；timestamp 归「时间」筛选项；删除本文件未用的 valueShapeOf/shortType/typeLabel/rangeOf 死代码，业务逻辑零删减
-- 验证：npm run typecheck：SharedLibrary.vue 0 错误（唯一初错 aria-label kebab 未解析为 ariaLabel prop，已改 ariaLabel= 传参）；残留 8 错全在未触碰文件：ObjectWorkspace.vue 757/795/824/853 TS2345（同 aria-label 问题）；ontList.ts 29 行 source.value 应为 source()（运行时会崩）与 47 行 3 处接口类型不匹配；与并行交接 000006 所见一致，属公共层既有问题；按铁律未跑 git/build/服务，浏览器验收未做
-- 下一步：ontList.ts 与 ObjectWorkspace.vue 的公共层错误由各自负责人修复，否则 build 失败；整包构建后做隔离浏览器验收（保存定位、筛选组合、抽屉焦点归还）
-- 依据/文档：frontend/src/ontology/SharedLibrary.vue；frontend/src/shared/OntologyList.vue；frontend/src/ontology/ontList.ts；文档/需求/20260918_本体列表统一设计/需求说明.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
