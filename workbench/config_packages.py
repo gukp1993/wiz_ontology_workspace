@@ -30,7 +30,8 @@ from workbench import storage
 from workbench.config_package_format import (
     CHUNK_SIZE, MAX_PACKAGE_BYTES, MAX_EXPORT_PREVIEWS_PER_OWNER, MAX_STAGED_PER_OWNER,
     STAGE_TTL_SECONDS, PackageFormatError,
-    allocate_name, parse_manifest, read_package, sha256_hex, strip_sensitive,
+    allocate_name, parse_json_strict, parse_manifest, read_package, sha256_hex,
+    strip_sensitive, strip_url_credentials,
 )
 from workbench.storage import assets as store
 from workbench.storage import configuration as config_store
@@ -235,9 +236,21 @@ def collect_export(model_ids, project_ids, extra_flow_ids, owner=None):
 
         # 模型配置元数据（无密钥）+ 凭据声明
         provider_refs = {}
+        default_dependent_flows = []
         for fid, item in {**flows, **extra_flows}.items():
             for provider_id in _payload_provider_ids(item['draft']['payload']):
                 provider_refs.setdefault(provider_id, []).append(fid)
+            if _payload_uses_default_provider(item['draft']['payload']):
+                default_dependent_flows.append(fid)
+        # T06：来源账号默认模型也是被依赖配置——导出冻结，导入时把空 providerId
+        # 节点显式绑定到本次副本，不能在接收端悄悄走接收方默认。
+        source_default_provider = config_store.get_user_setting(
+            conn, owner, config_store.DEFAULT_PROVIDER_KEY, '') or ''
+        if source_default_provider:
+            provider_refs.setdefault(source_default_provider, [])
+        if default_dependent_flows and not source_default_provider:
+            warnings.append(f'{len(default_dependent_flows)} 个编排存在未指定模型的节点，'
+                            '且来源账号未设置默认模型——导入后这些节点需手工配置模型。')
         model_configs = []
         for provider_id in sorted(provider_refs):
             meta = _provider_metadata(conn, owner, provider_id)
@@ -259,14 +272,19 @@ def collect_export(model_ids, project_ids, extra_flow_ids, owner=None):
 
         # 敏感结构值剥离（对每个 payload 副本；记录位置不记原值）
         stripped = []
+        # T04：模型连接地址也过敏感检查（URL 认证段剥离并记录位置）
+        for meta in model_configs:
+            if not meta.get('missing'):
+                meta['endpoint'] = strip_url_credentials(
+                    meta.get('endpoint') or '', f"模型「{meta.get('name')}」连接地址", stripped)
         for item in list(models.values()) + list(projects.values()) + list(flows.values()) + list(extra_flows.values()):
             item['draft']['payload'] = strip_sensitive(item['draft']['payload'], item['asset']['name'], stripped)
             if 'releases' in item:
                 item['releases'] = [{**r, 'payload': strip_sensitive(r['payload'], item['asset']['name'], stripped)}
                                     for r in item['releases']]
         if stripped:
-            warnings.append(f'已剥离 {len(stripped)} 处结构化敏感值（认证头/疑似秘密字段/带凭据 URL），'
-                            '导入后需在原位置重新填写。')
+            warnings.append(f'已剥离 {len(stripped)} 处认证信息（认证头/带凭据 URL），'
+                            '导入后需在原位置重新填写；普通业务字段不受影响。')
 
         # M07：编排跨项目连接上下文分组（不一致拆副本）
         flow_groups = {}
@@ -280,6 +298,8 @@ def collect_export(model_ids, project_ids, extra_flow_ids, owner=None):
 
     return {'snapshotAt': utcnow(), 'models': models, 'projects': projects, 'flows': flows,
             'extraFlows': extra_flows, 'flowGroups': flow_groups, 'modelConfigs': model_configs,
+            'defaultProvider': source_default_provider,
+            'defaultDependentFlows': default_dependent_flows,
             'credentialDeclarations': credential_declarations,
             'stripped': stripped, 'warnings': warnings, 'blockers': []}
 
@@ -345,6 +365,14 @@ def _payload_provider_ids(payload):
 
     walk(payload)
     return out
+
+
+def _payload_uses_default_provider(payload):
+    """T06：payload 的 nodes 中存在没有 providerId 的节点 → 可能走来源默认模型。"""
+    nodes = (payload or {}).get('nodes')
+    if not isinstance(nodes, list):
+        return False
+    return any(isinstance(n, dict) and not n.get('providerId') for n in nodes)
 
 
 def _project_ontology_refs(payload):
@@ -544,6 +572,8 @@ def build_package_zip(snapshot) -> bytes:
                 edges.append({'from': key, 'to': target['packageKey'], 'kind': 'ontology-version',
                               'detail': str((rel['payload'] or {}).get('ontologyVersion') or ''),
                               'sourceVersion': rel['version_label']})
+    default_provider = snapshot.get('defaultProvider') or ''
+    default_flows = set(snapshot.get('defaultDependentFlows') or ())
     for collection in ('flows', 'extraFlows'):
         for source_id, item in snapshot[collection].items():
             for copy in item['copies']:
@@ -552,7 +582,9 @@ def build_package_zip(snapshot) -> bytes:
                     'kind': KIND_FLOW, 'packageKey': copy['packageKey'], 'sourceId': source_id,
                     'name': item['asset']['name'], 'payloadFormat': item['draft']['payload_format'],
                     'draftPath': draft_path, 'releases': [],
-                    'contextProjects': copy['projects']})
+                    'contextProjects': copy['projects'],
+                    'defaultProviderDependency': default_provider
+                    if source_id in default_flows else ''})
                 add(draft_path, item['draft']['payload'])
     providers = []
     for meta in snapshot['modelConfigs']:
@@ -689,6 +721,72 @@ def build_import_preview(owner, upload_id):
     if not any(a['kind'] in (KIND_MODEL, KIND_PROJECT) for a in manifest['assets']):
         blockers.append('包内没有本体或项目，无法导入。')
 
+    # T05：能力白名单（本期不支持任何扩展能力声明）
+    caps = manifest.get('requiredCapabilities') or []
+    if caps:
+        blockers.append(f'配置包声明了本工作台不支持的能力（{", ".join(str(c) for c in caps[:5])}），'
+                        '无法导入；请使用相匹配的工作台版本导出。')
+
+    # T05/T02：payload 严格解析（重复键/深度已在 parse 阶段拒绝），并校验强依赖闭包
+    payloads = {}
+    for asset in manifest['assets']:
+        key = asset['packageKey']
+        try:
+            payloads[key] = parse_json_strict(files[asset['draftPath']], asset['draftPath'])
+        except PackageFormatError as exc:
+            blockers.append(str(exc))
+            continue
+        for rel in asset.get('releases') or []:
+            try:
+                payloads[rel['path']] = parse_json_strict(files[rel['path']], rel['path'])
+            except PackageFormatError as exc:
+                blockers.append(str(exc))
+    model_source_ids = {str(a.get('sourceId')) for a in manifest['assets'] if a['kind'] == KIND_MODEL}
+    flow_source_ids = {str(a.get('sourceId')) for a in manifest['assets'] if a['kind'] == KIND_FLOW}
+    providers_in_pack = _pack_provider_ids(files)
+    if not blockers:
+        for asset in manifest['assets']:
+            if asset['kind'] != KIND_PROJECT:
+                continue
+            key = asset['packageKey']
+            for label, payload in [('当前草稿', payloads[key])] + [
+                    (f"发布 {r['version']}", payloads[r['path']]) for r in asset.get('releases') or []]:
+                ref_model = str(_project_ref_model(payload) or '')
+                if ref_model and ref_model not in model_source_ids:
+                    blockers.append(f'项目「{asset.get("name")}」{label}引用的本体不在包内（{ref_model}），'
+                                    '缺少强依赖，无法导入。')
+                for fid in _payload_flow_ids(payload):
+                    if fid not in flow_source_ids:
+                        blockers.append(f'项目「{asset.get("name")}」{label}引用的编排不在包内（{fid}），'
+                                        '缺少强依赖，无法导入。')
+            # T03：被引用编排的副本归属必须能唯一判定（用项目 sourceId 匹配 contextProjects）
+            project_source_id = str(asset.get('sourceId') or '')
+            for fid in _payload_flow_ids(payloads[key]):
+                copies = [a for a in manifest['assets'] if a['kind'] == KIND_FLOW
+                          and str(a.get('sourceId')) == fid]
+                chosen = _resolve_flow_copy_for_project(copies, project_source_id)
+                if chosen is None and len(copies) > 1:
+                    blockers.append(f'项目「{asset.get("name")}」引用的编排「{fid}」在包内有多个副本，'
+                                    '但无法判定归属（连接上下文信息缺失），已阻止导入。')
+                if chosen is None and len(copies) == 0:
+                    blockers.append(f'项目「{asset.get("name")}」引用的编排不在包内（{fid}）。')
+            if blockers:
+                break
+    # T05：编排引用的模型不在包清单 → 待补警告（不阻断）
+    if not blockers:
+        known_providers = providers_in_pack | {str(m.get('providerId')) for m in manifest.get('implicitModels') or []}
+        for asset in manifest['assets']:
+            if asset['kind'] != KIND_FLOW:
+                continue
+            payload = payloads.get(asset['packageKey'])
+            if payload is None:
+                continue
+            for pid in _payload_provider_ids(payload):
+                if pid not in known_providers:
+                    warnings.append(f'编排「{asset.get("name")}」引用的模型配置不在包内，导入后将列为待补：{pid}')
+
+    # T09：命名计划——按 (kind, sourceId) 分组；M07 多副本在预检就产出最终名（含上下文标记），
+    # 事务不再暗改。普通流：第一条 allocate，同 sourceId 后续副本加「（上下文N）」。
     assets = []
     taken = {}
     with read_connection() as conn:
@@ -698,23 +796,83 @@ def build_import_preview(owner, upload_id):
         for kind, nk in rows:
             taken.setdefault(kind, set()).add(nk)
     from workbench.storage.assets import name_key
+    taken_by_kind = {k: set(v) for k, v in taken.items()}
+    named_flow_copies = {}
     for asset in manifest['assets']:
         kind = asset['kind']
+        key = asset['packageKey']
         source_name = str(asset.get('name') or '')
-        final_name, reason = allocate_name(source_name, set(taken.get(kind) or ()))
-        taken.setdefault(kind, set()).add(name_key(final_name))
-        assets.append({'kind': kind, 'packageKey': asset['packageKey'],
+        if kind == KIND_FLOW:
+            sid = str(asset.get('sourceId') or key)
+            group = named_flow_copies.setdefault(sid, {'base': None, 'count': 0})
+            group['count'] += 1
+            if group['base'] is None:
+                final_name, reason = allocate_name(source_name, set(taken_by_kind.get(kind) or ()))
+                group['base'] = final_name
+            else:
+                final_name = f"{group['base']}（上下文{group['count']}）"
+                reason = 'M07：跨项目上下文拆分副本'
+            taken_by_kind.setdefault(kind, set()).add(name_key(final_name))
+        else:
+            final_name, reason = allocate_name(source_name, set(taken_by_kind.get(kind) or ()))
+            taken_by_kind.setdefault(kind, set()).add(name_key(final_name))
+        assets.append({'kind': kind, 'packageKey': key,
                        'sourceName': source_name, 'suggestedName': final_name,
                        'renameReason': reason, 'releaseCount': len(asset.get('releases') or []),
                        'dependencyNote': asset.get('dependencyNote') or ''})
 
     preview = {'packageHash': package_hash, 'files': files, 'manifest': manifest,
-               'assets': assets, 'modelConfigs': _preview_model_configs(files),
+               'payloads': payloads, 'assets': assets,
+               'modelConfigs': _preview_model_configs(files),
                'warnings': warnings, 'blockers': blockers}
     token = import_previews.create(owner, {'preview': preview})
     return {'previewToken': token, 'expiresAt': _expires_iso(), 'packageHash': package_hash,
             'assets': assets, 'modelConfigs': preview['modelConfigs'],
             'warnings': warnings, 'blockers': blockers}
+
+
+def _pack_providers(files):
+    raw = files.get('configuration/models.json')
+    if not raw:
+        return []
+    return list(parse_json_strict(raw, 'configuration/models.json').get('providers') or [])
+
+
+def _pack_credential_declarations(files):
+    raw = files.get('configuration/credential-declarations.json')
+    if not raw:
+        return []
+    return list(parse_json_strict(raw, 'configuration/credential-declarations.json')
+                .get('declarations') or [])
+
+
+def _pack_provider_ids(files):
+    """包内 configuration/models.json 登记的 providerId 集合。"""
+    raw = files.get('configuration/models.json')
+    if not raw:
+        return set()
+    try:
+        data = json.loads(raw.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        return set()
+    return {str(p.get('providerId')) for p in (data.get('providers') or []) if p.get('providerId')}
+
+
+def _resolve_flow_copy_for_project(flow_assets, project_source_id):
+    """T03 纯函数：为项目选定编排副本。
+
+    规则：先找 contextProjects 精确包含该项目的副本（必须唯一）；
+    没有精确匹配时，允许恰好一个「无上下文」共享副本；否则返回 None（歧义/缺失）。
+    与 manifest 中资产顺序无关。
+    """
+    exact = [a for a in flow_assets
+             if project_source_id in (a.get('contextProjects') or [])]
+    plain = [a for a in flow_assets if not (a.get('contextProjects') or [])]
+    if len(exact) == 1:
+        return exact[0]
+    if not exact and len(plain) == 1:
+        return plain[0]
+    return None
 
 
 def _preview_model_configs(files):
@@ -797,14 +955,16 @@ def import_transaction(owner, preview, request_id, final_names):
         for kind, nk in rows:
             taken_by_kind.setdefault(kind, set()).add(nk)
         from workbench.storage.assets import name_key
-        conflicts, seen = [], {}
+        conflicts, seen = [], set()
         for asset in manifest['assets']:
             kind, key = asset['kind'], asset['packageKey']
             nk = name_key(final_names[key])
-            if nk in taken_by_kind.get(kind, ()) or nk in seen:
-                suggested = allocate_name(final_names[key], taken_by_kind.get(kind, ()) | set(seen))[0]
+            # T09：冲突只按 (资产类型, 规范名称) 判定——不同类型同名不是冲突
+            if nk in taken_by_kind.get(kind, ()) or (kind, nk) in seen:
+                occupied = taken_by_kind.get(kind, ()) | {n for k2, n in seen if k2 == kind}
+                suggested = allocate_name(final_names[key], occupied)[0]
                 conflicts.append({'packageKey': key, 'kind': kind, 'suggestedName': suggested})
-            seen[nk] = key
+            seen.add((kind, nk))
         if conflicts:
             raise ImportConflict('DUPLICATE_NAME', '部分名称已被占用（可能刚被并发创建），'
                                  '请使用建议名称后重新提交。', {'conflicts': conflicts})
@@ -815,7 +975,8 @@ def import_transaction(owner, preview, request_id, final_names):
             key = asset['packageKey']
             new_ids[key] = (new_model_id() if asset['kind'] == KIND_MODEL
                             else new_project_id() if asset['kind'] == KIND_PROJECT else new_flow_id())
-            payloads[key] = json.loads(files[asset['draftPath']].decode('utf-8'))
+            payloads[key] = preview['payloads'][key]
+        preview_payloads = preview['payloads']
         provider_map = {str(meta['packageKey']).removeprefix('c-'): new_provider_id()
                         for meta in preview['modelConfigs']}
         flow_copy_ids = {asset['packageKey']: new_ids[asset['packageKey']]
@@ -835,7 +996,7 @@ def import_transaction(owner, preview, request_id, final_names):
                                            owner_user_id=owner)
             _write_draft(conn, asset_uid, payload, asset['payloadFormat'])
             for rel in asset.get('releases') or []:
-                rel_payload = json.loads(files[rel['path']].decode('utf-8'))
+                rel_payload = dict(preview_payloads[rel['path']])
                 rel_payload['workspaceId'] = new_ids[key]
                 snap = store.append_snapshot(conn, asset_uid, rel_payload,
                                              str(rel.get('payloadFormat') or 'release-state-1'),
@@ -853,8 +1014,7 @@ def import_transaction(owner, preview, request_id, final_names):
                             'releaseCount': len(asset.get('releases') or [])})
 
         # 2) 模型配置元数据（owner=接收账号；无密钥，secret_id 空）
-        raw = files.get('configuration/models.json')
-        providers = (json.loads(raw.decode('utf-8')).get('providers') or []) if raw else []
+        providers = _pack_providers(files)
         for provider in providers:
             old_pid = str(provider.get('providerId') or '')
             new_pid = provider_map.get(old_pid) or new_provider_id()
@@ -873,15 +1033,23 @@ def import_transaction(owner, preview, request_id, final_names):
                             'releaseCount': 0})
 
         # 3) 编排副本（M07：每条 flow asset 一个副本；contextProjects 标注归属项目）
+        #    T01：payload.flowId / payload.name 同步为新身份——否则读出后保存 404
+        #    T06：defaultProviderDependency 的空 providerId 节点显式绑定本次模型副本
+        flow_warnings = []
         for asset in manifest['assets']:
             if asset['kind'] != KIND_FLOW:
                 continue
             key = asset['packageKey']
-            payload = _remap_flow_payload(payloads[key], provider_map)
-            name = final_names[key]
-            context = asset.get('contextProjects') or []
-            if len(context) > 1:
-                name = f"{name}（{'、'.join(str(c) for c in context[:2])}）"
+            name = final_names[key]  # 预检命名已含 M07 上下文标记，事务不再暗改（T09）
+            implicit_provider = ''
+            if asset.get('defaultProviderDependency'):
+                implicit_provider = provider_map.get(str(asset['defaultProviderDependency'])) or ''
+                if not implicit_provider:
+                    flow_warnings.append(f'编排「{name}」原依赖来源默认模型，但该模型不在包内，'
+                                         '相关节点需手工配置模型。')
+            payload = _remap_flow_payload(payloads[key], provider_map,
+                                          new_flow_id=new_ids[key], new_name=name,
+                                          implicit_provider=implicit_provider)
             asset_uid = store.ensure_asset(conn, KIND_FLOW, new_ids[key], name,
                                            {'importedFrom': manifest['packageId']}, None,
                                            owner_user_id=owner)
@@ -890,74 +1058,94 @@ def import_transaction(owner, preview, request_id, final_names):
                             'newName': name, 'sourceName': asset.get('name') or '',
                             'releaseCount': 0})
 
-        # 4) 项目：资产 → 草稿+head+项目版本引用 → 发布版本（引用指向本次新本体）
+        # 4) 项目：资产 → 草稿+head+项目版本引用 → 发布版本
+        #    T02：每个快照（草稿/各发布）分别解析源本体与版本、分别映射与登记——
+        #    历史版本引用另一个本体/另一个版本时不能沿用草稿的引用。
         for asset in manifest['assets']:
             if asset['kind'] != KIND_PROJECT:
                 continue
             key = asset['packageKey']
             name = final_names[key]
             project_source_id = str(_project_source_id(manifest, asset))
-            new_ontology = _resolve_new_ontology(manifest, payloads[key], new_ids)
-            ontology_version = str(payloads[key].get('ontologyVersion')
-                                   or (payloads[key].get('project') or {}).get('ontology_version') or '')
-            payload = _remap_project_payload(payloads[key], new_ontology, manifest,
-                                             flow_copy_ids, project_source_id)
-            payload['projectId'] = new_ids[key]
-            payload['name'] = name
-            if isinstance(payload.get('project'), dict):
-                payload['project']['project_id'] = new_ids[key]
-                payload['project']['name'] = name
-                if new_ontology:
-                    payload['project']['ontology'] = new_ontology
             asset_uid = store.ensure_asset(conn, KIND_PROJECT, new_ids[key], name,
                                            {'importedFrom': manifest['packageId']}, None,
                                            owner_user_id=owner)
-            snapshot = _write_draft(conn, asset_uid, payload, asset['payloadFormat'],
-                                    project_ref={'target_ontology_id': new_ontology,
-                                                 'target_version': ontology_version})
-            for rel in asset.get('releases') or []:
-                rel_payload = _remap_project_payload(json.loads(files[rel['path']].decode('utf-8')),
-                                                     new_ontology, manifest, flow_copy_ids,
-                                                     project_source_id)
-                rel_payload['projectId'] = new_ids[key]
-                rel_payload['name'] = name
-                if isinstance(rel_payload.get('project'), dict):
-                    rel_payload['project']['project_id'] = new_ids[key]
-                    rel_payload['project']['name'] = name
+
+            def write_project_snapshot(raw_payload, purpose, rel_meta=None):
+                payload = dict(raw_payload)
+                source_ref = _project_ref_model(payload)
+                ref_version = str(payload.get('ontologyVersion')
+                                  or (payload.get('project') or {}).get('ontology_version') or '')
+                new_ontology = _resolve_new_ontology(manifest, payload, new_ids)
+                payload = _remap_project_payload(payload, new_ontology, manifest,
+                                                 flow_copy_ids, project_source_id)
+                payload['projectId'] = new_ids[key]
+                payload['name'] = name
+                if isinstance(payload.get('project'), dict):
+                    payload['project']['project_id'] = new_ids[key]
+                    payload['project']['name'] = name
                     if new_ontology:
-                        rel_payload['project']['ontology'] = new_ontology
-                snap = store.append_snapshot(conn, asset_uid, rel_payload,
-                                             str(rel.get('payloadFormat') or 'project-state-1'),
-                                             'release', now=utcnow())
-                rel_manifest = {'version': rel['version'], 'projectId': new_ids[key],
-                                'ontologyId': new_ontology, 'ontologyVersion': ontology_version,
-                                'createdAt': utcnow(), 'revision': store.new_token(),
-                                'contentHash': '', 'note': f"配置迁移自「{asset.get('name') or key}」",
-                                'originPackageId': manifest['packageId'],
-                                'sourceVersion': rel['version'],
-                                'sourceHash': (manifest['files'].get(rel['path']) or {}).get('sha256', '')}
-                store.append_release(conn, asset_uid, rel['version'], snap['snapshot_id'],
-                                     rel_manifest, now=utcnow())
+                        payload['project']['ontology'] = new_ontology
+                snap = store.append_snapshot(
+                    conn, asset_uid, payload,
+                    (rel_meta or {}).get('payloadFormat', asset['payloadFormat']),
+                    purpose, now=utcnow())
+                if purpose == 'draft':
+                    _write_draft_ref(conn, asset_uid, snap['snapshot_id'],
+                                     {'target_ontology_id': new_ontology,
+                                      'target_version': ref_version})
+                else:
+                    rel_manifest = {
+                        'version': rel_meta['version'], 'projectId': new_ids[key],
+                        'ontologyId': new_ontology, 'ontologyVersion': ref_version,
+                        'createdAt': utcnow(), 'revision': store.new_token(),
+                        'contentHash': '', 'note': f"配置迁移自「{asset.get('name') or key}」",
+                        'originPackageId': manifest['packageId'],
+                        'sourceVersion': rel_meta['version'],
+                        'sourceHash': (manifest['files'].get(rel_meta['path']) or {}).get('sha256', '')}
+                    store.append_release(conn, asset_uid, rel_meta['version'],
+                                         snap['snapshot_id'], rel_manifest, now=utcnow())
+                return snap
+
+            write_project_snapshot(payloads[key], 'draft')
+            for rel in asset.get('releases') or []:
+                write_project_snapshot(preview_payloads[rel['path']], 'release', rel)
             created.append({'kind': KIND_PROJECT, 'packageKey': key, 'newId': new_ids[key],
                             'newName': name, 'sourceName': asset.get('name') or '',
                             'releaseCount': len(asset.get('releases') or [])})
 
-        # 5) 待补凭据声明（wb_user_settings 持久化；按声明 ID 去重合并）
+        # 5) 待补凭据声明（wb_user_settings 持久化；T07：按本次新项目定位，
+        #    合并键 = (declarationId, projectId)——同一包两次导入各有独立待补项）
         pending = config_store.get_user_setting(conn, owner, PENDING_KEY, []) or []
-        raw = files.get('configuration/credential-declarations.json')
-        declarations = (json.loads(raw.decode('utf-8')).get('declarations') or []) if raw else []
-        pending_ids = {p.get('declarationId') for p in pending}
-        for declaration in declarations:
-            if declaration.get('declarationId') in pending_ids:
+        declarations = _pack_credential_declarations(files)
+        new_projects = {a['packageKey']: a for a in manifest['assets'] if a['kind'] == KIND_PROJECT}
+        pending_entries = []
+        existing_keys = {(p.get('declarationId'), p.get('projectId')) for p in pending}
+        for asset in manifest['assets']:
+            if asset['kind'] != KIND_PROJECT:
                 continue
-            pending.append({**declaration, 'importedAt': utcnow()})
+            key = asset['packageKey']
+            for declaration in declarations:
+                entry = {'declarationId': declaration.get('declarationId'),
+                         'name': declaration.get('name') or declaration.get('declarationId'),
+                         'namespace': declaration.get('namespace') or 'api',
+                         'projectId': new_ids[key], 'projectName': final_names[key],
+                         'usage': declaration.get('usage') or [],
+                         'importedAt': utcnow()}
+                pending_entries.append(entry)
+                dedup_key = (entry['declarationId'], entry['projectId'])
+                if dedup_key not in existing_keys:
+                    pending.append(entry)
+                    existing_keys.add(dedup_key)
         config_store.put_user_setting(conn, owner, PENDING_KEY, pending, now=utcnow())
 
         response = {'receiptId': 'rcpt-' + secrets.token_hex(6), 'requestId': request_id,
-                    'assets': created, 'pendingCredentials': declarations,
+                    'assets': created, 'pendingCredentials': pending_entries,
+                    'strippedItems': list(manifest.get('pendingItems') or []),
                     'packageHash': package_hash, 'importedAt': utcnow(),
                     'warnings': ['导入完成：配置已就绪，但未执行任何连接测试或业务查询；'
-                                 '连接密码与 API Key 需在原位置重新配置后才能运行。']}
+                                 '连接密码与 API Key 需在原位置重新配置后才能运行。']
+                                + flow_warnings}
         config_store.put_request_receipt(conn, IMPORT_OPERATION, owner, request_id, request_hash,
                                          response, now=utcnow())
         return {'receipt': response}
@@ -967,13 +1155,8 @@ def import_transaction(owner, preview, request_id, final_names):
 
 
 def _project_source_id(manifest, project_asset):
-    """项目 draft payload 里的来源项目 id（用于 M07 副本归属判定）。"""
-    payload = None
-    for asset in manifest['assets']:
-        if asset['packageKey'] == project_asset['packageKey']:
-            payload = asset
-            break
-    return project_asset.get('sourceId') or ''
+    """项目资产在来源工作台的 id（M07 副本归属判定用）。"""
+    return str(project_asset.get('sourceId') or '')
 
 
 def _resolve_new_ontology(manifest, project_payload, new_ids):
@@ -983,6 +1166,18 @@ def _resolve_new_ontology(manifest, project_payload, new_ids):
         if asset['kind'] == KIND_MODEL and str(asset.get('sourceId')) == ref:
             return new_ids[asset['packageKey']]
     return ''
+
+
+def _write_draft_ref(conn, asset_uid, snapshot_id, project_ref):
+    """导入侧项目草稿的 head 建立与引用登记（快照已由调用方 append）。"""
+    conn.execute(sto.text('INSERT INTO wb_asset_heads (asset_uid, snapshot_id, revision_token, '
+                          'generation, snapshot_seq, release_seq, updated_at) '
+                          'VALUES (:a, :s, :t, 1, :q, 0, :now)'),
+                 {'a': asset_uid, 's': snapshot_id, 't': store.new_token(),
+                  'q': store.next_seq(conn, asset_uid), 'now': utcnow()})
+    store.upsert_project_ref(conn, snapshot_id, project_ref)
+    conn.execute(sto.text('UPDATE wb_assets SET updated_at = :now WHERE asset_uid = :a'),
+                 {'now': utcnow(), 'a': asset_uid})
 
 
 def _write_draft(conn, asset_uid, payload, payload_format, project_ref=None):
@@ -1000,37 +1195,56 @@ def _write_draft(conn, asset_uid, payload, payload_format, project_ref=None):
     return snapshot
 
 
-def _remap_flow_payload(payload, provider_map):
-    """编排 payload：providerId → 本次新 provider；其余稳定 ID 恒等。"""
+def _remap_flow_payload(payload, provider_map, new_flow_id=None, new_name=None,
+                        implicit_provider=''):
+    """编排 payload 重映射（T01/T06）：
+    - providerId → 本次新 provider；
+    - payload.flowId / payload.name 同步为本次新身份（否则读出保存 404）；
+    - implicit_provider：来源默认模型的新副本 id——写入没有 providerId 的节点，
+      接收端不再悄悄走接收方默认模型。
+    其余稳定 ID（节点/输入/输出/字段）恒等。
+    """
 
     def walk(node):
         if isinstance(node, dict):
-            return {k: (provider_map[v] if k == 'providerId' and isinstance(v, str) and v in provider_map
-                        else walk(v)) for k, v in node.items()}
+            out = {}
+            for k, v in node.items():
+                if k == 'providerId':
+                    if isinstance(v, str) and v in provider_map:
+                        out[k] = provider_map[v]
+                    elif implicit_provider and (v is None or v == ''):
+                        out[k] = implicit_provider
+                    else:
+                        out[k] = walk(v)
+                else:
+                    out[k] = walk(v)
+            return out
         if isinstance(node, list):
             return [walk(v) for v in node]
         return node
 
-    return walk(payload)
+    payload = walk(payload)
+    if new_flow_id is not None:
+        payload['flowId'] = new_flow_id
+    if new_name is not None:
+        payload['name'] = new_name
+    return payload
 
 
 def _remap_project_payload(payload, new_ontology, manifest, flow_copy_ids, project_source_id):
     """项目 payload：本体引用 + flow 引用重写为本次新资产；其余恒等。
 
-    flow 副本选择（M07）：优先选 contextProjects 包含本项目 sourceId 的副本；
-    无精确归属时选首个副本。
+    T03：flow 副本选择用 `_resolve_flow_copy_for_project` 纯函数——
+    精确上下文匹配优先（唯一），无上下文共享副本次之（唯一）；
+    歧义在预检阶段已阻断，这里对剩余无法判定的引用不改写（保持原 id，属预检漏洞）。
     """
+    flow_assets = [a for a in manifest['assets'] if a['kind'] == KIND_FLOW]
     source_to_copy = {}
-    for asset in manifest['assets']:
-        if asset['kind'] != KIND_FLOW:
-            continue
-        context = asset.get('contextProjects') or []
-        chosen = None
-        if project_source_id and project_source_id in context:
-            chosen = flow_copy_ids[asset['packageKey']]
-        source_to_copy.setdefault(str(asset.get('sourceId')), chosen)
-        if chosen is None:
-            source_to_copy[str(asset.get('sourceId'))] = flow_copy_ids[asset['packageKey']]
+    for fid in {str(a.get('sourceId')) for a in flow_assets}:
+        chosen = _resolve_flow_copy_for_project(
+            [a for a in flow_assets if str(a.get('sourceId')) == fid], project_source_id)
+        if chosen is not None:
+            source_to_copy[fid] = flow_copy_ids[chosen['packageKey']]
 
     def walk(node):
         if isinstance(node, dict):
@@ -1059,3 +1273,28 @@ def pending_credentials_list(owner):
     storage.ensure_ready()
     with read_connection() as conn:
         return config_store.get_user_setting(conn, owner, PENDING_KEY, []) or []
+
+
+def pending_credentials_for_project(project_external_id):
+    """T07：某项目的迁移待补凭据（GET /api/api-credentials 的 pending 字段）。"""
+    owner = auth.require_user_id()
+    entries = pending_credentials_list(owner)
+    hit = [e for e in entries if str(e.get('projectId') or '') == str(project_external_id)]
+    return [{'declarationId': e.get('declarationId'), 'name': e.get('name'),
+             'namespace': e.get('namespace') or 'api', 'usage': e.get('usage') or [],
+             'projectId': e.get('projectId'), 'projectName': e.get('projectName') or ''}
+            for e in hit]
+
+
+def clear_pending_credential(project_external_id, declaration_id):
+    """T07：补填成功后清除对应待补声明（按项目 + 声明 ID）。"""
+    owner = auth.require_user_id()
+    entries = pending_credentials_list(owner)
+    kept = [e for e in entries
+            if not (str(e.get('projectId') or '') == str(project_external_id)
+                    and str(e.get('declarationId') or '') == str(declaration_id or ''))]
+    if len(kept) != len(entries):
+        def body(conn):
+            config_store.put_user_setting(conn, owner, PENDING_KEY, kept, now=utcnow())
+        with sto.write_tx() as tx:
+            tx.run(body)

@@ -16,8 +16,10 @@
 
 ### 变更记录
 
+| 2026-09-19 | flow-run 输入预览改为精确有界：inputs 序列化 ≤65536 字节（UTF-8）、列表 ≤100 项，截断以 previewTruncated 标记结构表示（R06） | 04 §3.1 |
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-19 | 配置迁移语义修正（07 §4.5）：导入预检增加强依赖闭包校验（项目快照引用的本体/编排必须在包内）、requiredCapabilities 白名单（非空 415/阻断）、JSON 重复键拒绝；导入写入同步编排 payload.flowId/name 为新身份（可继续保存）；项目草稿与历史发布逐快照解析引用；M07 副本归属精确匹配+预检歧义阻断+副本名进预览；敏感剥离收窄为认证头与 URL 认证段（模型连接地址覆盖、不再按 token 等键名清空业务字段）；默认模型作为被依赖配置入包并在导入时显式绑定；import-result 新增 strippedItems；pendingCredentials 按本次新项目定位；GET /api/api-credentials 响应新增 pending（03 §4.1），补填后自动清除 | 7 个 /api/config-package-*、GET /api/api-credentials | zcode |
 | 2026-09-19 | **新增配置迁移 7 接口**（07 分册）：export-preview（依赖闭包冻结快照+exportToken）、export（ZIP 二进制下载，独立二进制分派不影响旧 /api/export）、stage（begin/chunk 有界分片上传 512KiB/片、包≤20MiB）、import-preview（安全解析+命名预检，零资产写入）、import（previewToken+requestId 原子导入：每次主动导入新建本体/项目/编排/模型配置，同 requestId 重试幂等、改参数 409）、import-result（requestId 回执查询，持久化先于 token 过期）、discard。包格式 wiz-workbench-config-package formatVersion=1；不含受管理凭据；业务稳定 ID 恒等保留、资产级 ID 重建；解压≤100MiB/条目≤2000/单文件≤10MiB/TTL 30 分钟 | 7 个 /api/config-package-* 接口（新增） | zcode |
 | 2026-09-19 | `/api/flow-run` 新增可选 `testMode="isolated"` 隔离片段测试与稳定 ID `inputOverrides`（只覆盖范围外/未绑定输入；入口值同键赋值 400 歧义拒绝）；响应节点结果新增可选 `inputs`/`inputsTruncated`（有界预览，≤100 条/≈64KiB，不含凭据）；skipped 语义明确为失败沿所选范围传递性标记；targets `[]` 一律 400。旧调用（无 testMode：全图 revision/409/互斥、单节点技术名覆盖、多节点上游闭合链）语义不变 | POST /api/flow-run | zcode |
 | 2026-09-19 | 项目映射新增 `bindings.mappingDescriptions`（四类说明，schemaVersion=1）：写入结构/长度校验、旧客户端省略整块保留、显式清空按删键表达；validate/publish 追加说明结构与失效引用检查（失效阻断）；property-preview 遇非空说明在取数前返回不支持 | project-state / project-save / project-validate / project-publish / project-upgrade-check / project-property-preview | zcode |

@@ -6,7 +6,7 @@ revision 是不透明 token（读自项目 head）；发布走 publish_draft 单
 CAS + 发布记录 + 固定引用），失败绝不返回成功。connection-test / connection-catalog /
 catalog-refresh 是真实网络探测，绝不持有全局写锁；迟到目录结果按配置指纹丢弃。
 """
-from workbench import projects, versions, workspaces, contracts
+from workbench import config_packages, projects, versions, workspaces, contracts
 from workbench import dbdrivers
 from workbench import project_property_reader
 from workbench import secrets as secrets_store
@@ -79,11 +79,14 @@ def get_project_releases(query):
 def get_api_credentials(query):
     """GET /api/api-credentials：项目级 API 凭据元数据列举（只读，绝不返回密钥）。
 
-    响应只有 id/name；密钥只存在于服务端 vault，客户端仅保存凭据 ID。
+    响应 items 只有 id/name；密钥只存在于服务端 vault，客户端仅保存凭据 ID。
+    2026-09-19 配置迁移：响应新增 `pending`——本项目的待补凭据声明
+    （config-package.pending-credentials，见 07 分册 §4.1）；补填后自动消失。
     """
     project_id = projects.clean_id(query.get('project', [''])[0])
     projects.load(project_id)  # 项目不存在时抛 ProjectNotFound → 404
-    return {'items': api_credentials.list_metadata(project_id)}, 200
+    pending = config_packages.pending_credentials_for_project(project_id)
+    return {'items': api_credentials.list_metadata(project_id), 'pending': pending}, 200
 
 
 def get_project_config(query):
@@ -263,6 +266,8 @@ def post_api_credential(payload):
         try:
             if action == 'set':
                 saved = api_credentials.save(project_id, payload.get('name'), payload.get('secret'), credential_id)
+                # T07：补填命中待补声明 → 从迁移待补清单清除（按项目+声明 ID）
+                config_packages.clear_pending_credential(project_id, credential_id)
                 return {'saved': True, 'credential': {'id': saved['id'], 'name': saved['name']}}, 200
             if not credential_id:
                 raise ValueError('缺少凭据标识')

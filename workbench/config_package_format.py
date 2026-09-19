@@ -108,16 +108,37 @@ class io_bytes:
 
 # ── manifest 校验 ───────────────────────────────────────────────────────────────
 
-def _load_json_bounded(raw: bytes, path: str, depth_limit: int = 24) -> object:
+def _reject_duplicate_keys(pairs):
+    """object_pairs_hook：JSON 重复键直接拒绝（T05，不做「最后一个生效」的静默覆盖）。"""
+    seen = {}
+    for k, v in pairs:
+        if k in seen:
+            raise PackageFormatError(f'JSON 对象存在重复键「{k}」，已拒绝导入。')
+        seen[k] = v
+    return seen
+
+
+def parse_json_strict(raw: bytes, path: str, depth_limit: int = 24) -> object:
+    """有界严格 JSON 解析：大小/编码/重复键/非法常量/嵌套深度（T05）。"""
     if len(raw) > MAX_FILE_BYTES:
         raise PackageFormatError(f'文件「{path}」超过 10 MiB 限制。')
-    text = raw.decode('utf-8', errors='strict') if len(raw) < 64 * 1024 * 1024 else ''
     try:
-        value = json.loads(text, parse_constant=_reject_constant)
-    except (ValueError, UnicodeDecodeError) as exc:
+        text = raw.decode('utf-8')
+    except UnicodeDecodeError as exc:
+        raise PackageFormatError(f'文件「{path}」不是有效的 UTF-8 JSON。') from exc
+    try:
+        value = json.loads(text, parse_constant=_reject_constant,
+                           object_pairs_hook=_reject_duplicate_keys)
+    except PackageFormatError:
+        raise
+    except ValueError as exc:
         raise PackageFormatError(f'文件「{path}」不是有效的 UTF-8 JSON。') from exc
     _check_depth(value, path, depth_limit)
     return value
+
+
+def _load_json_bounded(raw: bytes, path: str, depth_limit: int = 24) -> object:
+    return parse_json_strict(raw, path, depth_limit)
 
 
 def _reject_constant(name):
@@ -231,29 +252,40 @@ def allocate_name(source_name: str, taken: set) -> tuple[str, str]:
 
 SENSITIVE_HEADER_RE = re.compile(r'^(authorization|cookie|set-cookie|x-api-key|api-key|proxy-authorization)$', re.I)
 SENSITIVE_URL_RE = re.compile(r'://[^\s/:@]+:[^\s/@]+@')
-SENSITIVE_KEY_RE = re.compile(r'^(password|secret|api_key|apikey|token)$', re.I)
 
 
 def strip_sensitive(value, path: str, stripped: list):
-    """递归剥离已知结构敏感值；返回新值，stripped 追加 {path, reason}。不含明文。"""
+    """递归剥离**已知认证结构**（T04 收窄）：认证头键、字符串值中的 URL 认证段。
+
+    不再按 token/secret/api_key 等泛化键名清空——那会把业务字段（如
+    parameters.extensions.token）误伤为空。未知业务扩展/SQL/说明原样保留。
+    """
     if isinstance(value, dict):
         out = {}
         for k, v in value.items():
             where = f'{path}.{k}' if path else str(k)
             if isinstance(k, str) and SENSITIVE_HEADER_RE.match(k or ''):
-                stripped.append({'path': where, 'reason': '认证/会话头已剥离'})
-                out[k] = ''
-                continue
-            if isinstance(k, str) and SENSITIVE_KEY_RE.match(k or '') and isinstance(v, str) and v:
-                stripped.append({'path': where, 'reason': '疑似秘密字段已剥离'})
-                out[k] = ''
+                if isinstance(v, str) and v:
+                    stripped.append({'path': where, 'reason': '认证/会话头已剥离，导入后需重新填写'})
+                    out[k] = ''
+                else:
+                    out[k] = v
                 continue
             if isinstance(v, str) and SENSITIVE_URL_RE.search(v):
-                stripped.append({'path': where, 'reason': '带凭据的 URL 已剥离'})
-                out[k] = ''
+                stripped.append({'path': where, 'reason': 'URL 中携带的认证信息已剥离，导入后需重新填写'})
+                out[k] = SENSITIVE_URL_RE.sub('://', v)
                 continue
             out[k] = strip_sensitive(v, where, stripped)
         return out
     if isinstance(value, list):
         return [strip_sensitive(v, f'{path}[{i}]', stripped) for i, v in enumerate(value)]
     return value
+
+
+def strip_url_credentials(url: str, path: str, stripped: list) -> str:
+    """剥离 URL 的 userinfo 认证段（https://user:pass@host → https://host）并记录位置（T04）。"""
+    url = str(url or '')
+    if SENSITIVE_URL_RE.search(url):
+        stripped.append({'path': path, 'reason': '连接地址中携带的认证信息已剥离，导入后需重新填写'})
+        return SENSITIVE_URL_RE.sub('://', url)
+    return url

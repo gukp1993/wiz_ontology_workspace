@@ -151,7 +151,8 @@ await check('④ 页面渲染：导出/导入双页签与「不会覆盖」横�
 // ── ⑤ 无覆盖/合并类选项（需求红线）──
 await check('⑤ 除固定横幅外无覆盖/合并/同步类文案', async () => {
   const src = readFileSync(resolve('frontend/src/settings/ConfigurationTransfer.vue'), 'utf8')
-  const stripped = src.replaceAll('不会覆盖已有内容', '').replace(/每次主动导入都新建资产；无覆盖\/合并选项（需求红线）。/, '')
+  const templatePart = src.slice(src.indexOf('<template>'))  // 只检查用户可见文案，不含脚本注释
+  const stripped = templatePart.replaceAll('不会覆盖已有内容', '')
   assert.ok(!/覆盖|合并|同步/.test(stripped), '发现违禁文案')
 })
 

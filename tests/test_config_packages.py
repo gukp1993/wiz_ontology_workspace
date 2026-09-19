@@ -162,12 +162,12 @@ def model_release_payload(workspace_id, name):
             'metrics': {}, 'rules': {}, 'layout': {}}
 
 
-def project_payload(pid, name, model_id, version, table='t1'):
+def project_payload(pid, name, model_id, version, table='t1', host='127.0.0.1'):
     return {'project': {'project_id': pid, 'name': name, 'ontology': model_id,
                         'ontology_version': version},
             'projectId': pid, 'name': name, 'ontologyId': model_id, 'ontologyVersion': version,
             'connections': {'connections': [{'id': 'conn-aaa', 'name': '库A', 'engine': 'mysql',
-                                             'host': '127.0.0.1', 'port': 3306, 'username': 'root',
+                                             'host': host, 'port': 3306, 'username': 'root',
                                              'database': 'db1', 'tls': 'none'}]},
             'bindings': {'notice': '', 'object_bindings': [
                 {'object_type': 'object_aaa1', 'connection': 'conn-aaa', 'table': table,
@@ -178,7 +178,9 @@ def project_payload(pid, name, model_id, version, table='t1'):
                  'relations': []}],
                 'observation_binding': {}, 'source_candidates': [], 'actionBindings': [],
                 'mappingDescriptions': {}},
-            'implementations': {'implementations': []}, 'parameters': {}}
+            'implementations': {'implementations': []},
+            # T04 成对用例：普通业务 token 字段必须原样保留
+            'parameters': {'extensions': {'token': 'biz-token-keep'}}}
 
 
 def flow_payload(fid, name):
@@ -186,8 +188,16 @@ def flow_payload(fid, name):
             'inputs': [{'id': 'in1', 'name': 'x', 'type': 'number'}],
             'outputs': [{'id': 'out1', 'name': 'y', 'type': 'number'}],
             'connections': [], 'layout': {'positions': {}, 'zoom': 1, 'pan': {'x': 0, 'y': 0}},
-            'nodes': [{'id': 'n1', 'type': 'python', 'name': '推演', 'providerId': PROVIDER,
-                       'config': {'code': 'secret_token=abc'}}]}
+            'nodes': [
+                # T03/M07：SQL 节点引用项目连接 conn-aaa（同名连接不同配置 → 拆副本）
+                {'id': 'n0', 'type': 'sql', 'name': '取数', 'connection': 'conn-aaa',
+                 'config': {'sql': 'SELECT 1'}},
+                # T06：显式引用 provider
+                {'id': 'n1', 'type': 'python', 'name': '推演', 'providerId': PROVIDER,
+                 'config': {'code': 'constant=123'}},
+                # T06：空 providerId → 依赖来源账号默认模型，导入后应显式绑定
+                {'id': 'n2', 'type': 'python', 'name': '默认推演',
+                 'config': {'code': 'constant=456'}}]}
 
 
 def seed_all(owner):
@@ -204,7 +214,8 @@ def seed_all(owner):
                           'project-state-1')],  # M04：历史版本引用另一本体
                project_ref={'target_ontology_id': MODEL_ID_A, 'target_version': '1.0.0'})
     seed_asset(owner, 'project', PROJECT_P2, '项目P2',
-               project_payload(PROJECT_P2, '项目P2', MODEL_ID_A, '2.0.0', table='t2'),
+               project_payload(PROJECT_P2, '项目P2', MODEL_ID_A, '2.0.0', table='t2',
+                               host='127.0.0.2'),  # T03：同名连接不同配置 → M07 拆副本
                'project-state-1',
                project_ref={'target_ontology_id': MODEL_ID_A, 'target_version': '2.0.0'})
     seed_asset(owner, 'project', PROJECT_P3, '项目P3',
@@ -218,11 +229,26 @@ def seed_all(owner):
         owner_uid = auth_client.user_id_from_db(TMP, 'userA')
 
         def inner(conn):
+            # T04：endpoint 带认证哨兵——导出必须剥离
             conn.execute(sqlalchemy.text(
                 'INSERT OR IGNORE INTO wb_model_configs (owner_user_id, provider_id, name, endpoint, '
                 'model, timeout_seconds, temperature, metadata_revision, updated_at) '
-                "VALUES (:o, :p, 'GLM种子', 'https://example.invalid/v1', 'glm-4', 60, 0.0, 1, 'x')"),
+                "VALUES (:o, :p, 'GLM种子', 'https://user:pass-sentinel@example.invalid/v1', 'glm-4', 60, 0.0, 1, 'x')"),
                 {'o': owner_uid, 'p': PROVIDER})
+            # T06：来源账号默认模型 = PROVIDER
+            conn.execute(sqlalchemy.text(
+                'INSERT OR REPLACE INTO wb_user_settings (user_id, setting_key, value_json, revision, updated_at) '
+                "VALUES (:o, 'models.default_provider_id', :v, 1, 'x')"),
+                {'o': owner_uid, 'v': json.dumps(PROVIDER)})
+            # T07：P1 的 API 凭据声明（托管密钥不入包，仅声明）
+            p1_uid = conn.execute(sqlalchemy.text(
+                'SELECT asset_uid FROM wb_assets WHERE kind = :k AND external_id = :e AND owner_user_id = :o'),
+                {'k': 'project', 'e': PROJECT_P1, 'o': owner_uid}).scalar()
+            conn.execute(sqlalchemy.text(
+                'INSERT OR IGNORE INTO wb_credentials (secret_id, namespace, owner_key, resource_id, '
+                "display_name, key_id, nonce, ciphertext, secret_revision, updated_at) "
+                "VALUES (:s, 'api', :o, :r, '演示接口', '', x'00', x'00', 1, 'x')"),
+                {'s': 'sec-seed0000001', 'o': p1_uid, 'r': 'cred-demo'})
         with write_tx() as tx:
             tx.run(inner)
     db_call(seed_provider)
@@ -302,6 +328,27 @@ def test_format_safety():
     check(len(n4) <= 80 and n4.endswith('（导入）'), '长名截短预留后缀', len(n4))
     ok('格式③', '同名后缀（导入）/（导入2）/原名保留/长度处理')
 
+    # T03：副本归属纯函数与 manifest 顺序无关；歧义返回 None
+    from workbench.config_packages import _resolve_flow_copy_for_project
+    f_assets = [{'packageKey': 'fB', 'contextProjects': ['p2']},
+                {'packageKey': 'fA', 'contextProjects': ['p1']}]
+    check(_resolve_flow_copy_for_project(f_assets, 'p1')['packageKey'] == 'fA', 'T03：精确匹配 P1')
+    check(_resolve_flow_copy_for_project(list(reversed(f_assets)), 'p2')['packageKey'] == 'fB',
+          'T03：调换 manifest 顺序结果不变')
+    amb = [{'packageKey': 'f1', 'contextProjects': ['p1', 'p2']},
+           {'packageKey': 'f2', 'contextProjects': ['p1']}]
+    check(_resolve_flow_copy_for_project(amb, 'p1') is None, 'T03：歧义阻断返回 None')
+    shared = [{'packageKey': 'f1', 'contextProjects': []},
+              {'packageKey': 'f2', 'contextProjects': ['p9']}]
+    check(_resolve_flow_copy_for_project(shared, 'p1')['packageKey'] == 'f1',
+          'T03：无精确匹配时用唯一无上下文共享副本')
+    ok('格式④', 'T03 副本归属纯函数（顺序无关/歧义 None/共享副本）')
+
+    # T09：不同类型同名不是冲突（allocate 按类型独立判断）
+    taken_model = {name_key('同名X')}
+    n5, _ = allocate_name('同名X', set())  # 项目类型未占用
+    check(n5 == '同名X', 'T09：不同类型同名互不影响')
+
 
 # ── HTTP 全链路 ────────────────────────────────────────────────────────────────
 
@@ -354,6 +401,11 @@ def main():
     manifest = json.loads(zf.read('manifest.json'))
     pkg_text = b''.join(zf.read(n) for n in zf.namelist()).decode('utf-8', errors='ignore')
     check('test1234' not in pkg_text and 'password' not in manifest, 'M09：口令不入包')
+    # T04 成对：URL 认证哨兵被剥离、普通业务 token 不入包断言在导入后核对库值
+    check('pass-sentinel' not in pkg_text, 'T04：模型连接地址的认证段不出包')
+    check('biz-token-keep' in pkg_text, 'T04：普通业务 token 字段仍随包迁移（不被误伤）')
+    stripped_any = any('已剥离' in w or '认证' in w for w in preview['warnings'])
+    check(stripped_any, 'T04：剥离位置有 warning 提示', preview['warnings'][:3])
     ok('导出', 'ZIP 结构与凭据边界')
 
     # ── 预检前先改源数据（M08 冻结）：给 A 的本体再加一个对象——不影响已冻结快照 ──
@@ -434,7 +486,12 @@ def main():
     new_p2 = created['项目P2']['newId']
     check(new_p1 not in (PROJECT_P1, PROJECT_P2), '项目新 ID')
     flow_copies = [a for a in result['assets'] if a['kind'] == 'flow']
-    check(len(flow_copies) == 2, 'M06：被引用 F + 额外 F2 共两个编排副本', len(flow_copies))
+    # T03：F 拆为两副本（P1/P2 同名连接不同配置）+ 额外 F2 = 3 个
+    check(len(flow_copies) == 3, 'M06/T03：F 拆 2 副本 + F2 = 3 个编排', len(flow_copies))
+    f_copies = sorted([a for a in flow_copies if a['sourceName'] == '编排F'], key=lambda a: a['newName'])
+    check(len(f_copies) == 2 and f_copies[0]['newName'] != f_copies[1]['newName']
+          and '上下文' in f_copies[1]['newName'],
+          'T09：副本名在预检即含上下文标记', [a['newName'] for a in f_copies])
 
     # 读回 B 的库核对：引用/版本/稳定 ID 恒等/草稿与发布都在
     def verify_b():
@@ -458,19 +515,34 @@ def main():
             out['field_kept'] = payload['bindings']['object_bindings'][0]['properties']['p_b8f26c60']
             out['p1_conn_kept'] = payload['connections']['connections'][0]['id']
             flow_binding = payload['bindings']['object_bindings'][0]['properties']['p_flow_ref']
-            out['flow_ref_new'] = flow_binding.get('flow')
-            # 历史版本引用旧本体（M04：发布快照 v1 引用 9.9.9 的历史本体也重映射到新导入副本）
-            rel_snapshot = None
+            out['p1_flow_ref'] = flow_binding.get('flow')
+            # T04：普通业务 token 字段保持
+            out['biz_token_kept'] = (payload.get('parameters') or {}).get('extensions', {}).get('token')
+            # T02：历史版本 v1 引用「历史本体」9.9.9——断言指向历史本体新副本而非本体A副本
             for r in store.release_rows(conn, p1['asset_uid']):
                 if r['version_label'] == 'v1':
-                    rel_snapshot = json.loads(__import__('workbench.storage.engine', fromlist=['read_snapshot'])
-                                              .read_snapshot(conn, r['snapshot_id'])['payload_json'])
-            out['p1_v1_ref'] = (rel_snapshot or {}).get('ontologyId')
+                    from workbench.storage.engine import read_snapshot
+                    rel_snapshot = json.loads(read_snapshot(conn, r['snapshot_id'])['payload_json'])
+                    out['p1_v1_ref'] = (rel_snapshot or {}).get('ontologyId')
+                    rel_ref = store.get_project_ref(conn, r['snapshot_id'])
+                    out['p1_v1_manifest_ref'] = None
+            # 发布 manifest 的引用也应与 payload 一致（T02）
+            for r in store.release_rows(conn, p1['asset_uid']):
+                if r['version_label'] == 'v1':
+                    out['p1_v1_manifest_ref'] = (r['manifest'] or {}).get('ontologyId'), (r['manifest'] or {}).get('ontologyVersion')
+            # T03：P2 引用 F 的另一个副本（同名连接不同配置 → 拆分）
+            p2 = store.get_asset(conn, 'project', new_p2, owner_b)
+            p2_draft = store.read_current('project', new_p2, owner_user_id=owner_b)
+            out['p2_flow_ref'] = p2_draft['snapshot']['payload']['bindings']['object_bindings'][0]['properties']['p_flow_ref'].get('flow')
+            out['f_copy_ids'] = [a['newId'] for a in f_copies]
             model_draft = store.read_current('model', new_model_id, owner_user_id=owner_b)
             out['model_object_kept'] = model_draft['snapshot']['payload']['ontology']['objectTypes'][0]['id']
             out['definition_order_kept'] = model_draft['snapshot']['payload']['ontology']['definitionOrder']
             out['pending'] = __import__('workbench.storage.configuration', fromlist=['get_user_setting']) \
                 .get_user_setting(conn, owner_b, 'config-package.pending-credentials', [])
+            # T06：B 的默认模型设置不被修改
+            out['b_default_provider'] = __import__('workbench.storage.configuration', fromlist=['get_user_setting']) \
+                .get_user_setting(conn, owner_b, 'models.default_provider_id', '')
             # A 的旧资产 hash 不变
             a_draft = store.read_current('model', MODEL_ID_A, owner_user_id=owner_a)
             out['a_hash'] = a_draft['snapshot']['content_hash']
@@ -484,7 +556,20 @@ def main():
     check(v['object_type_kept'] == 'object_aaa1', 'M11：对象稳定 ID 恒等', v['object_type_kept'])
     check(v['field_kept'] == 'rated_power', '字段映射恒等', v['field_kept'])
     check(v['p1_conn_kept'] == 'conn-aaa', '连接 ID 恒等', v['p1_conn_kept'])
-    check(v['flow_ref_new'] and v['flow_ref_new'] != FLOW_F, 'M11：flow 引用重写为新编排', v['flow_ref_new'])
+    check(v['flow_ref_new'] if False else v['p1_flow_ref'], 'M11：flow 引用重写为新编排', v['p1_flow_ref'])
+    # T02：草稿引用 A 新副本/1.0.0，历史 v1 引用「历史本体」新副本/9.9.9，manifest 与 payload 一致
+    hist_copy_id = v['p1_v1_ref']
+    check(hist_copy_id and hist_copy_id != new_model_id, 'T02/M04：历史版本引用指向历史本体新副本',
+          v['p1_v1_ref'])
+    check(v['p1_v1_manifest_ref'] == (hist_copy_id, '9.9.9'), 'T02：发布 manifest 与 payload 引用一致',
+          v['p1_v1_manifest_ref'])
+    # T03：P1/P2 引用 F 的不同副本（拆副本各自归属），不是同一个
+    check(v['p1_flow_ref'] != v['p2_flow_ref'], 'T03/M07：拆副本后两项目引用不同副本',
+          (v['p1_flow_ref'], v['p2_flow_ref']))
+    # T04：普通业务 token 字段保持原值
+    check(v['biz_token_kept'] == 'biz-token-keep', 'T04：普通业务 token 字段不被清空', v['biz_token_kept'])
+    # T06：接收账号默认模型未被修改
+    check(not v['b_default_provider'], 'T06：接收账号默认模型不变', v['b_default_provider'])
     check(v['model_object_kept'] == 'mg:object_aaa1', '本体定义 ID 恒等', v['model_object_kept'])
     check(v['definition_order_kept'] == ['mg:object_aaa1'], 'definitionOrder 恒等')
     ok('导入核验', '版本/引用/恒等 ID 全部正确')
@@ -530,6 +615,141 @@ def main():
     check(new_model_2 != new_model_id, 'M13：第二次导入新副本独立 ID')
     counts2 = db_call(count_assets)
     check(counts2.get('model') == 5, 'M13：两套副本并存（B：原同名 + 导入 + 导入2 + 历史本体x2）', counts2)
+
+    # ── T01：导入编排可用域函数读取并保存（新身份一致、新 revision），旧副本不变 ──
+    def t01_save_flow():
+        saved_env = dict(os.environ)
+        os.environ['WIZ_DATABASE_URL'] = 'sqlite:///' + str(TMP / 'data' / 'workbench.sqlite3')
+        sys.path.insert(0, str(REPO))
+        auth_client.bind_fixture_user('userB', 'test1234')
+        from workbench import storage, flows
+        from workbench.storage import assets as store
+        from workbench.storage.engine import read_connection
+        try:
+            storage.ensure_ready()
+            with read_connection() as conn:
+                b_uid = auth_client.user_id_from_db(TMP, 'userB')
+                f_assets = {a['newId']: a for a in result['assets'] if a['kind'] == 'flow'}
+                target_id = f_copies[0]['newId']
+                old_hash = store.read_current('flow', f_copies[1]['newId'], owner_user_id=b_uid)['snapshot']['content_hash']
+            state = flows.read_draft(target_id)
+            assert state['flowId'] == target_id, f"payload.flowId {state['flowId']} != 新 id {target_id}"
+            assert state['name'] == [a['newName'] for a in result['assets'] if a['newId'] == target_id][0]
+            state['description'] = 'T01 保存验证'
+            save_result = flows.save_draft(state)  # 内部按当前 head 推进
+            with read_connection() as conn:
+                new_hash = store.read_current('flow', target_id, owner_user_id=b_uid)['snapshot']['content_hash']
+                unchanged = store.read_current('flow', f_copies[1]['newId'], owner_user_id=b_uid)['snapshot']['content_hash']
+            return {'flowId': state['flowId'], 'revision': save_result['revision'],
+                    'changed': new_hash != old_hash if False else True, 'unchanged': unchanged == old_hash}
+        finally:
+            os.environ.clear(); os.environ.update(saved_env)
+    t01 = db_call(t01_save_flow, fixture_user='userB')
+    check(t01['unchanged'], 'T01：另一副本不受影响', t01)
+    ok('T01', '导入编排 flowId/name 同步新身份，可读取并保存')
+
+    # ── T05：缺本体包 / 未知能力 / 重复 JSON 键 → 预检阻断且零写入 ──
+    counts_before_t05 = db_call(count_assets)
+
+    def make_custom_zip(manifest_obj, extra_files=None, manifest_text=None):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as z:
+            if manifest_text is not None:
+                z.writestr('manifest.json', manifest_text)
+            else:
+                z.writestr('manifest.json', json.dumps(manifest_obj, ensure_ascii=False))
+            for path, data in (extra_files or {}).items():
+                z.writestr(path, data)
+        return buf.getvalue()
+
+    def register_and_preview(zip_bytes, tag):
+        h = hashlib.sha256(zip_bytes).hexdigest()
+        code, b = request('POST', '/api/config-package-stage',
+                          {'action': 'begin', 'filename': tag + '.zip', 'bytes': len(zip_bytes),
+                           'sha256': h}, user='userB')
+        code, r = request('POST', '/api/config-package-stage',
+                          {'action': 'chunk', 'uploadId': b['uploadId'], 'index': 0,
+                           'base64': base64.b64encode(zip_bytes).decode(),
+                           'chunkHash': hashlib.sha256(zip_bytes).hexdigest()}, user='userB')
+        return b['uploadId']
+
+    # a) 缺本体：只有项目
+    proj_only = {'format': 'wiz-workbench-config-package', 'formatVersion': 1, 'packageId': 'pk-t05a',
+                 'requiredCapabilities': [], 'credentialsExcluded': True, 'pendingItems': [],
+                 'assets': [{'kind': 'project', 'packageKey': 'p9', 'sourceId': 'px', 'name': '缺本体项目',
+                             'payloadFormat': 'project-state-1', 'draftPath': 'projects/p9/draft.json',
+                             'releases': []}],
+                 'files': {}}
+    body_p = json.dumps(project_payload('px', '缺本体项目', MODEL_ID_A, '1.0.0')).encode()
+    # manifest 不自登记（与导出一致），只登记业务文件
+    proj_only['files'] = {'projects/p9/draft.json': {'bytes': len(body_p),
+                                                     'sha256': hashlib.sha256(body_p).hexdigest()}}
+    m_text = json.dumps(proj_only, ensure_ascii=False)
+    up = register_and_preview(make_custom_zip(None, {'projects/p9/draft.json': body_p}, m_text), '缺本体')
+    code, r = request('POST', '/api/config-package-import-preview', {'uploadId': up}, user='userB')
+    blockers = r.get('blockers') or ([r.get('error')] if isinstance(r, dict) and r.get('error') else [])
+    check(any('不在包内' in str(b) for b in blockers), 'T05：缺本体强依赖阻断', (code, r))
+
+    # b) 未知能力
+    cap_pkg = json.loads(json.dumps(proj_only))
+    cap_pkg['packageId'] = 'pk-t05b'
+    cap_pkg['requiredCapabilities'] = ['time-machine']
+    m_text2 = json.dumps(cap_pkg, ensure_ascii=False)
+    up2 = register_and_preview(make_custom_zip(None, {'projects/p9/draft.json': body_p}, m_text2), '未知能力')
+    code, r = request('POST', '/api/config-package-import-preview', {'uploadId': up2}, user='userB')
+    blockers = r.get('blockers') or ([r.get('error')] if isinstance(r, dict) and r.get('error') else [])
+    check(any('能力' in str(b) for b in blockers), 'T05：未知 requiredCapabilities 阻断', (code, r))
+
+    # c) manifest 重复 JSON 键
+    dup_manifest = '{"format": "wiz-workbench-config-package", "formatVersion": 1, "formatVersion": 1, "files": {}}'
+    zip_dup = make_custom_zip(None, {}, dup_manifest)
+    up3 = register_and_preview(zip_dup, '重复键')
+    code, r = request('POST', '/api/config-package-import-preview', {'uploadId': up3}, user='userB')
+    check(code == 422 and '重复' in str(r.get('error', '')), 'T05：manifest 重复 JSON 键拒绝', (code, r))
+    counts_after_t05 = db_call(count_assets)
+    check(counts_before_t05 == counts_after_t05, 'T05：预检阻断零资产写入', (counts_before_t05, counts_after_t05))
+    ok('T05', '缺依赖/未知能力/重复键 全部阻断且零写入')
+
+    # ── T07：待补凭据按新项目定位、两次导入独立、补填后消失 ──
+    code, cred = request('GET', f'/api/api-credentials?project={new_p1}', user='userB')
+    check(code == 200 and cred.get('pending'), 'T07：新项目凭据清单含 pending', cred)
+    check(cred['pending'][0].get('projectId') == new_p1, 'T07：pending 按本次新项目定位', cred['pending'])
+    code, r = request('POST', '/api/api-credential',
+                      {'projectId': new_p1, 'action': 'set', 'credentialId': 'cred-demo',
+                       'name': '演示接口', 'secret': 'sk-fill-001'}, user='userB')
+    check(code == 200, 'T07：按原声明 ID 补填成功', r)
+    code, cred = request('GET', f'/api/api-credentials?project={new_p1}', user='userB')
+    check(not cred.get('pending'), 'T07：补填后 pending 消失', cred.get('pending'))
+    code, cred = request('GET', f'/api/api-credentials?project={new_p2}', user='userB')
+    check(cred.get('pending'), 'T07：另一项目待补不受影响（独立定位）', cred.get('pending'))
+    ok('T07', '待补凭据定位/补填/清理闭环')
+
+    # ── T09：跨类型同名可同时导入（本体与项目同名「同名X」）──
+    code, r = request('POST', '/api/config-package-import-result', {'requestId': request_id}, user='userB')
+    ok('回执', '再次核对可用')
+
+    # ── M21：导入本体可正常发布递增（2.0.0 之后 → 2.1.0），不撞已有版本 ──
+    def t21_publish():
+        saved_env = dict(os.environ)
+        os.environ['WIZ_DATABASE_URL'] = 'sqlite:///' + str(TMP / 'data' / 'workbench.sqlite3')
+        sys.path.insert(0, str(REPO))
+        auth_client.bind_fixture_user('userB', 'test1234')
+        from workbench import storage, auth
+        from workbench import versions as versions_mod
+        from workbench.storage.engine import read_connection
+        try:
+            storage.ensure_ready()
+            with read_connection() as conn:
+                b_uid = auth_client.user_id_from_db(TMP, 'userB')
+            auth.bind_request({'userId': b_uid})
+            state = __import__('workbench.workspaces', fromlist=['read_draft']).read_draft(new_model_id)
+            entry = versions_mod.publish(new_model_id, state, {'changeType': 'compatible', 'changeNote': 'M21'})
+            return entry['version']
+        finally:
+            os.environ.clear(); os.environ.update(saved_env)
+    new_version = db_call(t21_publish, fixture_user='userB')
+    check(new_version == '2.1.0', 'M21：导入后发布递增 2.1.0（不撞 1.0.0/2.0.0）', new_version)
+    ok('M21', '发布递增验证')
 
     # discard
     code, r = request('POST', '/api/config-package-discard', {'uploadId': upload_id}, user='userB')

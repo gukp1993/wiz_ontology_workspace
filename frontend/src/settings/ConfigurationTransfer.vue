@@ -20,6 +20,24 @@ const tab = ref<'export' | 'import'>('export')
 const busy = ref(false)
 const message = ref('')
 const messageError = ref(false)
+// T08：预检请求代次——换文件/取消后旧预检响应不得覆盖新状态
+let previewSeq = 0
+// T08：待确认导入（requestId+摘要）持久化到 sessionStorage，刷新/离页后可恢复核对
+const PENDING_STORE_KEY = 'ct-pending-import'
+interface PendingImport { requestId: string; fileName: string; packageHash: string; savedAt: string }
+function loadPending(): PendingImport | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_STORE_KEY)
+    return raw ? (JSON.parse(raw) as PendingImport) : null
+  } catch { return null }
+}
+function savePending(p: PendingImport | null) {
+  try {
+    if (p) sessionStorage.setItem(PENDING_STORE_KEY, JSON.stringify(p))
+    else sessionStorage.removeItem(PENDING_STORE_KEY)
+  } catch { /* 隐私模式等：仅失去恢复能力 */ }
+}
+const awaitingReceipt = ref<PendingImport | null>(loadPending())
 
 // ── 导出状态 ──
 const ontologies = ref<{ id: string; name: string }[]>([])
@@ -153,6 +171,7 @@ async function takeFile(f: File) {
   }
 }
 function resetImport() {
+  previewSeq++  // 使在途预检响应失效
   importPreviewData.value = null
   receipt.value = null
   outcomeUnknown.value = false
@@ -160,28 +179,47 @@ function resetImport() {
   importErrorCode.value = ''
   requestId.value = ''
   nameEdits.value = {}
+  checking.value = false
 }
-const busyImport = computed(() => uploading.value || submitting.value)
+const checking = ref(false)
+const busyImport = computed(() => uploading.value || checking.value || submitting.value)
 
 async function runImportPreview() {
   if (!uploadId.value) return
+  const seq = ++previewSeq
+  checking.value = true
   busy.value = true
   try {
-    importPreviewData.value = await importPreview(uploadId.value)
+    const r = await importPreview(uploadId.value)
+    if (seq !== previewSeq) return  // 期间已换文件/取消：丢弃旧响应
+    importPreviewData.value = r
     const edits: Record<string, string> = {}
-    for (const a of importPreviewData.value.assets) edits[a.packageKey] = a.suggestedName
+    for (const a of r.assets) edits[a.packageKey] = a.suggestedName
     nameEdits.value = edits
   } catch (e) {
-    importError.value = (e as Error).message || '预检失败'
-  } finally { busy.value = false }
+    if (seq === previewSeq) importError.value = (e as Error).message || '预检失败'
+  } finally {
+    if (seq === previewSeq) { checking.value = false; busy.value = false }
+  }
 }
 
 async function runConfirm() {
   if (!importable.value || busyImport.value) return
+  // T08：名称为空（含被清空）必须阻止并定位，不能用建议名悄悄顶替
+  const emptyKeys = Object.entries(nameEdits.value)
+    .filter(([, v]) => !String(v).trim())
+    .map(([k]) => importPreviewData.value?.assets.find(a => a.packageKey === k)?.sourceName || k)
+  if (emptyKeys.length) {
+    importError.value = `导入后名称不能为空（${emptyKeys.join('、')}）；请填写后重试。`
+    importErrorCode.value = 'EMPTY_NAME'
+    return
+  }
   submitting.value = true
   importError.value = ''
   // 至明确结果前不换 requestId：网络中断后用同 ID 查回执或重试
   if (!requestId.value) requestId.value = 'req-' + crypto.randomUUID()
+  savePending({ requestId: requestId.value, fileName: fileName.value,
+                packageHash: importPreviewData.value?.packageHash || '', savedAt: new Date().toISOString() })
   const overrides: Record<string, string> = {}
   for (const [k, v] of Object.entries(nameEdits.value)) {
     if (v.trim() && importPreviewData.value?.assets.find(a => a.packageKey === k)?.suggestedName !== v.trim()) {
@@ -191,6 +229,7 @@ async function runConfirm() {
   try {
     const r = await importConfirm(importPreviewData.value!.previewToken, requestId.value, overrides)
     receipt.value = r
+    savePending(null)
     requestId.value = r.requestId || requestId.value
     void discard({ previewToken: importPreviewData.value?.previewToken })
   } catch (e: any) {
@@ -208,6 +247,19 @@ async function runConfirm() {
   } finally { submitting.value = false }
 }
 
+async function verifyRecovered() {
+  if (!awaitingReceipt.value) return
+  requestId.value = awaitingReceipt.value.requestId
+  outcomeUnknown.value = true
+  await verifyOutcome()
+  if (!receipt.value) outcomeUnknown.value = true  // 尚无回执：保留横幅供再次核对
+}
+
+function dismissRecovered() {
+  awaitingReceipt.value = null
+  savePending(null)
+}
+
 async function verifyOutcome() {
   if (!requestId.value) return
   busy.value = true
@@ -217,6 +269,7 @@ async function verifyOutcome() {
       receipt.value = r.receipt
       outcomeUnknown.value = false
       importError.value = ''
+      savePending(null)
     } else {
       importError.value = '服务端尚无本次导入的回执。可重新点击「确认导入」继续提交（不会产生重复副本）。'
       outcomeUnknown.value = false
@@ -226,8 +279,24 @@ async function verifyOutcome() {
   } finally { busy.value = false }
 }
 
+async function cancelImport() {
+  // T08：取消 = 清理本次上传暂存与预览状态（检查和取消零写入）
+  const tokens: { uploadId?: string; previewToken?: string } = {}
+  if (importPreviewData.value) tokens.previewToken = importPreviewData.value.previewToken
+  else if (uploadId.value) tokens.uploadId = uploadId.value
+  previewSeq++
+  resetImport()
+  uploadId.value = ''
+  fileName.value = ''
+  fileSize.value = 0
+  uploadDone.value = 0
+  uploadTotal.value = 0
+  if (tokens.uploadId || tokens.previewToken) void discard(tokens)
+}
+
 function againImport() {
   // 新的一次主动导入：清空全部状态重新开始（新预检/新命名/新 requestId）
+  savePending(null)
   resetImport()
   uploadId.value = ''
   fileName.value = ''
@@ -364,12 +433,20 @@ function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) 
       <ul v-if="receipt.warnings.length" class="ct-warnings"><li v-for="w in receipt.warnings" :key="w">{{ w }}</li></ul>
       <div class="tools ct-actions">
         <button type="button" class="primary" @click="againImport">再次导入此文件</button>
-        <button type="button" @click="emit('navigate', 'settings-transfer')">返回导出</button>
+        <button type="button" @click="tab = 'export'">返回导出</button>
       </div>
     </div>
 
     <!-- 上传 + 预检 -->
     <template v-else>
+      <div v-if="awaitingReceipt" class="ct-confirm-banner">
+        有一次导入的结果待确认（文件 {{ awaitingReceipt.fileName }}，{{ awaitingReceipt.savedAt.slice(0, 19).replace('T', ' ') }}）。
+        请先核对，不要重复导入。
+        <div class="tools" style="margin-top:8px">
+          <button type="button" class="primary" @click="verifyRecovered">核对导入结果</button>
+          <button type="button" @click="dismissRecovered">忽略</button>
+        </div>
+      </div>
       <div class="ct-drop">
         <strong>{{ fileName ? '已选择文件' : '选择配置包' }}</strong>
         <button type="button" :disabled="busyImport" @click="pickFile">{{ fileName ? '更换文件' : '选择文件' }}</button>
@@ -415,7 +492,7 @@ function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) 
         </ul>
         <div class="tools ct-actions">
           <button type="button" class="primary" :disabled="!importable || busyImport" @click="runConfirm">{{ submitting ? '正在导入…' : '确认导入' }}</button>
-          <button type="button" :disabled="busyImport" @click="pickFile">取消</button>
+          <button type="button" :disabled="busyImport" @click="cancelImport">取消</button>
           <span class="note">导入一次保存完成；确认后请勿关闭页面，直到看到结果。</span>
         </div>
       </div>
