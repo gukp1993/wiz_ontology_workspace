@@ -175,7 +175,7 @@ async function remove(id: string) {
 }
 </script>
 <template>
-<div>
+<section class="card ont-block">
   <div class="ont-lib-head">
     <div>
       <h2>动作定义</h2>
@@ -269,7 +269,7 @@ async function remove(id: string) {
     <p v-else class="ont-hint">暂未关联对象。到「对象建模 → 动作」页签添加。</p>
     <template #footer><button type="button" @click="refsId = ''">关闭</button></template>
   </OntDrawer>
-</div>
+</section>
 </template>
 <style scoped>
 .ont-filters{display:flex;gap:6px;flex-wrap:wrap}
