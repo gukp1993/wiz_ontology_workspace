@@ -223,7 +223,9 @@ check(flows.check_flow(copied, ctx)['errors'] == [], '复制后的 Redis 编排�
 
 # 9) 编排输出绑定（A12 待完善定位） -------------------------------------------------------------
 created7, flow = blank('输出绑定')
-src = node('python', '算数', outputs=[{'name': 'value', 'label': '结果', 'type': {'type': 'number'}}])
+# 打磨轮起列表检查携带 llm_meta：夹具用 calc 节点（不依赖 LLM 配置）表达「可通过」分支
+src = node('calc', '算数', outputs=[{'name': 'value', 'label': '结果', 'type': {'type': 'number'}}])
+src['implementation'] = {'mode': 'formula', 'formulas': {'value': '1'}}
 flow['nodes'] = [src]
 flow['outputs'] = [{'id': 'fout_1', 'name': 'result', 'label': '最终结果', 'type': {'type': 'number'}, 'binding': None}]
 report = flows.check_flow(flow)
@@ -423,6 +425,16 @@ items = {i['id']: i for i in payload['items']}
 check('warningCount' in items[created_empty['id']] and items[created_empty['id']]['warningCount'] == 1
       and items[created_empty['id']]['errorCount'] == 0,
       '列表 warningCount 与 errorCount 分开计数', items.get(created_empty['id']))
+# 列表检查携带 llm_meta：未配置任何提供方时 python 节点在列表即报问题（不再假「检查通过」）
+created_llm, llm_flow = blank('未配模型清洗')
+llm_flow['nodes'] = [node('python', '清洗', inputs=[{'name': 'raw', 'label': '原始数据', 'type': {'type': 'text'}}],
+                          outputs=[{'name': 'clean', 'label': '清洗结果', 'type': {'type': 'text'}}])]
+flows.save_draft(llm_flow)
+payload, status = flow_routes.get_flows({})
+items = {i['id']: i for i in payload['items']}
+check(items[created_llm['id']]['errorCount'] >= 1 and items[created_llm['id']]['configStatus'] == 'pending',
+      '未配置 LLM 时列表把 python 编排标为待完善（带问题数）', items.get(created_llm['id']))
+
 # 触碰较早编排后它应排到最前（updatedAt 降序）
 flows.save_draft(flows.read_draft(older))
 ids = [i['id'] for i in flows.listing()]

@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from workbench import auth
 from workbench import calc_functions, flow_http, flow_sql
+from workbench import llm_providers
 from workbench import storage
 from workbench.storage import assets as store
 from workbench.storage.engine import read_connection, write_tx, utcnow
@@ -184,7 +185,7 @@ def listing(include_deleted=False):
         status = state.get('status') or 'active'
         if status == 'deleted' and not include_deleted:
             continue
-        check = check_flow(state)
+        check = check_flow(state, llm_meta=llm_providers.list_metadata())
         items.append({'id': identifier,
                       'name': str(state.get('name') or identifier),
                       'description': str(state.get('description') or ''),
