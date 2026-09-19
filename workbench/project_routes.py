@@ -121,6 +121,7 @@ def post_create_project(payload):
 
 def post_project_write(payload, path):
     """/api/project-save|project-validate|project-publish|project-upgrade-check 公共前置。"""
+    from workbench import mapping_descriptions
     project_state = projects._normalize(payload['state'])
     projects.clean_id(project_state.get('projectId'))
     # 目录以服务端文件存储为准：避免不同客户端的过期副本影响校验与修订哈希。
@@ -131,6 +132,9 @@ def post_project_write(payload, path):
             return {'errors': ['该项目尚未绑定本体版本：请在项目信息中选择引用的本体与版本。'], 'warnings': [],
                     'items': [{'kind': 'reference', 'id': 'reference', 'name': '本体引用', 'status': 'unconfigured', 'issues': ['尚未绑定本体版本']}]}, 200
         ontology_state = referenced_ontology(project_state)
+        # 校验请求省略说明块时按当前已存草稿合并（仅用于校验，不写库）
+        saved, _ = projects.load(project_state['projectId'])
+        mapping_descriptions.merge_omitted(project_state, saved)
         return projects.validate_project(project_state, ontology_state), 200
     if path == '/api/project-upgrade-check':
         if not has_reference:
@@ -143,6 +147,17 @@ def post_project_write(payload, path):
         expected = projects.current_token(project_state['projectId'])
         if payload.get('revision') != expected:
             return {'error': '此项目已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
+        # 说明块兼容（接口文档 01 §3.4）：旧客户端省略整块 → 在同一 CAS/写锁边界内沿用
+        # 已存说明；携带完整块按完整块提交（显式清空按删键表达）。规范化顺带清除纯空白项。
+        mapping_descriptions.merge_omitted(project_state, existing)
+        try:
+            block, _changed = mapping_descriptions.normalize_block(project_state['bindings'].get('mappingDescriptions'))
+        except ValueError as exc:
+            return {'error': str(exc)}, 400
+        if block is None:
+            project_state['bindings'].pop('mappingDescriptions', None)
+        else:
+            project_state['bindings']['mappingDescriptions'] = block
         if path == '/api/project-publish':
             if not has_reference:
                 return {'error': '该项目尚未绑定本体版本，无法发布：请先在项目信息中完成绑定。'}, 422

@@ -9,6 +9,8 @@ import {computed,inject,onBeforeUnmount,ref,watch} from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import RegisteredInstances from './RegisteredInstances.vue'
+import MappingDescription from './MappingDescription.vue'
+import {descTextOf,commitDesc} from './bindingModel'
 import {sourcesOf,commitSources,dropSource,propertyView,catalogOf,tableCatalog,tableOptions,fieldOptions,newSourceId,refreshCatalogOf,bindingIdentityOf,registeredInstancesOf,commitRegisteredIdentity,clearRegisteredIdentity,registeredBlockingItemsOf,databaseIdentityDependentsOf,dropRegisteredInstance} from './bindingModel'
 import type {RegisteredInstanceView,IdentityRefItem} from './bindingModel'
 import {effectiveProperty} from '../ontology/propertyModel'
@@ -49,7 +51,7 @@ function propertyLabelOf(api:string){const n=graph.value.find((x:any)=>x['@id']=
 function relationLabelOf(id:string){const n=graph.value.find((x:any)=>x['@type']==='owl:ObjectProperty'&&x['@id']==='mg:'+id);return String(n?.['rdfs:label']||id)}
 function refItemLabel(i:IdentityRefItem){return (i.type==='property'?'属性「'+propertyLabelOf(i.key)+'」':i.type==='relation'?'链接「'+relationLabelOf(i.key)+'」':'补充来源「'+i.key+'」')+'（'+i.note+'）'}
 // ---------- 编辑态：实例识别 / 补充来源（局部草稿，保存才写回 b） ----------
-type EditorKind='identity'|'source'|null
+type EditorKind='identity'|'source'|'note'|null
 const editing=ref<EditorKind>(null)
 const identityDraft=ref<{mode:'database'|'registered';connection:string;table:string;primary_key:string;instances:RegisteredInstanceView[]}>({mode:'database',connection:'',table:'',primary_key:'',instances:[]})
 const sourceDraft=ref<any>(null)
@@ -57,6 +59,9 @@ const message=ref(''),tableChangeNote=ref(''),removeMessage=ref('')
 const switchNote=ref(''),switchBlock=ref('')
 const refreshing=ref(''),refreshMessage=ref('')
 const saving=ref(false)
+// 说明草稿（对象级）：进入说明编辑态时快照原文，保存经 formSave 直通写入 mappingDescriptions
+const noteDraft=ref(''),noteBaseline=ref('')
+const savedNote=computed(()=>descTextOf(props.projectState,'objects',props.b?.object_type||''))
 const editingOpen=computed(()=>editing.value!==null)
 const formGuard=inject<FormGuardAPI|null>('form-guard',null)
 const formSave=inject<FormSaveAPI|null>('form-save',null)
@@ -67,6 +72,7 @@ async function submit(apply:()=>void):Promise<{ok:boolean;message:string}>{
 }
 let identityBaseline='',sourceBaseline=''
 const dirty=computed(()=>{
+  if(editing.value==='note')return noteDraft.value!==noteBaseline.value
   if(editing.value==='identity')return JSON.stringify(identityDraft.value)!==identityBaseline
   if(editing.value==='source')return JSON.stringify(sourceDraft.value)!==sourceBaseline
   return false
@@ -88,6 +94,15 @@ function openSource(s?:any){
   editing.value='source'
 }
 function closeEditor(){editing.value=null;identityDraft.value={mode:'database',connection:'',table:'',primary_key:'',instances:[]};sourceDraft.value=null;message.value='';tableChangeNote.value='';refreshMessage.value='';switchNote.value='';switchBlock.value='';saving.value=false}
+function openNote(){noteDraft.value=savedNote.value;noteBaseline.value=savedNote.value;message.value='';editing.value='note'}
+async function saveNote(){
+  if(saving.value)return
+  saving.value=true
+  const r=await submit(()=>commitDesc(props.projectState,'objects',props.b.object_type,null,noteDraft.value))
+  saving.value=false
+  if(r.ok)closeEditor()
+  else message.value='保存未完成：'+r.message+'。说明内容已保留，可重试保存或取消。'
+}
 // --- 实例来源方式切换：只改本地草稿（不落盘）；registered→database 有不兼容引用时阻止 ---
 const modeOptions=[{value:'database',label:'数据库表／视图'},{value:'registered',label:'项目登记'}]
 function identityModeChanged(v:string){
@@ -206,6 +221,14 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <template><div>
 <!-- ========== 浏览态：只读摘要 + 折叠的补充来源 ========== -->
 <template v-if="!editing">
+<div class="os-desc">
+<div class="os-desc-head"><h3>来源说明</h3><button @click="openNote">编辑说明</button></div>
+<p v-if="savedNote" class="os-note-text">{{savedNote}}</p>
+<p v-else class="muted os-note-text">暂无说明。描述{{objectName}}来自哪里、什么标识能唯一确定一个实例。</p>
+</div>
+<details class="os-config">
+<summary><strong>数据来源</strong><small class="muted">{{identityMode==='registered'?'项目登记 · '+(savedInstances.length||0)+' 个实例':(b.connection?connName(b.connection)+' · '+(b.table||'未选表'):'未配置')}}</small></summary>
+<div class="os-config-body">
 <div class="os-head"><div><h3>如何识别一个{{objectName}}实例</h3><small class="muted">识别有哪些对象实例，不限制属性可以从哪里获取。</small></div><button class="primary" @click="openIdentity">{{identityMode==='registered'||b.table?'修改':'配置'}}</button></div>
 <div class="os-summary">
 <div><small>实例来源方式</small><div class="os-readonly">{{identityMode==='registered'?'项目登记':'数据库表／视图'}}</div></div>
@@ -234,7 +257,19 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <div v-if="identityMode==='database'" class="tools"><button @click="openSource()">＋ 登记数据库补充来源</button></div>
 <p v-if="removeMessage" class="inline-error" role="alert">{{removeMessage}}</p>
 </details>
+</div>
+</details>
+<p class="field-help">这里的说明用于当前项目；本体中的对象定义保持独立。</p>
 <div class="os-footer"><button class="primary" @click="emit('go-tab','properties')">继续配置属性取值 →</button></div>
+</template>
+<!-- ========== 编辑态：对象说明 ========== -->
+<template v-else-if="editing==='note'">
+<div class="os-editor-top"><button class="os-back" @click="closeEditor">← 返回实例识别</button><small class="muted">当前对象 · {{objectName}}</small></div>
+<h2>来源说明</h2>
+<p class="os-note">描述当前项目中{{objectName}}的实例来源与识别方式；本体中的对象定义不受影响。</p>
+<MappingDescription v-model="noteDraft" hint="说明对象来自哪里，什么标识能唯一确定一个实例。" :rows="9"/>
+<p v-if="message" class="inline-error" role="alert">{{message}}</p>
+<div class="os-actions"><button class="primary" :disabled="saving" @click="saveNote">{{saving?'保存中…':'保存'}}</button><button :disabled="saving" @click="closeEditor">取消</button><small class="field-help">保存写入当前项目草稿；取消放弃本次修改。</small></div>
 </template>
 <!-- ========== 编辑态：实例识别表单 ========== -->
 <template v-else-if="editing==='identity'">
@@ -309,6 +344,16 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 </template>
 </div></template>
 <style scoped>
+.os-desc{margin:0 0 14px}
+.os-desc-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+.os-desc-head h3{margin:0}
+.os-note-text{white-space:pre-wrap;line-height:1.9;font-size:13px;margin:0;padding:12px 14px;background:var(--bg);border:1px solid var(--line);border-radius:7px;overflow-wrap:anywhere}
+.os-config{border-top:1px solid var(--line);margin-top:6px;padding-top:12px}
+.os-config>summary{cursor:pointer;display:flex;align-items:center;gap:10px;list-style:none}
+.os-config>summary::-webkit-details-marker{display:none}
+.os-config>summary::before{content:'›';color:var(--muted);transition:transform .12s}
+.os-config[open]>summary::before{transform:rotate(90deg)}
+.os-config-body{padding-top:14px}
 .os-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin:0 0 16px}
 .os-head h3{margin:0 0 4px}
 .os-head .muted{display:block}

@@ -16,6 +16,8 @@ import { actionBindingsOf, actionsOf, effectiveAssociations } from '../ontology/
 import { listFlows } from '../flow/api'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 import { listApiCredentials, saveApiCredential } from './api'
+import MappingDescription from './MappingDescription.vue'
+import { descTextOf, commitDesc } from './bindingModel'
 import {
   AUTH_TYPE_OPTIONS, BODY_FORMAT_OPTIONS, CONSTANT_TYPE_OPTIONS, IN_LABELS, IN_OPTIONS, METHOD_OPTIONS,
   SOURCE_LABELS, apiContext, apiView, buildPreview, draftFrom, emptyApi, inheritedTypeText, isApiV2,
@@ -85,7 +87,8 @@ const draft = ref<any>(null)
 let baseline = ''
 const editingOpen = computed(() => !!meta.value)
 const editable = computed(() => !!draft.value)
-const dirty = computed(() => editable.value && JSON.stringify(draft.value) !== baseline)
+const noteDraft = ref(''), noteBaseline = ref('')
+const dirty = computed(() => (editable.value && JSON.stringify(draft.value) !== baseline) || noteDraft.value !== noteBaseline.value)
 const editingAction = computed<any>(() => meta.value?.action || null)
 const viewReason = computed(() => meta.value?.viewReason || '')
 
@@ -125,10 +128,12 @@ function openEditor(row: Row) {
   draft.value = reason ? null : (impl && Object.keys(impl).length ? draftFrom(impl) : emptyApi())
   baseline = JSON.stringify(draft.value)
   issues.value = null; message.value = ''; credentialOpen.value = false; credentialMessage.value = ''; credentialDraft.value = { name: '', secret: '' }
+  noteDraft.value = editable.value ? descTextOf(props.projectState, 'actions', props.objectType, row.actionId) : ''
+  noteBaseline.value = noteDraft.value
   if (editable.value) void loadCredentials()
   void nextTick(() => dialogEl.value?.scrollTo({ top: 0 }))
 }
-function closeNow() { meta.value = null; draft.value = null; issues.value = null; message.value = ''; credentialOpen.value = false; credentialDraft.value = { name: '', secret: '' } }
+function closeNow() { meta.value = null; draft.value = null; issues.value = null; message.value = ''; credentialOpen.value = false; credentialDraft.value = { name: '', secret: '' }; noteDraft.value = ''; noteBaseline.value = '' }
 /** 用户主动关闭（取消/背板/Esc）：有修改先确认放弃。 */
 async function closeEditor() {
   if (dirty.value && !(await appConfirm({ message: '放弃尚未保存的接口配置？', title: '放弃修改', confirmLabel: '放弃并关闭', danger: true }))) return
@@ -297,9 +302,10 @@ async function saveApi() {
   saving.value = true
   const current = meta.value
   const implementation = toImplementation(draft.value, current.original)
+  const noteText = noteDraft.value
   const result: any = formSave
-    ? await formSave.submitForm('project', () => commit(current, implementation))
-    : (before(), commit(current, implementation), changed(), { ok: true, message: '' })
+    ? await formSave.submitForm('project', () => { commit(current, implementation); commitDesc(props.projectState, 'actions', props.objectType, current.actionId, noteText) })
+    : (before(), commit(current, implementation), commitDesc(props.projectState, 'actions', props.objectType, current.actionId, noteText), changed(), { ok: true, message: '' })
   saving.value = false
   if (!result?.ok) { message.value = result?.message || '保存失败'; await nextTick(); issueEl.value?.scrollIntoView({ block: 'center', behavior: 'smooth' }); return }
   closeNow()
@@ -373,7 +379,7 @@ const viewNotice = computed(() => viewReason.value === 'flow'
   <div class="section-head"><div><h3>动作绑定 · {{ typeName }}</h3>
     <p class="muted">动作与关联来自项目引用的本体版本 {{ projectState.ontologyVersion }}；每个「对象类型＋动作」配置一个有效的 HTTP 接口实现，本期只做配置校验，不发送请求。</p></div></div>
   <table v-if="rows.length" class="ab-list">
-    <thead><tr><th>动作名称</th><th>接口地址</th><th class="ab-ops-head">操作</th></tr></thead>
+    <thead><tr><th>动作名称</th><th>项目说明</th><th class="ab-ops-head">操作</th></tr></thead>
     <tbody>
       <tr v-for="row in rows" :key="row.key" :class="{ 'ab-stale': row.status === 'stale' }">
         <td>
@@ -381,9 +387,10 @@ const viewNotice = computed(() => viewReason.value === 'flow'
           <small class="muted ab-block">{{ row.action ? (row.action.effect || row.action.description || row.actionId) : row.actionId }}</small>
         </td>
         <td>
-          <template v-if="row.status === 'unconfigured'"><span class="muted">尚未配置</span></template>
+          <span class="ab-desc" :class="{'muted': !descTextOf(projectState, 'actions', objectType, row.actionId)}">{{ descTextOf(projectState, 'actions', objectType, row.actionId) || '暂无说明' }}</span>
+          <small v-if="row.status === 'unconfigured'" class="muted ab-block">接口未配置</small>
           <template v-else>
-            <span>{{ addressText(row) }}</span>
+            <small class="muted ab-block">{{ addressText(row) }}</small>
             <small v-if="row.status === 'legacy'" class="muted ab-block">旧格式 · 编辑后可补全</small>
             <small v-else-if="rowHint(row)" class="ab-warn-text ab-block">{{ rowHint(row) }}</small>
           </template>
@@ -413,6 +420,7 @@ const viewNotice = computed(() => viewReason.value === 'flow'
         <div class="ab-banner">
           <strong>本体动作：{{ editingAction?.name || '动作不在引用版本中' }}</strong>
           <p v-if="editingAction?.effect">{{ editingAction.effect }}</p>
+          <MappingDescription v-if="editable" v-model="noteDraft" hint="说明这个项目如何完成动作、使用什么接口，以及如何确认结果。填写和保存不会执行设备操作。"/>
           <p v-if="editingAction?.description">{{ editingAction.description }}</p>
           <p v-if="!editingAction?.effect && !editingAction?.description" class="muted">本体未填写业务定义。</p>
           <small class="muted">来自项目引用的本体版本，只读；项目里只配置调用它的接口。</small>

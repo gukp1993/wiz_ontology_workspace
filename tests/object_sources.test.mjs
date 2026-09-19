@@ -17,6 +17,7 @@ try {
   let code=compileScript(descriptor,{id:'source-test'}).content
   code=code.replace(/import AppSelect from ['"].*?['"]/,'const AppSelect = {}')
   code=code.replace(/import RegisteredInstances from ['"].*?['"]/,'const RegisteredInstances = {}')
+  code=code.replace(/import MappingDescription from ['"].*?['"]/,'const MappingDescription = {}')
   code=code.replace(/from (['"])([^'"]+)\1/g,(_,quote,spec)=>{
     const target=spec==='vue'?require.resolve('vue'):resolve('frontend/src/project',spec+'.ts')
     return 'from '+JSON.stringify(pathToFileURL(target).href)

@@ -16,7 +16,8 @@ function lmConsume(objectType:string):any|null{if(!lmPendingOf(objectType))retur
 import {computed,inject,onBeforeUnmount,ref,watch} from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
-import {relationView,commitRelation,sourceById,dbSourcesOf,tableCatalog,fieldOptions,refreshCatalogOf,bindingIdentityOf,registeredInstancesOf,MEMBERSHIP_OPERATORS,MEMBERSHIP_SCOPES} from './bindingModel'
+import MappingDescription from './MappingDescription.vue'
+import {descTextOf,commitDesc,relationView,commitRelation,sourceById,dbSourcesOf,tableCatalog,fieldOptions,refreshCatalogOf,bindingIdentityOf,registeredInstancesOf,MEMBERSHIP_OPERATORS,MEMBERSHIP_SCOPES} from './bindingModel'
 import type {MembershipRuleView} from './bindingModel'
 import SourcePreview from './SourcePreview.vue'
 import type {RelationView,DbSourceView} from './bindingModel'
@@ -94,6 +95,8 @@ function summaryOf(b:any,sourceId:string,field:string){const s=sourceId?dbSource
 function summaryEnd(view:RelationView){const tb=bindingOfType(view.targetType);return tb?summaryOf(tb,view.targetSourceId,view.targetField):'终点对象尚未配置数据映射'}
 // ---------- 编辑器：局部草稿，保存才写回；新建（addLink）在保存时才写入 b.relations ----------
 const draft=ref<RelationView|null>(null),editIndex=ref(-1),editingIsNew=ref(false)
+// 项目说明（链接级，20260919 v2.1）：同一链接两端共用一个说明键；反向入口编辑即更新同一份
+const noteDraft=ref(''),noteBaseline=ref('')
 const message=ref(''),switchMsg=ref(''),refreshing=ref(''),saving=ref(false)
 const editingOpen=computed(()=>!!draft.value)
 const formGuard=inject<FormGuardAPI|null>('form-guard',null)
@@ -103,7 +106,7 @@ async function submit(apply:()=>void):Promise<{ok:boolean;message:string}>{
   before();apply();changed();return {ok:true,message:''}
 }
 let draftBaseline=''
-const draftChanged=computed(()=>{if(!draft.value)return false;return JSON.stringify(draft.value)!==draftBaseline})
+const draftChanged=computed(()=>{if(!draft.value)return false;return JSON.stringify(draft.value)!==draftBaseline||noteDraft.value!==noteBaseline.value})
 function dirty(){return draftChanged.value}
 const editingMembership=computed(()=>!!draft.value?.membership)
 // 当前草稿链接的集合端方向：'out' 出向 / 'in' 入向（成员=另一端）。
@@ -127,9 +130,12 @@ function openEditor(index:number){
   draft.value={...v,membership:v.membership?JSON.parse(JSON.stringify(v.membership)):undefined}
   normalizeMembershipDraft()
   draftBaseline=JSON.stringify(draft.value);message.value='';switchMsg.value=''
+  noteDraft.value=descTextOf(props.projectState,'links',draft.value.relation)
+  noteBaseline.value=noteDraft.value
 }
 function openNew(r:any){
   editIndex.value=-1;editingIsNew.value=true
+  noteDraft.value='';noteBaseline.value=''
   // 成员端按端判定：入向链接（多对一/多对多）的成员=domain 侧，出向为 range 侧。
   const {tid}=memberSideOfLink(r)
   const base={relation:r['@id'].slice(3),targetType:tid||String(r['rdfs:range']?.['@id']||'').replace(/^mg:/,''),sourceId:'',field:'',targetSourceId:'',targetField:'',legacy:false}
@@ -248,6 +254,7 @@ async function save(){
   const r=await submit(()=>{
     if(editingIsNew.value)(props.b.relations||=[]).push({relation:d.relation,target_type:d.targetType,sourceId:d.sourceId,field:d.field,targetSourceId:d.targetSourceId,targetField:d.targetField})
     else commitRelation(props.b,editIndex.value,d)
+    commitDesc(props.projectState,'links',d.relation,null,noteDraft.value)  // 链接两端共用一份说明
   })
   saving.value=false
   if(r.ok)closeEditor()
@@ -292,6 +299,7 @@ async function saveMembership(){
         :c.operator==='eq'||c.operator==='ne'?{field:c.field,operator:c.operator,value:c.value}
         :{field:c.field,operator:c.operator})}))})
     else commitRelation(props.b,editIndex.value,d)
+    commitDesc(props.projectState,'links',d.relation,null,noteDraft.value)  // 链接两端共用一份说明
   })
   saving.value=false
   if(r.ok)closeEditor()
@@ -307,6 +315,7 @@ defineExpose({dirty,discard:closeEditor})
 <section v-for="(view,i) in rows" :key="view.relation+'-'+i" class="sample-panel">
 <div class="panelhead"><div><strong>{{linkLabel(view.relation)}} → {{name(view.targetType)}}</strong> <span v-if="view.legacy" class="status-pill">旧格式</span> <span v-if="view.membership" class="status-pill">成员规则</span> <span v-if="view.unknownRaw" class="status-pill">未识别结构</span> <span v-if="cardinalityOf(view.relation)" class="status-pill">{{cardLabel(view.relation)}}</span></div><div class="tools"><button v-if="view.membership" :disabled="!registeredInstances.length" @click="membershipPreview=!membershipPreview">预览成员</button><button @click="edit(i as number)">配置</button><button @click="removeLink(i as number)">移除</button></div></div>
 <p class="muted">{{view.membership?membershipSummary(view):(view.unknownRaw?'已按原样保留，请升级后重新配置':('起点 '+summaryOf(b,view.sourceId,view.field)+' → 终点 '+summaryEnd(view)))}}</p>
+<p class="lm-desc" :class="{'muted':!descTextOf(projectState,'links',view.relation)}">{{descTextOf(projectState,'links',view.relation)||'暂无说明（两端共用）'}}</p>
 <SourcePreview v-if="view.membership&&membershipPreview" :project-state="projectState" :object-type="b.object_type" :instances="registeredInstances" :property="null" title="成员预览 · "+linkLabel(view.relation) @close="membershipPreview=false"/>
 </section>
 <p v-if="!rows.length" class="empty">尚未配置链接映射；从下方添加以本对象为起点、或终点为本对象（多对一／多对多，按端配置成员规则）的链接。</p>
@@ -327,6 +336,7 @@ defineExpose({dirty,discard:closeEditor})
 <!-- ===== 成员模式编辑器（起点=登记实例） ===== -->
 <template v-if="editingMembership">
 <h2>按条件选择成员</h2>
+<MappingDescription v-model="noteDraft" hint="说明两个对象如何关联，例如通过哪些字段找到对方。两端对象共用这一份说明。"/>
 <p class="lm-note">{{membershipChainNote()}}{{cardinalityOf(draft.relation)?' · '+cardLabel(draft.relation):''}} · 成员身份表 {{memberTargetBinding?.table||'未配置'}}</p>
 <p v-if="switchMsg" class="inline-warning" role="status">{{switchMsg}}</p>
 <p class="field-help">成员由成员对象<strong>已配置的实例来源表</strong>按下方条件筛选；字段只能从该表字段目录选择，值按字段类型校验后参数化执行。每个起点实例单独一套条件；成员按成员端主键去重。</p>
@@ -362,6 +372,7 @@ defineExpose({dirty,discard:closeEditor})
 <!-- ===== 表字段关联编辑器（原有） ===== -->
 <template v-else>
 <h2>配置链接映射</h2>
+<MappingDescription v-model="noteDraft" hint="说明两个对象如何关联，例如通过哪些字段找到对方。两端对象共用这一份说明。"/>
 <p class="lm-note">{{name(b.object_type)}} → {{linkLabel(draft.relation)}} → {{name(draft.targetType)}}<template v-if="cardinalityOf(draft.relation)"> · {{cardLabel(draft.relation)}}</template></p>
 <p v-if="switchMsg" class="inline-warning" role="status">{{switchMsg}}</p>
 <div class="columns">
@@ -432,6 +443,7 @@ defineExpose({dirty,discard:closeEditor})
 .lm-inbound-row small{display:block;margin-top:3px}
 .lm-inbound-row>button{flex:none}
 @media(max-width:800px){.columns{grid-template-columns:1fr}}
+.lm-desc{white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;margin:6px 0 0}
 </style>
 <style scoped>
 .lm-cond{display:grid;grid-template-columns:1.4fr 0.9fr 1.2fr auto;gap:8px;align-items:center;margin:8px 0}
@@ -439,4 +451,5 @@ defineExpose({dirty,discard:closeEditor})
 .lm-cond input{width:100%}
 .lm-cond-null{text-align:center}
 @media(max-width:800px){.lm-cond{grid-template-columns:1fr 1fr}}
+.lm-desc{white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;margin:6px 0 0}
 </style>

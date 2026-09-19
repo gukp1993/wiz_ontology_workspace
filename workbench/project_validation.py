@@ -97,7 +97,32 @@ def validate_project(state, ontology_state):
     _check_link_mappings(ctx, errors, warnings, items)
     _check_contract_coverage(ctx, errors, warnings)
     _check_action_bindings(ctx, errors, warnings, items)
+    _check_mapping_descriptions(ctx, errors, warnings, items)
     return {'errors': list(dict.fromkeys(errors)), 'warnings': list(dict.fromkeys(warnings)), 'items': items}
+
+
+def _check_mapping_descriptions(ctx, errors, warnings, items):
+    """项目说明检查（2026-09-19）：结构与失效引用（阻断发布、定位到说明项）；
+    「只有说明、未形成可执行配置」给 warning（不算映射完成，不伪装成语义校验）。"""
+    from workbench import mapping_descriptions
+    block = ctx['bindings'].get('mappingDescriptions')
+    if block is None:
+        return
+    try:
+        mapping_descriptions.normalize_block(block)
+    except ValueError as exc:
+        errors.append('项目说明结构无效：' + str(exc))
+        items.append({'kind': 'mappingDescription', 'id': 'mappingDescriptions', 'name': '项目说明',
+                      'status': 'error', 'issues': [str(exc)]})
+        return
+    for ref in mapping_descriptions.stale_references(ctx['state'], ctx['ontology_state']):
+        where = ref['id'] + ((' / ' + ref['item_id']) if ref['item_id'] else '')
+        text = '项目说明指向的本体元素不存在：' + where + '（' + ref['text'] + '）。请修复或清除该条说明。'
+        errors.append(text)
+        items.append({'kind': 'mappingDescription', 'id': where, 'name': mapping_descriptions.KIND_LABELS[ref['kind']],
+                      'status': 'error', 'issues': [text]})
+    if mapping_descriptions.plain_description_only(ctx['state']):
+        warnings.append('项目说明尚未形成可执行配置：只有说明不代表映射完成，可执行取值仍需配置数据来源或接口。')
 
 
 def _check_connections(ctx, errors, items):

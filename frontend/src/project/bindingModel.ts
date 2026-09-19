@@ -574,3 +574,63 @@ export function propertyLocalIssues(b:any,api:string,view:any,shape:'scalar'|'ti
   }
   return out
 }
+
+// ---------- 项目说明（bindings.mappingDescriptions，20260919 v2.1）----------
+// 协议见 文档/接口文档/01 §3.4：schemaVersion=1；四类键；一律稳定 ID（对象/链接/属性/
+// 动作统一含 mg: 前缀；properties/actions 为二级结构）。缺省=无说明；显式清空=删键。
+export type DescKind = 'objects' | 'properties' | 'links' | 'actions'
+const descFull = (id: string) => (id.startsWith('mg:') ? id : 'mg:' + id)
+
+export function descBlockOf(state: any): any {
+  const block = state?.bindings?.mappingDescriptions
+  return block && typeof block === 'object' ? block : null
+}
+
+/** 读说明原文（缺失/空返回 ''）；键匹配兼容 mg: 前缀差异（读写归一由 commitDesc 保证）。 */
+export function descTextOf(state: any, kind: DescKind, objId: string, itemId?: string): string {
+  const block = descBlockOf(state)
+  if (!block) return ''
+  const sec = block[kind]
+  if (!sec || typeof sec !== 'object') return ''
+  const key = Object.keys(sec).find(k => k === descFull(objId) || k === objId)
+  if (!key) return ''
+  if (!itemId) return typeof sec[key] === 'string' ? sec[key] : ''
+  const inner = sec[key]
+  if (!inner || typeof inner !== 'object') return ''
+  const bare = itemId.replace(/^mg:/, '')
+  const ikey = Object.keys(inner).find(k => k === descFull(itemId) || k === itemId || k.replace(/^mg:/, '') === bare)
+  return ikey && typeof inner[ikey] === 'string' ? inner[ikey] : ''
+}
+
+/** 写说明（mutate 内调用）：空/纯空白 = 删除对应键；段落保留，换行统一 LF。 */
+export function commitDesc(state: any, kind: DescKind, objId: string, itemId: string | null, text: string): void {
+  const bindings = state.bindings
+  let block = bindings.mappingDescriptions
+  if (!block || typeof block !== 'object' || block.schemaVersion !== 1) {
+    block = { schemaVersion: 1 }
+    bindings.mappingDescriptions = block
+  }
+  const sec = block[kind] = block[kind] && typeof block[kind] === 'object' ? block[kind] : {}
+  const key = descFull(objId)
+  const clean = String(text ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  if (itemId === null) {
+    if (clean.trim()) sec[key] = clean
+    else delete sec[key]
+  } else {
+    const inner = sec[key] = sec[key] && typeof sec[key] === 'object' ? sec[key] : {}
+    const ikey = descFull(itemId)
+    if (clean.trim()) inner[ikey] = clean
+    else delete inner[ikey]
+    if (!Object.keys(inner).length) delete sec[key]
+  }
+  if (!Object.keys(sec).length) delete block[kind]
+}
+
+/** 属性 apiName → 对象属性节点稳定 ID（说明键）；找不到节点时回退 mg:<api>（校验会报失效）。 */
+export function propertyNodeIdOf(graph: any[], objectTypeId: string, api: string): string {
+  const bareObj = objectTypeId.replace(/^mg:/, ''), bareApi = api.replace(/^mg:/, '')
+  const node = graph.find((x: any) => x['@type'] === 'owl:DatatypeProperty'
+    && String(x['rdfs:domain']?.['@id'] || '').replace(/^mg:/, '') === bareObj
+    && (x['mg:apiName'] === api || x['mg:apiName'] === bareApi || x['@id'] === descFull(bareApi) || x['@id'].slice(3) === bareApi))
+  return node?.['@id'] || descFull(api)
+}

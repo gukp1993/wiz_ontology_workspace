@@ -1150,5 +1150,22 @@ def main():
         print(f"  [{flag}] {e['name']}: {len(e['report']['errors'])}e/{len(e['report']['warnings'])}w/{len(e['report']['items'])}i")
 
 
+
+# --- 项目说明（bindings.mappingDescriptions，2026-09-19）---
+DESC_OK = {'schemaVersion': 1,
+           'objects': {'mg:Station': '储能单元来自 station 表，id 唯一。'},
+           'properties': {'mg:Station': {'mg:rated_power': '读取 station.rated_power 字段。'}},
+           'links': {}, 'actions': {}}
+DESC_STALE = {'schemaVersion': 1,
+              'objects': {'mg:Ghost': '不存在的对象。'},
+              'properties': {'mg:Station': {'mg:removed_prop': '已删除属性。'}},
+              'links': {'mg:ghost_link': '不存在的链接。'},
+              'actions': {'mg:Station': {'act_missing': '不存在的动作。'}}}
+sample('mapping_desc_ok', project(
+    bindings=[binding()], implementations=[],
+    catalogs=CATALOG) | {'bindings': {'notice': '', 'object_bindings': [binding()], 'observation_binding': {}, 'source_candidates': [], 'mappingDescriptions': DESC_OK, 'catalogs': CATALOG}})
+sample('mapping_desc_plain_only', project() | {'bindings': {'notice': '', 'object_bindings': [], 'observation_binding': {}, 'source_candidates': [], 'mappingDescriptions': DESC_OK, 'catalogs': CATALOG}})
+sample('mapping_desc_stale', project() | {'bindings': {'notice': '', 'object_bindings': [], 'observation_binding': {}, 'source_candidates': [], 'mappingDescriptions': DESC_STALE, 'catalogs': CATALOG}})
+
 if __name__ == '__main__':
     main()

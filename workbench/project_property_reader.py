@@ -25,7 +25,8 @@ import ssl
 from datetime import datetime, date, time, timezone
 from decimal import Decimal
 
-from workbench import projects, versions, workspaces, dbdrivers
+from workbench import projects
+from workbench import mapping_descriptions, versions, workspaces, dbdrivers
 from workbench import secrets as secrets_store
 from workbench import catalogs as catalog_store
 from workbench.locking import LOCK
@@ -124,6 +125,12 @@ def _preview(payload):
     graph = ontology_state['ontology']['@graph']
     catalogs = catalog_store.load_all(project_id)
 
+    # 说明能力检查（2026-09-19，接口文档 03 §5.2）：本预览器尚不支持说明语义——
+    # 目标对象/属性存在非空说明时，在读取任何数据源之前明确拒绝（纯说明项目同样命中）；
+    # 无说明旧配置行为不变。
+    blocked, reason = mapping_descriptions.preview_block(snapshot, object_type, prop or None, 'properties')
+    if blocked:
+        _fail(reason)
     binding = next((b for b in snapshot.get('bindings', {}).get('object_bindings', [])
                     if isinstance(b, dict) and b.get('object_type') == object_type), None)
     if binding is None:

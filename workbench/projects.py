@@ -353,5 +353,11 @@ def upgrade_check(state, current_state, target_state):
                             matched = True
         if not matched and severity in ('breaking', 'pending'):
             impacts.append({'area': 'ontology', 'ref': rid, 'severity': severity, 'text': text + '；本项目当前配置未直接引用'})
+    # 项目说明失效（2026-09-19）：说明指向的对象/属性/链接/动作在目标版本中消失 → 定位提示，不静默丢失
+    from workbench import mapping_descriptions
+    for ref in mapping_descriptions.stale_references(state, target_state):
+        where = ref['id'] + ((' / ' + ref['item_id']) if ref['item_id'] else '')
+        impacts.append({'area': 'mappingDescription', 'ref': where, 'severity': 'pending',
+                        'text': '项目说明指向的元素在目标版本中不存在（' + ref['text'] + '）；升级后该条说明将失效，请先修复或清除'})
     blocking = [i for i in impacts if i['severity'] == 'breaking' and i['area'] != 'ontology']
     return {'classification': diff['type'], 'reasons': diff['reasons'], 'impacts': impacts, 'blocking': blocking}

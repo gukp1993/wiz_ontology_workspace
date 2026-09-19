@@ -18,6 +18,7 @@ async function loadComponent(name){
  const template=compileTemplate({source:descriptor.template.content,filename,id:name,ssr:true,ssrCssVars:[],compilerOptions:{bindingMetadata:script.bindings}})
  assert.deepEqual(template.errors,[])
  let code=script.content.replace(/import AppSelect from ['"].*?['"]/,'const AppSelect = globalThis.__mappingSelect')
+ code=code.replace(/import MappingDescription from ['"].*?['"]/,'const MappingDescription = globalThis.__mappingSelect')
  code=code.replace(/import SourcePreview from ['"].*?['"]/,'const SourcePreview = globalThis.__mappingSelect')
  code=code.replace(/import QueryRuleImplementation from ['"].*?['"]/,'const QueryRuleImplementation = globalThis.__mappingSelect')
  code=code.replace(/import (RuleValue|ImplementationManager) from ['"].*?['"]/g,(_,name)=>'const '+name+' = globalThis.__mappingSelect')

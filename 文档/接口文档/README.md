@@ -18,6 +18,7 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-19 | 项目映射新增 `bindings.mappingDescriptions`（四类说明，schemaVersion=1）：写入结构/长度校验、旧客户端省略整块保留、显式清空按删键表达；validate/publish 追加说明结构与失效引用检查（失效阻断）；property-preview 遇非空说明在取数前返回不支持 | project-state / project-save / project-validate / project-publish / project-upgrade-check / project-property-preview | zcode |
 | 2026-09-18 | 首次整理：梳理 40 个在线接口，统一规范描述 | 全部 | — |
 | 2026-09-18 | 缺陷修复（批次 A）：`POST /api/export` 路由表原以 `None` 占位，被 do_POST 的「路由不存在」判定拦截，恒定 404 不可达；改用独立哨兵 `BINARY_ROUTE` 区分「键不存在」与「二进制端点」。`POST /api/restore` 原调用不存在的 `_server_current()`（NameError → 400）；改为 `current()`，并按已校验基线 CAS、响应回传本次提交实际得到的 revision。两接口契约（请求/响应结构）不变，实现回归文档描述；新增回归测试 `tests/test_export_restore_http.py` | POST /api/export、POST /api/restore | — |
 | 2026-09-18 | 规范修复（批次 B，R3/R4/R5）：① 错误信封**实装** `code` 字段（400 INVALID_ARGUMENT / 403 ORIGIN_REJECTED / 404 NOT_FOUND / 409 REVISION_CONFLICT·DUPLICATE_NAME / 413 / 415 / 503 / 新增 500 INTERNAL_ERROR），未知异常不再吞成 400，客户端只收通用消息，服务端留堆栈与 requestId；② 全部响应新增 `X-Request-Id` 头；③ GET 取消「全部接口统一按 ontology 定位工作区」的前置副作用，未知端点稳定 404，独立接口（flows / llm-providers / storage-status 等）不再依赖当前本体有效；④ `GET /api/projects` 筛选语义显式化（仅 `ontology` 参数控制范围，空值 400，无效本体 404，其他参数不隐式改变范围）。详见 2.2/2.3/2.4 与 03 分册 §1.1 | 全部 GET 接口、全部 POST 错误路径、GET /api/projects | — |

@@ -15,11 +15,12 @@ function psConsume(objectType:string){if(!psPendingOf(objectType))return null;co
 import {computed,inject,onBeforeUnmount,ref,watch} from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
+import MappingDescription from './MappingDescription.vue'
 import {isQueryRule,isReusableRule,ruleInputErrors} from './queryRules'
 import {scanSqlParams,inlineSqlErrors,effectiveParams,blankInlineSql} from './inlineSql'
 import {isCalcFunction,calcRangeOk,calcConstantOk,CALC_TYPE_NAMES} from './calcFunction'
 import {listFlows,loadFlowStateRaw} from '../flow/api'
-import {redisSourcesOf,sourceById,commitProperty,propertyView,tableCatalog,tableOptions,fieldOptions,catalogOf,keyTokens,refreshCatalogOf,TIMESTAMP_ENCODINGS,mysqlConnectionsOf,redisConnectionsOf,identityTableOf,databaseSummary,propertyLocalIssues,bindingIdentityOf,registeredInstancesOf} from './bindingModel'
+import {descTextOf,commitDesc,propertyNodeIdOf,redisSourcesOf,sourceById,commitProperty,propertyView,tableCatalog,tableOptions,fieldOptions,catalogOf,keyTokens,refreshCatalogOf,TIMESTAMP_ENCODINGS,mysqlConnectionsOf,redisConnectionsOf,identityTableOf,databaseSummary,propertyLocalIssues,bindingIdentityOf,registeredInstancesOf} from './bindingModel'
 import SourcePreview from './SourcePreview.vue'
 import {localProperties,effectiveProperty,valueShapeOf,propertyTypeLabel,signatureDataType,dataTypeLabel} from '../ontology/propertyModel'
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
@@ -345,12 +346,18 @@ function propSmall(r:any):string{const u=suffixOf(r.p);return typeName(r.p)+(u?'
 // ---------- 整页两态：列表态 ↔ 配置态（configuring 驱动，互斥整页替换） ----------
 const configuring=ref(false)
 
+// 清单说明列：当前对象下该属性的项目说明（无说明显示占位，不代表未配置）
+function descOf(api:string){return descTextOf(props.projectState,'properties',props.b.object_type,propertyNodeIdOf(graph.value,props.b.object_type,api))}
 // ---------- 局部草稿编辑器：切换只改 draft，保存才 commitProperty，取消不动 b ----------
 const selectedApi=ref(''),draft=ref<any>(null),editError=ref(''),switchMsg=ref(''),samplePrimary=ref('123')
+// 项目说明（属性级，20260919 v2.1）：说明键 = 对象属性节点稳定 ID（经 propertyNodeIdOf 解析）；
+// 说明与取值配置同一次保存；取消/离开保护随现有 draftDirty 一起生效。
+const noteDraft=ref(''),noteBaseline=ref('')
+const noteNodeId=computed(()=>propertyNodeIdOf(graph.value,props.b.object_type,selectedApi.value))
 // 草稿脏判定：与打开时的基线粗比较（整体 JSON.stringify；剔除视图模型临时字段 mode）
 const baseline=ref('')
 function normalizeDraft(d:any):string{if(!d)return '';const c=JSON.parse(JSON.stringify(d));delete c.mode;return JSON.stringify(c)}
-const draftDirty=computed(()=>!!draft.value&&normalizeDraft(draft.value)!==baseline.value)
+const draftDirty=computed(()=>(!!draft.value&&normalizeDraft(draft.value)!==baseline.value)||noteDraft.value!==noteBaseline.value)
 const selectedProp=computed(()=>properties.value.find((x:any)=>key(x)===selectedApi.value))
 const draftShape=computed<'scalar'|'timeSeries'>(()=>selectedProp.value?valueShapeOf(selectedProp.value,graph.value):'scalar')
 const selectedMeta=computed(()=>{const p=selectedProp.value;if(!p)return null;return {label:label(p),comment:commentOf(p),type:typeName(p),shape:valueShapeOf(p,graph.value),suffix:suffixOf(p)}})
@@ -363,8 +370,10 @@ function emptyDatabaseDraft(){return {kind:'database',mode:'direct',connection:'
 function freshDbDraft(){return draftShape.value==='timeSeries'?emptyDatabaseDraft():{kind:'field',mode:'identity',source:'',field:'',connection:String(props.b?.connection||''),table:String(props.b?.table||'')}}
 function openEditor(api:string){
   selectedApi.value=api;editError.value='';switchMsg.value='';refreshMessage.value='';resetSaveState()
+  noteDraft.value=descTextOf(props.projectState,'properties',props.b.object_type,propertyNodeIdOf(graph.value,props.b.object_type,api))
+  noteBaseline.value=noteDraft.value
   const v=propertyView(props.b,api)
-  if(!v)draft.value=freshDbDraft()
+  if(!v)draft.value={kind:'none'}
   else{
     const d=JSON.parse(JSON.stringify(v))
     if(v.kind==='field'){
@@ -382,7 +391,7 @@ function openEditor(api:string){
   baseline.value=normalizeDraft(draft.value)
   configuring.value=true
 }
-function closeEditor(){resetSaveState();configuring.value=false;selectedApi.value='';draft.value=null;editError.value='';switchMsg.value='';refreshMessage.value=''}
+function closeEditor(){resetSaveState();configuring.value=false;selectedApi.value='';draft.value=null;editError.value='';switchMsg.value='';refreshMessage.value='';noteDraft.value='';noteBaseline.value=''}
 // 返回属性清单前的确认保护；底部「取消」是明确的放弃动作，不二次确认。
 const SWITCH_CONFIRM='当前属性有未保存的修改，继续编辑或放弃？'
 async function requestClose(){if(!draftDirty.value||await appConfirm({ message: SWITCH_CONFIRM }))closeEditor()}
@@ -803,7 +812,7 @@ async function saveDraft(){
   const commitView=(dv:any)=>dv.kind==='computed'&&dv.mode==='inline'
     ?{kind:'computed',mode:'inlineSql',inlineSql:{version:1,connection:String(dv.inline?.connection||''),sql:String(dv.inline?.sql||''),params:effectiveParams(dv.inline?.params||{},String(dv.inline?.sql||''))}}
     :dv
-  const apply=()=>{commitProperty(props.b,selectedApi.value,d.kind==='none'?null:commitView(d))}
+  const apply=()=>{commitProperty(props.b,selectedApi.value,d.kind==='none'?null:commitView(d));commitDesc(props.projectState,'properties',props.b.object_type,noteNodeId.value,noteDraft.value)}
   let r:{ok:boolean;message:string}
   if(formSave)r=await formSave.submitForm('project',apply)
   else{mutate(apply);r={ok:true,message:''}}
@@ -836,12 +845,12 @@ if(psPendingOf(props.b.object_type)){
 <p class="ps-lede">每个属性配置一种生效来源</p>
 <p class="fill-hint">支持读取数据源或函数编排。点「配置／修改」在同一页完成填写并保存。列表状态仅代表配置校验，未执行取值验证。</p>
 <div class="scroll"><table class="source-table ps-table">
-<thead><tr><th style="width:32%">属性</th><th style="width:37%">来源</th><th style="width:19%">状态</th><th style="width:12%">操作</th></tr></thead>
+<thead><tr><th style="width:26%">属性</th><th style="width:34%">项目说明</th><th style="width:22%">状态</th><th style="width:18%">操作</th></tr></thead>
 <tbody>
 <template v-for="r in rows" :key="r.api">
 <tr>
 <td class="prop-name">{{label(r.p)}}<small class="muted">{{propSmall(r)}}</small></td>
-<td><span :class="{'muted':!r.view}">{{listSummary(r.view)}}</span></td>
+<td><span class="ps-desc" :class="{'muted':!descOf(r.api)}">{{descOf(r.api)||'暂无说明'}}</span><small class="muted ps-src">{{r.view?listSummary(r.view):'未配置取值来源'}}</small></td>
 <td><span class="status-pill" :class="r.status.cls" :title="r.status.title">{{r.status.text}}</span></td>
 <td><button @click="openProperty(r.api)">{{!r.view?'配置':(r.view.kind==='unknown'?'查看':'修改')}}</button></td>
 </tr>
@@ -863,11 +872,21 @@ if(psPendingOf(props.b.object_type)){
 </div>
 <span v-if="headBadge" class="ps-badge">{{headBadge}}</span>
 </div>
+<!-- 项目说明（v2.1）：在前、默认展开可折叠；下方取值配置默认折叠为摘要（unknown 只读分支默认展开） -->
+<div v-if="draft" class="ps-desc-wrap">
+<MappingDescription v-if="draft.kind!=='unknown'" v-model="noteDraft" hint="说明这个属性从哪里取、怎么算；需要多步处理时可以分步写。"/>
+<details class="ps-config-fold" :open="draft.kind==='unknown'">
+<summary><strong>取值配置</strong><small class="muted">{{draft.kind==='unknown'?'未识别结构（只读保留）':(listSummary(draft.kind==='none'?null:propertyView(props.b,selectedApi))||'需要时补充')}}</small></summary>
+<div class="ps-config-body">
 <!-- 未知结构：只读警示分支，原样保留不进入表单 -->
 <div v-if="draft&&draft.kind==='unknown'" class="ps-form-panel">
 <p class="inline-warning">该属性保存了当前版本未识别的来源结构，已原样保留且不可编辑；如需重新配置请先导出备份。</p>
 <div class="tools"><button @click="closeEditor">保留并关闭</button></div>
 </div>
+<template v-else-if="draft.kind==='none'">
+<p class="field-help">该属性尚未配置取值来源；上方说明可先描述取值方式，需要结构化配置时再在这里补充。只保存说明不会创建来源配置。</p>
+<button type="button" @click="draft=freshDbDraft()">＋ 取值配置</button>
+</template>
 <template v-else-if="draft">
 <fieldset class="ps-form-fields" :disabled="saving">
 <div class="ps-form-panel">
@@ -1093,19 +1112,30 @@ if(psPendingOf(props.b.object_type)){
 </template>
 </div>
 </fieldset>
+</template>
+</div>
+</details>
 <p v-if="editError" class="inline-error" role="alert">{{editError}}</p>
 <div class="tools ps-actions">
 <button :disabled="saving" @click="closeEditor">取消</button>
 <div class="ps-actions-right">
-<button class="primary" :disabled="saveDisabled||saving" @click="saveDraft">{{saving?'保存中…':(draft.kind==='none'?'清除来源配置':'保存')}}</button>
+<button class="primary" :disabled="saveDisabled||saving" @click="saveDraft">{{saving?'保存中…':'保存'}}</button>
 </div>
 </div>
-<p class="ps-foot-note">保存后写入当前项目草稿；取消放弃本次修改。</p>
-</template>
+<p class="ps-foot-note">说明与取值配置一起保存写入当前项目草稿；取消放弃本次修改。</p>
+</div>
 </div>
 </div></template>
 <style scoped>
 /* 列表态 */
+.ps-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;font-size:13px}
+.ps-src{display:block;margin-top:4px}
+.ps-config-fold>summary{cursor:pointer;display:flex;align-items:center;gap:10px;list-style:none;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.ps-config-fold>summary::-webkit-details-marker{display:none}
+.ps-config-fold>summary::before{content:'›';color:var(--muted);transition:transform .12s}
+.ps-config-fold[open]>summary::before{transform:rotate(90deg)}
+.ps-config-fold>summary .muted{margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+.ps-config-body{padding-top:14px}
 .ps-lede{font-size:15px;font-weight:600;margin:0 0 10px}
 .ps-table .prop-name{font-weight:650}
 .ps-table .prop-name small{display:block;font-weight:400;margin-top:3px}
