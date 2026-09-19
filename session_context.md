@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`e22c4dc42e19d00d`
+上下文版本：`d39945057679abeb`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 项目映射双模式协同原型-v1 · codex · 需求已交付
+
+时间：2026-09-19T06:34:24.194403+00:00；记录：`.collaboration/entries/000022-b7902c90e957.json`
+
+用户确认普通与严格模式可在同一配置组合使用，已交付对象来源及属性取值两区域并列原型与配套四件套；无互斥模式开关，未实施产品代码。
+
+- 决定：结构化配置与自然语言说明可单独或共同使用；普通模式原文供大模型理解，不强制转换编排。；原型以额定功率仅结构化、采样 SOC 仅自然语言、实时 SOC 组合使用展示；冲突与缺失反馈明确为固定示例。；正式执行与发布协议需后续冻结，不能将本轮配置原型视为自然语言已实际取值。
+- 验证：27 项 DOM/源码检查通过：保存取消、未保存守卫、移除保留文本、连接多选、时序输出、反馈弹窗等。；无网络及业务数据写入；浏览器本地文件访问此前受限，本轮未绕过，未完成视觉验收；未跑产品构建。
+- 下一步：用户评审原型布局与组合逻辑；获得实施授权后先冻结接口和执行/发布边界，再开发。
+- 依据/文档：文档/需求/20260919_项目映射双模式协同/交互原型_v1.html；文档/需求/20260919_项目映射双模式协同/需求说明.md；文档/需求/20260919_项目映射双模式协同/开发计划.md；文档/需求/20260919_项目映射双模式协同/执行指令.md
 
 ### 平移 wiz_kq_builder(5173) 图谱能力——本体图谱页签 · zcode · 已实施，待验收
 
@@ -141,14 +152,3 @@
 - 下一步：ontList.ts 与 ObjectWorkspace.vue 的公共层错误由各自负责人修复，否则 build 失败；整包构建后做隔离浏览器验收（保存定位、筛选组合、抽屉焦点归还）
 - 依据/文档：frontend/src/ontology/SharedLibrary.vue；frontend/src/shared/OntologyList.vue；frontend/src/ontology/ontList.ts；文档/需求/20260918_本体列表统一设计/需求说明.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 本体列表统一设计-动作定义库改造（单文件） · zcode · 已实施，待验收
-
-时间：2026-09-18T10:26:21.773328+00:00；记录：`.collaboration/entries/000006-f30026a04add.json`
-
-按 20260918 需求 §6.7/§5/§7/§8 重写 frontend/src/ontology/ActionLibrary.vue（仅此一文件）：取消 EditorLayout 左列表/右详情布局，改为 ont-lib-head 页头 + OntologyList 全宽表格（名称32%/业务效果33%/关联对象18%/操作17%，名称 zh-CN 排序、名称+业务定义搜索、引用情况分段筛选、分页）；名称点击打开 OntDrawer 只读详情（业务定义/业务效果/关联对象 ont-ref-row 可跳对象动作页签；历史动作保留历史字段只读区；footer V2=编辑、历史=转为新格式编辑，focusOrigin?.type 存在时加返回来源对象）；行内关联对象徽标打开关联对象抽屉；openEdit/openConvert/remove 改为按 id 参数调用，行内编辑对历史动作走既有转换确认；新增可选 prop focusOrigin，watch(focusId) 改为清筛选并打开详情抽屉；watch(rows) 等价改写为编辑目标一致性检查，guard 注册/注销与 onBeforeUnmount 保留；空态区分无数据/无匹配。
-
-- 决定：删除保护语义不变：V2 被对象引用禁止删除、graphReferences 检查、danger 确认，仅收入 RowMenu 更多菜单；编辑表单（mode edit card）整体保留独占整页宽，converting 替换旧字段逻辑与保存文案不动；ont-filters 分段按钮样式按需求规格写在本文件 scoped style（未改 style.css，未动任何其他文件）
-- 验证：cd frontend && npm run typecheck：ActionLibrary.vue 0 错误；typecheck 全量剩 8 个错误全部来自其他文件（非本任务范围，未动）：ObjectWorkspace.vue 757/795/824/853 四处 aria-label 未解析为 ariaLabel prop；ontList.ts 29 行 source.value 应为 source()、47 行 OntTable 接口返回类型不匹配（ref<string> 实例化表达式/ComputedRef vs WritableComputedRef）；按铁律未运行 git/npm build/服务，浏览器验收未做
-- 下一步：OntologyList/OntDrawer/RowMenu/ontList.ts 的公共契约属 T1 文件：ontList.ts 现存 4 个类型错误会让 npm run build 失败，需该文件负责人修复；ObjectWorkspace.vue 四处 aria-label 需同样改为 ariaLabel 传 prop；App.vue 后续接线 focusOrigin prop（本组件已支持）
-- 依据/文档：frontend/src/ontology/ActionLibrary.vue；frontend/src/shared/OntologyList.vue；frontend/src/ontology/ontList.ts；文档/需求/20260918_本体列表统一设计/需求说明.md
