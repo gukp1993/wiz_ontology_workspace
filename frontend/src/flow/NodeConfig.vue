@@ -28,14 +28,14 @@ const exec = computed(() => props.node.execution || (props.node.execution = {}))
 
 // ── 输入页签：参数摘要 + 展开编辑 ─────────────────────────────────────────────
 const expandedInputs = ref<Record<string, boolean>>({})
-const flashField = ref('')
+const flashTarget = ref<{ field: string; param: string }>({ field: '', param: '' })
 let flashTimer: any = null
 watch(() => props.focus, f => {
   if (!f?.token) return
   if (f.parameterId) expandedInputs.value[f.parameterId] = true
-  flashField.value = f.field || ''
+  flashTarget.value = { field: f.field || '', param: f.parameterId || '' }
   clearTimeout(flashTimer)
-  flashTimer = setTimeout(() => { flashField.value = '' }, 2200)
+  flashTimer = setTimeout(() => { flashTarget.value = { field: '', param: '' } }, 2200)
   void nextTickScroll()
 }, { deep: true, immediate: true })
 // anchor（问题定位区块）：滚动到对应区块顶部（连续展示下的问题定位）
@@ -117,7 +117,9 @@ function expandCode() {
   const titles: Record<string, string> = { code: 'Python 代码', sql: 'SQL 模板', keyTemplate: 'Redis Key 模板', body: 'HTTP 请求体模板', llmInstruction: 'LLM 计算规则' }
   emit('expand-code', { field: codeField.value, title: titles[codeField.value], value: codeValue.value })
 }
-const fieldFlash = (field: string) => (flashField.value === field ? 'field-flash' : '')
+// 字段高亮：field 匹配且（无参数限定或参数 id 匹配）——避免输入/输出同名技术名同时闪烁
+const fieldFlash = (field: string, param?: string) =>
+  flashTarget.value.field === field && (!param || !flashTarget.value.param || flashTarget.value.param === param) ? 'field-flash' : ''
 
 // ── 增删改操作（与既有协议一致） ───────────────────────────────────────────────
 function addInput() {
@@ -232,7 +234,7 @@ async function refillSkeleton() {
       </button>
       <div v-if="expandedInputs[row.input.id]" class="param-body">
         <div class="mapping-row">
-          <label>技术名（实现中引用）*<input :value="row.input.name" :class="fieldFlash('name')" placeholder="如 limit_n" :aria-label="'输入技术名'" @change="renameTechnical(node,'inputs',Number(index),($event.target as HTMLInputElement).value.trim())"/></label>
+          <label>技术名（实现中引用）*<input :value="row.input.name" :class="fieldFlash('name', row.input.id)" placeholder="如 limit_n" :aria-label="'输入技术名'" @change="renameTechnical(node,'inputs',Number(index),($event.target as HTMLInputElement).value.trim())"/></label>
           <label>显示名<input :value="row.input.label" :aria-label="'输入显示名'" @input="setInputLabel(row.input,($event.target as HTMLInputElement).value)"/></label>
           <button class="mini" @click="removeInput(Number(index))">删除</button>
         </div>
@@ -338,7 +340,7 @@ async function refillSkeleton() {
     <p class="muted tight">输出参数名用于下游绑定；改名继续以稳定 ID 维持引用。</p>
     <div v-for="(out,index) in node.outputs" :key="out.id" class="param-card">
       <div class="mapping-row">
-        <label>技术名 *<input :value="out.name" :class="fieldFlash('name')" placeholder="如 rows" :aria-label="'输出技术名'" @change="renameTechnical(node,'outputs',Number(index),($event.target as HTMLInputElement).value.trim())"/></label>
+        <label>技术名 *<input :value="out.name" :class="fieldFlash('name', out.id)" placeholder="如 rows" :aria-label="'输出技术名'" @change="renameTechnical(node,'outputs',Number(index),($event.target as HTMLInputElement).value.trim())"/></label>
         <label>显示名<input :value="out.label" :aria-label="'输出显示名'" @input="setOutputLabel(out,($event.target as HTMLInputElement).value)"/></label>
         <button class="mini" @click="removeOutput(Number(index))">删除</button>
       </div>
