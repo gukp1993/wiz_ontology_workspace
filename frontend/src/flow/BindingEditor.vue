@@ -93,7 +93,11 @@ function doneEdit() { emit('changed') }
 function setKind(next: string) {
   emit('before-change')
   kind.value = next
-  if (next === 'flowInput') props.owner.input.source = { kind: 'flowInput', inputId: flowInputOptions.value[0]?.value || '' }
+  if (next === 'flowInput') {
+    // 无入口参数时不落空 inputId 绑定（会静默断链），来源置空等待先声明入口参数
+    if (!flowInputOptions.value.length) { props.owner.input.source = null; kind.value = '' }
+    else props.owner.input.source = { kind: 'flowInput', inputId: flowInputOptions.value[0].value }
+  }
   else if (next === 'fixed') props.owner.input.source = { kind: 'fixed', valueType: 'text', value: '' }
   else if (next === 'node' || next === 'nodeField') {
     const first = candidates.value[0]

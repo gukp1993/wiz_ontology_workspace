@@ -12,11 +12,18 @@ const depth = computed(() => props.depth ?? 0)
 const options = computed(() => TYPE_OPTIONS.map(o => (o.value === 'object' && depth.value >= 3) ? { ...o, disabled: true } : o))
 function changeType(type: string) {
   emit('before-change')
-  if (type === 'object' && props.decl.type !== 'object') props.decl.fields = []
-  if (props.decl.type !== 'object') delete props.decl.fields
-  if (type === 'list' && props.decl.type !== 'list') props.decl.elementType = { type: 'text' }
-  if (props.decl.type !== 'list') delete props.decl.elementType
+  // 按目标类型清理：object 只带 fields、list 只带 elementType、标量两者都不带（原实现按当前类型判断，切换会残留矛盾键）
   props.decl.type = type
+  if (type === 'object') {
+    if (!Array.isArray(props.decl.fields)) props.decl.fields = []
+    delete props.decl.elementType
+  } else if (type === 'list') {
+    if (props.decl.elementType === undefined || props.decl.elementType === null) props.decl.elementType = { type: 'text' }
+    delete props.decl.fields
+  } else {
+    delete props.decl.fields
+    delete props.decl.elementType
+  }
   emit('changed')
 }
 function addField() {

@@ -9,6 +9,7 @@ trace 留痕（provider/model/耗时/请求与响应摘要，供节点日志核�
 import json
 import re
 import time
+from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -50,13 +51,19 @@ def chat(provider, messages, max_tokens=4000, timeout=None, probe=False):
     request = Request(endpoint, data=json.dumps(body).encode(), headers=headers)
     try:
         with urlopen(request, timeout=timeout or int(provider.get('timeout') or 60)) as response:
-            data = json.loads(response.read(_MAX_RESPONSE))
+            raw = response.read(_MAX_RESPONSE + 1)
     except HTTPError as exc:
         raise LlmError(f'LLM 调用失败（HTTP {exc.code}），请核对密钥权限、模型和额度') from None
-    except (URLError, TimeoutError, OSError):
+    except (URLError, TimeoutError, OSError, HTTPException):
         raise LlmError('LLM 调用失败：无法连接接口（超时或网络不可达）') from None
+    if len(raw) > _MAX_RESPONSE:
+        raise LlmError('LLM 接口响应过大（超过 1MB 上限），请减小输出规模')
+    try:
+        data = json.loads(raw)
     except (ValueError, json.JSONDecodeError):
         raise LlmError('LLM 接口返回的内容无法解析') from None
+    if not isinstance(data, dict):
+        raise LlmError('LLM 接口响应格式不符合 chat/completions 结构') from None
     duration = int((time.monotonic() - started) * 1000)
     if not probe:
         if data.get('choices') and data['choices'][0].get('finish_reason') == 'length':
@@ -94,10 +101,23 @@ def _extract_json(text):
         if start < 0:
             continue
         depth = 0
+        in_str = False
+        escaped = False
         for i in range(start, len(text)):
-            if text[i] == opener:
+            ch = text[i]
+            if in_str:  # 引号内的括号/引号不参与配对（值含不成对括号时不再截错块）
+                if escaped:
+                    escaped = False
+                elif ch == '\\':
+                    escaped = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == opener:
                 depth += 1
-            elif text[i] == closer:
+            elif ch == closer:
                 depth -= 1
                 if depth == 0:
                     try:

@@ -163,12 +163,13 @@ function renameTechnical(container: any, list: 'inputs' | 'outputs', index: numb
   const item = props.node[list][index]
   const old = item.name
   if (old === next) return
-  emit('before-change')
+  emit('before-change', { actionLabel: `修改技术名「${old || '（空）'}」为「${next || '（空）'}」`, target: { kind: 'node', id: props.node.id } })
   item.name = next
   // calc 输出改名随迁公式键（公式按输出技术名存键，不同步会留下孤儿公式）；新名为空则保留原键
   if (isCalc.value && list === 'outputs' && old && next) {
     const formulas = props.node.implementation?.formulas
-    if (formulas && typeof formulas === 'object' && Object.prototype.hasOwnProperty.call(formulas, old)) {
+    if (formulas && typeof formulas === 'object' && Object.prototype.hasOwnProperty.call(formulas, old)
+        && !Object.prototype.hasOwnProperty.call(formulas, next)) {
       formulas[next] = formulas[old]
       delete formulas[old]
     }

@@ -67,6 +67,8 @@ function nodeElements() {
   return nodes
 }
 function edgeElements() {
+  // 端点缺失的坏边（导入/旧草稿的悬挂引用）不进画布：cy.add 缺端点会抛错且画布已清空，整块白屏
+  const nodeIds = new Set([INPUT_NODE, OUTPUT_NODE, ...processingNodes(props.state).map(n => n.id)])
   const edges = derivedEdges(props.state).map(e => {
     const source = props.results?.[e.source]
     const suffix = source && source.status === 'success' && source.rowCount != null ? ` · ${source.rowCount} 条` : ''
@@ -80,11 +82,11 @@ function edgeElements() {
       edges.push({ data: { id: `out:${out.id}`, source: binding.nodeId, target: OUTPUT_NODE, relation: (out.label || out.name || '输出') + suffix } } as any)
     }
   }
-  return edges
+  return edges.filter((e: any) => nodeIds.has(e.data.source) && nodeIds.has(e.data.target))
 }
 /** 拓扑签名：节点/连线的增删才触发元素重建；label/class 属于状态，走轻量更新。 */
 const topologyOf = () => JSON.stringify([
-  nodeElements().map(n => [n.data.id, n.data.type, n.classes]),
+  nodeElements().map(n => [n.data.id, n.data.type]),
   edgeElements().map(e => [e.data.id, e.data.source, e.data.target]),
 ])
 let lastTopology = ''
@@ -96,11 +98,7 @@ function sync(force = false) {
   const pan = cy.pan(), zoom = cy.zoom()
   const selectedIds: string[] = cy.$(':selected').map((el: any) => el.id())
   cy.elements().remove()
-  // 先加节点、后加边，且跳过端点缺失的坏边（失效引用由配置检查报错定位，不中断画布）
-  cy.add([...nodeElements() as any, ...edgeElements() as any].filter((el: any) => {
-    if (el.group !== 'edges') return true
-    return !!cy.getElementById(el.data.source).length && !!cy.getElementById(el.data.target).length
-  }))
+  cy.add([...nodeElements() as any, ...edgeElements() as any])
   cy.pan(pan); cy.zoom(zoom)
   selectedIds.forEach((id: string) => cy.getElementById(id).select())
   cy.nodes('[type="input"],[type="output"]').ungrabify()
@@ -220,7 +218,7 @@ onMounted(() => {
   })
   observer.observe(canvas.value)
 })
-onBeforeUnmount(() => { observer?.disconnect(); cy?.destroy() })
+onBeforeUnmount(() => { clearTimeout(noticeTimer); observer?.disconnect(); cy?.destroy() })
 // 整体替换 state（撤销/重做/切换/重载）→ 重建元素并保留视口；拓扑变化同理。
 watch(() => props.state, () => { lastTopology = ''; sync(true) })
 const contentSignature = computed(() => JSON.stringify([

@@ -144,6 +144,8 @@ def _validate(name, endpoint, model, timeout, temperature, api_key):
         raise ValueError('接口地址仅支持 http(s)')
     if len(endpoint) > _MAX_TEXT:
         raise ValueError('接口地址过长')
+    if any(ord(ch) < 0x20 for ch in endpoint):
+        raise ValueError('接口地址不能包含换行或控制字符')
     if not model:
         raise ValueError('模型名称不能为空')
     if len(model) > _MAX_TEXT:
