@@ -1,4 +1,4 @@
-// 对象建模交互评审采纳（20260917）R1/R3/R5 回归：列表与画布共用表单、取消不落库、
+// 对象建模交互回归（20260917 评审采纳项；20260919 关系画布移除后表单统一列表入口）：取消不落库、
 // 保存失败不丢输入也不重复新增、共享来源按稳定 ID 解析、更多操作菜单与画布工具文案。
 // 运行（仓库根）：node --import ./tests/ts_hooks.mjs tests/object_workspace.test.mjs
 // 用真实 ObjectWorkspace.vue 的 <script setup>（子组件桩化），不连接服务、不写真实 ontology。
@@ -89,32 +89,33 @@ function mount(state, box = {}) {
 }
 
 try {
-  // ── A2：画布新建对象/连线，取消后模型没有新记录，且填写过程中不产生保存请求 ──
+  // ── A2：表单新建对象/链接（关系画布已移除，统一列表入口），取消后模型没有新记录，且填写过程中不产生保存请求 ──
   {
     const state = reactive({ ontology: { '@graph': graphFixture() }, workflow: {}, layout: {} })
     const box = {}
     const { app } = mount(state, box)
     await renderToString(app)
     const before = state.ontology['@graph'].length
-    api.mode.value = 'canvas'
-    api.createFromCanvas()
+    api.openObjectEditor(true)
     assert.equal(api.editor.value.kind, 'object')
     assert.equal(api.editor.value.isNew, true)
-    assert.equal(api.editor.value.origin, 'canvas')
+    assert.equal(api.editor.value.origin, 'list')
     api.objectDraft.value.label = '写了一半就放弃'
     assert.equal(state.ontology['@graph'].length, before, '填写过程中不得插入占位记录')
     api.closeEditor()
     assert.equal(api.editor.value, null)
     assert.equal(state.ontology['@graph'].length, before, '取消后模型不应有新记录')
 
-    api.linkFromCanvas({ from: 'mg:cluster', to: 'mg:site' })
+    api.openLinkEditor()
+    api.linkDraft.value.from = 'mg:cluster'
+    api.linkDraft.value.to = 'mg:site'
     assert.equal(api.editor.value.kind, 'link')
-    assert.equal(api.editor.value.origin, 'canvas')
+    assert.equal(api.editor.value.origin, 'list')
     assert.equal(api.linkDraft.value.from, 'mg:cluster')
     assert.equal(api.linkDraft.value.to, 'mg:site')
     api.closeEditor()
     assert.equal(state.ontology['@graph'].length, before, '取消连线不产生链接')
-    check('A2 画布新建/连线取消后模型无新记录，编辑期间无保存请求', () => assert.equal(0, 0))
+    check('A2 表单新建/链接取消后模型无新记录，编辑期间无保存请求', () => assert.equal(0, 0))
   }
 
   // ── A1/A3：画布来源保存失败保留输入、不重复新增；成功保存恰好新增一条 ──
@@ -124,8 +125,7 @@ try {
     const { app } = mount(state, box)
     await renderToString(app)
     const before = state.ontology['@graph'].length
-    api.mode.value = 'canvas'
-    api.createFromCanvas()
+    api.openObjectEditor(true)
     const id = api.editor.value.id
     api.objectDraft.value.label = '储能变流器'
     api.objectDraft.value.comment = '功率变换设备'
@@ -157,7 +157,9 @@ try {
     assert.equal(api.editor.value.kind, 'object')
     api.closeEditor()
     // 链接：起点/终点/正向名称/数量关系必填
-    api.openLinkEditor('', { from: 'mg:cluster', to: 'mg:site' }, 'canvas')
+    api.openLinkEditor()
+    api.linkDraft.value.from = 'mg:cluster'
+    api.linkDraft.value.to = 'mg:site'
     api.linkDraft.value.label = ''
     await api.saveLink()
     assert.equal(api.editorError.value, '请填写正向名称。')
@@ -217,18 +219,6 @@ try {
     api.onDocumentClick({ target: {} })
     assert.equal(api.moreOpen.value, false)
     check('R3 更多操作菜单可开关、点击外部关闭、关闭后焦点归还', () => assert.equal(0, 0))
-  }
-
-  // ── R6：画布工具文案（可理解命名，且保留既有分组能力） ──
-  {
-    const canvasSrc = readFileSync(resolve('frontend/src/ontology/ObjectCanvas.vue'), 'utf8')
-    for (const label of ['＋ 新建对象', '自动布局', '显示全部', '直接关联', '删除选中']) assert.ok(canvasSrc.includes(label), '缺少文案：' + label)
-    assert.ok(canvasSrc.includes('请先选择一个对象'), '直接关联未选对象时要给出解释')
-    for (const old of ['>＋ 新建节点<', '>整理节点<', '>全图<', '>1跳<']) assert.ok(!canvasSrc.includes(old), '旧的工具文案不应保留：' + old)
-    // 画布侧栏只读：不再就地编辑字段，编辑统一走「编辑定义」
-    assert.ok(canvasSrc.includes("emit('edit-definition'"), '画布详情需要「编辑定义」出口')
-    assert.ok(!/selectField\(/.test(canvasSrc), '画布侧栏不得再就地修改模型字段')
-    check('R6 画布工具文案与只读详情出口', () => assert.equal(0, 0))
   }
 
   // ── R4（按用户 2026-09-17 追加要求调整）：对象/链接表单撑满右侧工作区，不设宽度上限；

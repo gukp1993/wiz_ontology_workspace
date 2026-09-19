@@ -2,7 +2,7 @@
      挂载点：App.vue view==='objects'（旧 #model/#links/#graph/#properties 深链均 alias 到此页）。
      协议冻结（任务板 §2/§7，勿改）：props {state:any; focusType?; focusProperty?}；
      emits ['before-change','changed','navigate']。
-     浏览态（原型 objectWorkspace）：工具行（对象列表/关系画布 + ＋新建对象）在目录＋详情上方；
+     浏览态：工具行（对象列表/本体图谱 + ＋新建对象）在目录＋详情上方；
      左目录（157px）+ 右详情（名称/业务定义展示 + 「编辑定义」+ 属性/链接两页签）。
      编辑态（原型 render: ui.editor ? editorView() : pageView()）：主内容整体替换为一个完整表单，
      顶栏与主侧栏保留；表单上方「← 返回对象」，底部保存/取消。新建对象/编辑定义/新建属性/
@@ -12,14 +12,11 @@
      链接页签同时展示当前对象作为起点和终点的链接，一行一个三元组，同一链接只维护一份（D06）。
      保存约定（T00 契约，app/formGuard.ts）：对象/链接表单注册 form-guard 离开保护，
      保存走 form-save.submitForm('ontology', mutate) 一次落盘，取消直接丢弃草稿；
-     属性表单由 PropertyManager 自带同一契约。画布模式保留 ObjectCanvas 既有能力与
-     自动保存（emit('before-change')/'changed' 路径不动）；浏览态删除仍走撤销快照 + changed。
-     20260917 交互评审采纳：列表与画布共用同一套对象/链接表单（origin 只决定返回位置，
-     画布编辑期间画布仅隐藏不卸载，视口与选中项保留）；删除对象收进「更多操作」；
-     表单撑满右侧工作区，详情不再重复数量行，共享复用可点开只读来源；空态与画布文案精简。 -->
+     属性表单由 PropertyManager 自带同一契约；浏览态删除仍走撤销快照 + changed。
+     20260919：关系画布（ObjectCanvas）按用户要求移除——对象/链接可视化改用「本体图谱」
+     只读视图；「在画布查看」入口与画布来源表单（origin='canvas'）一并移除。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
-import ObjectCanvas from './ObjectCanvas.vue'
 import OntologyGraph from './OntologyGraph.vue'
 import PropertyManager from './PropertyManager.vue'
 import Field from '../shared/EditorField.vue'
@@ -47,8 +44,7 @@ const props = defineProps<{ state: any; focusType?: string; focusProperty?: stri
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
 
-const mode = ref<'list' | 'canvas' | 'graph'>('list'), selected = ref(''), message = ref('')
-const canvasRef = ref<any>(null)
+const mode = ref<'list' | 'graph'>('list'), selected = ref(''), message = ref('')
 
 const graph = computed(() => props.state?.ontology?.['@graph'] || [])
 const objects = computed(() => graph.value.filter((n: any) => n['@type'] === 'owl:Class'))
@@ -81,8 +77,8 @@ const detailTab = ref<Tab>('props')
 watch(() => props.initialTab, t => { if (t === 'props' || t === 'links' || t === 'actions' || t === 'rules') detailTab.value = t }, { immediate: true })
 
 // ─── 编辑态（原型 editorView）：kind 决定挂载哪种表单；带 draft 的由本组件注册 form-guard ───
-// origin（R1）：列表与画布进入的是同一套表单，只有「保存/取消后回到哪里」不同。
-type Origin = 'list' | 'canvas'
+// 表单来源：关系画布移除后只剩列表入口；保留字段以便 Editor 结构稳定。
+type Origin = 'list'
 type LinkDraft = { label: string; from: string; to: string; cardinality: string; reverseLabel: string; comment: string }
 type Editor =
   | { kind: 'object'; isNew: boolean; id: string; draft: { label: string; comment: string }; original: string; returnTab: Tab; origin: Origin }
@@ -93,7 +89,7 @@ const editorError = ref(''), editorSaving = ref(false)
 const objectDraft = computed(() => editor.value?.kind === 'object' ? editor.value.draft : null)
 const linkDraft = computed(() => editor.value?.kind === 'link' ? editor.value.draft : null)
 
-// 提示只对当前上下文有效：切换对象、切页签、切换列表/画布、进出编辑器都清空。
+// 提示只对当前上下文有效：切换对象、切页签、进出编辑器都清空。
 // 否则「暂不能删除…」这类提示会在换对象甚至新建对象后继续挂着，与当前对象不再对应。
 watch([selected, detailTab, mode, editor], () => { if (message.value) message.value = '' })
 
@@ -103,23 +99,14 @@ watch(() => { const e = editor.value; return !!e && (e.kind === 'object' || e.ki
 onBeforeUnmount(() => guardApi.unregister(wsGuard))
 
 function closeEditor() {
-  const e = editor.value
   editor.value = null; editorError.value = ''
-  if (!(e && 'origin' in e && e.origin === 'canvas')) restoreListScroll()
+  restoreListScroll()
 }
 
 // 列表滚动位置：表单会替换整个主内容导致列表卸载，返回时按原位置还原（R1 §3.2）。
 let listScrollTop = 0
 function captureListScroll() { listScrollTop = document.querySelector<HTMLElement>('.ld-items')?.scrollTop || 0 }
 function restoreListScroll() { void nextTick(() => { const el = document.querySelector<HTMLElement>('.ld-items'); if (el) el.scrollTop = listScrollTop }) }
-// 画布来源的表单保存/取消后回到画布：画布组件始终挂载（编辑期间仅隐藏），视口与选中项自然保留；
-// 新对象保存后放到可见区域并选中，既有对象改名不移动视口、不重新布局（R1 §3.2）。
-async function backToCanvas(id: string, isNew: boolean) {
-  await nextTick()
-  await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
-  canvasRef.value?.sync?.()
-  if (isNew) canvasRef.value?.focusNode?.(id)
-}
 
 // 保存成功/取消后返回原对象与原页签，并定位（闪烁 + 滚动到可见）条目。
 const highlightId = ref('')
@@ -167,8 +154,7 @@ async function saveObject() {
   editor.value = null
   selected.value = e.id
   detailTab.value = e.isNew ? 'props' : e.returnTab
-  if (e.origin === 'canvas') await backToCanvas(e.id, e.isNew)
-  else { locate(e.id); restoreListScroll() }
+  locate(e.id); restoreListScroll()
 }
 
 // ─── 属性表单：整体替换主内容，挂载无目录的独立表单 PropertyManager ───
@@ -190,15 +176,15 @@ function onPropertySaved(payload: { id: string; targetTypeId?: string }) {
 const CARDINALITY: Record<string, string> = { 'one-to-one': '一对一', 'one-to-many': '一对多', 'many-to-one': '多对一', 'many-to-many': '多对多' }
 const linkTargetOptions = computed(() => objects.value.map((o: any) => ({ value: o['@id'], label: o['rdfs:label'] || o['@id'] })))
 const cardinalityOptions = Object.entries(CARDINALITY).map(([value, label]) => ({ value, label }))
-// id：编辑既有链接；preset：画布连线模式已选好的起点/终点（R1）。
-function openLinkEditor(id = '', preset: { from?: string; to?: string } = {}, origin: Origin = 'list') {
+// id：编辑既有链接；缺省新建（起点默认当前对象）。
+function openLinkEditor(id = '', origin: Origin = 'list') {
   const n: any = id ? graph.value.find(x => x['@id'] === id) : null
-  const fallbackFrom = preset.from || current.value?.['@id'] || objects.value[0]?.['@id'] || ''
+  const fallbackFrom = current.value?.['@id'] || objects.value[0]?.['@id'] || ''
   if (!n && !fallbackFrom) return
   if (origin === 'list') captureListScroll()
   const draft: LinkDraft = n
     ? { label: n['rdfs:label'] || '', from: n['rdfs:domain']?.['@id'] || fallbackFrom, to: n['rdfs:range']?.['@id'] || '', cardinality: n['mg:cardinality'] || 'many-to-one', reverseLabel: n['mg:reverseLabel'] || '', comment: n['rdfs:comment'] || '' }
-    : { label: '', from: fallbackFrom, to: preset.to || objects.value.find(o => o['@id'] !== fallbackFrom)?.['@id'] || fallbackFrom, cardinality: 'many-to-one', reverseLabel: '', comment: '' }
+    : { label: '', from: fallbackFrom, to: objects.value.find(o => o['@id'] !== fallbackFrom)?.['@id'] || fallbackFrom, cardinality: 'many-to-one', reverseLabel: '', comment: '' }
   editor.value = { kind: 'link', isNew: !id, id: id || 'mg:link_' + crypto.randomUUID().replaceAll('-', ''), draft, original: JSON.stringify(draft), returnTab: detailTab.value === 'links' ? 'links' : detailTab.value, origin }
   editorError.value = ''
 }
@@ -223,8 +209,7 @@ async function saveLink() {
   if (!r.ok) { editorError.value = r.message; return }
   editor.value = null
   detailTab.value = e.returnTab
-  if (e.origin === 'canvas') await backToCanvas(e.id, e.isNew)
-  else { locate(e.id); restoreListScroll() }
+  locate(e.id); restoreListScroll()
 }
 
 // ─── 从属性库添加（D05：原型 libraryView(true) 挑选态，不再跳库页重选对象） ───
@@ -583,7 +568,7 @@ watch([() => props.focusDefinition, detailTab], ([id, tab]) => {
   else if (tab === 'rules') void locateRow(id, rulesList)
 }, { immediate: true })
 
-// 引用检查与 EntityManager/画布同一套：有引用先提示，不静默断链；confirm 后删除，可撤销。
+// 引用检查与 EntityManager 同一套：有引用先提示，不静默断链；confirm 后删除，可撤销。
 // 动作关联随对象删除一并清理（需求 §5）；规则引用走引用保护——须先移除引用（业务规则一期 §5）。
 // confirmText：行语义化确认文案（删除属性/删除链接/删除动作各说各的影响），缺省沿用对象删除文案。
 async function removeNode(id: string, label: string, confirmText?: string) {
@@ -599,59 +584,23 @@ async function removeNode(id: string, label: string, confirmText?: string) {
   if (assocCount) commitAssociations(props.state, associationsOf(props.state).filter(a => a.objectTypeId !== id && a.objectTypeId !== 'mg:' + id.replace(/^mg:/, '')))
   emit('changed')
 }
-
-// ─── 模式切换与画布联动 ───
-function showCanvas() { mode.value = 'canvas' }
-async function showInCanvas() {
-  const id = selected.value
-  mode.value = 'canvas'
-  await nextTick()
-  canvasRef.value?.focusNode?.(id)
-}
-// 画布点击节点：只同步当前选中对象，不再切回列表模式（R1：画布就地只读查看，编辑走「编辑定义」）。
-function selectById(id: string) {
-  if (id && objects.value.some((n: any) => n['@id'] === id)) selected.value = id
-}
-// 画布语义事件 → 共用表单（R1）：新建对象、编辑定义、连线模式选好两端后建链接。
-function createFromCanvas() { editor.value = null; openObjectEditor(true, 'canvas') }
-function editFromCanvas(id: string) {
-  const n: any = graph.value.find(x => x['@id'] === id)
-  if (!n) return
-  if (n['@type'] === 'owl:ObjectProperty') { openLinkEditor(id, {}, 'canvas'); return }
-  if (n['@type'] !== 'owl:Class') return
-  selected.value = id
-  openObjectEditor(false, 'canvas')
-}
-function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor('', payload, 'canvas') }
 </script>
 
 <template>
-<div class="object-workspace ow-root" :class="{ 'ow-canvas-grid': mode === 'canvas' }">
-  <!-- 画布模式：复用 ObjectCanvas 内置工具条/目录/inspector；自动保存路径不动。
-       编辑期间只隐藏（v-show）不卸载：返回时缩放/平移/选中项原样保留（R1）。 -->
-  <div v-if="mode === 'canvas'" v-show="!editor" class="ow-canvas-wrap">
-    <div class="ow-mode-tabs ow-canvas-tabs" role="tablist" aria-label="对象建模模式">
+<div class="object-workspace ow-root">
+  <!-- 本体图谱（20260919）：只读全量视图，五类内容上图；独立于编辑保存路径 -->
+  <div v-if="mode === 'graph' && !editor" class="ow-graph-wrap">
+    <div class="ow-mode-tabs ow-sub-tabs" role="tablist" aria-label="对象建模模式">
       <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
-      <button role="tab" class="active" :aria-selected="true">关系画布</button>
-      <button role="tab" :aria-selected="false" @click="mode = 'graph'">本体图谱</button>
-    </div>
-    <ObjectCanvas ref="canvasRef" :state="state" @before-change="emit('before-change')" @changed="emit('changed')" @select="selectById"
-      @create-object="createFromCanvas" @edit-definition="editFromCanvas" @create-link="linkFromCanvas"/>
-  </div>
-  <!-- 本体图谱（20260919）：只读全量视图，五类内容上图；与画布同款页签，独立于编辑保存路径 -->
-  <div v-else-if="mode === 'graph' && !editor" class="ow-canvas-wrap">
-    <div class="ow-mode-tabs ow-canvas-tabs" role="tablist" aria-label="对象建模模式">
-      <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
-      <button role="tab" :aria-selected="false" @click="showCanvas">关系画布</button>
       <button role="tab" class="active" :aria-selected="true">本体图谱</button>
     </div>
     <OntologyGraph :state="state" :ontology-id="state?.workspaceId || ''"/>
   </div>
-  <!-- 编辑态：主内容整体替换为一个完整表单（原型 ui.editor ? editorView() : pageView()）；列表与画布共用同一套 -->
+  <!-- 编辑态：主内容整体替换为一个完整表单（原型 ui.editor ? editorView() : pageView()） -->
   <template v-if="editor">
     <PropertyManager v-if="editor.kind === 'property'" :key="editor.propertyId || 'new'" :state="state" kind="property" :target-type-id="editor.targetTypeId" :property-id="editor.propertyId" @close="closeEditor" @saved="onPropertySaved"/>
     <section v-else-if="editor.kind === 'object'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回{{ editor.origin === 'canvas' ? '画布' : '对象' }}</button></div>
+      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
       <div class="detail-heading"><div><span class="eyebrow">对象类型</span><h2>{{ editor.isNew ? '新建对象类型' : '维护对象定义' }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
@@ -664,7 +613,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
       </div>
     </section>
     <section v-else-if="editor.kind === 'link'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回{{ editor.origin === 'canvas' ? '画布' : '对象' }}</button></div>
+      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
       <div class="detail-heading"><div><span class="eyebrow">业务链接</span><h2>{{ editor.isNew ? '定义业务链接' : '维护 · ' + (linkDraft?.label || '未命名链接') }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
@@ -693,7 +642,6 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
     <div class="ow-toolbar">
       <div class="ow-mode-tabs" role="tablist" aria-label="对象建模模式">
         <button role="tab" class="active" :aria-selected="true">对象列表</button>
-        <button role="tab" :aria-selected="false" @click="showCanvas">关系画布</button>
         <button role="tab" :aria-selected="false" @click="mode = 'graph'">本体图谱</button>
       </div>
       <button class="primary" @click="openObjectEditor(true)">＋ 新建对象</button>
@@ -730,7 +678,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
         <div v-if="!current" class="empty-state">
           <span class="empty-state-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="navIcons.objects"/></svg></span>
           <p><strong>从第一个对象开始。</strong></p>
-          <p>只需名称和业务定义，随后在对象内补充属性与链接。<br>也可以切换到关系画布，直接新建节点并连线。</p>
+          <p>只需名称和业务定义，随后在对象内补充属性与链接。</p>
           <button type="button" class="primary" @click="openObjectEditor(true)">＋ 新建对象</button>
         </div>
         <template v-else>
@@ -739,7 +687,6 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
               <h2 class="ow-h2-name">{{ current['rdfs:label'] || '未命名对象' }}</h2>
               <div class="ow-head-side">
                 <button type="button" :aria-pressed="starred" :title="starred ? '取消收藏（仅保存在本机浏览器，不写入本体）' : '收藏（仅保存在本机浏览器，不写入本体）'" @click="toggleStar(current['@id'])">{{ starred ? '★ 已收藏' : '☆ 收藏' }}</button>
-                <button type="button" @click="showInCanvas" title="在关系画布中定位此对象">在画布查看</button>
                 <button type="button" @click="openObjectEditor(false)">编辑定义</button>
                 <!-- R3：删除等破坏性操作收进「更多操作」，避免与常用动作并列误点 -->
                 <div ref="moreWrap" class="ow-more" @keydown="moreKeydown">
@@ -809,7 +756,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
               ariaLabel="对象链接列表" search-placeholder="搜索链接名称、两端对象或反向名称"
               :columns="[{ label: '链接名称', width: '29%', sort: true }, { label: '起点对象', width: '20%' }, { label: '终点对象', width: '20%' }, { label: '数量关系', width: '15%' }, { label: '操作', width: '16%' }]"
               :empty-title="linksList.q.value ? '没有匹配的链接' : '还没有链接'"
-              :empty-hint="linksList.q.value ? '调整关键词再试试。' : '使用右上角「＋ 新增链接」添加，或在关系画布中用连线模式创建。'"
+              :empty-hint="linksList.q.value ? '调整关键词再试试。' : '使用右上角「＋ 新增链接」添加。'"
               @sort="linksList.toggleSort()" @page="linksList.page.value += $event" @clear="linksList.q.value = ''">
               <template #actions>
                 <button type="button" class="primary" @click="openLinkEditor()">＋ 新增链接</button>
@@ -964,7 +911,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
 .ont-filters{display:flex;gap:6px;flex-wrap:wrap}
 .ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
 .ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
-.ow-canvas-tabs{max-width:360px}
+.ow-sub-tabs{max-width:360px}
 .ow-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .ow-toolbar .ow-mode-tabs{display:flex;gap:6px;margin-bottom:0}
 .ow-toolbar .ow-mode-tabs button{flex:none}
@@ -1005,7 +952,7 @@ function linkFromCanvas(payload: { from: string; to: string }) { openLinkEditor(
 .ow-more-menu .danger{color:var(--danger)}
 .relation-sentence{margin:18px 0 0}
 /* 对象/链接独立编辑表单：沿用原有版式，撑满右侧工作区（不设宽度上限，也不缩窄画布与数据表） */
-.ow-canvas-wrap{display:block}
+.ow-graph-wrap{display:block}
 .shared-def{margin-top:4px}
 /* 删除/引用拦截等提示：紧贴详情头，点击操作处即可看到；
    左右内边距与 .ld-detail-head/.ld-tabs/.ld-body 一致（24px），否则会顶到面板两侧且比正文左移 */
