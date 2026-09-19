@@ -99,6 +99,8 @@ watch(cacheContext, () => {
   result.value = null
   scopeInitialized = false
   resultNode.value = ''
+  // 在途请求不再约束新上下文：立即释放运行闸（孤儿 finally 由代次守卫兜底）
+  running.value = false; pendingConfirm.value = false
 })
 // 声明改型/删除 → 对应缓存失效（粗粒度：签名变化即清空，避免同名错配）
 const declSig = computed(() => JSON.stringify([
@@ -109,6 +111,25 @@ watch(declSig, (next, prev) => { if (next !== prev && prev !== undefined) {
   overrideTexts.value = {}; overrideEmpty.value = {}
   entryTexts.value = {}; entryEmpty.value = {}
 } })
+// 节点被删除后范围引用失效（返回设计删除再进入）：回退整条并提示，不让用户看到裸 ID 报错
+const scopeNotice = ref('')
+watch(() => procNodes.value.map((n: any) => n.id).join('\u0000'), () => {
+  const ids = new Set(procNodes.value.map((n: any) => n.id))
+  let changed = false
+  if (scopeKind.value === 'single' && singleId.value && !ids.has(singleId.value)) { scopeKind.value = 'all'; singleId.value = ''; changed = true }
+  if (segStart.value && !ids.has(segStart.value)) { segStart.value = ''; changed = true }
+  if (segEnd.value && !ids.has(segEnd.value)) { segEnd.value = ''; changed = true }
+  if (explicitIds.value.length) {
+    const kept = explicitIds.value.filter(id => ids.has(id))
+    if (kept.length !== explicitIds.value.length) { explicitIds.value = kept; changed = true }
+  }
+  if (changed) scopeNotice.value = '所选范围包含已删除的节点，已回退为整条编排'
+})
+// 表单错误不常驻：用户修正输入/范围后即清除（sync：先于 run 内的新错误设置，避免竞态清掉本次错误）
+watch([overrideTexts, overrideEmpty, entryTexts, entryEmpty, scopeKind, singleId, segStart, segEnd, explicitIds], () => {
+  if (formError.value) formError.value = ''
+  if (scopeNotice.value) scopeNotice.value = ''
+}, { deep: true, flush: 'sync' })
 
 const fixedRows = computed(() => {
   const rows: { nodeName: string; label: string; display: string }[] = []
@@ -157,12 +178,10 @@ const currentInputSig = computed(() => testInputSignature(
   { kind: scopeKind.value, targets: plan.value.order },
   { o: overrideTexts.value, pe: overrideEmpty.value, e: entryTexts.value, ee: entryEmpty.value }, {}))
 const staleConfig = computed(() => !!result.value && result.value.status !== 'running' && result.value.snapshot.sig !== currentSig.value)
-const staleProject = computed(() => !!result.value && result.value.status !== 'running' && (result.value.snapshot.projectId || '') !== (props.projectId || ''))
-const staleInput = computed(() => !!result.value && result.value.status !== 'running' && !staleConfig.value && !staleProject.value && result.value.snapshot.inputSig !== currentInputSig.value)
+const staleInput = computed(() => !!result.value && result.value.status !== 'running' && !staleConfig.value && result.value.snapshot.inputSig !== currentInputSig.value)
 const freshnessText = computed(() => {
   if (!result.value || result.value.status === 'running') return ''
   if (staleConfig.value) return '配置已修改 · 以下为上次配置的结果'
-  if (staleProject.value) return '运行项目已切换 · 以下为上次项目的结果'
   if (staleInput.value) return '上次测试结果，尚未按当前输入/范围运行'
   return ''
 })
@@ -186,7 +205,11 @@ function collectFieldValue(row: { key: string; label: string; type: any; require
     const verdict = validateTestValue(row.type, raw)
     return verdict.ok ? { ok: true, value: verdict.value } : { ok: false, error: verdict.error }
   }
-  if (providedEmpty[row.key]) return { ok: true, value: '' } // 显式空文本（R03）
+  if (providedEmpty[row.key]) {
+    // 空文本只对文本输入有意义；数值/布尔/日期时间/对象/列表勾了也按未提供处理并给明确报错
+    if (t !== 'text') return { ok: false, error: '该类型不支持提交空文本；不提供请留空' }
+    return { ok: true, value: '' } // 显式空文本（R03）
+  }
   if (raw == null || raw === '') return { ok: false, error: '尚未填写；如需提交空字符串请勾选「使用空文本」' }
   if (t === 'number') {
     const n = Number(raw)
@@ -205,9 +228,11 @@ async function run() {
   const overrides: Record<string, Record<string, any>> = {}
   for (const item of planNow.externalInputs) {
     const row = { key: overrideKey(item.nodeId, item.inputId), label: `${item.nodeName} · ${item.label}`, type: item.type, required: item.required }
+    // 可选（unbound）输入未提供任何值时直接跳过——布尔/对象/列表同样适用，不再被迫填值歪曲测试语义
+    const rawNow = overrideTexts.value[row.key]
+    if (item.kind === 'unbound' && (rawNow == null || rawNow === '') && !overrideEmpty.value[row.key]) continue
     const verdict = collectFieldValue(row, overrideTexts.value, overrideEmpty.value)
     if (!verdict.ok) {
-      if (item.kind === 'unbound' && verdict.error?.startsWith('尚未填写')) continue // 可选输入未提供：跳过
       formError.value = `「${row.label}」：${verdict.error}`
       return
     }
@@ -262,7 +287,7 @@ async function run() {
     if (gen !== runGen.value) return
     result.value = { gen, status: 'request-error', error: e?.message || String(e), snapshot }
   } finally {
-    running.value = false // 成功/失败都释放；视图隐藏期间请求继续，返回后仍显示状态
+    if (gen === runGen.value) running.value = false // 代次守卫：上下文已切换时不释放新运行的忙闸（切项目已在 watch 里释放）
   }
 }
 
@@ -333,6 +358,7 @@ defineExpose({ openScope })
           </label>
         </template>
         <p v-if="planError" class="ftw-error" role="alert">{{ planError }}</p>
+        <p v-if="scopeNotice" class="ftw-outside">{{ scopeNotice }}</p>
         <!-- R02a：多路径时勾选区持续可见，勾选/取消/清空都不消失 -->
         <div v-if="segPaths.length > 1" class="ftw-note">
           存在多条依赖路径，请勾选要测试的节点集合：
@@ -359,7 +385,7 @@ defineExpose({ openScope })
         <textarea v-else-if="row.type?.type === 'object' || row.type?.type === 'list'" :value="entryTexts[row.key] || ''" rows="3" :placeholder="row.type?.type === 'object' ? '{}' : '[]'" :aria-label="'入口参数 ' + row.label" @input="entryTexts[row.key] = ($event.target as HTMLTextAreaElement).value"/>
         <template v-else>
           <input :value="overrideEmpty[row.key] || entryEmpty[row.key] ? '' : (entryTexts[row.key] || '')" :disabled="!!entryEmpty[row.key]" :aria-label="'入口参数 ' + row.label" placeholder="本次测试的入口值" @input="entryTexts[row.key] = ($event.target as HTMLInputElement).value"/>
-          <span class="ftw-empty-opt"><input type="checkbox" :checked="!!entryEmpty[row.key]" @change="entryEmpty[row.key] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</span>
+          <span v-if="row.type?.type === 'text'" class="ftw-empty-opt"><input type="checkbox" :checked="!!entryEmpty[row.key]" @change="entryEmpty[row.key] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</span>
         </template>
       </label>
       <div v-for="item in plan.externalInputs" :key="item.nodeId + '/' + item.inputId" class="ftw-ext">
@@ -370,7 +396,7 @@ defineExpose({ openScope })
           <textarea v-else-if="item.type?.type === 'object' || item.type?.type === 'list'" :value="overrideTexts[overrideKey(item.nodeId, item.inputId)] || ''" rows="3" :placeholder="item.type?.type === 'object' ? '{}' : '[]'" :aria-label="item.nodeName + ' ' + item.label" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLTextAreaElement).value"/>
           <template v-else>
             <input :value="overrideEmpty[overrideKey(item.nodeId, item.inputId)] ? '' : (overrideTexts[overrideKey(item.nodeId, item.inputId)] || '')" :disabled="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" :aria-label="item.nodeName + ' ' + item.label" :placeholder="item.kind === 'unbound' ? '可选：为未绑定输入提供本次测试值' : '本次测试值'" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).value"/>
-            <span class="ftw-empty-opt"><input type="checkbox" :checked="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" @change="overrideEmpty[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</span>
+            <span v-if="item.type?.type === 'text'" class="ftw-empty-opt"><input type="checkbox" :checked="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" @change="overrideEmpty[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</span>
           </template>
         </label>
       </div>
@@ -392,7 +418,7 @@ defineExpose({ openScope })
       <div class="ftw-result-head">
         <h3>{{ result ? (result.snapshot.scopeKind === 'segment' ? '片段测试结果' : result.snapshot.scopeKind === 'single' ? '节点测试结果' : '编排测试结果') : '测试结果' }}</h3>
         <span v-if="result" class="ftw-badge" :class="statusClass">{{ statusLabel }}</span>
-        <span v-if="staleConfig || staleProject" class="ftw-badge warn">旧{{ staleConfig ? '配置' : '项目' }}结果</span>
+        <span v-if="staleConfig" class="ftw-badge warn">旧配置结果</span>
         <span v-else-if="staleInput" class="ftw-badge warn">尚未按当前输入/范围运行</span>
       </div>
       <p class="ftw-scope">{{ result ? `范围：${result.snapshot.scopeText} · 提交于 ${result.snapshot.submittedAt}` : '选择范围、填写输入后运行；范围内自动传递，范围外不执行。' }}</p>
@@ -453,12 +479,10 @@ defineExpose({ openScope })
                   </div>
                   <!-- 对象 / 混合嵌套列表 / 勾选 JSON：格式化 JSON -->
                   <pre v-else class="ftw-pre">{{ previewValue(out.view.value) }}</pre>
-                  <!-- 标量：突出显示 + JSON 对照；false/0/null 不显示为空 -->
-                  <template v-if="out.view.kind === 'scalar'">
-                    <p class="ftw-scalar">{{ out.view.value === null ? 'null' : out.view.value === '' ? '（空文本 ""）' : String(out.view.value) }}</p>
-                    <pre class="ftw-pre">{{ previewValue(currentNode.outputs) }}</pre>
-                  </template>
+                  <!-- 标量：突出显示；false/0/null 不显示为空（全部输出的原始 JSON 在循环外统一渲染一次） -->
+                  <p v-if="out.view.kind === 'scalar'" class="ftw-scalar">{{ out.view.value === null ? 'null' : out.view.value === '' ? '（空文本 ""）' : String(out.view.value) }}</p>
                 </template>
+                <pre v-if="outputViews.some((o: any) => o.view.kind === 'scalar')" class="ftw-pre">{{ previewValue(currentNode.outputs) }}</pre>
                 <p v-if="!Object.keys(currentNode.outputs || {}).length" class="ftw-hint">节点输出为空。</p>
               </template>
             </template>

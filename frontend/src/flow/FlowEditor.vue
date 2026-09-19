@@ -482,12 +482,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
     </section>
   </div>
 
-  <div v-if="renameOpen" class="modal-backdrop" @click.self="renameOpen=false">
+  <div v-if="renameOpen" class="modal-backdrop" @click.self="closeDialog()">
     <form class="flow-modal" role="dialog" aria-modal="true" aria-label="编排名称" @submit.prevent="applyRename">
       <h2>编排名称</h2>
       <label>名称<input v-model="renameBuffer" required maxlength="80" aria-label="编排名称" @input="dialogDirty=true"/></label>
       <div class="dialogtools">
-        <button type="button" @click="renameOpen=false">取消</button>
+        <button type="button" @click="closeDialog()">取消</button>
         <button type="submit" class="primary">确定</button>
       </div>
     </form>
