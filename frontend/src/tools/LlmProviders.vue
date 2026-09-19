@@ -119,8 +119,8 @@ async function test(item: any) {
       <h2>{{editingId?'编辑模型配置':'新增模型配置'}}</h2>
       <p class="field-help">OpenAI 兼容 chat/completions 接口。API Key 加密保存、只写不读回；接口地址按已保存内容回显。</p>
       <label>配置名称 *<input v-model="form.name" maxlength="60" placeholder="例如：通用推理模型"/></label>
-      <label>接口地址（chat/completions 完整 URL）*<input v-model="form.endpoint" placeholder="https://…/v1/chat/completions"/></label>
-      <label>模型标识 *<input v-model="form.model" placeholder="模型参数名，例如 deepseek-chat"/></label>
+      <label>接口地址（chat/completions 完整 URL）*<input v-model="form.endpoint" placeholder="例如 https://api.minimax.cn/v1/chat/completions 或 https://api.deepseek.com/v1/chat/completions"/></label>
+      <label>模型标识 *<input v-model="form.model" placeholder="模型参数名，例如 MiniMax-M2、deepseek-chat"/></label>
       <label>API Key{{editingId?'（留空沿用已保存密钥）':' *'}}<input v-model="form.apiKey" type="password" :placeholder="editingId?'留空 = 沿用已保存密钥（不回显）':'sk-…'"/></label>
       <details class="technical-section">
         <summary>高级设置</summary>

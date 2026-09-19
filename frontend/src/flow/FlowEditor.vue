@@ -442,7 +442,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
         </div>
       </header>
       <div class="detail-content">
-        <NodeConfig v-if="node" :state="state" :node="node" :anchor="inspectorTab" :connections="projectConnections || []" :credentials="credentials" :providers="providers" :providers-status="providersStatus" :connections-status="connectionsStatus" :focus="focusRequest" @before-change="emit('before-change')" @changed="emit('changed')" @expand-code="onExpandCode" @open-llm-config="emit('navigate','llm',{ tab: inspectorTab, definition: selectedId })" @open-connections="emit('navigate','connections')" @retry-providers="loadProviders"/>
+        <NodeConfig v-if="node" :state="state" :node="node" :anchor="inspectorTab" :connections="projectConnections || []" :credentials="credentials" :providers="providers" :providers-status="providersStatus" :connections-status="connectionsStatus" :has-project="!!projectId" :focus="focusRequest" @before-change="emit('before-change')" @changed="emit('changed')" @expand-code="onExpandCode" @open-llm-config="emit('navigate','llm',{ tab: inspectorTab, definition: selectedId })" @open-connections="emit('navigate','connections')" @retry-providers="loadProviders"/>
         <BoundaryConfig v-else-if="selectedKind==='input'" :state="state" kind="input" @before-change="emit('before-change')" @changed="emit('changed')"/>
         <BoundaryConfig v-else-if="selectedKind==='output'" :state="state" kind="output" @before-change="emit('before-change')" @changed="emit('changed')"/>
       </div>

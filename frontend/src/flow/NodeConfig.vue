@@ -10,7 +10,7 @@ import AppSelect from '../shared/AppSelect.vue'
 import TypeEditor from './TypeEditor.vue'
 import BindingEditor from './BindingEditor.vue'
 import { EXEC_DEFAULT_TIMEOUT, EXEC_MAX_TIMEOUT_MS, HTTP_METHODS, NODE_KIND_LABELS, REDIS_COMMAND_OPTIONS, SQL_MAX_ROWS_MAX, TYPE_LABELS, flowTypeToCalcType, outputRemovalImpact, pythonSkeleton, sourceSummary, uid } from './flowModel'
-const props = defineProps<{ state: any; node: any; anchor?: string; connections?: any[]; credentials?: any[]; providers?: any[]; providersStatus?: string; connectionsStatus?: string; focus?: { token: number; parameterId?: string; field?: string } }>()
+const props = defineProps<{ state: any; node: any; anchor?: string; connections?: any[]; credentials?: any[]; providers?: any[]; providersStatus?: string; connectionsStatus?: string; hasProject?: boolean; focus?: { token: number; parameterId?: string; field?: string } }>()
 const emit = defineEmits(['before-change', 'changed', 'expand-code', 'open-llm-config', 'open-connections', 'retry-providers'])
 const notice = ref('')
 let noticeTimer: any = null
@@ -295,6 +295,7 @@ async function refillSkeleton() {
       </label>
       <p v-if="connectionsStatus==='loading'" class="muted tight">数据连接加载中…</p>
       <p v-else-if="connectionsStatus==='failed'" class="inline-error">项目数据连接加载失败。<button class="mini" @click="emit('open-connections')">前往数据连接页</button></p>
+      <p v-else-if="!hasProject" class="inline-error">尚未选择运行项目：SQL/Redis 数据连接来自项目，请先在页头选择项目（连接在「数据连接」页维护）。<button class="mini" @click="emit('open-connections')">前往数据连接页</button></p>
       <p v-else-if="!hasConnectionOptions" class="inline-error">当前项目还没有 {{isRedis?'Redis':'MySQL'}} 数据连接。<button class="mini" @click="emit('open-connections')">前往数据连接页</button></p>
       <div class="form-row">
         <label :class="fieldFlash('command')">命令（白名单）
@@ -315,6 +316,7 @@ async function refillSkeleton() {
       </label>
       <p v-if="connectionsStatus==='loading'" class="muted tight">数据连接加载中…</p>
       <p v-else-if="connectionsStatus==='failed'" class="inline-error">项目数据连接加载失败。<button class="mini" @click="emit('open-connections')">前往数据连接页</button></p>
+      <p v-else-if="!hasProject" class="inline-error">尚未选择运行项目：SQL/Redis 数据连接来自项目，请先在页头选择项目（连接在「数据连接」页维护）。<button class="mini" @click="emit('open-connections')">前往数据连接页</button></p>
       <p v-else-if="!hasConnectionOptions" class="inline-error">当前项目还没有 MySQL 数据连接。<button class="mini" @click="emit('open-connections')">前往数据连接页</button></p>
       <p class="muted tight">动态标签子集：&lt;if test&gt; &lt;choose&gt; &lt;where&gt; &lt;set&gt; &lt;foreach&gt;；参数用 <b v-pre>#{技术名}</b> 或旧写法 :技术名；<b v-pre>${技术名}</b> 为原文拼接（检查会提示注入风险）。</p>
       <div class="row-between"><label class="tight">SQL 模板</label>
