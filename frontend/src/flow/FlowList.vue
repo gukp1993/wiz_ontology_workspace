@@ -1,5 +1,5 @@
 <!-- FlowList — 编排列表页：名称/说明/节点数/更新时间/配置状态，搜索、新建（仅名称，
-     说明选填）、编辑、复制、删除（软删除，明确确认）。不依赖当前选中的本体或项目。 -->
+     说明选填）、编辑、复制、删除（软删除，明确确认）均平铺在操作列。不依赖当前选中的本体或项目。 -->
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
@@ -13,7 +13,6 @@ const search = ref('')
 const showCreate = ref(false)
 const newName = ref(''), newDescription = ref('')
 const busy = ref(false)
-const moreOpen = ref('')
 async function refresh() {
   loading.value = true; error.value = ''
   try { items.value = (await listFlows()).items }
@@ -75,10 +74,10 @@ async function remove(item: any) {
   </div>
   <div class="scroll">
     <table>
-      <thead><tr><th>编排名称</th><th>处理节点</th><th>更新时间</th><th>配置状态</th><th>操作</th></tr></thead>
+      <thead><tr><th>编排名称</th><th class="col-nodes">处理节点</th><th class="col-time">更新时间</th><th class="col-status">配置状态</th><th class="col-ops">操作</th></tr></thead>
       <tbody>
         <tr v-for="item in filtered" :key="item.id" :class="{deleted:item.status==='deleted'}">
-          <td class="prop-name">{{item.name}}<small v-if="item.status==='deleted'" class="muted">（已删除）</small><small v-if="item.description" class="muted row-desc">{{item.description}}</small></td>
+          <td class="prop-name">{{item.name}}<small v-if="item.status==='deleted'" class="muted">（已删除）</small><small v-if="item.description" class="muted row-desc" :title="item.description">{{item.description}}</small></td>
           <td>{{item.nodeCount}}</td>
           <td>{{formatTime(item.updatedAt)}}</td>
           <td>
@@ -86,18 +85,13 @@ async function remove(item: any) {
             <span v-else-if="item.configStatus==='passed'" class="property-pill">检查通过</span>
             <span v-else class="property-pill" style="background:var(--warn-soft);color:var(--warn)">待完善<template v-if="item.errorCount"> · {{item.errorCount}} 个问题</template></span>
           </td>
-          <td>
+          <td class="ops">
             <button class="mini" :disabled="busy||item.status==='deleted'" @click="emit('open',item.id)">编辑</button>
-            <div class="menuwrap">
-              <button class="mini" :aria-expanded="moreOpen===item.id" :disabled="busy" @click="moreOpen = moreOpen===item.id ? '' : item.id">更多 ⌄</button>
-              <div v-if="moreOpen===item.id" class="menu" role="menu">
-                <button role="menuitem" :disabled="busy||item.status==='deleted'" @click="copy(item);moreOpen=''">复制编排</button>
-                <button role="menuitem" class="danger-text" :disabled="busy" @click="remove(item);moreOpen=''">删除…</button>
-              </div>
-            </div>
+            <button class="mini" :disabled="busy||item.status==='deleted'" @click="copy(item)">复制</button>
+            <button class="mini danger-text" :disabled="busy" @click="remove(item)">删除</button>
           </td>
         </tr>
-        <tr v-if="!filtered.length && !loading"><td colspan="6" class="empty">{{search?'没有匹配的编排':'还没有编排；点击右上角「新建编排」开始'}}</td></tr>
+        <tr v-if="!filtered.length && !loading"><td colspan="5" class="empty">{{search?'没有匹配的编排':'还没有编排；点击右上角「新建编排」开始'}}</td></tr>
       </tbody>
     </table>
   </div>
@@ -116,11 +110,16 @@ async function remove(item: any) {
 </div>
 </template>
 <style scoped>
+table{table-layout:fixed}
 tr.deleted td{opacity:.55}
 .list-search input{margin-top:5px}
-.row-desc{display:block;margin-top:3px;overflow-wrap:anywhere}
-.menuwrap{position:relative;display:inline-block}
-.menu{position:absolute;top:34px;right:0;background:var(--paper);border:1px solid var(--line);box-shadow:var(--shadow-2);min-width:130px;padding:5px;z-index:30;border-radius:7px}
-.menu button{display:block;border:0;width:100%;text-align:left}
+th.col-nodes{width:84px;white-space:nowrap}
+th.col-time{width:150px}
+th.col-status{width:110px}
+th.col-ops{width:148px}
+td.ops{white-space:nowrap;overflow:visible}
+td.ops .mini+.mini{margin-left:6px}
+.prop-name{overflow:hidden}
+.row-desc{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .danger-text{color:var(--danger)}
 </style>
