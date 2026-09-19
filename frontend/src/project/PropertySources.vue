@@ -124,9 +124,15 @@ loadFlows()
 const flowOptions=computed(()=>flowsList.value.filter((f:any)=>f.status!=='deleted').map((f:any)=>({value:f.id,label:(f.name||f.id)+(f.errorCount?'（配置检查 '+f.errorCount+' 项未通过）':'')})))
 function flowNameOf(flowId:string){const m=flowsList.value.find((f:any)=>f.id===flowId);return m?.name||flowId||'未选择编排'}
 function flowOutputName(flowId:string,outputId:string){const st=flowStates.value[flowId];const o=(st?.outputs||[]).find((x:any)=>String(x?.id)===String(outputId));return o?(o.label||o.name||o.id):''}
+function flowElementName(flowId:string,fieldId:string){const st=flowStates.value[flowId]
+  for(const o of (st?.outputs||[])){const el=o?.type?.elementType;if(String(o?.type?.type||'')!=='list'||String(el?.type||'')!=='object')continue
+    const f=(el.fields||[]).find((x:any)=>String(x?.id)===String(fieldId));if(f)return f.label||f.name||f.id}
+  return fieldId}
 function flowSummary(v:any):string{
   const out=flowOutputName(String(v.flow||''),String(v.output||''))
-  return '函数编排 · '+flowNameOf(String(v.flow||''))+(out?' · '+out:'')
+  const r=v.result&&typeof v.result==='object'?v.result:{}
+  const map=(r.valueField?' · '+flowElementName(String(v.flow||''),String(r.valueField))+'→值':'')+(r.timestampField?' · '+flowElementName(String(v.flow||''),String(r.timestampField))+'→时间':'')
+  return '函数编排 · '+flowNameOf(String(v.flow||''))+(out?' · '+out:'')+map
 }
 // 当前配置沿用来源摘要（不带种类前缀）
 function summaryOf(v:any):string{
@@ -214,7 +220,28 @@ function extraIssuesOf(api:string,v:any,shape:'scalar'|'timeSeries'):string[]{
     else if(!selOut)out.push('编排输出不存在，请重新选择（编排签名可能已修改）')
     else{
       const ot=String(selOut.type?.type||'')
-      if(ot==='object'||ot==='list')out.push('编排输出为对象/列表，不能绑定属性')
+      if(ot==='object')out.push('编排输出为对象，不能绑定属性')
+      else if(ot==='list'){
+        // 列表输出：仅时间序列属性可绑，需元素为已声明字段的对象且 result 映射齐全（与后端镜像）
+        if(shape!=='timeSeries')out.push('编排输出为列表，不能绑定标量属性')
+        else{
+          const el=selOut.type?.elementType
+          const fields=String(el?.type||'')==='object'?((el.fields||[]) as any[]).filter((f:any)=>f&&typeof f==='object'):[]
+          if(!fields.length)out.push('列表输出的元素需为已声明字段的对象，才能绑定时间序列属性')
+          else{
+            const r=v.result&&typeof v.result==='object'?v.result:{} as any
+            const byId=new Map(fields.map((f:any)=>[String(f.id||''),f]))
+            const vf=byId.get(String(r.valueField||''))
+            const tf=byId.get(String(r.timestampField||''))
+            if(!String(r.valueField||''))out.push('请选择取值字段')
+            else if(!vf)out.push('取值字段不存在，请重新选择（编排签名可能已修改）')
+            else if(String(vf.type?.type||'')!=='number')out.push('取值字段不是数值类型')
+            if(!String(r.timestampField||''))out.push('请选择时间字段')
+            else if(!tf)out.push('时间字段不存在，请重新选择（编排签名可能已修改）')
+            else if(String(tf.type?.type||'')!=='datetime')out.push('时间字段不是日期时间类型')
+          }
+        }
+      }
       else if(shape==='timeSeries')out.push('函数编排输出为单值，不能绑定时间序列属性')
       else if(!(FLOW_RANGE_COMPAT[ot]||[]).includes(rangeOf(ownProp)))out.push('编排输出类型与属性数据类型不匹配')
     }
@@ -437,7 +464,7 @@ function dataConnectionChanged(v:string){
 function switchKind(v:string){
   if(v==='')draft.value={kind:'none'}
   else if(v==='redis')draft.value={kind:'redis',source:'',connection:'',command:'GET',key:'',params:{},hashField:'',conversion:defaultConversion(),missing:'null'}
-  else if(v==='flow')draft.value={kind:'flow',flow:'',output:'',inputs:{}}  // 新配置：函数编排
+  else if(v==='flow')draft.value={kind:'flow',flow:'',output:'',inputs:{},result:{valueField:'',timestampField:''}}  // 新配置：函数编排
   else draft.value=freshDbDraft()
 }
 // ---------- 数据库路径（连接联动选表）：连接 → 目录搜索选任意表 ＋ 快捷使用实例来源表 ----------
@@ -639,17 +666,46 @@ function flowConstantOk(t:string,value:any):boolean{
 }
 const selectedFlow=computed(()=>{const d:any=draft.value;return d?.kind==='flow'?flowStates.value[String(d.flow||'')]:null})
 const flowInputs=computed(()=>Array.isArray(selectedFlow.value?.inputs)?selectedFlow.value.inputs.filter((i:any)=>i&&typeof i==='object'):[])
+// 列表输出 → 时间序列属性（2026-09-19）：元素为已声明字段的对象时，按稳定 id 映射取值/时间字段
+function flowOutputBindable(t:any):boolean{
+  const ty=String(t?.type||'')
+  if(ty==='object')return false
+  if(ty!=='list')return true
+  if(draftShape.value!=='timeSeries')return false
+  const el=t.elementType
+  if(String(el?.type||'')!=='object'||!Array.isArray(el?.fields))return false
+  const fields=el.fields.filter((f:any)=>f&&typeof f==='object')
+  return fields.some((f:any)=>String(f.type?.type||'')==='number')&&fields.some((f:any)=>String(f.type?.type||'')==='datetime')
+}
 const flowOutputOptions=computed(()=>{
   const outs=Array.isArray(selectedFlow.value?.outputs)?selectedFlow.value.outputs.filter((o:any)=>o&&typeof o==='object'):[]
-  return outs.map((o:any)=>({value:String(o.id||''),label:(o.label||o.name||o.id)+' · '+flowTypeLabel(o.type),disabled:['object','list'].includes(String(o.type?.type||''))}))
+  return outs.map((o:any)=>({value:String(o.id||''),label:(o.label||o.name||o.id)+' · '+flowTypeLabel(o.type),disabled:!flowOutputBindable(o.type)}))
 })
+const flowElementFields=computed(()=>{
+  const d:any=draft.value,o=flowSelectedOutput(d)
+  if(!o||String(o.type?.type||'')!=='list'||String(o.type?.elementType?.type||'')!=='object')return []
+  return ((o.type.elementType.fields||[]) as any[]).filter((f:any)=>f&&typeof f==='object')
+})
+function flowSelectedOutput(d:any){const st=selectedFlow.value;return st?((st.outputs||[]).filter((o:any)=>o&&typeof o==='object').find((o:any)=>String(o.id)===String(d.output||''))||null):null}
+function flowElementFieldOptions(want:string){
+  return flowElementFields.value.filter((f:any)=>String(f.type?.type||'')===want).map((f:any)=>({value:String(f.id||''),label:(f.label||f.name||f.id)+' · '+flowTypeLabel(f.type)}))
+}
+function setFlowOutput(id:string){
+  const d:any=draft.value;if(!d||d.kind!=='flow')return
+  d.output=id;d.result={valueField:'',timestampField:''}
+}
+function setFlowResultField(k:'valueField'|'timestampField',v:string){
+  const d:any=draft.value;if(!d||d.kind!=='flow')return
+  if(!d.result)d.result={valueField:'',timestampField:''}
+  d.result[k]=v
+}
 async function selectFlow(id:string){
   const d:any=draft.value;if(!d||d.kind!=='flow')return
-  d.flow=id;d.output='';d.inputs={}
+  d.flow=id;d.output='';d.result={valueField:'',timestampField:''};d.inputs={}
   if(id)await ensureFlowState(id)
-  // 单输出且可绑定时自动选用（对象/列表输出不自动选）
-  const outs=(flowStates.value[id]?.outputs||[]).filter((o:any)=>o&&typeof o==='object'&&!['object','list'].includes(String(o.type?.type||'')))
-  if(outs.length===1)d.output=String(outs[0].id||'')
+  // 单输出且可绑定时自动选用（标量输出；或时间序列属性下的单个系列列表输出）
+  const outs=(flowStates.value[id]?.outputs||[]).filter((o:any)=>o&&typeof o==='object')
+  if(outs.length===1&&flowOutputBindable(outs[0].type))d.output=String(outs[0].id||'')
 }
 function flowBindingOf(inputId:string){const d:any=draft.value;return d?.inputs?.[inputId]}
 function setFlowBinding(inp:any,kind:string){
@@ -934,8 +990,15 @@ if(psPendingOf(props.b.object_type)){
 <p v-if="flowStateLoading===draft.flow" class="field-help">正在读取编排定义…</p>
 <template v-else-if="selectedFlow">
 <div class="row">
-<label>取值输出 *<AppSelect :model-value="draft.output||''" aria-label="编排输出" :options="[{value:'',label:'请选择编排输出'},...flowOutputOptions]" @update:model-value="draft.output=$event"/><small class="field-help">输出类型需与属性类型匹配；对象／列表输出不能绑定属性，已禁用。</small></label>
+<label>取值输出 *<AppSelect :model-value="draft.output||''" aria-label="编排输出" :options="[{value:'',label:'请选择编排输出'},...flowOutputOptions]" @update:model-value="setFlowOutput($event)"/><small class="field-help">输出类型需与属性类型匹配；对象输出不可绑定；列表输出仅时间序列属性可绑，选中后需指定取值字段与时间字段。</small></label>
 </div>
+<template v-if="draftShape==='timeSeries'&&flowElementFields.length">
+<div class="row">
+<label>取值字段 *<AppSelect :model-value="draft.result?.valueField||''" aria-label="取值字段" :options="[{value:'',label:'请选择取值字段'},...flowElementFieldOptions('number')]" @update:model-value="setFlowResultField('valueField',$event as string)"/></label>
+<label>时间字段 *<AppSelect :model-value="draft.result?.timestampField||''" aria-label="时间字段" :options="[{value:'',label:'请选择时间字段'},...flowElementFieldOptions('datetime')]" @update:model-value="setFlowResultField('timestampField',$event as string)"/></label>
+</div>
+<p class="field-help">列表输出的每个元素按「取值字段 → 值、时间字段 → 时间」形成一个序列数据点；字段来自编排输出声明的元素对象字段（稳定 ID），编排签名变更后需重新选择。</p>
+</template>
 <p class="ps-info">函数编排「{{flowNameOf(draft.flow)}}」：绑定每个输入后保存。<button type="button" class="ps-inline-link" @click="goFlows">前往函数编排 →</button></p>
 <template v-if="flowInputs.length">
 <div v-for="inp in flowInputs" :key="inp.id" class="row">

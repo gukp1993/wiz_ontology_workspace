@@ -441,7 +441,7 @@ def _check_calc_binding(value, impl, b, ot, prop, graph, node, shape, dep_edges)
 
 
 # flow 类型 → 本体属性 xsd range 兼容表（与前端 PropertySources.FLOW_RANGE_COMPAT 镜像）；
-# object/list 不可进表：对象与列表输出/输入不能绑定标量属性。
+# object 不可绑定属性；list 仅时间序列属性可绑（需元素为已声明字段的对象 + result 字段映射）。
 _FLOW_RANGE_COMPAT = {'number': ('double', 'decimal', 'integer'), 'text': ('string',),
                       'boolean': ('boolean',), 'datetime': ('dateTime',)}
 
@@ -480,8 +480,42 @@ def _check_flow_binding(value, flow_state, b, ot, prop, graph, node, shape, dep_
         blocking.append('编排输出不存在，请重新选择（编排签名可能已修改）')
     else:
         out_type = str((selected.get('type') or {}).get('type', '') if isinstance(selected.get('type'), dict) else '')
-        if out_type in ('object', 'list'):
-            blocking.append('编排输出为对象/列表，不能绑定属性')
+        type_decl = selected.get('type') if isinstance(selected.get('type'), dict) else {}
+        if out_type == 'object':
+            blocking.append('编排输出为对象，不能绑定属性')
+        elif out_type == 'list':
+            # 列表输出：标量属性拒绝；时间序列属性在元素为已声明字段的对象且配置
+            # result 字段映射（取值字段=number、时间字段=datetime，稳定 id）后可绑。
+            if shape != 'timeSeries':
+                blocking.append('编排输出为列表，不能绑定标量属性')
+            else:
+                elem = type_decl.get('elementType') if isinstance(type_decl.get('elementType'), dict) else {}
+                fields = [f for f in elem.get('fields', []) if isinstance(f, dict)] if elem.get('type') == 'object' else []
+                if not fields:
+                    blocking.append('列表输出的元素需为已声明字段的对象，才能绑定时间序列属性')
+                else:
+                    result = value.get('result') if isinstance(value.get('result'), dict) else {}
+                    by_id = {str(f.get('id')): f for f in fields}
+
+                    def field_type(fid):
+                        f = by_id.get(str(fid or ''))
+                        t = f.get('type') if isinstance(f, dict) else None
+                        return str((t or {}).get('type', '')) if isinstance(t, dict) else ''
+
+                    v_field = str(result.get('valueField', '') or '')
+                    t_field = str(result.get('timestampField', '') or '')
+                    if not v_field:
+                        blocking.append('未选择取值字段')
+                    elif v_field not in by_id:
+                        blocking.append('取值字段不存在，请重新选择（编排签名可能已修改）')
+                    elif field_type(v_field) != 'number':
+                        blocking.append('取值字段不是数值类型')
+                    if not t_field:
+                        blocking.append('未选择时间字段')
+                    elif t_field not in by_id:
+                        blocking.append('时间字段不存在，请重新选择（编排签名可能已修改）')
+                    elif field_type(t_field) != 'datetime':
+                        blocking.append('时间字段不是日期时间类型')
         elif shape == 'timeSeries':
             blocking.append('函数编排输出为单值，不能绑定时间序列属性')
         elif node is not None:

@@ -99,8 +99,11 @@ def make_flow(name, inputs=(), outputs=()):
     return created['id']
 
 
-def flow_src(flow_id, output, inputs=None):
-    return {'kind': 'flow', 'flow': flow_id, 'output': output, 'inputs': dict(inputs or {})}
+def flow_src(flow_id, output, inputs=None, result=None):
+    src = {'kind': 'flow', 'flow': flow_id, 'output': output, 'inputs': dict(inputs or {})}
+    if result is not None:
+        src['result'] = dict(result)
+    return src
 
 
 def errs(props):
@@ -112,11 +115,26 @@ FLOW_A = make_flow('功率计算',
     inputs=[{'name': 'code', 'label': '设备编号', 'type': {'type': 'text'}},
             {'name': 'factor', 'label': '系数', 'type': {'type': 'number'}}],
     outputs=[{'name': 'power', 'label': '功率', 'type': {'type': 'number'}}])
-# 编排 B：对象输出（不可绑定标量属性）
+# 编排 B：对象输出（不可绑定任何属性）
 FLOW_OBJ = make_flow('对象输出', outputs=[{'name': 'bundle', 'label': '数据包', 'type': {'type': 'object'}}])
 # 编排 C：文本输出，输入 功率(number)，用于构造与 A 的循环依赖
 FLOW_C = make_flow('编号生成', inputs=[{'name': 'power', 'label': '功率', 'type': {'type': 'number'}}],
                    outputs=[{'name': 'code', 'label': '编号', 'type': {'type': 'text'}}])
+# 编排 S：系列列表输出 list<object{timestamp:datetime, value:number}>（时间序列属性可绑）
+FLOW_SERIES = make_flow('采样序列',
+    outputs=[{'name': 'samples', 'label': '采样序列',
+              'type': {'type': 'list', 'elementType': {'type': 'object', 'fields': [
+                  {'id': 'fld_ts', 'name': 'timestamp', 'label': '时间戳', 'type': {'type': 'datetime'}},
+                  {'id': 'fld_v', 'name': 'value', 'label': '采样值', 'type': {'type': 'number'}}]}}}])
+# 编排 S2：同结构但取值字段是文本（字段类型不符用）
+FLOW_S2 = make_flow('采样序列文本值',
+    outputs=[{'name': 'samples', 'label': '采样序列',
+              'type': {'type': 'list', 'elementType': {'type': 'object', 'fields': [
+                  {'id': 'fld_ts', 'name': 'timestamp', 'label': '时间戳', 'type': {'type': 'datetime'}},
+                  {'id': 'fld_v', 'name': 'value', 'label': '采样值', 'type': {'type': 'text'}}]}}}])
+# 编排 S3：数值标量列表（元素不是对象，不可绑时间序列）
+FLOW_NUM_LIST = make_flow('数值列表',
+    outputs=[{'name': 'values', 'label': '数值列表', 'type': {'type': 'list', 'elementType': {'type': 'number'}}}])
 
 # 1) 合法配置零错误 --------------------------------------------------------------------------
 report = validate_project(
@@ -141,12 +159,39 @@ mismatch = errs({'deviceCode': flow_src(FLOW_A, 'out_power',
                                         {'in_code': {'from': 'constant', 'value': 'x'},
                                          'in_factor': {'from': 'constant', 'value': 1}})})
 check(has(mismatch, '编排输出类型与属性数据类型不匹配'), 'number 输出绑定 string 属性应阻断', mismatch)
-check(has(errs({'maxPower': flow_src(FLOW_OBJ, 'out_bundle')}), '编排输出为对象/列表'),
+check(has(errs({'maxPower': flow_src(FLOW_OBJ, 'out_bundle')}), '编排输出为对象'),
       '对象输出不能绑定标量属性')
 series = errs({'powerSeries': flow_src(FLOW_A, 'out_power',
                                        {'in_code': {'from': 'constant', 'value': 'x'},
                                         'in_factor': {'from': 'constant', 'value': 1}})})
 check(has(series, '函数编排输出为单值，不能绑定时间序列属性'), '单值输出不能绑定时间序列属性', series)
+
+# 3b) 列表输出 → 时间序列属性（2026-09-19 新契约：result 字段映射） -----------------------------
+ok_series = errs({'powerSeries': flow_src(FLOW_SERIES, 'out_samples',
+                                          result={'valueField': 'fld_v', 'timestampField': 'fld_ts'}),
+                  'deviceCode': dict(FIELD_CODE)})
+check(ok_series == [], '合法列表输出+result 映射绑定时间序列属性零错误', ok_series)
+no_result = errs({'powerSeries': flow_src(FLOW_SERIES, 'out_samples')})
+check(has(no_result, '未选择取值字段') and has(no_result, '未选择时间字段'),
+      '列表输出缺 result 映射应阻断（取值/时间字段双提示）', no_result)
+gone_field = errs({'powerSeries': flow_src(FLOW_SERIES, 'out_samples',
+                                           result={'valueField': 'fld_gone', 'timestampField': 'fld_ts'})})
+check(has(gone_field, '取值字段不存在'), 'result 指向不存在的元素字段应阻断（编排签名变更）', gone_field)
+wrong_type = errs({'powerSeries': flow_src(FLOW_S2, 'out_samples',
+                                           result={'valueField': 'fld_v', 'timestampField': 'fld_ts'})})
+check(has(wrong_type, '取值字段不是数值类型'), '取值字段为文本类型应阻断', wrong_type)
+ts_wrong = errs({'powerSeries': flow_src(FLOW_SERIES, 'out_samples',
+                                         result={'valueField': 'fld_v', 'timestampField': 'fld_v'})})
+check(has(ts_wrong, '时间字段不是日期时间类型'), '时间字段为数值类型应阻断', ts_wrong)
+scalar_list = errs({'powerSeries': flow_src(FLOW_NUM_LIST, 'out_values')})
+check(has(scalar_list, '列表输出的元素需为已声明字段的对象'), '标量元素列表不可绑时间序列属性', scalar_list)
+scalar_prop = errs({'maxPower': flow_src(FLOW_SERIES, 'out_samples',
+                                         result={'valueField': 'fld_v', 'timestampField': 'fld_ts'})})
+check(has(scalar_prop, '编排输出为列表，不能绑定标量属性'), '列表输出绑标量属性仍应阻断', scalar_prop)
+partial_result = errs({'powerSeries': flow_src(FLOW_SERIES, 'out_samples',
+                                               result={'valueField': 'fld_v'})})
+check(has(partial_result, '未选择时间字段') and not has(partial_result, '未选择取值字段'),
+      'result 只填取值字段时仅提示缺时间字段', partial_result)
 
 # 4) 输入绑定：缺失 / 无效来源 / 多余输入（签名变更） -------------------------------------------
 partial = errs({'maxPower': flow_src(FLOW_A, 'out_power',

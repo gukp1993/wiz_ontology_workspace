@@ -18,8 +18,10 @@ export type CalcBindingEntry={from:'property';property:string}|{from:'constant';
 export interface CalcFunctionView{kind:'computed';mode:'function';implementation:string;output:string;inputs:Record<string,CalcBindingEntry>}
 // 函数编排取值（kind:'flow'，2026-09-18 新增）：引用编排工作区的稳定 flowId + 输出 id，
 // 编排输入逐项绑定当前对象属性 / 固定值 / 实例编号；不复制编排、不写本体。
+// result（2026-09-19 新增）：仅列表输出绑定时间序列属性时使用，值为元素对象字段稳定 id；
+// 标量输出绑定不写 result（保持原形状）。
 export type FlowBindingEntry={from:'property';property:string}|{from:'constant';value:string}|{from:'instanceId'}
-export interface FlowView{kind:'flow';flow:string;output:string;inputs:Record<string,FlowBindingEntry>}
+export interface FlowView{kind:'flow';flow:string;output:string;inputs:Record<string,FlowBindingEntry>;result:{valueField:string;timestampField:string}}
 // 数据库直选表（kind:'database'，2026-09 新结构）：存储里 secondarySort:{field,order} 嵌套，
 // 视图扁平为 secondarySortField/secondarySortOrder；默认值在视图侧显式呈现
 // （timestampEncoding=''、order='ascending'、duplicateTimestamp='error'、selection=''、missing='null'）。
@@ -146,13 +148,21 @@ export function propertyView(b:any,api:string):PropertyView|null{
   if(v.kind==='flow'){
     // 函数编排取值：flow/output 必须是字符串稳定标识；inputs 逐条是
     // {from:'property',property} / {from:'constant',value} / {from:'instanceId'}；
+    // result（列表输出→时间序列，2026-09-19）可选，出现时必须是 {valueField,timestampField} 字符串；
     // 结构偏离一律走 unknown 通道原样保留（零丢失），绝不当空配置重存。
     const entries=v.inputs
     const okEntries=entries!==null&&typeof entries==='object'&&!Array.isArray(entries)
       &&Object.values(entries).every((e:any)=>e&&typeof e==='object'&&!Array.isArray(e)
         &&((e.from==='property'&&typeof e.property==='string')||e.from==='constant'||e.from==='instanceId'))
     const okIds=typeof v.flow==='string'&&typeof v.output==='string'
-    return okIds&&okEntries?{kind:'flow',flow:v.flow,output:v.output,inputs:JSON.parse(JSON.stringify(entries||{}))}:{kind:'unknown'}
+    let result={valueField:'',timestampField:''}
+    if(v.result!==undefined){
+      const r=v.result
+      if(r===null||typeof r!=='object'||Array.isArray(r)
+        ||typeof (r as any).valueField!=='string'||typeof (r as any).timestampField!=='string')return {kind:'unknown'}
+      result={valueField:(r as any).valueField,timestampField:(r as any).timestampField}
+    }
+    return okIds&&okEntries?{kind:'flow',flow:v.flow,output:v.output,inputs:JSON.parse(JSON.stringify(entries||{})),result}:{kind:'unknown'}
   }
   if(v.kind==='registered')return v.field==='label'?{kind:'registered',field:'label'}:v.field==='id'?{kind:'registered',field:'id'}:{kind:'unknown'}
   if(v.kind==='aggregate'){
@@ -213,7 +223,10 @@ export function commitProperty(b:any,api:string,view:PropertyView|null):void{
   if(view.kind==='registered'){b.properties[api]={kind:'registered',field:view.field};return}
   if(view.kind==='flow'){
     // 函数编排绑定：inputs 按编排输入稳定 id；不复制编排、不写本体。
-    b.properties[api]={kind:'flow',flow:view.flow,output:view.output,inputs:JSON.parse(JSON.stringify(view.inputs||{}))}
+    // result 仅在配置了字段映射时写出（列表输出→时间序列属性，2026-09-19）。
+    const base:any={kind:'flow',flow:view.flow,output:view.output,inputs:JSON.parse(JSON.stringify(view.inputs||{}))}
+    if(view.result?.valueField||view.result?.timestampField)base.result={valueField:view.result.valueField,timestampField:view.result.timestampField}
+    b.properties[api]=base
     return
   }
   if(view.kind==='aggregate'){
