@@ -1,0 +1,37 @@
+{
+  "ticket": "97d4b16180234cadb72e36117ac673d3",
+  "task": "执行 20260919_本体工作概览优化/执行指令.md（概览 H01-H13 全链路）",
+  "status": "implemented",
+  "summary": "按需求四件套重写 OntologyHome：真空本体欢迎卡（唯一主按钮创建第一个对象直开既有新建表单+导入/模板沿用）；常规概览五列定义统计（对象/共享/链接/规则/动作，引用节点不计入）+对象入口前5项+草稿校验卡（六态：尚未/校验中/问题/通过/过期/失败，绑定本体ID+草稿指纹，序号防旧响应覆盖）+版本与引用卡（publish-check 复用为草稿差异：reasons 空=一致非空=有未发布变更失败=尚未比较；版本按 semver+createdAt 元数据挑最新；项目表显示真实固定引用版本，查看项目经 loadProject 真实选中不自动升级）。链接无全局页→概览只读清单浮层（Esc/焦点关闭，跳起点对象链接页签）。App navigate focus 增 create + objectCreateFocus 信号（离开对象页即清除）；openProjectFromOverview。无后端/接口/协议变更。实施中发现并修复 ObjectWorkspace 时序缺陷：focusCreate watch 若放在 focusType/focusProperty 深链 watch 之前会被其 immediate 回调无条件 editor=null 抹掉（表单静默打不开），已移至其后并注释。",
+  "decisions": [
+    "空本体判定=图+工作流(含历史functions/遗留metrics/rules)全空且版本清单读取成功且无发布；发布信息未读到成功不判空",
+    "最新版本不依赖列表末项：按版本元数据 semver+createdAt 挑选，publish-check 返回的 latest 同基线优先",
+    "校验不自动发起（进入显示尚未校验，导入后自动重校）；概览卸载重进不保留旧结果（显示尚未校验，不以旧结果冒充有效），挂载内变化才显示已过期",
+    "差异状态复用发布预检 contracts.classify（规范化业务组比较），失败一律尚未比较不猜一致",
+    "focusCreate watch 必须放在 focusType/focusProperty 深链 watch 之后（时序依赖已注释）"
+  ],
+  "verification": [
+    "tests/ontology_home.test.mjs 新增 27 项全过（空态判定/版本元数据/差异三态/校验状态机与竞态/模块独立失败/稳定ID定位/入口≤5）",
+    "typecheck+build 通过；object_workspace 7/7、ont_list_unified 4/4、save_queue 22/22、ontology_import 18/18（mapping_forms 既有基线失败与本轮无关）",
+    "隔离实例 18878（WIZ_WORKBENCH_ROOT+独立sqlite+tester）浏览器验收 H01-H13 全过：欢迎卡截图、创建→保存→定位→本体id不变、储能本体统计7/2/4/1/1、校验1项待处理+去处理定位mg:demo2、版本1.1.0+真实时间+草稿有未发布变更+查看变化、项目各自引用1.1.0/1.0.0+查看项目真实切换、链接清单4条+Esc关闭+跳储能簇链接页签、切换隔离（1/0/0/0/0 vs 7/2/4/1/1 互不串用）、1440/1024/768截图、侧栏收起可用",
+    "真实 ontology/ 与 18765 实例零写入；隔离临时根已清理"
+  ],
+  "next": [
+    "用户验收：18765 刷新后查看新概览（空本体欢迎卡/储能本体统计与版本引用）",
+    "导入后自动重校、概览重进显示尚未校验为既定口径，如需跨页保留校验结果属后续需求",
+    "mapping_forms 既有基线失败待负责人处理；test_property_preview 需本机 MySQL 补测（历史遗留）"
+  ],
+  "references": [
+    "frontend/src/ontology/OntologyHome.vue",
+    "frontend/src/App.vue",
+    "frontend/src/ontology/ObjectWorkspace.vue",
+    "tests/ontology_home.test.mjs",
+    "文档/需求/20260919_本体工作概览优化/开发计划.md §6"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-19T09:58:52.317553+00:00",
+  "sequence": 35,
+  "filename": "000035-12b02b2863da.json",
+  "record_hash": "343f1b7111dfb922783141ef056d67b6841f9bcaeb760f53b93f814208c33408",
+  "context_advanced": true
+}

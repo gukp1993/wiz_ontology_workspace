@@ -39,7 +39,7 @@ import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 // focusType/focusProperty：共享属性库「查看引用」/校验问题/旧深链跳转定位
 // （propertyFocusId 存 apiName 或 @id，此处换算为节点 @id；指向共享定义时落到首个引用属性）。
-const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
+const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string; focusCreate?: boolean }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
 // 具名撤销（20260918）：emit('before-change', { actionLabel, target?, mergeKey? })；App 侧兼容字符串与对象
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
@@ -138,6 +138,10 @@ function openObjectEditor(isNew: boolean, origin: Origin = 'list') {
   editor.value = { kind: 'object', isNew, id: isNew ? 'mg:object_' + crypto.randomUUID().replaceAll('-', '') : n['@id'], draft, original: JSON.stringify(draft), returnTab: detailTab.value, origin }
   editorError.value = ''
 }
+// 工作概览「创建第一个对象」：自动打开既有新建对象表单（H02，20260919 概览优化）。
+// 必须放在 editor/listScrollTop 声明与本函数定义之后：immediate 回调会经 openObjectEditor
+// 触达它们，放前面会踩 TDZ 且错误被 Vue 的 watcher 错误处理吞掉（表单静默打不开）。
+// 信号在离开对象建模时由 App 清除，重新进入页面不会重复弹表单。
 async function saveObject() {
   const e = editor.value
   if (!e || e.kind !== 'object' || editorSaving.value) return
@@ -365,6 +369,12 @@ watch(() => [props.focusType, props.focusProperty], ([t, p]: any[]) => {
   editor.value = target?.['@type'] === 'owl:DatatypeProperty' ? { kind: 'property', targetTypeId: owner, propertyId: target['@id'], returnTab: 'props' } : null
   editorError.value = ''
 }, { immediate: true })
+
+// 工作概览「创建第一个对象」：自动打开既有新建对象表单（H02，20260919 概览优化）。
+// 必须放在 focusType/focusProperty 深链 watch 之后：那个 immediate 回调会无条件清空 editor，
+// 本 watch 若先执行会被它抹掉（表单静默打不开）。信号在离开对象建模时由 App 清除，
+// 重新进入页面不会重复弹表单。
+watch(() => props.focusCreate, v => { if (v) openObjectEditor(true) }, { immediate: true })
 
 // ─── 浏览态数据 ───
 // 属性行：共享引用属性按生效定义展示名称、统一数据类型和单位；复用方式只标「共享/私有」（R5）。

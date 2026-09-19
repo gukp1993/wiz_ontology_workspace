@@ -1,0 +1,24 @@
+{
+  "ticket": "1303b0136d5c4bd798fb6ea7576193a7",
+  "task": "动作定义页与业务规则页背景样式统一",
+  "status": "implemented",
+  "summary": "用户截图反馈：业务规则页内容包在白底圆角卡片（section.card.ont-block）内，动作定义页直接铺在页面背景上。ActionLibrary 模板外层 div 改为 section.card.ont-block（复用全局 .ont-block 弹性布局样式），两页视觉一致。",
+  "decisions": [
+    "动作定义沿用业务规则同款 .card.ont-block 包裹，不新造样式"
+  ],
+  "verification": [
+    "typecheck/build 通过；ont_list_unified 4/4、action_model 1/1；18765 浏览器实测动作定义页卡片背景与业务规则一致，行内操作（编辑/删除）不变"
+  ],
+  "next": [
+    "用户刷新页面查看；共享属性库/规则库/动作库三页卡片样式已全部一致"
+  ],
+  "references": [
+    "frontend/src/ontology/ActionLibrary.vue"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-19T08:19:36.596651+00:00",
+  "sequence": 30,
+  "filename": "000030-d307e999c106.json",
+  "record_hash": "e8d1576d2fb8dfed82473269a7b4cc4508db092dbe77be00f0361bc9758903b9",
+  "context_advanced": false
+}

@@ -382,6 +382,10 @@ function toggleRail() {
 const lastOntologyView = ref('objects')
 const area = computed(() => space.value)
 const knowledgeFocus = ref(''), propertyFocusType = ref(''), propertyFocusId = ref(''), bindingFocusType = ref(''), contractFocusId = ref(''), implFocus = ref('')
+// 工作概览「创建第一个对象」→ 对象建模自动打开既有新建表单（H02）：布尔信号，离开对象建模即清除，
+// 避免再次进入页面时重复弹表单（区别于 projectCreateSignal 的计数信号——那个有重挂载重放问题）。
+const objectCreateFocus = ref(false)
+watch(view, v => { if (v !== 'objects') objectCreateFocus.value = false })
 const objectDetailTab = ref('props') // 对象建模深链页签（动作库反向引用 → 对象动作页签）
 watch(space, s => { try { prefSet('wiz-space', s) } catch {}
   if (s === 'project') { if (!projectSpaceViews.includes(view.value)) navigate('p-home') }
@@ -390,7 +394,7 @@ async function switchSpace(s: 'ontology' | 'project') { if (s === space.value) r
   // 进入项目区：侧栏需要项目列表；项目状态由 navigate 的主路径按需加载（等待中仍可切回本体）
   if (s === 'project') void ensureProjectList() }
 
-async function navigate(v: string, focus?: { type?: string; property?: string; impl?: string; connection?: string; contract?: string; definition?: string; tab?: string }) {
+async function navigate(v: string, focus?: { type?: string; property?: string; impl?: string; connection?: string; contract?: string; definition?: string; tab?: string; create?: boolean }) {
   v = normalizeView(v); if (!(v in pages)) return
   if (v === view.value && !focus) { /* 同页重入不触发离开保护 */ }
   else if (!(await requestLeave())) return
@@ -413,6 +417,7 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
   if (focus?.contract) contractFocusId.value = focus.contract
   if (focus?.definition) definitionFocusId.value = focus.definition
   if (focus?.tab) objectDetailTab.value = focus.tab
+  if (focus?.create) objectCreateFocus.value = true
   // 列表统一 §7：从对象页签进入资产库时记录来源（返回按钮用）；从其他入口进库则清空，避免陈旧来源
   if (v === 'actions' || v === 'rules' || v === 'library') definitionOrigin.value = focus?.type ? { type: focus.type, tab: typeof focus.tab === 'string' ? focus.tab : '' } : null
   // 「前往模型设置」携带编排上下文：记录节点与页签供返回恢复（来源取当前页；不写 lastOntologyView）
@@ -590,6 +595,13 @@ async function openReferencedOntology() {
   } catch (e) { notify((e as Error).message, true) }
 }
 async function switchOntology(id: string) { if (id === ontologyId || busy.value) return; if (!(await requestLeave())) return; busy.value = true; try { await guardUnsaved(ontologySaver); enterOntology(id) } catch (e) { if ((e as Error).message !== 'cancelled') notify((e as Error).message, true); busy.value = false } }
+// 工作概览「查看项目」：真实选中该项目（loadProject 含离开保护/flush/确认），成功才进项目概览；
+// 不改引用版本（H09：不自动升级）。loadProject 返回 false（用户取消或失败）时不导航。
+async function openProjectFromOverview(id: string) {
+  if (!id || busy.value) return
+  const ok = await loadProject(id)
+  if (ok && projectState.value?.projectId === id) await navigate('p-home')
+}
 async function createOntology() { if (busy.value || !newOntologyName.value.trim()) return; busy.value = true; try { await guardUnsaved(ontologySaver); const d = await oapi.createOntology(newOntologyName.value.trim()); enterOntology(d.id) } catch (e) { if ((e as Error).message !== 'cancelled') notify((e as Error).message, true); busy.value = false } }
 async function createOntologyFromDialog() { await createOntology(); showOntologyDialog.value = false }
 async function loadOntologies() { ontologyList.value = (await oapi.listOntologies()).items }
@@ -947,8 +959,8 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <AppError v-else-if="projectAreaFailed" :title="projectFailureTitle" :reason="projectListError||projectLoadError" :hint="projectOriginBlocked?'':'项目数据加载失败，本体建模可继续使用。修正后重试，或先回到本体区继续工作。'" :fix-href="projectOriginBlocked?localAccess:''" retry-label="重试" secondary-label="返回本体" @retry="retryProjectContext" @secondary="switchSpace('ontology')"/>
 <section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div><button type="button" class="dl-template" @click="downloadTemplate">下载 Excel 模板</button></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>
-<OntologyHome v-if="view==='o-home'" :state="state" @navigate="navigate"/>
-<ObjectWorkspace v-if="view==='objects'" :state="state" :focus-type="propertyFocusType" :focus-property="propertyFocusId" :initial-tab="objectDetailTab" :focus-definition="definitionFocusId" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
+<OntologyHome v-if="view==='o-home'" :state="state" @navigate="navigate" @open-project="openProjectFromOverview"/>
+<ObjectWorkspace v-if="view==='objects'" :state="state" :focus-type="propertyFocusType" :focus-property="propertyFocusId" :initial-tab="objectDetailTab" :focus-definition="definitionFocusId" :focus-create="objectCreateFocus" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
 <FunctionManager v-if="view==='contracts'" :state="state" :focus-id="contractFocusId" @properties="openProperties" @before-change="pushUndo" @changed="changed"/>
 <SharedLibrary v-if="view==='library'" :state="state" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
 <BusinessRuleLibrary v-if="view==='rules'" :state="state" :focus-id="definitionFocusId" :focus-origin="definitionOrigin" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
