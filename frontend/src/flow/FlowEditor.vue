@@ -518,7 +518,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 .head-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .flow-title{font-size:19px;font-weight:650;margin:0;display:flex;align-items:center;gap:4px;min-width:0}
 .rename-btn{font-size:13px;padding:2px 6px}
-.context{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.context{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
 .context .app-select{min-width:170px}
 .head-sub{margin-top:6px}
 .desc-inline{border:1px solid transparent;background:transparent;padding:3px 6px;font-size:12px;color:var(--muted);max-width:640px}

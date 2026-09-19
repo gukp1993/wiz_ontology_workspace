@@ -93,7 +93,9 @@ check(status == 400, 'flow-check 缺 state 返回 400', {'status': status})
 
 # 4) 空编排 + 名称校验 ------------------------------------------------------------------------
 created2, state2 = blank('空编排')
-check(flows.check_flow(state2)['status'] == 'passed', '空编排（仅名称）配置检查通过')
+report_empty0 = flows.check_flow(state2)
+check(report_empty0['status'] == 'pending' and not report_empty0['errors'] and not report_empty0['warnings'] is None,
+      '空编排（仅名称）无错误（打磨轮起给 FLOW_EMPTY 指引 warning，状态为待完善）', report_empty0)
 try:
     flows.create('测试编排')
     check(False, '同名编排创建被拒绝')
@@ -409,5 +411,23 @@ check(('INPUT_BINDING_MISSING', 'nd_sql') not in codes2 and ('CONNECTION_NOT_FOU
       '修复后旧诊断不再出现', codes2)
 check(report2['diagnostics'] == [] , '完全通过的编排诊断为空', report2['diagnostics'])
 
+# 14) 空编排提示与列表 warningCount/排序（20260919 打磨轮） ---------------------------------------
+created_empty, empty_state = blank('空编排提示')
+report_empty = flows.check_flow(empty_state)
+check(any('还没有处理节点' in w for w in report_empty['warnings']) and report_empty['status'] == 'pending'
+      and not report_empty['errors'], '零处理节点给指引 warning（FLOW_EMPTY）而非放行“检查通过”', report_empty)
+created_older, _ = blank('较早编排')
+older = created_older['id']
+payload, status = flow_routes.get_flows({})
+items = {i['id']: i for i in payload['items']}
+check('warningCount' in items[created_empty['id']] and items[created_empty['id']]['warningCount'] == 1
+      and items[created_empty['id']]['errorCount'] == 0,
+      '列表 warningCount 与 errorCount 分开计数', items.get(created_empty['id']))
+# 触碰较早编排后它应排到最前（updatedAt 降序）
+flows.save_draft(flows.read_draft(older))
+ids = [i['id'] for i in flows.listing()]
+check(ids and ids[0] == older, '列表按更新时间降序排列（最近编辑在前）', ids[:3])
+
 print(f'\n全部通过：{len(PASSED)} 项')
+
 shutil.rmtree(TMP, ignore_errors=True)

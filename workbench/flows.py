@@ -191,8 +191,11 @@ def listing(include_deleted=False):
                       'status': status,
                       'nodeCount': sum(1 for n in state.get('nodes', []) if isinstance(n, dict)),
                       'errorCount': len(check['errors']),
+                      'warningCount': len(check['warnings']),
                       'updatedAt': str(row.get('updated_at', '')),
                       'configStatus': check['status']})
+    # 最近更新的编排排前面（工作列表心智；存储层 ORDER BY name_key 仅保证稳定）
+    items.sort(key=lambda i: (i['updatedAt'], i['id']), reverse=True)
     return items
 
 
@@ -745,6 +748,10 @@ def _check_body(state, report, project_connections=None, llm_meta=None, credenti
     for node in state.get('nodes', []):
         if isinstance(node, dict) and isinstance(node.get('id'), str) and node.get('id'):
             node_index[node['id']] = node
+    if not node_index:
+        report('warning', 'flow', flow_id, flow_label,
+               '编排还没有处理节点：回到画布「＋ 添加节点」开始搭建取数流程',
+               code='FLOW_EMPTY')
 
     def resolve_source(src, target_label):
         """返回 (类型声明|None, 错误|None, 来源节点ID|None)。"""

@@ -83,7 +83,7 @@ async function remove(item: any) {
           <td>
             <span v-if="item.status==='deleted'" class="muted">—</span>
             <span v-else-if="item.configStatus==='passed'" class="property-pill">检查通过</span>
-            <span v-else class="property-pill" style="background:var(--warn-soft);color:var(--warn)">待完善<template v-if="item.errorCount"> · {{item.errorCount}} 个问题</template></span>
+            <span v-else class="property-pill" style="background:var(--warn-soft);color:var(--warn)">待完善<template v-if="item.errorCount"> · {{item.errorCount}} 个问题</template><template v-else-if="item.warningCount"> · {{item.warningCount}} 项提示</template></span>
           </td>
           <td class="ops">
             <button class="mini" :disabled="busy||item.status==='deleted'" @click="emit('open',item.id)">编辑</button>
