@@ -200,8 +200,11 @@ def post_flow_run(payload):
     except ValueError as exc:
         return {'error': str(exc)}, 400
     report = flows.check_flow(state, _conn_context(payload), llm_meta, credential_ids)
+    target_ids = set(targets)
+    # 被测节点的配置错误 422；流程级错误（环/输出绑定等）与被测节点无关的错误同样阻断，
+    # 不能漏到执行器里退化成通用 400
     target_errors = [issue for item in report['items']
-                     if item['kind'] == 'node' and item['id'] in set(targets) and item['level'] == 'error'
+                     if (item['kind'] != 'node' or item['id'] in target_ids) and item['level'] == 'error'
                      for issue in item['issues']]
     if target_errors:
         return {'error': '被测节点配置有误：' + '；'.join(target_errors[:3]), 'check': report}, 422

@@ -194,7 +194,7 @@ clusters = node('sql', '簇列表', inputs=[{'name': 'device_id', 'label': '设�
                 impl={'language': 'sql', 'sql': 'SELECT id, capacity FROM m_storage_cluster_phase WHERE storage_id = :device_id', 'connectionId': 'pc1'})
 rnode = node('redis', '簇SOC', inputs=[{'name': 'clusters', 'label': '簇', 'type': clusters['outputs'][0]['type']}],
              outputs=[{'name': 'socs', 'label': 'SOC', 'type': {'type': 'list', 'elementType': {'type': 'number'}}}],
-             impl={'language': 'redis', 'connectionId': 'pc2', 'keyTemplate': 'm_storage_cluster_phase-{{id}}-soc'})
+             impl={'language': 'redis', 'connectionId': 'pc2', 'command': 'MGET', 'keyTemplate': 'm_storage_cluster_phase-{{id}}-soc'})
 rnode['inputs'][0]['source'] = {'kind': 'node', 'nodeId': clusters['id'], 'outputId': clusters['outputs'][0]['id']}
 flow['nodes'] = [clusters, rnode]
 ctx = [{'id': 'pc1', 'name': '业务库', 'engine': 'mysql'}, {'id': 'pc2', 'name': '缓存', 'engine': 'redis'}]
@@ -440,6 +440,41 @@ flows.save_draft(flows.read_draft(older))
 ids = [i['id'] for i in flows.listing()]
 check(ids and ids[0] == older, '列表按更新时间降序排列（最近编辑在前）', ids[:3])
 
+# 15) 审查轮修复回归（20260919 打磨）：重复节点 ID / Redis 缺命令 / args 未声明名 / HTTP 认证冲突
+dup, dup_flow = blank('重复ID')
+dup_node = node('calc', '甲', inputs=[], outputs=[{'name': 'v', 'label': 'v', 'type': {'type': 'number'}}])
+dup_node['implementation'] = {'mode': 'formula', 'formulas': {'v': '1'}}
+dup_node2 = dict(dup_node, name='乙')
+dup_flow['nodes'] = [dup_node, dup_node2]
+rep_dup = flows.check_flow(dup_flow)
+check(any('重复' in e for e in rep_dup['errors']), '重复节点 ID 校验报错（执行期会互相覆盖）', rep_dup['errors'])
+
+miss_cmd, cmd_flow = blank('缺命令')
+cmd_node = node('redis', '缓存', inputs=[], outputs=[{'name': 'v', 'label': 'v', 'type': {'type': 'number'}}],
+                impl={'language': 'redis', 'connectionId': 'pc2', 'keyTemplate': 'k-${p}'})
+cmd_node['inputs'] = [{'id': 'in_p', 'name': 'p', 'label': 'p', 'type': {'type': 'text'}}]
+cmd_flow['nodes'] = [cmd_node]
+check(any('请选择 Redis 命令' in e for e in flows.check_flow(cmd_flow)['errors']),
+      'Redis 缺命令报错（不再静默按 GET 执行）')
+
+cmd_flow['nodes'][0]['implementation']['command'] = 'GET'
+cmd_flow['nodes'][0]['implementation']['args'] = ['nosuch']
+check(any('不是本节点已声明的输入参数' in e for e in flows.check_flow(cmd_flow)['errors']),
+      'Redis args 标识符须是已声明输入名')
+cmd_flow['nodes'][0]['implementation']['args'] = ['p']
+check(flows.check_flow(cmd_flow)['errors'] == [], 'Redis args 声明名通过')
+
+http_node_dup = node('http', '推送', inputs=[], outputs=[{'name': 'r', 'label': 'r', 'type': {'type': 'object'}}],
+                     impl={'language': 'http', 'method': 'POST', 'url': 'https://hooks.local/s',
+                           'headers': {'Authorization': 'Bearer x'}, 'bodyMode': 'json', 'body': '{}',
+                           'credentialId': 'cred1', 'responsePath': ''})
+http_flow = blank('认证冲突')[1]
+http_flow['nodes'] = [http_node_dup]
+report_http = flow_routes.post_flow_check({'state': http_flow, 'credentials': [{'id': 'cred1', 'name': 'c'}]})
+texts = json.dumps(report_http, ensure_ascii=False)
+check('HTTP_AUTH_CONFLICT' in texts, 'HTTP 凭据与自填 Authorization 并存报冲突', texts[:300])
+
 print(f'\n全部通过：{len(PASSED)} 项')
+
 
 shutil.rmtree(TMP, ignore_errors=True)

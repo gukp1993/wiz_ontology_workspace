@@ -639,28 +639,35 @@ def _check_redis_impl(node, impl, input_names, connections, project_connections,
         report('error', 'node', nid, nlabel, '数据连接类型须为 Redis',
                code='CONNECTION_ENGINE_INVALID', section='implementation', field='connectionId')
     command = impl.get('command')
-    if command:
-        if command not in REDIS_COMMANDS:
+    if not command:
+        report('error', 'node', nid, nlabel, '请选择 Redis 命令',
+               code='REDIS_COMMAND_MISSING', section='implementation', field='command')
+    elif command not in REDIS_COMMANDS:
+        report('error', 'node', nid, nlabel,
+               f'不支持的 Redis 命令 {command}（仅允许白名单内的读写命令，管理命令一律禁止）',
+               code='REDIS_COMMAND_FORBIDDEN', section='implementation', field='command')
+    args = impl.get('args')
+    if args is not None:
+        if not isinstance(args, list) or not all(isinstance(a, str) and a.strip() for a in args):
+            report('error', 'node', nid, nlabel, '命令参数无效（应为非空文本列表：输入参数名或字面量）',
+                   code='REDIS_ARGS_INVALID', section='implementation', field='args')
+            args = []
+        low, high = REDIS_COMMANDS.get(command, (0, None))[0], REDIS_COMMANDS.get(command, (0, None))[1]
+        if isinstance(args, list) and (len(args) < low or (high is not None and len(args) > high)):
             report('error', 'node', nid, nlabel,
-                   f'不支持的 Redis 命令 {command}（仅允许白名单内的读写命令，管理命令一律禁止）',
-                   code='REDIS_COMMAND_FORBIDDEN', section='implementation', field='command')
-        args = impl.get('args')
-        if args is not None:
-            if not isinstance(args, list) or not all(isinstance(a, str) and a.strip() for a in args):
-                report('error', 'node', nid, nlabel, '命令参数无效（应为非空文本列表：输入参数名或字面量）',
-                       code='REDIS_ARGS_INVALID', section='implementation', field='args')
-                args = []
-            low, high = REDIS_COMMANDS.get(command, (0, None))[0], REDIS_COMMANDS.get(command, (0, None))[1]
-            if isinstance(args, list) and (len(args) < low or (high is not None and len(args) > high)):
+                   f'{command} 需要 {low}' + (f'–{high}' if high else ' 个及以上') + '个参数',
+                   code='REDIS_ARGS_COUNT_INVALID', section='implementation', field='args')
+        for entry in args if isinstance(args, list) else []:
+            if re.fullmatch(r'-?\d+(\.\d+)?', entry) or re.fullmatch(r"\{\{[A-Za-z_][A-Za-z0-9_]*\}\}", entry.strip()):
+                continue
+            if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', entry):
                 report('error', 'node', nid, nlabel,
-                       f'{command} 需要 {low}' + (f'–{high}' if high else ' 个及以上') + '个参数',
-                       code='REDIS_ARGS_COUNT_INVALID', section='implementation', field='args')
-            for entry in args if isinstance(args, list) else []:
-                if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', entry) and not re.fullmatch(r'-?\d+(\.\d+)?', entry) \
-                        and not re.fullmatch(r"\{\{[A-Za-z_][A-Za-z0-9_]*\}\}", entry.strip()):
-                    report('error', 'node', nid, nlabel,
-                           f'命令参数「{entry}」无效：应为输入参数名、数字字面量或行模式 {{字段}}',
-                           code='REDIS_ARGS_ENTRY_INVALID', section='implementation', field='args')
+                       f'命令参数「{entry}」无效：应为输入参数名、数字字面量或行模式 {{字段}}',
+                       code='REDIS_ARGS_ENTRY_INVALID', section='implementation', field='args')
+            elif entry not in input_names:
+                report('error', 'node', nid, nlabel,
+                       f'命令参数「{entry}」不是本节点已声明的输入参数；如需字面量请加引号语义或改用数字，行字段请写 {{{{字段}}}}',
+                       code='REDIS_ARGS_NAME_UNDECLARED', section='implementation', field='args')
     if isinstance(key_template, str) and key_template.strip():
         row_refs = re.findall(r'\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}', key_template)
         param_refs = re.findall(r'\$\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}', key_template)
@@ -746,9 +753,16 @@ def _check_body(state, report, project_connections=None, llm_meta=None, credenti
                    code='PARAM_TYPE_INCOMPLETE', section='inputs', field='type', parameter_id=iid)
 
     node_index = {}
+    seen_node_ids = set()
     for node in state.get('nodes', []):
         if isinstance(node, dict) and isinstance(node.get('id'), str) and node.get('id'):
             node_index[node['id']] = node
+            if node['id'] in seen_node_ids:
+                nlabel = str(node.get('name') or '').strip() or '未命名节点'
+                report('error', 'node', node['id'], nlabel,
+                       f'节点 ID {node["id"]} 重复：执行时会互相覆盖，请重新创建其中一个节点',
+                       code='NODE_ID_DUPLICATE')
+            seen_node_ids.add(node['id'])
     if not node_index:
         report('warning', 'flow', flow_id, flow_label,
                '编排还没有处理节点：回到画布「＋ 添加节点」开始搭建取数流程',

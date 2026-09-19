@@ -127,4 +127,7 @@ def implementation_issues(impl, declared_names, credential_ids=None):
     credential_id = str(impl.get('credentialId') or '')
     if credential_id and credential_ids is not None and credential_id not in credential_ids:
         errors.append(('认证凭据不存在或已被删除，请重新选择', 'CREDENTIAL_NOT_FOUND', 'credentialId'))
+    if credential_id and isinstance(headers, dict) and any(str(k).lower() == 'authorization' for k in headers):
+        errors.append(('已选择认证凭据时不要自填 Authorization 头（两者冲突，凭据会被忽略）；'
+                       '请二选一：删除自带头或清除凭据', 'HTTP_AUTH_CONFLICT', 'credentialId'))
     return errors

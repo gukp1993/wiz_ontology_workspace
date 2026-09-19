@@ -358,8 +358,9 @@ def _connection(ctx, impl, label):
         raise NodeFailure(f'数据连接配置无效：{exc}') from None
     try:
         secret = secrets_store.read(ctx['project_id'], connection_id)
-    except Exception:
-        secret = ''
+    except Exception as exc:
+        # 缺失在 secrets.read 内已返回空串；走到这里的是密钥库损坏/存储故障，不能伪装成“未保存密码”
+        raise NodeFailure(f'读取连接密码失败（密钥库异常）：{_preview(str(exc), 160)}') from None
     return cfg, secret
 
 
@@ -502,13 +503,19 @@ def _exec_redis(node, values, ctx):
     list_input = next((i for i in node.get('inputs', []) or []
                        if isinstance(i, dict) and isinstance(i.get('type'), dict) and i['type'].get('type') == 'list'
                        and isinstance(values.get(i.get('name')), list)), None)
-    if list_input is not None and _KEY_TEMPLATE_ROW.search(key_template):
-        rows = values[list_input['name']]
-        value = [run_once(element if isinstance(element, dict) else {'value': element}) for element in rows]
-        logs.append(f'[Redis] {command} 行模式执行 {len(value)} 次')
-    else:
-        value = run_once(None)
-        logs.append(f'[Redis] {command} 执行完成')
+    try:
+        if list_input is not None and _KEY_TEMPLATE_ROW.search(key_template):
+            rows = values[list_input['name']]
+            value = [run_once(element if isinstance(element, dict) else {'value': element}) for element in rows]
+            logs.append(f'[Redis] {command} 行模式执行 {len(value)} 次')
+        else:
+            value = run_once(None)
+            logs.append(f'[Redis] {command} 执行完成')
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
     return _single_output(value, node), logs
 
 
@@ -531,11 +538,13 @@ def _exec_http(node, values, ctx):
             raise NodeFailure('HTTP 节点使用认证凭据需要所属项目上下文', logs)
         try:
             credential = api_credentials.read(ctx['project_id'], credential_id)
-        except Exception:
-            credential = None
+        except Exception as exc:
+            # 缺失在 api_credentials.read 内已返回 None；走到这里的是存储故障，需如实上报
+            raise NodeFailure(f'读取认证凭据失败（存储异常）：{_preview(str(exc), 160)}') from None
         if not credential:
             raise NodeFailure('认证凭据不存在或已被删除，请重新选择', logs)
-        headers.setdefault('Authorization', 'Bearer ' + str(credential.get('secret') or ''))
+        # 凭据是显式选择，优先级高于自带头（配置检查已把两者并存标为错误，这里兜底保证凭据生效）
+        headers['Authorization'] = 'Bearer ' + str(credential.get('secret') or '')
         logs.append(f'[HTTP] 使用凭据「{credential.get("name")}」注入 Authorization 头')
     started = time.monotonic()
     request = Request(url, data=body, headers=headers, method=method)
