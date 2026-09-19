@@ -13,8 +13,8 @@
      替换；新建不先插入空记录，保存走 form-save 一次落盘，取消不产生记录——T00 契约）。
      名称点击 → 只读详情抽屉；引用徽标 → 引用位置抽屉（可定位回对象属性行）。
      「为某对象添加属性」的挑选态（原型 libraryView(true)）在 ObjectWorkspace 编辑态内完成，
-     本页不再承担；本页保留跨对象批量能力：引用到对象、复制为私有、粘贴多行、批量复用，
-     低频项收进页头「更多操作」。修改共享定义的引用影响在表单内如实展示（usage 信息）；
+     本页不再承担；跨对象批量能力：引用到对象/复制为私有为行内操作（20260919 从「⋯」
+     菜单平铺），粘贴多行/批量复用为低频项收在页头「更多操作」。修改共享定义的引用影响在表单内如实展示（usage 信息）；
      单值与序列不能引用同一份形态不兼容的共享定义（shapeConflict）。
      删除定义沿用原语义：契约/接口/项目映射直接引用时拦截；仅本地引用时先私有化再删。 -->
 <script setup lang="ts">
@@ -155,18 +155,7 @@ function copyOne() {
   feedback.value = `已在 ${typeName(t)} 创建私有副本（含完整元数据与新属性标识），此后可独立修改，不再跟随共享定义。`
 }
 
-// 行内更多操作（G4）：只承载已有能力；引用到对象/复制为私有仍走原有弹窗与转换语义
-function rowMenuItems(s: any) {
-  return [
-    { id: 'reference', label: '引用到对象' },
-    { id: 'copy', label: '复制为私有' },
-    { id: 'delete', label: '删除定义', danger: true },
-  ]
-}
-function onRowMenu(s: any, id: string) {
-  if (id === 'delete') { removeShared(s); return }
-  openDialog(id, s)
-}
+// ── 行内操作（20260919 按用户要求从「⋯」更多菜单平铺到行内）：引用到对象/复制为私有仍走原有弹窗，删除沿用保护语义 ──
 
 // ── 删除定义：契约/接口/项目映射直接引用时禁止；仅有本地属性引用时先解除引用并拷贝内容，防静默断链 ──
 async function removeShared(s: any) {
@@ -243,7 +232,7 @@ function distribute() {
     :total="list.filtered.value.length" :page="list.page.value" :page-count="list.pageCount.value"
     :sort-desc="list.dir.value < 0"
     ariaLabel="共享属性列表" search-placeholder="搜索名称或业务定义"
-    :columns="[{ label: '名称', width: '42%', sort: true }, { label: '数据类型', width: '20%' }, { label: '引用情况', width: '20%' }, { label: '操作', width: '18%' }]"
+    :columns="[{ label: '名称', width: '36%', sort: true }, { label: '数据类型', width: '17%' }, { label: '引用情况', width: '15%' }, { label: '操作', width: '32%' }]"
     :empty-title="emptyTitle" :empty-hint="emptyHint"
     @sort="list.toggleSort()" @page="list.page.value += $event" @clear="list.q.value = ''">
     <template #filter>
@@ -263,8 +252,9 @@ function distribute() {
       <td><button type="button" class="ont-badge" :aria-label="'查看引用位置 · ' + (r.label || '未命名共享属性')" @click="usagesId = r.id">{{ r.refs }} 处引用</button></td>
       <td class="ont-ops">
         <button type="button" class="row-link" @click="openEditor(r.id)">编辑</button>
-        <!-- G4：引用到对象／复制为私有／删除定义收进更多操作（能力不变，删除置底且危险色） -->
-        <RowMenu compact :items="rowMenuItems(r.raw)" :aria-label="'更多操作 · ' + (r.label || '未命名共享属性')" @pick="onRowMenu(r.raw, $event)"/>
+        <button type="button" class="row-link" @click="openDialog('reference', r.raw)">引用到对象</button>
+        <button type="button" class="row-link" @click="openDialog('copy', r.raw)">复制为私有</button>
+        <button type="button" class="row-link danger" @click="removeShared(r.raw)">删除</button>
       </td>
     </tr>
   </OntologyList>

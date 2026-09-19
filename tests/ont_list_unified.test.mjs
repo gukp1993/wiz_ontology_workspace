@@ -183,10 +183,11 @@ try {
     const s = { '@id': 'mg:sp', '@type': 'mg:SharedProperty', 'rdfs:label': '功率', 'rdfs:comment': 'c', 'rdfs:range': { '@id': 'xsd:double' } }
     const state = reactive({ ontology: { '@graph': [{ '@id': 'mg:c', '@type': 'owl:Class', 'rdfs:label': '簇', 'rdfs:comment': 'd' }, s] }, workflow: {} })
     await renderToString(mount(SL, state))
-    const items = slApi().rowMenuItems(s)
-    assert.deepEqual(items.map(i => i.id), ['reference', 'copy', 'delete'], '共享库行菜单=引用到对象/复制为私有/删除定义')
-    assert.equal(items[2].label, '删除定义')
-    assert.ok(items[2].danger, '删除定义危险色')
+    // 20260919：行内操作从「⋯」菜单平铺为行内按钮（编辑/引用到对象/复制为私有/删除），语义不变
+    const slSrc = readFileSync(resolve(SRC, 'SharedLibrary.vue'), 'utf8')
+    assert.ok(!/rowMenuItems/.test(slSrc), '共享库行内不应再有更多菜单结构')
+    for (const label of ['编辑', '引用到对象', '复制为私有']) assert.ok(slSrc.includes('>' + label + '</button>'), '共享库行内缺少操作：' + label)
+    assert.match(slSrc, /class="row-link danger" @click="removeShared\(r\.raw\)">删除</, '删除按钮行内平铺且危险色走 removeShared')
 
     const AL = await loadComponent('frontend/src/ontology/ActionLibrary.vue')
     const alApi = capture(AL)
@@ -201,7 +202,7 @@ try {
     const BRL = readFileSync(resolve(SRC, 'BusinessRuleLibrary.vue'), 'utf8')
     assert.ok(!/RowMenu/.test(BRL), '规则库不得出现更多菜单（不新增删除/复制）')
     assert.ok(BRL.includes('RULE_FIELDS'), '规则编辑仍走既有四字段')
-    check('④ 共享/动作菜单语义不变，规则库无更多菜单', () => assert.equal(0, 0))
+    check('④ 共享库操作行内平铺/动作删除拦截不变，规则库无更多菜单', () => assert.equal(0, 0))
   }
 } finally {
   rmSync(root, { recursive: true, force: true })

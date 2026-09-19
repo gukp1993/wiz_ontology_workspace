@@ -9,7 +9,6 @@ import { ref, computed, watch, inject, onBeforeUnmount } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
-import RowMenu from '../shared/RowMenu.vue'
 import Field from '../shared/EditorField.vue'
 import { actionsOf, isActionV2, objectsOfAction } from './actionModel'
 import { useOntTable } from './ontList'
@@ -132,7 +131,6 @@ async function openConvert(id: string) {
 // 行内/抽屉「编辑」入口：V2 直接进表单；历史格式先走既有转换确认。
 function editAction(id: string) { const a: any = actionById(id); if (!a) return; isActionV2(a) ? openEdit(id) : openConvert(id) }
 function editFromDetail() { if (detail.value) editAction(detail.value.id) }
-function onRowMenu(id: string, pick: string) { if (pick === 'remove') void remove(id) }
 
 async function submit(apply: () => void, action?: { actionLabel: string; target?: { kind: string; id: string } }): Promise<boolean> {
   const r = await formSave.submitForm('ontology', apply, action)
@@ -213,7 +211,7 @@ async function remove(id: string) {
         </td>
         <td class="ont-ops">
           <button type="button" class="row-link" @click="editAction(r.id)">编辑</button>
-          <RowMenu compact :items="[{ id: 'remove', label: '删除定义', danger: true }]" :aria-label="'更多操作 · ' + r.name" @pick="onRowMenu(r.id, $event)"/>
+          <button type="button" class="row-link danger" @click="remove(r.id)">删除</button>
         </td>
       </tr>
     </OntologyList>
