@@ -1,0 +1,768 @@
+{
+  "sourceSha256": "f927124f9cff95b9ed97c9f778b2928b627134c86b7e5132b1076ede96921c19",
+  "sourceNodes": 32,
+  "sourceRelationships": 41,
+  "changes": [
+    {
+      "path": "czy:attribute:01.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "czy:attribute:02.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "czy:attribute:03.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "czy:attribute:04.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "czy:attribute:05.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "czy:attribute:06.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "czy:attribute:07.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "string"
+      }
+    },
+    {
+      "path": "czy:attribute:08.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "double"
+      }
+    },
+    {
+      "path": "czy:attribute:09.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "double"
+      }
+    },
+    {
+      "path": "czy:attribute:10.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "double"
+      }
+    },
+    {
+      "path": "czy:attribute:11.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "double"
+      }
+    },
+    {
+      "path": "czy:attribute:12.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "double"
+      }
+    },
+    {
+      "path": "czy:attribute:13.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "double"
+      }
+    },
+    {
+      "path": "czy:attribute:14.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "double"
+      }
+    },
+    {
+      "path": "czy:attribute:15.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "double"
+      }
+    },
+    {
+      "path": "czy:attribute:16.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "array"
+      }
+    },
+    {
+      "path": "czy:attribute:17.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "boolean"
+      }
+    },
+    {
+      "path": "czy:attribute:18.dataType",
+      "change": "根据原定义推断类型",
+      "target": {
+        "type": "array"
+      }
+    },
+    {
+      "path": "czy:rule:01.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "项目是否符合电网一次老旧项目初筛条件；满足条件时标记为“电网一次老旧项目”。"
+    },
+    {
+      "path": "czy:rule:02.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "项目是否识别为主变老旧更换项目；满足原规则时生成对应标记。"
+    },
+    {
+      "path": "czy:rule:03.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "是否应暂不审查；符合剔除条件时标记为“非纯老旧原因改造”。"
+    },
+    {
+      "path": "czy:rule:04.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "项目是否关联35kV主变；满足条件时标记为“35kV主变关联项目”。"
+    },
+    {
+      "path": "czy:rule:05.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "主变运行年限，单位年，按原规则保留一位小数。"
+    },
+    {
+      "path": "czy:rule:06.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "超期服役、高耗能设备及老旧高耗能主变的判定标签。"
+    },
+    {
+      "path": "czy:rule:07.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "内部放电或过热、固体绝缘老化、铁芯接地风险、绝缘劣化等风险标签与严重内部隐患判定。"
+    },
+    {
+      "path": "czy:rule:08.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "外部缺陷风险标签及运行风险高、需重点治理的判定。"
+    },
+    {
+      "path": "czy:rule:09.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "主体健康度、抗短路能力、可靠性风险标签与重大安全隐患判定；处置方向待确认。"
+    },
+    {
+      "path": "czy:rule:10.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "是否不满足电网发展需求的判定标签。"
+    },
+    {
+      "path": "czy:rule:11.rule_content",
+      "change": "单条规则序号2）规范为1），不改业务条件"
+    },
+    {
+      "path": "czy:rule:11.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "是否存在家族缺陷的判定标签。"
+    },
+    {
+      "path": "czy:rule:12.output",
+      "change": "从原有条件和结论归纳输出说明，不新增执行结果或算法",
+      "target": "项目立项必要性判定及包含关联设备台账ID的反馈描述（按原文模板）。"
+    },
+    {
+      "path": "workflow.businessRuleAssociations",
+      "change": "按明确适用对象字段建立12条规则关联",
+      "evidence": [
+        {
+          "sourceRuleId": "czy:rule:01",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网技改/大修项目",
+          "objectTypeId": "mg:b237dfc2-cb35-4cb7-9a87-e475d3417173",
+          "ruleId": "0e9fb0ff-c6f2-4edc-b5a3-e708af85892a"
+        },
+        {
+          "sourceRuleId": "czy:rule:02",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网技改/大修项目",
+          "objectTypeId": "mg:b237dfc2-cb35-4cb7-9a87-e475d3417173",
+          "ruleId": "216e9802-cb1b-430e-ab7f-73fcbd972fdf"
+        },
+        {
+          "sourceRuleId": "czy:rule:03",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网技改/大修项目",
+          "objectTypeId": "mg:b237dfc2-cb35-4cb7-9a87-e475d3417173",
+          "ruleId": "7f5c2791-c19b-477c-9d6c-90aeca8bae1b"
+        },
+        {
+          "sourceRuleId": "czy:rule:04",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网技改/大修项目",
+          "objectTypeId": "mg:b237dfc2-cb35-4cb7-9a87-e475d3417173",
+          "ruleId": "9a3a48b6-a009-4ba0-955e-65d8e374908a"
+        },
+        {
+          "sourceRuleId": "czy:rule:05",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网主变",
+          "objectTypeId": "mg:6e203eda-edff-4063-ac3b-d2e303c79585",
+          "ruleId": "6471e26e-a696-4ec8-bdc0-a140ff1b1f29"
+        },
+        {
+          "sourceRuleId": "czy:rule:06",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网主变",
+          "objectTypeId": "mg:6e203eda-edff-4063-ac3b-d2e303c79585",
+          "ruleId": "f2a62e14-5069-4094-8f0a-8322b6f9b306"
+        },
+        {
+          "sourceRuleId": "czy:rule:07",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网主变",
+          "objectTypeId": "mg:6e203eda-edff-4063-ac3b-d2e303c79585",
+          "ruleId": "3074ae08-773f-49db-a4a5-06a81fa19c9e"
+        },
+        {
+          "sourceRuleId": "czy:rule:08",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网主变",
+          "objectTypeId": "mg:6e203eda-edff-4063-ac3b-d2e303c79585",
+          "ruleId": "51ea33e7-df3b-4c66-ade3-0292616059e9"
+        },
+        {
+          "sourceRuleId": "czy:rule:09",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网主变",
+          "objectTypeId": "mg:6e203eda-edff-4063-ac3b-d2e303c79585",
+          "ruleId": "5c30d5ce-4357-4815-acb4-39d3fd497e43"
+        },
+        {
+          "sourceRuleId": "czy:rule:10",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网主变",
+          "objectTypeId": "mg:6e203eda-edff-4063-ac3b-d2e303c79585",
+          "ruleId": "14194091-dd97-4635-bba0-1fa1f54df9b3"
+        },
+        {
+          "sourceRuleId": "czy:rule:11",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网主变",
+          "objectTypeId": "mg:6e203eda-edff-4063-ac3b-d2e303c79585",
+          "ruleId": "efab43c3-7872-44bb-a9c3-d1303a6978ad"
+        },
+        {
+          "sourceRuleId": "czy:rule:12",
+          "sourceField": "data.applicableObject",
+          "sourceValue": "电网技改/大修项目",
+          "objectTypeId": "mg:b237dfc2-cb35-4cb7-9a87-e475d3417173",
+          "ruleId": "b41d600d-4e4b-4bf6-915c-b7ba40496f66"
+        }
+      ]
+    }
+  ],
+  "notes": {
+    "czy:attribute:01": "枚举码值采用文本保留编码；完整枚举表未提供，不补造。",
+    "czy:attribute:02": "枚举码值采用文本保留编码；来源字段 professionalSubdivison 原样保留，不擅自纠正拼写。",
+    "czy:attribute:07": "原文为枚举/数值，规则使用35kV文本；暂用文本，待确认编码和单位后再配置项目转换。",
+    "czy:attribute:08": "数值年；原公式按天数除365，是否采用周年或闰年口径待确认。",
+    "czy:attribute:15": "原单位为%，未说明底层存0–1还是0–100；不配置自动乘100。",
+    "czy:attribute:16": "定义明确为记录集合，暂用数组；元素结构和枚举未提供，不补造约束。",
+    "czy:attribute:17": "按是/否含义推断布尔值；项目层需把原始码值映射到true/false。",
+    "czy:attribute:18": "定义明确为事件集合，暂用数组；事件字段和时间范围待项目配置。",
+    "czy:rule:02": "原文混用语义向量相似度与概率，0.85阈值按原文保留，模型与阈值标定待确认。",
+    "czy:rule:06": "GB 20052未标版本及具体适用条件；2级或3级的判断边界待业务确认，未核验标准。",
+    "czy:rule:07": "持续增长、逼近规程临界值没有窗口/阈值定义；原文诊断阈值未核验，不生成可执行控制逻辑。",
+    "czy:rule:08": "频繁出现、两项严重缺陷的计数范围与去重规则未明确。",
+    "czy:rule:09": "一票否决或优先改造的结论方向不明确，短路冲击统计口径待确认。",
+    "czy:rule:10": "容量裕度、短路阻抗未定义为属性，暂不新增。",
+    "czy:rule:12": "未触发标签不必然代表输入完整；原文缺少缺测/评估失败分支。项目与设备关联路径及多设备合并规则也未明确。"
+  },
+  "relations": [
+    {
+      "sourceRelationId": "czy:relation:1",
+      "source": "czy:entity:02",
+      "relation": "包含",
+      "target": "czy:attribute:02",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:8c604b51-f544-45da-a9b2-277deec0d740"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:2",
+      "source": "czy:entity:02",
+      "relation": "包含",
+      "target": "czy:attribute:01",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:33282119-0d7c-470a-afd1-df5dcb6a06a4"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:3",
+      "source": "czy:entity:02",
+      "relation": "包含",
+      "target": "czy:attribute:07",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:2bdb67a1-9b70-41fd-8df2-70ea1da6a95e"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:4",
+      "source": "czy:entity:02",
+      "relation": "包含",
+      "target": "czy:attribute:06",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:f224dfe2-8225-4772-97c0-8282aeb7e01a"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:5",
+      "source": "czy:entity:02",
+      "relation": "包含",
+      "target": "czy:attribute:04",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:0d2f1c1c-88a1-4e36-9973-3a9964d181bc"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:6",
+      "source": "czy:entity:02",
+      "relation": "包含",
+      "target": "czy:attribute:05",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:4e439cef-c7ed-404f-afd6-de740a393e1f"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:7",
+      "source": "czy:entity:02",
+      "relation": "包含",
+      "target": "czy:attribute:03",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:ed1771e0-32d3-4d49-9848-26af27af418b"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:8",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:13",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:e9f487da-053f-4a7e-95ab-a18c9f5cbe76"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:9",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:08",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:03b82b28-47a5-424c-bc03-8c2102ef0377"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:10",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:12",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:3920144a-01fd-4eff-aada-da15204a5027"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:11",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:11",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:5cb11bd0-806f-49a7-8ae5-59cc2d20d9d5"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:12",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:14",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:3bcb6451-458d-40f7-88c3-65ad77152e0a"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:13",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:16",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:9a66a078-85e5-431d-9eb1-cb867e40fe7c"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:14",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:15",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:ba103bfc-567b-4472-aa8c-09de0a01f1f0"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:15",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:09",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:3b4fbef7-7a5c-4834-b62d-538a3a905bea"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:16",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:17",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:dd850b26-cc3f-44bd-b092-dbe63652850a"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:17",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:18",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:8e21dfc5-5d36-4f44-b2a0-830c8172845f"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:18",
+      "source": "czy:entity:01",
+      "relation": "包含",
+      "target": "czy:attribute:10",
+      "disposition": "对象属性引用（共享属性）",
+      "targetIds": [
+        "mg:1c1c0d4d-9a6f-4198-b60a-d27f12db7791"
+      ]
+    },
+    {
+      "sourceRelationId": "czy:relation:19",
+      "source": "czy:attribute:01",
+      "relation": "筛选",
+      "target": "czy:rule:01",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:20",
+      "source": "czy:attribute:02",
+      "relation": "筛选",
+      "target": "czy:rule:01",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:21",
+      "source": "czy:attribute:03",
+      "relation": "语义筛选",
+      "target": "czy:rule:02",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:22",
+      "source": "czy:attribute:04",
+      "relation": "语义筛选",
+      "target": "czy:rule:02",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:23",
+      "source": "czy:attribute:05",
+      "relation": "语义筛选",
+      "target": "czy:rule:03",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:24",
+      "source": "czy:attribute:06",
+      "relation": "关联设备筛选",
+      "target": "czy:rule:04",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:25",
+      "source": "czy:attribute:07",
+      "relation": "关联设备筛选",
+      "target": "czy:rule:04",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:26",
+      "source": "czy:rule:01",
+      "relation": "顺序执行",
+      "target": "czy:rule:02",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:27",
+      "source": "czy:rule:02",
+      "relation": "顺序执行",
+      "target": "czy:rule:03",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:28",
+      "source": "czy:rule:03",
+      "relation": "顺序执行",
+      "target": "czy:rule:04",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:29",
+      "source": "czy:attribute:08",
+      "relation": "应用",
+      "target": "czy:rule:05",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:30",
+      "source": "czy:rule:05",
+      "relation": "应用",
+      "target": "czy:rule:06",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:31",
+      "source": "czy:attribute:10",
+      "relation": "应用",
+      "target": "czy:rule:06",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:32",
+      "source": "czy:attribute:09",
+      "relation": "应用",
+      "target": "czy:rule:06",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:33",
+      "source": "czy:attribute:11",
+      "relation": "应用",
+      "target": "czy:rule:07",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:34",
+      "source": "czy:attribute:12",
+      "relation": "应用",
+      "target": "czy:rule:07",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:35",
+      "source": "czy:attribute:13",
+      "relation": "应用",
+      "target": "czy:rule:07",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:36",
+      "source": "czy:attribute:15",
+      "relation": "应用",
+      "target": "czy:rule:07",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:37",
+      "source": "czy:attribute:14",
+      "relation": "应用",
+      "target": "czy:rule:07",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:38",
+      "source": "czy:attribute:17",
+      "relation": "应用",
+      "target": "czy:rule:11",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:39",
+      "source": "czy:attribute:16",
+      "relation": "应用",
+      "target": "czy:rule:08",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:40",
+      "source": "czy:attribute:18",
+      "relation": "应用",
+      "target": "czy:rule:09",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    },
+    {
+      "sourceRelationId": "czy:relation:41",
+      "source": "czy:rule:04",
+      "relation": "应用",
+      "target": "czy:rule:12",
+      "disposition": "保留在来源关系附录（当前本体无对应关系槽位）",
+      "targetIds": []
+    }
+  ],
+  "sourceIdToTargetIds": {
+    "czy:entity:01": [
+      "mg:6e203eda-edff-4063-ac3b-d2e303c79585"
+    ],
+    "czy:entity:02": [
+      "mg:b237dfc2-cb35-4cb7-9a87-e475d3417173"
+    ],
+    "czy:attribute:01": [
+      "mg:2a837768-7cf7-49f9-8072-5e199dfedf32"
+    ],
+    "czy:attribute:02": [
+      "mg:fcd474e2-909e-4ebc-bd0c-691727a603ce"
+    ],
+    "czy:attribute:03": [
+      "mg:d888e9bb-d1cf-4e45-aac3-5d739aa3bc99"
+    ],
+    "czy:attribute:04": [
+      "mg:d0194bee-6285-4861-95c2-a9974c38dfbd"
+    ],
+    "czy:attribute:05": [
+      "mg:9a0033f2-f2ff-4469-beba-f9ec6ecd2e9c"
+    ],
+    "czy:attribute:06": [
+      "mg:5402fae2-deec-418d-995e-4e77ad828905"
+    ],
+    "czy:attribute:07": [
+      "mg:3f7dbdb0-ff68-4461-abcc-647b64ee3684"
+    ],
+    "czy:attribute:08": [
+      "mg:dec61e7f-b155-4a77-a11a-aa652a01ec02"
+    ],
+    "czy:attribute:09": [
+      "mg:7f00cdbc-a430-4ac7-827f-1e0fa5955ebd"
+    ],
+    "czy:attribute:10": [
+      "mg:1d8f0875-cf54-4636-98b7-b8af7c3ce86a"
+    ],
+    "czy:attribute:11": [
+      "mg:072aa799-3711-415b-abd9-a6344234c76d"
+    ],
+    "czy:attribute:12": [
+      "mg:02042b08-dfad-4a46-83a3-874f5ec39670"
+    ],
+    "czy:attribute:13": [
+      "mg:4af528e1-a361-4320-a868-43dcdffe14d1"
+    ],
+    "czy:attribute:14": [
+      "mg:5e7bbe0d-e0ad-4a03-a249-26af77069526"
+    ],
+    "czy:attribute:15": [
+      "mg:554f19d3-f774-4865-9e24-2e8aba90d4c0"
+    ],
+    "czy:attribute:16": [
+      "mg:2e7b0d4d-a5d6-46cf-9568-21b0e46c7ec5"
+    ],
+    "czy:attribute:17": [
+      "mg:f1f51a96-21cb-44e3-8d61-be0cb6a30a26"
+    ],
+    "czy:attribute:18": [
+      "mg:c045edae-8eb6-4509-b947-1721973ee9c6"
+    ],
+    "czy:rule:01": [
+      "mg:0e9fb0ff-c6f2-4edc-b5a3-e708af85892a"
+    ],
+    "czy:rule:02": [
+      "mg:216e9802-cb1b-430e-ab7f-73fcbd972fdf"
+    ],
+    "czy:rule:03": [
+      "mg:7f5c2791-c19b-477c-9d6c-90aeca8bae1b"
+    ],
+    "czy:rule:04": [
+      "mg:9a3a48b6-a009-4ba0-955e-65d8e374908a"
+    ],
+    "czy:rule:05": [
+      "mg:6471e26e-a696-4ec8-bdc0-a140ff1b1f29"
+    ],
+    "czy:rule:06": [
+      "mg:f2a62e14-5069-4094-8f0a-8322b6f9b306"
+    ],
+    "czy:rule:07": [
+      "mg:3074ae08-773f-49db-a4a5-06a81fa19c9e"
+    ],
+    "czy:rule:08": [
+      "mg:51ea33e7-df3b-4c66-ade3-0292616059e9"
+    ],
+    "czy:rule:09": [
+      "mg:5c30d5ce-4357-4815-acb4-39d3fd497e43"
+    ],
+    "czy:rule:10": [
+      "mg:14194091-dd97-4635-bba0-1fa1f54df9b3"
+    ],
+    "czy:rule:11": [
+      "mg:efab43c3-7872-44bb-a9c3-d1303a6978ad"
+    ],
+    "czy:rule:12": [
+      "mg:b41d600d-4e4b-4bf6-915c-b7ba40496f66"
+    ]
+  }
+}

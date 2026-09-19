@@ -1,0 +1,11 @@
+{
+  "schemaValidation": "passed",
+  "encodeDecodeRoundtrip": "passed",
+  "manifestAndHash": "passed",
+  "isolatedImportPreview": "passed",
+  "isolatedImportAndReadback": "passed",
+  "originalGraphPreserved": 73,
+  "expectedPublishBlockers": [],
+  "realWorkbenchModified": false,
+  "browserTested": false
+}
