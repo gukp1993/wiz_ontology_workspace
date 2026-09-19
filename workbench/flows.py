@@ -175,6 +175,7 @@ def listing(include_deleted=False):
     owner = auth.require_user_id()
     storage.ensure_ready()
     items = []
+    llm_meta = llm_providers.list_metadata()  # 每账号读一次，循环内复用
     with read_connection() as conn:
         rows = store.list_assets(conn, KIND, owner)
     for row in rows:
@@ -185,7 +186,7 @@ def listing(include_deleted=False):
         status = state.get('status') or 'active'
         if status == 'deleted' and not include_deleted:
             continue
-        check = check_flow(state, llm_meta=llm_providers.list_metadata())
+        check = check_flow(state, llm_meta=llm_meta)
         items.append({'id': identifier,
                       'name': str(state.get('name') or identifier),
                       'description': str(state.get('description') or ''),
