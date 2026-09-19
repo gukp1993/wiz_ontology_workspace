@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`ad6274a30790fa51`
+上下文版本：`e22c4dc42e19d00d`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,18 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 平移 wiz_kq_builder(5173) 图谱能力——本体图谱页签 · zcode · 已实施，待验收
+
+时间：2026-09-19T06:20:59.136045+00:00；记录：`.collaboration/entries/000021-8be9cd725569.json`
+
+按用户指引定位源码：5173 即 wiz_kq_builder/frontend 的 PreviewView.vue（cytoscape 只读查看器）。新组件 frontend/src/ontology/OntologyGraph.vue 完整平移其图谱能力到工作台对象建模页，新增第三个模式页签「本体图谱」（对象列表|关系画布|本体图谱）。节点五类颜色/形状区分：对象(蓝)、共享属性(粉)、私有属性(橙)、规则(绿)、动作(紫)；边四族：引用共享属性/私有属性/链接(链接名即关系，动态)/关联规则/关联动作。能力：类型/关系筛选带计数、搜索高亮、点击节点上下游闭包(全部/1跳/2跳)高亮淡出、右侧详情面板(可拖宽记忆)、图例、适应窗口/重置视图、拖动位置记忆 localStorage(键含本体 id)。确定性三列布局(对象|属性|规则+动作)，数据变化自动重建。只读不碰草稿：无 emit changed，缩放/拖动不触发保存(边界 11 同款)；调试句柄 window.__ogCy 供自动化测试。
+
+- 决定：挂载点选对象建模第三页签而非独立页面：导航 4+5 结构不动；节点尺寸/配色/交互平移原型，类型扩为五类(私有属性橙色、动作紫色为新增设计)；私有属性=rdfs:domain 指向对象且无 mg:sharedProperty 的 DatatypeProperty 节点；引用节点不建节点只建边，与页面 effectiveProperty 口径一致；悬空关联(对象已删)不建边不建节点，按草稿可见内容展示
+- 验证：typecheck/build 通过；全量前端套件 21/22(唯一败 mapping_forms 既有基线)；18765 真实储能本体浏览器验收：统计「对象5·共享属性6·私有属性4·规则1·动作1·关系32」与草稿一致(20引用+4私有+4链接+2规则+2动作)；交互实测：点击边显示关系说明(含数量关系/反向名称)；点击储能设备→闭包高亮/面包屑/详情字段/直接关系清单；1跳作用域；搜索 soc 3 命中；类型筛选关共享属性→对象5保留、引用边联动隐藏，恢复 17 全可见；全程「已保存」零保存请求；排查记录：验收中曾现「对象不可见」为 IAB fill(空串)未生效导致搜索词残留污染现场，手动清空后链路正常，非组件缺陷
+- 下一步：用户验收视觉效果(五类配色/三列布局)；若需要图谱入口进导航或支持从图谱跳转编辑，属后续需求；prototype 端 5173 服务未运行，本次完全按源码平移，未做视觉比对
+- 依据/文档：frontend/src/ontology/OntologyGraph.vue；frontend/src/ontology/ObjectWorkspace.vue；/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder/frontend/src/views/PreviewView.vue
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### 项目映射普通模式与严格模式 · codex · 已确认决定
 
@@ -140,14 +152,3 @@
 - 验证：cd frontend && npm run typecheck：ActionLibrary.vue 0 错误；typecheck 全量剩 8 个错误全部来自其他文件（非本任务范围，未动）：ObjectWorkspace.vue 757/795/824/853 四处 aria-label 未解析为 ariaLabel prop；ontList.ts 29 行 source.value 应为 source()、47 行 OntTable 接口返回类型不匹配（ref<string> 实例化表达式/ComputedRef vs WritableComputedRef）；按铁律未运行 git/npm build/服务，浏览器验收未做
 - 下一步：OntologyList/OntDrawer/RowMenu/ontList.ts 的公共契约属 T1 文件：ontList.ts 现存 4 个类型错误会让 npm run build 失败，需该文件负责人修复；ObjectWorkspace.vue 四处 aria-label 需同样改为 ariaLabel 传 prop；App.vue 后续接线 focusOrigin prop（本组件已支持）
 - 依据/文档：frontend/src/ontology/ActionLibrary.vue；frontend/src/shared/OntologyList.vue；frontend/src/ontology/ontList.ts；文档/需求/20260918_本体列表统一设计/需求说明.md
-
-### 本体列表统一设计-v1 · codex · 需求已交付
-
-时间：2026-09-18T08:36:10.448107+00:00；记录：`.collaboration/entries/000005-2ef756cc8ff9.json`
-
-已交付本体区八处列表统一设计四件套，仅需求与独立原型，未实施工作台源码。对象选择使用紧凑导航列表，其余七处清单统一标准表格。
-
-- 决定：统一列字段、工具栏、分页、只读详情、行操作与窄屏；编辑继续复用既有表单。；保留共享属性删除时私有化及引用保护；动作/规则对象端仅移除关联，规则库不新增删除。；不变更本体协议、项目映射、真实数据及保存发布流程。
-- 验证：独立 HTML 的 24 项源码级 DOM 检查通过，包含搜索分页、详情引用定位、关联移除保留原定义、空/异常状态。；浏览器 URL 策略拒绝本地 HTML 预览，未完成视觉验收；未改产品代码，未运行产品构建。
-- 下一步：用户评审原型；执行者按四份文件实施，完成正式构建与隔离浏览器验收。
-- 依据/文档：文档/需求/20260918_本体列表统一设计/交互原型_v1.html；文档/需求/20260918_本体列表统一设计/需求说明.md；文档/需求/20260918_本体列表统一设计/开发计划.md；文档/需求/20260918_本体列表统一设计/执行指令.md
