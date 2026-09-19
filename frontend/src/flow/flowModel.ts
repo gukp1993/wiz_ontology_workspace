@@ -458,8 +458,11 @@ export interface TestExternalInput { nodeId: string; nodeName: string; inputId: 
 export interface TestScopePlan { order: string[]; externalInputs: TestExternalInput[]; entryNeeds: { inputId: string; label: string }[]; excluded: { id: string; name: string }[]; error: string }
 
 /** 被测集合的隔离测试计划（客户端镜像，服务端 flow_test_plan 仍是权威）：
- * 拓扑序、环/连通校验、范围外输入分类（external 必填 / unbound 可选）、入口参数需求。 */
-export function testScopePlan(state: any, targets: string[]): TestScopePlan {
+ * 拓扑序、环/连通校验、范围外输入分类（external 必填 / unbound 可选）、入口参数需求。
+ * options.requireConnected（默认 true）：连续片段要求无向连通；整条/单节点允许并列分支
+ * （合法 DAG 语义），不做连通限制（R02b）。 */
+export function testScopePlan(state: any, targets: string[], options?: { requireConnected?: boolean }): TestScopePlan {
+  const requireConnected = options?.requireConnected !== false
   const empty: TestScopePlan = { order: [], externalInputs: [], entryNeeds: [], excluded: [], error: '' }
   const index = new Map<string, any>((state?.nodes || []).map((n: any) => [n.id, n]))
   if (!targets.length) return { ...empty, error: '请先选择要测试的节点' }
@@ -503,7 +506,7 @@ export function testScopePlan(state: any, targets: string[]): TestScopePlan {
       for (const nxt of adjacency.get(cur) || []) if (!seen.has(nxt)) { seen.add(nxt); stack.push(nxt) }
     }
   }
-  if (components > 1) return { ...empty, error: '被测节点集合不连通，请选择依赖相连的连续片段' }
+  if (requireConnected && components > 1) return { ...empty, error: '被测节点集合不连通，请选择依赖相连的连续片段' }
   // 外部输入分类与入口需求
   const externalInputs: TestExternalInput[] = []
   const entryNeeds: { inputId: string; label: string }[] = []
@@ -530,6 +533,24 @@ export function testScopePlan(state: any, targets: string[]): TestScopePlan {
   }
   const excluded = processingNodes(state).filter((n: any) => !selected.has(n.id)).map((n: any) => ({ id: n.id, name: n.name || n.id }))
   return { order, externalInputs, entryNeeds, excluded, error: '' }
+}
+
+/** 节点输出的分类渲染模型（R05）：标量/对象 JSON/对象列表表格/标量列表序号表/空列表。
+ * 键只扫描一次（最多看前 100 行）；混合或嵌套列表一律 JSON，不强凑表格。 */
+export function describeOutput(value: any): { kind: 'scalar' | 'json' | 'object-table' | 'index-table' | 'empty'; value: any; keys?: string[]; rows?: any[]; truncated?: boolean; total?: number } {
+  if (value === null || typeof value !== 'object') return { kind: 'scalar', value }
+  if (!Array.isArray(value)) return { kind: 'json', value }
+  if (!value.length) return { kind: 'empty', value }
+  const head = value.slice(0, 100)
+  const allPlain = value.every((x: any) => x && typeof x === 'object' && !Array.isArray(x))
+  if (allPlain) {
+    const keys: string[] = []
+    for (const item of head) for (const k of Object.keys(item)) if (!keys.includes(k)) keys.push(k)
+    return { kind: 'object-table', value, keys, rows: head, truncated: value.length > 100, total: value.length }
+  }
+  const allScalar = value.every((x: any) => x === null || ['number', 'string', 'boolean'].includes(typeof x))
+  if (allScalar) return { kind: 'index-table', value, rows: head, truncated: value.length > 100, total: value.length }
+  return { kind: 'json', value }
 }
 
 /** start→end 沿依赖方向的全部简单路径（用于片段起止选择：多条路径时不猜测，要求显式选集）。 */

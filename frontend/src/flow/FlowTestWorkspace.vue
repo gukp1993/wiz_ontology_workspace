@@ -1,26 +1,33 @@
-<!-- FlowTestWorkspace — 编排独立测试视图（20260919_函数编排配置与调试优化）。
-     替换主工作区中的画布与节点详情：左输入（范围/片段起止/外部输入/入口值/执行）、
-     右结果（范围与状态、节点切换、输出/本节点输入/执行记录）。长内容各自滚动。
-     三种范围：整条（沿用 revision/全量校验/并发约束）、单节点与连续片段（testMode=isolated，
-     稳定 ID inputOverrides，范围外节点不执行，预检失败零执行——契约 04 §3.1）。
-     结果关联提交快照（配置签名/项目/范围/输入签名/请求代次）：配置或项目变化标旧结果，
-     只改输入/范围标「尚未按当前输入/范围运行」；晚回包只写入发起时的运行记录。
+<!-- FlowTestWorkspace — 编排独立测试视图（20260919_函数编排优化审阅修正 定点修正版）。
+     R01 运行生命周期：同步校验通过后先置 pendingConfirm 防重入，确认与请求共用同一份
+         冻结提交对象（payload/snapshot 在弹窗前构建）；取消/成功/失败/晚回包均正确释放，
+         v-show 挂载下返回设计再进入不绕过等待态。
+     R02 范围选择：多路径勾选区按「存在多条路径」显示（不因已选数量消失）；整条/单节点
+         不做连通限制（合法并列分支），仅连续片段要求连通；禁用原因对所有模式可见。
+     R03 一套测试输入表单：入口稳定 ID 只渲染一次（整条=入口声明；片段/单节点=所需入口），
+         类型控件一致（布尔下拉/JSON 文本域/数值/文本），「使用空文本」显式区分空串与未提供。
+     R04 范围保留与结果归属：主入口首次默认整条，之后恢复上次范围/输入/结果；节点快捷入口
+         才显式切换；快照带 projectName/nodeNames，旧结果标题不随当前上下文变化；输入缓存按
+         编排/项目隔离，声明签名变化即失效。
+     R05 结果呈现：标量(0/false/null 可见)/对象 JSON/对象列表表格/标量列表序号表/混合列表
+         JSON/空列表明确提示；表格≤100 行预览，键只扫描一次；原始 JSON 可切换。
      本组件只读不保存：不 emit before-change/changed；测试输入与结果仅在页面内存。 -->
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
-import { NODE_KIND_LABELS, TYPE_LABELS, clone, configSignature, dependencyPaths, nameOfFlowNode, processingNodes, testInputSignature, testScopePlan, validateTestValue, writeCapabilities } from './flowModel'
+import { TYPE_LABELS, clone, configSignature, dependencyPaths, describeOutput, missingUpstreams, nameOfFlowNode, processingNodes, testInputSignature, testScopePlan, validateTestValue, writeCapabilities } from './flowModel'
 import { runFlow } from './api'
 
 const props = defineProps<{ state: any; projectId?: string; projectName?: string; revision?: string }>()
 
-// ── 范围选择（返回设计后保留） ────────────────────────────────────────────────
+// ── 范围选择（返回设计后保留；主入口首次默认整条，之后恢复上次范围） ──────────────
 const scopeKind = ref<'all' | 'single' | 'segment'>('segment')
 const singleId = ref('')
 const segStart = ref('')
 const segEnd = ref('')
-const explicitIds = ref<string[]>([]) // 多路径时的显式选集（复用已有多选交互）
+const explicitIds = ref<string[]>([]) // 多路径时的显式选集
+let scopeInitialized = false
 
 const procNodes = computed(() => processingNodes(props.state))
 const nameOf = (id: string) => nameOfFlowNode(props.state, id)
@@ -31,7 +38,6 @@ const segPaths = computed<string[][]>(() => {
   return dependencyPaths(props.state, segStart.value, segEnd.value)
 })
 function onSegChange() { explicitIds.value = [] }
-// 范围下拉（原型形态）：整条 / 连续片段 / 单节点·各节点（单节点并入同一下拉）
 const scopeValue = computed(() => scopeKind.value === 'single' ? 'single:' + singleId.value : scopeKind.value)
 const scopeOptions = computed(() => [
   { value: 'all', label: '整条编排' },
@@ -39,8 +45,8 @@ const scopeOptions = computed(() => [
   ...procNodes.value.map((n: any) => ({ value: 'single:' + n.id, label: '单节点 · ' + (n.name || n.id) })),
 ])
 function onScopeChange(v: string) {
-  if (v === 'all' || v === 'segment') { scopeKind.value = v; singleId.value = ''; onSegChange(); return }
-  if (v.startsWith('single:')) { scopeKind.value = 'single'; singleId.value = v.slice(7); onSegChange() }
+  if (v === 'all' || v === 'segment') { scopeKind.value = v; singleId.value = ''; onSegChange(); scopeInitialized = true; return }
+  if (v.startsWith('single:')) { scopeKind.value = 'single'; singleId.value = v.slice(7); onSegChange(); scopeInitialized = true }
 }
 const segRangeIds = computed<string[]>(() => {
   if (scopeKind.value !== 'segment') return []
@@ -51,23 +57,25 @@ const segRangeIds = computed<string[]>(() => {
   if (paths.length > 1) return [] // 多路径不猜测：等待显式选集
   return paths[0]
 })
+// R02b：整条/单节点允许并列分支（不连通合法）；连续片段保持连通要求
 const plan = computed(() => {
   const targets = scopeKind.value === 'all' ? procNodes.value.map((n: any) => n.id)
     : scopeKind.value === 'single' ? (singleId.value ? [singleId.value] : [])
     : segRangeIds.value
-  return testScopePlan(props.state, targets)
+  return testScopePlan(props.state, targets, { requireConnected: scopeKind.value === 'segment' })
 })
 const planError = computed(() => {
   if (scopeKind.value === 'segment' && !explicitIds.value.length && segStart.value && segEnd.value) {
     const paths = segPaths.value
     if (!paths.length) return `「${nameOf(segStart.value)}」到「${nameOf(segEnd.value)}」没有沿依赖方向的路径（起点必须在终点的上游）`
-    if (paths.length > 1) return '存在多条路径，请明确选择节点'
+    if (paths.length > 1) return '存在多条路径，请在下方勾选要测试的节点'
   }
   return plan.value.error
 })
 function toggleExplicit(id: string) {
   explicitIds.value = explicitIds.value.includes(id) ? explicitIds.value.filter(x => x !== id) : [...explicitIds.value, id]
 }
+const missingForAll = computed(() => scopeKind.value === 'all' ? missingUpstreams(props.state, plan.value.order) : [])
 const scopeText = computed(() => {
   if (scopeKind.value === 'all') return '整条编排'
   const ids = plan.value.order
@@ -76,10 +84,32 @@ const scopeText = computed(() => {
   return `连续片段（${ids.length} 个节点）`
 })
 
-// ── 测试输入（稳定 ID 覆盖；0/false/空文本有效；固定值只读摘要） ─────────────────
-const overrideTexts = ref<Record<string, string>>({}) // key = `${nodeId}\n${inputId}`（稳定 ID）
-const entryTexts = ref<Record<string, string>>({}) // key = 入口参数稳定 id
+// ── 测试输入（稳定 ID 去重；0/false/显式空文本有效；固定值只读摘要） ─────────────
+const overrideTexts = ref<Record<string, string>>({})
+const overrideEmpty = ref<Record<string, boolean>>({})
+const entryTexts = ref<Record<string, string>>({})
+const entryEmpty = ref<Record<string, boolean>>({})
 const overrideKey = (nodeId: string, inputId: string) => nodeId + '\u0000' + inputId
+// R04：输入缓存按 编排/项目 隔离；切项目/编排清空输入并使在途回包失效（晚回包不落新上下文）
+const cacheContext = computed(() => (props.state?.flowId || '') + '|' + (props.projectId || ''))
+watch(cacheContext, () => {
+  overrideTexts.value = {}; overrideEmpty.value = {}
+  entryTexts.value = {}; entryEmpty.value = {}
+  runGen.value++ // 在途响应作废（切编排/项目后晚回包不落新上下文）
+  result.value = null
+  scopeInitialized = false
+  resultNode.value = ''
+})
+// 声明改型/删除 → 对应缓存失效（粗粒度：签名变化即清空，避免同名错配）
+const declSig = computed(() => JSON.stringify([
+  (props.state?.inputs || []).map((d: any) => [d.id, d.type]),
+  ...procNodes.value.map((n: any) => [n.id, (n.inputs || []).map((i: any) => [i.id, i.type])]),
+]))
+watch(declSig, (next, prev) => { if (next !== prev && prev !== undefined) {
+  overrideTexts.value = {}; overrideEmpty.value = {}
+  entryTexts.value = {}; entryEmpty.value = {}
+} })
+
 const fixedRows = computed(() => {
   const rows: { nodeName: string; label: string; display: string }[] = []
   for (const id of plan.value.order) {
@@ -104,18 +134,28 @@ function sourceHint(item: { nodeId: string; inputId: string; kind: string }): st
   }
   return '此输入未绑定来源；测试值不修复正式绑定'
 }
+// R03：入口表单统一（整条=入口声明；片段/单节点=所需入口），每稳定 ID 只渲染一次
+const entryRows = computed(() => {
+  if (scopeKind.value === 'all') return (props.state.inputs || []).map((d: any) => ({ key: d.id, label: d.label || d.name || d.id, type: d.type || { type: 'text' }, required: true, source: null as any }))
+  return plan.value.entryNeeds.map(need => {
+    const decl = (props.state.inputs || []).find((i: any) => i.id === need.inputId)
+    return { key: need.inputId, label: need.label, type: decl?.type || { type: 'text' }, required: true, source: null as any }
+  })
+})
 
-// ── 运行与结果（快照 + 请求代次；晚回包只写入发起时记录） ─────────────────────────
+// ── 运行与结果（R01：pendingConfirm 防重入；确认与请求共用冻结快照） ─────────────
 const running = ref(false)
+const pendingConfirm = ref(false)
+const runBusy = computed(() => running.value || pendingConfirm.value)
 const runGen = ref(0)
-const result = ref<null | { gen: number; status: 'running' | 'done' | 'request-error'; error?: string; payload?: any; snapshot: { sig: string; projectId: string; scopeKind: string; targets: string[]; scopeText: string; inputSig: string; submittedAt: string } }>(null)
+const result = ref<null | { gen: number; status: 'running' | 'done' | 'request-error'; error?: string; payload?: any; snapshot: { sig: string; projectId: string; projectName: string; scopeKind: string; targets: string[]; scopeText: string; inputSig: string; submittedAt: string; nodeNames: Record<string, string> } }>(null)
 const resultNode = ref('')
 const resultTab = ref<'output' | 'inputs' | 'steps'>('output')
 const formError = ref('')
 const currentSig = computed(() => configSignature(props.state))
 const currentInputSig = computed(() => testInputSignature(
   { kind: scopeKind.value, targets: plan.value.order },
-  { o: overrideTexts.value, e: entryTexts.value }, {}))
+  { o: overrideTexts.value, pe: overrideEmpty.value, e: entryTexts.value, ee: entryEmpty.value }, {}))
 const staleConfig = computed(() => !!result.value && result.value.status !== 'running' && result.value.snapshot.sig !== currentSig.value)
 const staleProject = computed(() => !!result.value && result.value.status !== 'running' && (result.value.snapshot.projectId || '') !== (props.projectId || ''))
 const staleInput = computed(() => !!result.value && result.value.status !== 'running' && !staleConfig.value && !staleProject.value && result.value.snapshot.inputSig !== currentInputSig.value)
@@ -127,77 +167,106 @@ const freshnessText = computed(() => {
   return ''
 })
 const writes = computed(() => writeCapabilities(props.state, plan.value.order))
+const runDisableReason = computed(() => {
+  if (planError.value) return planError.value
+  if (!plan.value.order.length) return scopeKind.value === 'segment' ? '请选择片段起止或勾选要测试的节点' : '请先选择测试范围'
+  if (scopeKind.value === 'all' && missingForAll.value.length) return `缺少上游节点：${missingForAll.value.map(nameOf).join('、')}`
+  return ''
+})
 
-function parseOverrideValue(decl: any, raw: string): { ok: boolean; value: any; error: string } {
-  return validateTestValue(decl, raw)
+function collectFieldValue(row: { key: string; label: string; type: any; required: boolean }, texts: Record<string, string>, providedEmpty: Record<string, boolean>): { ok: boolean; skip?: boolean; value?: any; error?: string } {
+  const raw = texts[row.key]
+  const t = row.type?.type
+  if (t === 'boolean') {
+    if (raw === '' || raw == null) return { ok: false, error: '请选择是/否（不会默认为否）' }
+    return { ok: true, value: raw === 'true' }
+  }
+  if (t === 'object' || t === 'list') {
+    if (raw == null || raw === '') return { ok: false, error: `请填写 JSON（示例 ${t === 'object' ? '{}' : '[]'}）` }
+    const verdict = validateTestValue(row.type, raw)
+    return verdict.ok ? { ok: true, value: verdict.value } : { ok: false, error: verdict.error }
+  }
+  if (providedEmpty[row.key]) return { ok: true, value: '' } // 显式空文本（R03）
+  if (raw == null || raw === '') return { ok: false, error: '尚未填写；如需提交空字符串请勾选「使用空文本」' }
+  if (t === 'number') {
+    const n = Number(raw)
+    return Number.isFinite(n) ? { ok: true, value: n } : { ok: false, error: '需要数值' }
+  }
+  return { ok: true, value: String(raw) }
 }
 
 async function run() {
-  if (running.value) return // 单请求等待态：不重复发起（F14）
+  if (runBusy.value) return // R01：同步锁定，防连点与键盘重复（确认与执行都算忙）
   formError.value = ''
   const planNow = plan.value
   if (planError.value) { formError.value = planError.value; return }
   if (!planNow.order.length) { formError.value = '请先选择测试范围'; return }
-  // 组装覆盖与入口值（后端仍做最终校验；这里先给可读的即时反馈）
+  // 组装输入（后端仍做权威校验；这里先给可读的即时反馈）
   const overrides: Record<string, Record<string, any>> = {}
   for (const item of planNow.externalInputs) {
-    const raw = overrideTexts.value[overrideKey(item.nodeId, item.inputId)] ?? ''
-    if (item.required && (raw === '' || raw == null)) {
-      formError.value = `请填写「${item.nodeName} · ${item.label}」的测试值（0 和 false 是有效值）`
+    const row = { key: overrideKey(item.nodeId, item.inputId), label: `${item.nodeName} · ${item.label}`, type: item.type, required: item.required }
+    const verdict = collectFieldValue(row, overrideTexts.value, overrideEmpty.value)
+    if (!verdict.ok) {
+      if (item.kind === 'unbound' && verdict.error?.startsWith('尚未填写')) continue // 可选输入未提供：跳过
+      formError.value = `「${row.label}」：${verdict.error}`
       return
     }
-    if (raw === '' || raw == null) continue
-    const verdict = parseOverrideValue(item.type, raw)
-    if (!verdict.ok) { formError.value = `「${item.nodeName} · ${item.label}」：${verdict.error}`; return }
-    ;(overrides[item.nodeId] = overrides[item.nodeId] || {})[item.inputId] = verdict.value
+    (overrides[item.nodeId] = overrides[item.nodeId] || {})[item.inputId] = verdict.value
   }
   const inputs: Record<string, any> = {}
-  if (scopeKind.value === 'all') {
-    for (const decl of props.state.inputs || []) {
-      const raw = entryTexts.value[decl.id] ?? ''
-      const verdict = validateTestValue(decl.type, raw)
-      if (!verdict.ok) { formError.value = `入口参数「${decl.label || decl.name}」：${verdict.error}`; return }
-      inputs[decl.id] = verdict.value
-      if (decl.name) inputs[decl.name] = verdict.value
-    }
-  } else {
-    for (const need of planNow.entryNeeds) {
-      const raw = entryTexts.value[need.inputId] ?? ''
-      const decl = (props.state.inputs || []).find((i: any) => i.id === need.inputId)
-      const verdict = validateTestValue(decl?.type, raw)
-      if (!verdict.ok || raw === '') { formError.value = `入口参数「${need.label}」：${verdict.ok && raw === '' ? '请填写本次入口值' : verdict.error}`; return }
-      inputs[need.inputId] = verdict.value
-      if (decl?.name) inputs[decl.name] = verdict.value
-    }
+  for (const row of entryRows.value) {
+    const verdict = collectFieldValue(row, entryTexts.value, entryEmpty.value)
+    if (!verdict.ok) { formError.value = `入口参数「${row.label}」：${verdict.error}`; return }
+    inputs[row.key] = verdict.value
+    const decl = (props.state.inputs || []).find((i: any) => i.id === row.key)
+    if (decl?.name) inputs[decl.name] = verdict.value
   }
-  if (writes.value.length && !(await appConfirm({
-    message: `本次测试将对所选范围执行真实外部调用：\n${writes.value.join('\n')}\n\n范围外节点不会执行。继续？`,
-    confirmLabel: '开始测试',
-  }))) return
-
+  // R01：冻结提交对象（确认与请求、界面快照共用同一份；确认期间配置/范围变化不影响本次提交）
   const isAll = scopeKind.value === 'all'
   const payload: any = { state: clone(props.state), projectId: props.projectId || undefined, inputs }
   if (isAll) { payload.revision = props.revision }
-  else { payload.testMode = 'isolated'; payload.targets = planNow.order; payload.inputOverrides = overrides }
-  const gen = ++runGen.value
-  const snapshot = { sig: currentSig.value, projectId: props.projectId || '', scopeKind: scopeKind.value,
+  else { payload.testMode = 'isolated'; payload.targets = [...planNow.order]; payload.inputOverrides = overrides }
+  const snapshot = { sig: currentSig.value, projectId: props.projectId || '',
+    projectName: props.projectName || '', scopeKind: scopeKind.value,
     targets: [...planNow.order], scopeText: scopeText.value,
-    inputSig: testInputSignature({ kind: scopeKind.value, targets: planNow.order }, { o: { ...overrideTexts.value }, e: { ...entryTexts.value } }, {}),
-    submittedAt: new Date().toLocaleTimeString('zh-CN', { hour12: false }) }
+    inputSig: testInputSignature({ kind: scopeKind.value, targets: planNow.order },
+      { o: { ...overrideTexts.value }, pe: { ...overrideEmpty.value }, e: { ...entryTexts.value }, ee: { ...entryEmpty.value } }, {}),
+    submittedAt: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+    nodeNames: Object.fromEntries(procNodes.value.map((n: any) => [n.id, n.name || n.id])) }
+  const writesNow = writes.value
+  // 同步锁定先于异步确认：连点/键盘重复在确认期间也无法再次进入
+  pendingConfirm.value = true
+  let confirmed = true
+  try {
+    if (writesNow.length) {
+      confirmed = await appConfirm({
+        message: `本次测试将对所选范围执行真实外部调用：\n${writesNow.join('\n')}\n\n范围外节点不会执行。继续？`,
+        confirmLabel: '开始测试',
+      })
+    }
+  } finally {
+    if (!confirmed) pendingConfirm.value = false // 取消确认：立即释放，可再次发起
+  }
+  if (!confirmed) return
+  pendingConfirm.value = false // 进入执行阶段：忙状态由 running 表达
+  running.value = true
+  const gen = ++runGen.value
   result.value = { gen, status: 'running', snapshot }
   resultNode.value = planNow.order[0] || ''
   resultTab.value = 'output'
   try {
     const d = await runFlow(payload)
-    if (gen !== runGen.value) return // 晚回包：已有更新的运行，不覆盖
+    if (gen !== runGen.value) return // 晚回包：上下文已切换（编排/项目），不覆盖
     result.value = { gen, status: 'done', payload: d, snapshot }
   } catch (e: any) {
     if (gen !== runGen.value) return
     result.value = { gen, status: 'request-error', error: e?.message || String(e), snapshot }
+  } finally {
+    running.value = false // 成功/失败都释放；视图隐藏期间请求继续，返回后仍显示状态
   }
 }
 
-// ── 结果展示 ─────────────────────────────────────────────────────────────────
+// ── 结果展示（R05：分类渲染；快照元信息来自提交时） ─────────────────────────────
 const nodeResults = computed<any[]>(() => result.value?.status === 'done' ? (result.value.payload?.nodeResults || []) : [])
 const currentNode = computed<any>(() => nodeResults.value.find((r: any) => r.nodeId === resultNode.value))
 const statusLabel = computed(() => {
@@ -207,26 +276,36 @@ const statusLabel = computed(() => {
   return result.value.payload?.status === 'success' ? '本次测试成功' : '本次测试失败'
 })
 const statusClass = computed(() => !result.value ? '' : result.value.status === 'running' ? 'run' : result.value.status === 'request-error' || result.value.payload?.status !== 'success' ? 'bad' : 'ok')
+function snapName(id: string): string { return result.value?.snapshot.nodeNames?.[id] || id }
 function pickResultNode(id: string) { resultNode.value = id; resultTab.value = 'output' }
 function previewValue(value: any): string {
   try { return JSON.stringify(value, null, 2) } catch { return String(value) }
 }
-function tableRows(value: any): { keys: string[]; rows: any[]; truncated: boolean } | null {
-  if (!Array.isArray(value)) return null
-  const keys = [...new Set(value.flatMap((x: any) => (x && typeof x === 'object' && !Array.isArray(x)) ? Object.keys(x) : []))]
-  return { keys, rows: value.slice(0, 100), truncated: value.length > 100 }
-}
+const outputViews = computed(() => {
+  const outputs = currentNode.value?.outputs || {}
+  return Object.entries(outputs).map(([name, value]: [string, any]) => ({ name, view: describeOutput(value) }))
+})
+const outputJsonMode = ref<Record<string, boolean>>({})
+function toggleJson(name: string) { outputJsonMode.value[name] = !outputJsonMode.value[name] }
 const typeText = (decl: any) => TYPE_LABELS[decl?.type] || decl?.type || '?'
 
-// 由 FlowEditor 调用：从设计页头部（测试片段/测试编排）或节点详情（测试此节点）进入
+// 由 FlowEditor 调用：主入口（恢复上次范围；首次默认整条）或节点快捷入口（显式切到该节点）
 function openScope(kind: 'all' | 'single' | 'segment', nodeId?: string) {
-  scopeKind.value = kind
-  if (kind === 'single' && nodeId) singleId.value = nodeId
-  if (kind === 'segment' && (!segStart.value || !segEnd.value) && procNodes.value.length) {
-    segStart.value = procNodes.value[0].id
-    segEnd.value = procNodes.value[procNodes.value.length - 1].id
+  if (kind === 'single' && nodeId) {
+    scopeKind.value = 'single'; singleId.value = nodeId; onSegChange(); scopeInitialized = true
+    return
   }
-  onSegChange()
+  if (kind === 'segment') {
+    scopeKind.value = 'segment'
+    if ((!segStart.value || !segEnd.value) && procNodes.value.length) {
+      segStart.value = procNodes.value[0].id
+      segEnd.value = procNodes.value[procNodes.value.length - 1].id
+    }
+    onSegChange(); scopeInitialized = true
+    return
+  }
+  // R04 主入口：首次默认整条；之后恢复当前范围/输入/结果（不强制重置）
+  if (!scopeInitialized) { scopeKind.value = 'all'; singleId.value = ''; onSegChange(); scopeInitialized = true }
 }
 defineExpose({ openScope })
 </script>
@@ -254,32 +333,34 @@ defineExpose({ openScope })
           </label>
         </template>
         <p v-if="planError" class="ftw-error" role="alert">{{ planError }}</p>
-        <div v-if="segPaths.length > 1 && !explicitIds.length" class="ftw-note">
+        <!-- R02a：多路径时勾选区持续可见，勾选/取消/清空都不消失 -->
+        <div v-if="segPaths.length > 1" class="ftw-note">
           存在多条依赖路径，请勾选要测试的节点集合：
           <div class="ftw-checks">
             <label v-for="n in procNodes" :key="n.id" class="ftw-check">
               <input type="checkbox" :checked="explicitIds.includes(n.id)" @change="toggleExplicit(n.id)"/> {{ n.name }}
             </label>
           </div>
+          <button v-if="explicitIds.length" class="linklike" @click="onSegChange">清空勾选，改为起止选择</button>
         </div>
         <div v-else-if="plan.order.length" class="ftw-path" aria-label="执行顺序">
           <span v-for="id in plan.order" :key="id">{{ nameOf(id) }}</span>
         </div>
-        <button v-if="explicitIds.length" class="linklike" @click="onSegChange">改为起止选择</button>
       </template>
       <p v-if="outsideNote" class="ftw-outside">{{ outsideNote }}</p>
 
       <h3 class="ftw-sec">测试输入</h3>
-      <p class="ftw-hint">{{ scopeKind === 'all' ? '填写编排入口参数，按依赖顺序执行全部处理节点。' : '只为范围外来源提供本次测试值；范围内上游输出自动传递，不允许覆盖。测试值不修改节点绑定。' }}</p>
-      <label v-for="need in plan.entryNeeds" :key="need.inputId" class="ftw-field">入口参数 · {{ need.label }}
-        <input :value="entryTexts[need.inputId] || ''" :aria-label="'入口参数 ' + need.label" placeholder="本次测试的入口值" @input="entryTexts[need.inputId] = ($event.target as HTMLInputElement).value"/>
-      </label>
-      <label v-for="decl in (scopeKind === 'all' ? (state.inputs || []) : [])" :key="decl.id" class="ftw-field">入口参数 · {{ decl.label || decl.name }} · {{ typeText(decl.type) }}
-        <select v-if="decl.type?.type === 'boolean'" :value="entryTexts[decl.id] ?? ''" :aria-label="'入口参数 ' + (decl.label || decl.name)" @change="entryTexts[decl.id] = ($event.target as HTMLSelectElement).value">
+      <p class="ftw-hint">{{ scopeKind === 'all' ? '填写编排入口参数，按依赖顺序执行全部处理节点（允许并列分支）。' : '只为范围外来源提供本次测试值；范围内上游输出自动传递，不允许覆盖。测试值不修改节点绑定。' }}</p>
+      <!-- R03：统一入口表单——每稳定 ID 只渲染一次，类型控件与范围无关 -->
+      <label v-for="row in entryRows" :key="row.key" class="ftw-field">入口参数 · {{ row.label }} · {{ typeText(row.type) }}
+        <select v-if="row.type?.type === 'boolean'" :value="entryTexts[row.key] ?? ''" :aria-label="'入口参数 ' + row.label" @change="entryTexts[row.key] = ($event.target as HTMLSelectElement).value">
           <option value="">（请选择）</option><option value="true">是</option><option value="false">否</option>
         </select>
-        <textarea v-else-if="decl.type?.type === 'object' || decl.type?.type === 'list'" :value="entryTexts[decl.id] || ''" rows="3" :placeholder="decl.type?.type === 'object' ? '{}' : '[]'" :aria-label="'入口参数 ' + (decl.label || decl.name)" @input="entryTexts[decl.id] = ($event.target as HTMLTextAreaElement).value"/>
-        <input v-else :value="entryTexts[decl.id] || ''" :aria-label="'入口参数 ' + (decl.label || decl.name)" placeholder="本次测试的入口值" @input="entryTexts[decl.id] = ($event.target as HTMLInputElement).value"/>
+        <textarea v-else-if="row.type?.type === 'object' || row.type?.type === 'list'" :value="entryTexts[row.key] || ''" rows="3" :placeholder="row.type?.type === 'object' ? '{}' : '[]'" :aria-label="'入口参数 ' + row.label" @input="entryTexts[row.key] = ($event.target as HTMLTextAreaElement).value"/>
+        <template v-else>
+          <input :value="overrideEmpty[row.key] || entryEmpty[row.key] ? '' : (entryTexts[row.key] || '')" :disabled="!!entryEmpty[row.key]" :aria-label="'入口参数 ' + row.label" placeholder="本次测试的入口值" @input="entryTexts[row.key] = ($event.target as HTMLInputElement).value"/>
+          <span class="ftw-empty-opt"><input type="checkbox" :checked="!!entryEmpty[row.key]" @change="entryEmpty[row.key] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</span>
+        </template>
       </label>
       <div v-for="item in plan.externalInputs" :key="item.nodeId + '/' + item.inputId" class="ftw-ext">
         <label class="ftw-field">{{ item.nodeName }} · {{ item.label }} · {{ typeText(item.type) }}<small class="ftw-src">{{ sourceHint(item) }}{{ item.kind === 'unbound' ? '（可选）' : '' }}</small>
@@ -287,17 +368,21 @@ defineExpose({ openScope })
             <option value="">（请选择）</option><option value="true">是</option><option value="false">否</option>
           </select>
           <textarea v-else-if="item.type?.type === 'object' || item.type?.type === 'list'" :value="overrideTexts[overrideKey(item.nodeId, item.inputId)] || ''" rows="3" :placeholder="item.type?.type === 'object' ? '{}' : '[]'" :aria-label="item.nodeName + ' ' + item.label" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLTextAreaElement).value"/>
-          <input v-else :value="overrideTexts[overrideKey(item.nodeId, item.inputId)] || ''" :aria-label="item.nodeName + ' ' + item.label" :placeholder="item.kind === 'unbound' ? '可选：为未绑定输入提供本次测试值' : '本次测试值'" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).value"/>
+          <template v-else>
+            <input :value="overrideEmpty[overrideKey(item.nodeId, item.inputId)] ? '' : (overrideTexts[overrideKey(item.nodeId, item.inputId)] || '')" :disabled="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" :aria-label="item.nodeName + ' ' + item.label" :placeholder="item.kind === 'unbound' ? '可选：为未绑定输入提供本次测试值' : '本次测试值'" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).value"/>
+            <span class="ftw-empty-opt"><input type="checkbox" :checked="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" @change="overrideEmpty[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</span>
+          </template>
         </label>
       </div>
       <div v-if="fixedRows.length" class="ftw-fixed">
         <p class="ftw-hint">固定来源输入（沿用节点配置，不单独覆盖）：</p>
         <p v-for="(row, i) in fixedRows" :key="i" class="ftw-fixed-row">{{ row.nodeName }} · {{ row.label }} = <b>{{ row.display }}</b></p>
       </div>
-      <p v-if="!plan.entryNeeds.length && !plan.externalInputs.length && scopeKind !== 'all' && !fixedRows.length && plan.order.length" class="ftw-hint">该范围没有需要填写的外部输入，可直接运行。</p>
+      <p v-if="!entryRows.length && !plan.externalInputs.length && !fixedRows.length && plan.order.length" class="ftw-hint">该范围没有需要填写的外部输入，可直接运行。</p>
+      <p v-if="runDisableReason" class="ftw-error" role="alert">无法运行：{{ runDisableReason }}</p>
       <p v-if="formError" class="ftw-error" role="alert">{{ formError }}</p>
       <div class="ftw-actions">
-        <button class="primary-run" :disabled="running || !!planError || !plan.order.length" @click="run">{{ running ? '执行中…' : '▷ 运行测试' }}</button>
+        <button class="primary-run" :disabled="runBusy || !!runDisableReason" :title="runDisableReason || ''" @click="run">{{ pendingConfirm ? '等待确认…' : running ? '执行中…' : '▷ 运行测试' }}</button>
       </div>
       <p v-if="writes.length" class="ftw-writes">本次范围包含真实外部调用：{{ writes.length }} 项（运行前会再次确认）；范围外写节点不会执行。</p>
     </aside>
@@ -305,13 +390,13 @@ defineExpose({ openScope })
     <!-- 右：结果 -->
     <section class="ftw-output" aria-label="测试结果">
       <div class="ftw-result-head">
-        <h3>{{ scopeKind === 'segment' ? '片段测试结果' : scopeKind === 'single' ? '节点测试结果' : '编排测试结果' }}</h3>
+        <h3>{{ result ? (result.snapshot.scopeKind === 'segment' ? '片段测试结果' : result.snapshot.scopeKind === 'single' ? '节点测试结果' : '编排测试结果') : '测试结果' }}</h3>
         <span v-if="result" class="ftw-badge" :class="statusClass">{{ statusLabel }}</span>
         <span v-if="staleConfig || staleProject" class="ftw-badge warn">旧{{ staleConfig ? '配置' : '项目' }}结果</span>
         <span v-else-if="staleInput" class="ftw-badge warn">尚未按当前输入/范围运行</span>
       </div>
       <p class="ftw-scope">{{ result ? `范围：${result.snapshot.scopeText} · 提交于 ${result.snapshot.submittedAt}` : '选择范围、填写输入后运行；范围内自动传递，范围外不执行。' }}</p>
-      <p class="ftw-meta">{{ projectName || '未选择项目' }} · 结果仅随本次响应返回，不落盘、不写编排草稿</p>
+      <p class="ftw-meta">结果项目：{{ result ? (result.snapshot.projectName || '未选择项目') : (projectName || '未选择项目') }}（当前项目：{{ projectName || '未选择' }}） · 结果仅随本次响应返回，不落盘、不写编排草稿</p>
       <p v-if="freshnessText" class="ftw-fresh">{{ freshnessText }}</p>
 
       <template v-if="result && result.status === 'request-error'">
@@ -326,7 +411,7 @@ defineExpose({ openScope })
       <template v-else>
         <div class="ftw-chips" role="tablist" aria-label="被测节点结果切换">
           <button v-for="r in nodeResults" :key="r.nodeId" role="tab" :aria-selected="resultNode === r.nodeId" :class="{ active: resultNode === r.nodeId }" @click="pickResultNode(r.nodeId)">
-            {{ nameOf(r.nodeId) }}
+            {{ snapName(r.nodeId) }}
             <small>{{ r.status === 'success' ? '✓' : r.status === 'failed' ? '失败' : '未执行' }}</small>
           </button>
         </div>
@@ -341,20 +426,36 @@ defineExpose({ openScope })
               <div v-if="currentNode.status === 'skipped'" class="ftw-empty">上游失败，此节点未执行；没有输出。</div>
               <div v-else-if="currentNode.status === 'failed'" class="ftw-error-note">{{ currentNode.error }}<br><small>后续所选节点已停止；范围外节点始终不执行。</small></div>
               <template v-else>
-                <template v-for="(out, name) in currentNode.outputs" :key="name">
-                  <p class="ftw-out-name">{{ name }}</p>
-                  <div v-if="tableRows(out)" class="ftw-table">
-                    <table>
-                      <thead><tr><th v-for="k in tableRows(out)!.keys" :key="k">{{ k }}</th></tr></thead>
-                      <tbody><tr v-for="(row, i) in tableRows(out)!.rows" :key="i"><td v-for="k in tableRows(out)!.keys" :key="k">{{ row[k] ?? '—' }}</td></tr></tbody>
-                    </table>
-                    <p v-if="tableRows(out)!.truncated" class="ftw-hint">表格仅预览前 100 行；传给下游的实际数据未截断。</p>
-                  </div>
-                  <template v-else-if="out !== null && typeof out === 'object'">
-                    <pre class="ftw-pre">{{ previewValue(out) }}</pre>
+                <template v-for="out in outputViews" :key="out.name">
+                  <p class="ftw-out-name">{{ out.name }}
+                    <button v-if="out.view.kind !== 'scalar'" class="linklike" @click="toggleJson(out.name)">{{ outputJsonMode[out.name] ? '表格/突出值' : '原始 JSON' }}</button>
+                  </p>
+                  <!-- 空列表：明确状态，可看 [] -->
+                  <template v-if="out.view.kind === 'empty'">
+                    <p class="ftw-scalar ftw-empty-list">空列表（0 项）</p>
+                    <pre class="ftw-pre">{{ previewValue(out.view.value) }}</pre>
                   </template>
-                  <template v-else>
-                    <p class="ftw-scalar">{{ out === null ? '—' : out }}</p>
+                  <!-- 对象列表：表格预览（键只扫描一次），可切原始 JSON -->
+                  <div v-else-if="out.view.kind === 'object-table' && !outputJsonMode[out.name]" class="ftw-table">
+                    <table>
+                      <thead><tr><th v-for="k in out.view.keys" :key="k">{{ k }}</th></tr></thead>
+                      <tbody><tr v-for="(row, i) in out.view.rows" :key="i"><td v-for="k in out.view.keys" :key="k">{{ row[k] === null ? 'null' : row[k] === undefined ? '—' : (typeof row[k] === 'object' ? previewValue(row[k]) : String(row[k])) }}</td></tr></tbody>
+                    </table>
+                    <p v-if="out.view.truncated" class="ftw-hint">表格仅预览前 100 行（共 {{ out.view.total }} 行）；传给下游的实际数据未截断。</p>
+                  </div>
+                  <!-- 标量列表：序号 / 值 表格，不空白 -->
+                  <div v-else-if="out.view.kind === 'index-table' && !outputJsonMode[out.name]" class="ftw-table">
+                    <table>
+                      <thead><tr><th>序号</th><th>值</th></tr></thead>
+                      <tbody><tr v-for="(item, i) in out.view.rows" :key="i"><td>{{ i + 1 }}</td><td>{{ item === null ? 'null' : (typeof item === 'object' ? previewValue(item) : String(item)) }}</td></tr></tbody>
+                    </table>
+                    <p v-if="out.view.truncated" class="ftw-hint">表格仅预览前 100 行（共 {{ out.view.total }} 行）；传给下游的实际数据未截断。</p>
+                  </div>
+                  <!-- 对象 / 混合嵌套列表 / 勾选 JSON：格式化 JSON -->
+                  <pre v-else class="ftw-pre">{{ previewValue(out.view.value) }}</pre>
+                  <!-- 标量：突出显示 + JSON 对照；false/0/null 不显示为空 -->
+                  <template v-if="out.view.kind === 'scalar'">
+                    <p class="ftw-scalar">{{ out.view.value === null ? 'null' : out.view.value === '' ? '（空文本 ""）' : String(out.view.value) }}</p>
                     <pre class="ftw-pre">{{ previewValue(currentNode.outputs) }}</pre>
                   </template>
                 </template>
@@ -364,7 +465,7 @@ defineExpose({ openScope })
             <template v-else-if="resultTab === 'inputs'">
               <div v-if="currentNode.status === 'skipped'" class="ftw-empty">此节点未执行，没有本次输入。</div>
               <template v-else-if="currentNode.inputs">
-                <p v-if="currentNode.inputsTruncated" class="ftw-hint">输入预览已截短（仅影响展示，节点收到的数据未截断）。</p>
+                <p v-if="currentNode.inputsTruncated" class="ftw-hint">输入预览已按展示预算截短（仅影响展示，节点收到的数据未截断；截短字段带 previewTruncated 标记）。</p>
                 <pre class="ftw-pre">{{ previewValue(currentNode.inputs) }}</pre>
               </template>
               <div v-else class="ftw-empty">未获得本次输入（输入解析前失败）。</div>
@@ -398,6 +499,8 @@ defineExpose({ openScope })
 .ftw-sec{margin-top:18px}
 .ftw-field{display:block;font-size:12px;color:var(--muted);margin:10px 0}
 .ftw-field input,.ftw-field textarea,.ftw-field select{margin-top:4px}
+.ftw-empty-opt{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:3px}
+.ftw-empty-opt input{width:auto}
 .ftw-src{display:block;font-size:11px;margin-top:2px}
 .ftw-hint{font-size:12px;color:var(--muted);margin:6px 0}
 .ftw-error{color:var(--danger);font-size:12px;margin:8px 0}
@@ -436,7 +539,8 @@ defineExpose({ openScope })
 .ftw-result-body{min-height:0}
 .ftw-pre{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--paper-2);border-radius:8px;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}
 .ftw-scalar{font-size:34px;font-weight:600;margin:14px 0}
-.ftw-out-name{font-size:12px;color:var(--muted);margin:12px 0 4px}
+.ftw-empty-list{font-size:14px;font-weight:500;color:var(--muted)}
+.ftw-out-name{font-size:12px;color:var(--muted);margin:12px 0 4px;display:flex;align-items:center;gap:10px}
 .ftw-table{overflow:auto;border:1px solid var(--line);border-radius:8px}
 .ftw-table table{margin:0}
 .ftw-table th,.ftw-table td{padding:9px 12px}

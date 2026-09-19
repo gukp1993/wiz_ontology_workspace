@@ -212,7 +212,11 @@ POST /api/flow-run
 新增可选字段（2026-09-19）：
 
 - `nodeResults[].inputs`：该节点本次实际解析的输入值（键为输入技术名，命名与类型从提交快照读取）。输入解析前失败或未执行（skipped）时不返回该字段；执行器已收到输入后失败可返回。
-- `nodeResults[].inputsTruncated`：布尔，输入预览是否被截短。预览有界：每节点列表最多 100 条、序列化总量约 64 KiB；截短仅影响展示，不改变节点真实收到的数据，也不影响执行成功。预览不包含连接密码、认证头、API Key 等凭据。
+- `nodeResults[].inputsTruncated`：布尔，输入预览是否被截短。预览为**展示副本**，节点真实收到的数据不变、不影响执行成功；不包含连接密码、认证头、API Key 等凭据。预览预算（2026-09-19 修正，R06）：
+  - `inputs` 整体经 UTF-8 JSON 序列化后**不超过 65536 字节**（含字段名与截断标记的结构开销），超限自动收紧，不做"只置标志仍返回完整值"；
+  - 每个列表预览最多 **100 项**（无论总字节是否超限）；
+  - 被截短的内容以 `previewTruncated` 标记结构表示：截短字符串 → `{"previewTruncated": true, "kind": "text", "shownPrefix": "<前缀>", "originalLength": <原始字符数>}`；超 100 项列表 → `{"previewTruncated": true, "kind": "list", "items": [≤100 项], "totalItems": <原始长度>}`；超长字段名会截短并触发 `inputsTruncated`；
+  - 未触发截断的值保持原结构原值；执行器与下游收到的 `inputs` 恒为完整原值，预览副本不回写。
 
 | 状态码 | 场景 |
 | --- | --- |

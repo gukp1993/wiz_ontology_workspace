@@ -251,18 +251,46 @@ check(status_code == 400, '旧多节点链仍要求上游闭合（不被新模�
 body, status_code = flow_routes.post_flow_run({'state': STATE, 'targets': [], 'inputs': {}})
 check(status_code == 400, 'targets=[] 仍是一律 400（绝不解释为全图）', (status_code, body))
 
-# 10) bounded_preview：大列表截短标记，执行值不受影响 ───────────────────────────
+# 10) bounded_preview：列表 ≤100 项（previewTruncated 标记结构），其他输入不变 ────
 big = list(range(250))
 preview, truncated = flow_test_plan.bounded_preview({'rows': big, 'x': 1})
-check(truncated is True and len(preview['rows']) == 100 and preview['x'] == 1,
-      '预览列表截短到 100 条并标记，其他输入不变', (len(preview['rows']), truncated))
+rows_view = preview['rows']
+check(truncated is True and isinstance(rows_view, dict) and rows_view.get('previewTruncated') is True
+      and rows_view.get('totalItems') == 250 and len(rows_view.get('items') or []) == 100
+      and preview['x'] == 1,
+      '超 100 项列表以标记结构表示且仅含 100 项，其他输入不变',
+      (type(rows_view).__name__, truncated))
 preview, truncated = flow_test_plan.bounded_preview({'x': 1})
-check(truncated is False and preview == {'x': 1}, '小结果不标记截断')
+check(truncated is False and preview == {'x': 1}, '小结果不标记截断且结构不变')
 
-# 11) 输入预览超限（约 64KiB）标记 ─────────────────────────────────────────────
-huge = {'text': 'x' * (70 * 1024)}
-preview, truncated = flow_test_plan.bounded_preview(huge)
-check(truncated is True, '序列化超 64KiB 的输入预览标记截断')
+# 11) R06：预览字节预算（UTF-8 JSON ≤65536）+ 原值不变 ─────────────────────────
+def _utf8_len(obj):
+    return len(json.dumps(obj, ensure_ascii=False, default=str).encode('utf-8'))
+
+cases = {
+    '1MiB 文本': {'text': 'x' * (1024 * 1024)},
+    '中文长文本': {'备注': '储能' * 60000},
+    '嵌套对象': {'deep': {'a': {'b': {'c': ['x' * 500] * 500}}}},
+    '101+ 列表': {'rows': list(range(5000))},
+    '超长字段名': {'k' * 5000: 'v'},
+    '多字段合计超限': {f'field_{i}': '值' * 200 for i in range(300)},
+}
+for label, original in cases.items():
+    preview, truncated = flow_test_plan.bounded_preview(original)
+    size = _utf8_len(preview)
+    check(size <= 65536, f'{label}：预览序列化 ≤65536 字节（实际 {size}）', size)
+    check(truncated is True, f'{label}：truncated 正确标记')
+    untouched = json.dumps(original, ensure_ascii=False, default=str) == json.dumps(
+        {k: v for k, v in original.items()}, ensure_ascii=False, default=str)
+    check(untouched, f'{label}：原输入对象未被修改')
+    if label == '1MiB 文本':
+        marker = preview['text']
+        check(marker.get('previewTruncated') is True and marker.get('originalLength') == 1024 * 1024
+              and len(marker.get('shownPrefix') or '') <= 512,
+              '截短字符串带 shownPrefix/originalLength 标记', {k: v for k, v in marker.items() if k != 'shownPrefix'})
+    if label == '101+ 列表':
+        check(preview['rows'].get('totalItems') == 5000 and len(preview['rows'].get('items') or []) == 100,
+              '大列表标记 items≤100 且 totalItems 正确')
 
 shutil.rmtree(TMP, ignore_errors=True)
 print(f'\n全部通过：{len(PASSED)} 项')

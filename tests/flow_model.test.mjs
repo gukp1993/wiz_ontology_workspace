@@ -7,7 +7,7 @@
 globalThis.window = { addEventListener() {} }
 if (!globalThis.crypto) globalThis.crypto = { randomUUID: () => 'u' + Math.random().toString(16).slice(2) }
 const mod = await import('../frontend/src/flow/flowModel.ts')
-const { configSignature, missingUpstreams, writeCapabilities, validateTestValue, chainOrder, testScopePlan, dependencyPaths, testInputSignature, nameOfFlowNode } = mod
+const { configSignature, missingUpstreams, writeCapabilities, validateTestValue, chainOrder, testScopePlan, dependencyPaths, testInputSignature, nameOfFlowNode, describeOutput } = mod
 
 let failed = 0
 function assert(name, cond, detail = '') {
@@ -113,6 +113,35 @@ const sigC = testInputSignature({ kind: 'single', targets: ['B'] }, { o: { k: '1
 assert('输入签名：值变化可感知', sigA !== sigB)
 assert('输入签名：范围变化可感知', sigA !== sigC)
 assert('nameOfFlowNode：显示名回退', nameOfFlowNode(chain, 'B') === '节点B' && nameOfFlowNode(chain, 'zz') === 'zz')
+
+
+// 6) 结果分类渲染模型（R05）：不空白、空列表明确、混合列表不强凑表格
+const view = v => describeOutput(v).kind
+assert('数值/文本/布尔/null 为标量', view(0) === 'scalar' && view(false) === 'scalar' && view('') === 'scalar' && view(null) === 'scalar')
+assert('对象为 JSON 视图', view({ a: 1 }) === 'json')
+assert('对象列表为表格视图', view([{ a: 1 }, { a: 2, b: 3 }]) === 'object-table')
+const objTable = describeOutput([{ a: 1 }, { a: 2, b: 3 }])
+assert('对象列表列来自实际字段（一次扫描）', objTable.kind === 'object-table' && JSON.stringify(objTable.keys) === JSON.stringify(['a', 'b']))
+const scalarTable = describeOutput([1, 2, 3])
+assert('数值列表为序号表视图', scalarTable.kind === 'index-table' && scalarTable.rows.length === 3)
+assert('混合列表为 JSON 视图', view([1, { a: 1 }]) === 'json')
+assert('嵌套列表为 JSON 视图', view([[1], [2]]) === 'json')
+const empty = describeOutput([])
+assert('空列表有明确视图', empty.kind === 'empty')
+assert('101+ 列表预览截断到 100', describeOutput(Array.from({ length: 150 }, (_, i) => i)).truncated === true)
+
+// 7) testScopePlan 连通选项（R02b）：整条/单节点允许并列分支，片段保持连通校验
+const paraState = {
+  flowId: 'f', name: 'n', description: '', inputs: [], outputs: [], connections: [],
+  nodes: [
+    { id: 'nd_a', kind: 'calc', name: 'A', inputs: [], outputs: [{ id: 'oa', name: 'a', type: { type: 'number' } }], implementation: {} },
+    { id: 'nd_b', kind: 'calc', name: 'B', inputs: [], outputs: [{ id: 'ob', name: 'b', type: { type: 'number' } }], implementation: {} },
+  ],
+  layout: { positions: {} },
+}
+assert('整条允许并列分支', testScopePlan(paraState, ['nd_a', 'nd_b'], { requireConnected: false }).error === '')
+assert('片段保持连通校验', testScopePlan(paraState, ['nd_a', 'nd_b'], { requireConnected: true }).error.includes('不连通'))
+assert('默认保持连通校验（向后兼容）', testScopePlan(paraState, ['nd_a', 'nd_b']).error.includes('不连通'))
 
 console.log(failed ? `\n${failed} 项失败` : '\n全部通过')
 process.exit(failed ? 1 : 0)

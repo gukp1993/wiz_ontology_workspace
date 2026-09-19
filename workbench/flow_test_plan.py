@@ -290,29 +290,64 @@ def _safe_text(value):
             return '（无法序列化）'
 
 
+def _preview_copy(value, cap, flag):
+    """有界展示副本（R06）：列表 ≤100 项、字符串 ≤cap 字符，超出以 previewTruncated
+    标记结构代替；深拷贝构造，绝不修改原值。flag[0] 记录是否发生任何截断。"""
+    if isinstance(value, str):
+        if len(value) > cap:
+            flag[0] = True
+            return {'previewTruncated': True, 'kind': 'text', 'shownPrefix': value[:cap],
+                    'originalLength': len(value)}
+        return value
+    if isinstance(value, list):
+        items = [_preview_copy(x, cap, flag) for x in value[:MAX_LIST_PREVIEW_ITEMS]]
+        if len(value) > MAX_LIST_PREVIEW_ITEMS:
+            flag[0] = True
+            return {'previewTruncated': True, 'kind': 'list', 'items': items,
+                    'totalItems': len(value)}
+        return items
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            key = str(k)
+            if len(key) > 128:
+                key = key[:128] + '…'
+                flag[0] = True
+            out[key] = _preview_copy(v, cap, flag)
+        return out
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    flag[0] = True
+    return str(value)[:cap]
+
+
 def bounded_preview(values):
     """节点实际输入的有界预览（展示用，绝不改变执行值，绝不抛异常）。
 
-    列表每输入最多 100 条；整体序列化约 64 KiB，超限按字符截短并标记。
-    返回 (preview, truncated)；preview 保持结构化值（截短后），不含任何凭据。
+    返回的副本经 UTF-8 JSON 序列化后不超过 PREVIEW_BYTES（65536 字节，含字段名
+    与截断标记的结构开销），每个列表最多 MAX_LIST_PREVIEW_ITEMS（100）项；截短
+    内容以 {'previewTruncated': True, ...} 标记结构表示（契约 04 §3.1），绝不
+    "只置标志仍返回完整值"。未截断的值保持原结构原值；原输入不被修改。
+    返回 (preview, truncated)；不含任何凭据。
     """
-    preview, truncated = {}, False
-    budget = PREVIEW_BYTES
-    for name, value in (values or {}).items():
-        shown = value
-        if isinstance(shown, list) and len(shown) > MAX_LIST_PREVIEW_ITEMS:
-            shown = shown[:MAX_LIST_PREVIEW_ITEMS]
-            truncated = True
-        text = _safe_text(shown)
-        encoded = len(text.encode('utf-8', 'replace'))
-        if encoded > budget:
-            limit = max(0, budget)
-            while limit > 0 and len(text[:limit].encode('utf-8', 'replace')) > budget:
-                limit = int(limit * 0.9)
-            text = text[:limit] + '…（输入预览超限截断）'
-            truncated = True
-            budget = 0
-        else:
-            budget -= encoded
-        preview[str(name)] = shown
-    return preview, truncated
+    source = values or {}
+    cap = 512
+    while True:
+        flag = [False]
+        preview = {}
+        for name, value in source.items():
+            key = str(name)
+            if len(key) > 128:  # 顶层字段名同样有界（超长键触发截断标记）
+                key = key[:128] + '…'
+                flag[0] = True
+            preview[key] = _preview_copy(value, cap, flag)
+        try:
+            encoded = len(json.dumps(preview, ensure_ascii=False, default=str).encode('utf-8', 'replace'))
+        except Exception:
+            encoded = PREVIEW_BYTES + 1
+        if encoded <= PREVIEW_BYTES:
+            return preview, flag[0]
+        if cap <= 16:
+            flag[0] = True
+            return {'previewTruncated': True, 'note': '输入过大，预览仅保留标记'}, True
+        cap //= 2
