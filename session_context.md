@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`18ecca118ee1e898`
+上下文版本：`e390b936e3fe30c0`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,28 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 执行 20260919_项目映射双模式协同/执行指令.md（说明与配置 v2.1） · zcode · 已实施，待验收
+
+时间：2026-09-19T08:02:47.745318+00:00；记录：`.collaboration/entries/000029-5222b4ba9874.json`
+
+按执行指令完成 T0–T5：bindings.mappingDescriptions（schemaVersion=1，四类稳定 ID 键，properties/actions 二级结构）保存/读取/发布/升级全链路；接口文档先行（01 §3.4/03/05/README 变更记录），无新增接口与 schema 变更。后端新模块 mapping_descriptions.py：结构/长度 20000 码点校验、CAS 锁内省略保留、显式清空按删键、失效引用阻断发布、纯说明警告、升级预检定位、preview_block 消费拦截、context_of 上下文纯函数。前端 MappingDescription 最小组件（单 textarea/标题折叠/提示仅 placeholder）接入四页：对象浏览态说明前置+数据来源默认折叠+说明独立编辑态；属性/链接/动作清单加「项目说明」列（原摘要灰字保留）；编辑器说明在前+配置 details 默认折叠；未配置属性 kind=none 只说明可保存不创建来源（D10，对齐原型 addConfig）；全部复用 formGuard/form-save/撤销/409。property-preview 取数前拦截说明。
+
+- 决定：未配置属性编辑器初始 kind=none（原型 addConfig 模型），只说明保存不产生来源配置；说明键一律 mg: 前缀稳定 ID，属性用对象属性节点 ID 非 apiName；本期能改的官方消费入口仅 property-preview，外部旧执行器不承诺自动兼容（接口文档已标注）
+- 验证：test_mapping_descriptions.py 13 步全过（D01–D12 后端面：回环/隔离/一键/省略保留/显式清空/409/超限拒绝/发布快照/升级预检/纯说明警告/预览拦截/无说明不变）；test_project_api_roundtrip、test_validation_split（金样 62 样例）、test_property_sources、test_action_http 全过；test_property_preview 未测（需本机 MySQL，环境不具备）；前端 typecheck/build 通过；mapping_forms 修组件 stub 后回到既有基线失败点（/实现输出/，与本任务无关）；object_sources/action_model/query_rules/list_controls/ont_list_unified/object_workspace/global_interaction/save_queue/undo_history 全过；隔离实例 18854 浏览器验收：对象说明编辑→折叠保留→保存→刷新回读；属性清单说明列；只说明保存与回读；链接卡片两端共用显示；API 写四类说明后四页显示与对象隔离正确；1024/768 布局正常。动作绑定浏览器面未演练（种子本体无对象-动作关联，组件与属性同构、后端已过）
+- 下一步：用户验收：真实项目上试用四类说明（18765 刷新即有）；说明仅结构与引用校验，语义不验证；按说明自动取值/大模型解释/设备动作执行属 10.3 后续迭代，本期未实现，不宣称可自动执行；mapping_forms 既有基线失败待其负责人处理；test_property_preview 需本机 MySQL 环境补测
+- 依据/文档：workbench/mapping_descriptions.py；frontend/src/project/MappingDescription.vue；frontend/src/project/bindingModel.ts；tests/test_mapping_descriptions.py；文档/需求/20260919_项目映射双模式协同/开发计划.md §7
+
+### 共享属性/业务规则/动作定义库行内操作平铺 · zcode · 已实施，待验收
+
+时间：2026-09-19T07:11:17.124551+00:00；记录：`.collaboration/entries/000028-57c7e778a2a4.json`
+
+延续共享属性库行内平铺（编辑/引用到对象/复制为私有/删除，列宽 18%→32% 修截断，删除保护语义不变，页头「更多操作」保留），动作定义库同理把「删除定义」从 ⋯ 菜单平铺为行内红色删除（V2 被引用拦截语义不变）；业务规则库核实本就只有行内「编辑」无需改。测试 ont_list_unified ④ 共享库断言从 rowMenuItems 改为行内按钮断言。中断事故处理：上轮验收在共享库点了删除后 cell 被取消，确认框残留在 body（SPA hash 导航不清除），本轮进入动作页时仍挂着——已点取消，确认共享属性未被误删。另发现 goto hash 变化不重载页面导致看到旧 bundle，reload 后验证通过。
+
+- 决定：三资产库行内操作统一平铺展示，低频批量能力（粘贴多行/批量复用）仍收页头菜单；删除按钮文案统一「删除」红字；appConfirm 残留问题：确认框挂 body 不随 SPA 导航清理，属已知行为，验收/使用中靠取消关闭；后续若成为困扰可评估路由守卫统一清理
+- 验证：typecheck/build 通过；ont_list_unified 4/4、list_controls 4/4、object_workspace 7/7；全量前端套件通过（mapping_forms 既有基线除外）；18765 浏览器实测：共享库操作列四按钮完整（删除红字不被截断）、动作库 [编辑/删除] 平铺零菜单、规则库 [编辑] 不变；删除点击仍弹保护确认框
+- 下一步：若对象建模四页签与三资产库的行内删除/操作样式需再统一文案（如「删除定义」vs「删除」），属后续微调
+- 依据/文档：frontend/src/ontology/SharedLibrary.vue；frontend/src/ontology/ActionLibrary.vue；tests/ont_list_unified.test.mjs
 
 ### 项目映射说明与配置完整交付-v2.1 · codex · 需求已交付
 
@@ -128,25 +150,3 @@
 - 验证：根因实证：服务端日志 20:57:11 "GET /assets/index-D6QLQfnR.js 404"（该分块属旧构建，已被重新构建删除）；当前 dist 仅含 index-Bx2Ytpfj.js 与 xlsx-B2eTCt_Q.js；同构建新页面在隔离实例 18850 跑完整导入链路：文件卡→检查(17 新增)→确认→「导入完成 对象新增 5 项，共享属性新增 10 项，业务规则新增 1 项，动作新增 1 项」；全程 console 错误 0；旧页面路径也在旧 bundle 上验证过：打开弹窗与检查均正常（说明导入代码本身无 TDZ）；兜底生效验证：加载新 bundle 后派发 "Cannot access 'A' before initialization" → 顶部横幅出现「页面资源已更新（工作台可能刚重新构建过），请刷新页面后重试。刷新页面」；ontology_import 测试 16→18 项全过（新增 ⑰ 分块失败文案、⑱ 入口兜底注册）；typecheck/build 通过；全量 mjs 21/22（唯一败 mapping_forms 为既有基线）
 - 下一步：用户刷新页面（Ctrl/Cmd+Shift+R）即可恢复；页面已具备下次遇到同类情况时的自解释横幅；建议：以后重新构建后，已打开的旧页面需手动刷新一次（这是按内容 hash 缓存的前端产物的固有行为）
 - 依据/文档：frontend/src/main.ts；frontend/src/ontology/excelImport.ts；frontend/src/ontology/OntologyImport.vue；tests/ontology_import.test.mjs
-
-### 登录与账号体系 · zcode · 已实施，待验收
-
-时间：2026-09-18T12:33:35.245474+00:00；记录：`.collaboration/entries/000014-d2bdba7c4a25.json`
-
-按用户确认的四项决定实施：完全隔离、开放注册、密钥按账号隔离、admin/admin。存储层新增 wb_users/wb_sessions/wb_user_settings，wb_assets 与 wb_model_configs 归属列 + 唯一约束改按账号（Alembic 0002，SQLite 表重建）；auth.py 提供 PBKDF2 口令、会话（库中只存摘要）与请求用户上下文；server.py 加鉴权门（仅 4 个认证端点免登录，其余 401）与 Set-Cookie；八个业务模块全部接线归属；前端加登录/注册页 + 启动引导 + 401 回落 + 偏好按账号前缀；transfer 新增 create-user/assign-owner（后者对 LLM 密钥重加密）。真实库已迁移并运行：备份→停服→init→create-user admin→assign-owner→启服；admin 可见全部存量数据。
-
-- 决定：数据完全隔离（每账号独立本体/项目/编排/配置），跨账号 id 一律按不存在处理；开放注册；归属过滤收口在存储层（assets 对外函数必带 owner_user_id；用户级设置走新表 wb_user_settings），域层统一 auth.require_user_id()；免登录接口也解会话（auth-state 才能报告已登录用户，避免刷新误判）；退出与 401 走同一引导回调；口令 PBKDF2-HMAC-SHA256 600000 轮（Python 3.9 无 hashlib.scrypt，勿改回）；会话令牌随机 32 字节、库中只存摘要；assign-owner 改归属必须重加密 LLM 密钥（AES-GCM 的 AAD 绑定 owner_key），解密失败保留原行并明确报出
-- 验证：新增 tests/test_auth.py 63 项全过；后端 tests/run.py all 30/30（既有套件改为带会话 Cookie/绑定测试账号）；前端 typecheck/build 通过；mjs 21/22（唯一败 mapping_forms 经基线对照为既有失败）；ontology_lazy_load 补登录态后 11/11；隔离实例浏览器全链路：登录页→注册→空白空间→建本体→刷新保持登录→退出回登录页→换账号只见自己数据→清会话后 401 自动回登录页；真实库迁移：备份（含根密钥 0600）→ schema 0001→0002 → admin 创建 → 归属 6 资产/2 模型配置/1 设置/2 密钥 → 启服；FK 空、integrity ok、317 快照不变；admin 见 2 本体/1 项目/2 编排/2 模型配置；修复实施中发现 4 个缺陷：auth-state 不解会话、退出不切界面、assign-owner 破坏密钥解密、start.sh 用业务接口探测就绪
-- 下一步：用户验收；admin 弱口令建议更换（transfer create-user --username admin --password <新> --reset-password）；本期未做：忘记密码、账号禁用/删除、管理员用户管理页
-- 依据/文档：文档/接口文档/06-认证与账户接口.md；文档/需求/20260918_登录与账号体系/开发计划.md；workbench/auth.py；tests/test_auth.py；AGENTS.md
-
-### 储能本体全量数据导出 Excel 与导入功能实测 · zcode · 已验证
-
-时间：2026-09-18T12:01:51.986010+00:00；记录：`.collaboration/entries/000013-d006fbacb40d.json`
-
-把当前「储能本体」草稿全部业务内容（对象5/属性10/规则1/动作1，共17条）填入官方模板生成 Excel（文档/导出/储能本体_全量数据_20260918.xlsx，保留 C→D 联动与隐藏枚举列），并在隔离实例上真实浏览器完整实测导入功能：上传→检查预览→同名策略→确认导入→刷新持久化全部通过；含异常场景与解析回归 16/16。未改产品代码，未触碰真实 ontology/ 与 data/。提交 609bd0c。
-
-- 决定：导出 Excel 以官方模板为基底填充，保留下拉/联动/隐藏列，不另造表头；对象私有属性按模板能力一并导出为属性行，导入后进共享属性库（需求 §6 设计）；链接/对象-属性关联/函数/动作与规则挂接不在模板范围，导出不含，需人工在页面重建；测试用 git archive HEAD + WIZ_WORKBENCH_ROOT/PORT 隔离实例，规避工作区在途未提交改动
-- 验证：tests/ontology_import.test.mjs 16/16 通过；Node 直跑前端同实现解析/计划层：17 行 0 结构问题，双策略与落库形态（时间序列 valueShape、显示格式原文）正确；隔离实例 18768 真实浏览器：预览 17 新增 0 问题；确认后「对象新增5/共享属性10/规则1/动作1」；刷新后 5/10/1/1 完整；同名策略实测：跳过=2跳过+1新增；重命名=储能簇_949811、soc_995640 随机后缀；校验阻断：非时间序列带观测值/时间序列缺观测值/非法枚举/动作缺效果 4 项准确定位且确认禁用；.xls 与 1.1MiB 被拒；异常后数据未污染；逐字段比对原快照与导入结果：名称/定义/类型一致；已知差异为格式化结构字段只保留 instruction 原文（模板范围决定）
-- 下一步：用户复核 Excel 与报告（截图 4 张在 文档/导出/储能本体Excel导入测试_20260918/）；对现有储能本体重复导入默认跳过 13 条同名、新增 4 条属性；如需全量重建用重命名或清空；工作区在途未提交的账号体系改动（schema owner_user_id 未同步写入代码）会使新库创建本体 500，建议该负责人修复
-- 依据/文档：文档/导出/储能本体_全量数据_20260918.xlsx；文档/导出/储能本体Excel导入测试_20260918/测试报告.md；frontend/src/ontology/excelImport.ts；frontend/src/ontology/OntologyImport.vue；文档/需求/20260917_本体Excel模板下载与导入/需求说明.md

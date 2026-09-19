@@ -1,0 +1,28 @@
+{
+  "ticket": "2b288f391aac4865987bf41d5fb61ab4",
+  "task": "共享属性/业务规则/动作定义库行内操作平铺",
+  "status": "implemented",
+  "summary": "延续共享属性库行内平铺（编辑/引用到对象/复制为私有/删除，列宽 18%→32% 修截断，删除保护语义不变，页头「更多操作」保留），动作定义库同理把「删除定义」从 ⋯ 菜单平铺为行内红色删除（V2 被引用拦截语义不变）；业务规则库核实本就只有行内「编辑」无需改。测试 ont_list_unified ④ 共享库断言从 rowMenuItems 改为行内按钮断言。中断事故处理：上轮验收在共享库点了删除后 cell 被取消，确认框残留在 body（SPA hash 导航不清除），本轮进入动作页时仍挂着——已点取消，确认共享属性未被误删。另发现 goto hash 变化不重载页面导致看到旧 bundle，reload 后验证通过。",
+  "decisions": [
+    "三资产库行内操作统一平铺展示，低频批量能力（粘贴多行/批量复用）仍收页头菜单；删除按钮文案统一「删除」红字",
+    "appConfirm 残留问题：确认框挂 body 不随 SPA 导航清理，属已知行为，验收/使用中靠取消关闭；后续若成为困扰可评估路由守卫统一清理"
+  ],
+  "verification": [
+    "typecheck/build 通过；ont_list_unified 4/4、list_controls 4/4、object_workspace 7/7；全量前端套件通过（mapping_forms 既有基线除外）",
+    "18765 浏览器实测：共享库操作列四按钮完整（删除红字不被截断）、动作库 [编辑/删除] 平铺零菜单、规则库 [编辑] 不变；删除点击仍弹保护确认框"
+  ],
+  "next": [
+    "若对象建模四页签与三资产库的行内删除/操作样式需再统一文案（如「删除定义」vs「删除」），属后续微调"
+  ],
+  "references": [
+    "frontend/src/ontology/SharedLibrary.vue",
+    "frontend/src/ontology/ActionLibrary.vue",
+    "tests/ont_list_unified.test.mjs"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-19T07:11:17.124551+00:00",
+  "sequence": 28,
+  "filename": "000028-57c7e778a2a4.json",
+  "record_hash": "ac5ee694a63956f65399632a5a1d350508b0424f1ce04b2e6feba38c730287c3",
+  "context_advanced": false
+}
