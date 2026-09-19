@@ -223,6 +223,7 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
     <p class="muted">{{published?'维护当前草稿；已发布版本和项目引用保持独立。':'先整理业务对象和定义，准备好后再校验发布。'}}</p></div>
     <div class="tools home-actions">
       <button @click="importOpen=true">导入 Excel</button>
+      <button @click="emit('navigate','settings-transfer',{preselect:{ontologyId:ontologyId}})">导出配置</button>
       <button v-if="objects.length" class="primary" @click="emit('navigate','objects')">继续建模</button>
       <button v-else class="primary" @click="emit('navigate','objects',{create:true})">创建第一个对象</button>
     </div>

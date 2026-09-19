@@ -161,6 +161,7 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
   <div class="panelhead"><div><h2>{{projectState.name}}</h2>
   <p class="muted">{{hasReference?('引用 '+ontoName(projectState.ontologyId)+' '+projectState.ontologyVersion+'；升级仅修改项目草稿'):'尚未绑定本体：可以先配置连接，对象映射与校验需要先绑定已发布版本'}}</p></div>
   <div class="tools"><span v-if="projectDirty" class="status-pill">未保存修改</span>
+  <button @click="emit('navigate','settings-transfer',{preselect:{projectId:projectState.projectId,ontologyId:projectState.ontologyId}})">导出配置</button>
   <button class="primary" @click="emit('navigate','p-upgrade')">{{hasReference?'管理引用版本':'绑定本体版本'}}</button></div></div>
 </section>
 

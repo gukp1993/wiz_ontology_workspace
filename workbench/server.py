@@ -30,7 +30,9 @@ from urllib.parse import urlsplit, parse_qs
 
 from workbench import auth, auth_routes
 from workbench import model_routes, project_routes, projects, versions, workspaces
-from workbench import flow_routes, storage
+from workbench import config_package_routes, flow_routes, storage
+from workbench.config_packages import ImportConflict, TokenError
+from workbench.config_package_format import PackageFormatError
 from workbench.paths import CODE_ROOT
 
 STATIC = CODE_ROOT / 'frontend/dist'
@@ -106,6 +108,13 @@ POST_ROUTES = {
     '/api/llm-provider-delete': flow_routes.post_llm_provider_delete,
     '/api/llm-provider-default': flow_routes.post_llm_provider_default,
     '/api/llm-provider-test': flow_routes.post_llm_provider_test,
+    '/api/config-package-export-preview': config_package_routes.post_export_preview,
+    '/api/config-package-stage': config_package_routes.post_stage,
+    '/api/config-package-import-preview': config_package_routes.post_import_preview,
+    '/api/config-package-import': config_package_routes.post_import,
+    '/api/config-package-import-result': config_package_routes.post_import_result,
+    '/api/config-package-discard': config_package_routes.post_discard,
+    '/api/config-package-export': BINARY_ROUTE,  # 配置包下载：do_POST 专用二进制分支（07 §2.2）
     '/api/export': BINARY_ROUTE,  # 二进制响应：do_POST 内专用分支处理（哨兵 = 路由已注册）
 }
 
@@ -272,9 +281,15 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(payload, dict):
                 return self._error(400, 'INVALID_ARGUMENT', '请求体必须是 JSON 对象')
             if handler is BINARY_ROUTE:
-                data = model_routes.export_bytes(payload)
+                if path == '/api/config-package-export':
+                    (filename, filename_utf8), data = config_package_routes.export_bytes(payload)
+                    disposition = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{filename_utf8}"
+                else:
+                    filename_utf8 = None
+                    data = model_routes.export_bytes(payload)
+                    disposition = 'attachment; filename="ontology-model.zip"'
                 self.send_response(200); self.send_header('Content-Type', 'application/zip')
-                self.send_header('Content-Disposition', 'attachment; filename=ontology-model.zip')
+                self.send_header('Content-Disposition', disposition)
                 self.send_header('X-Request-Id', self._request_id)
                 self.end_headers(); self.wfile.write(data)
                 return
@@ -296,6 +311,16 @@ class Handler(SimpleHTTPRequestHandler):
             return self._error(409, 'DUPLICATE_NAME', str(exc))
         except workspaces.WorkspaceNotFound as exc:
             return self._error(404, 'NOT_FOUND', str(exc))
+        except TokenError as exc:
+            return self._error(*(lambda r: (r[1], r[0]['code'], r[0]['error']))(config_package_routes._token_response(exc)))
+        except PackageFormatError as exc:
+            # 包损坏/预算超限 422；版本/格式不支持 415（按消息归类，07 §1）
+            message = str(exc)
+            is_format = ('版本不支持' in message) or ('format 不符' in message) or ('payloadFormat 不支持' in message)
+            return self._error(415 if is_format else 422,
+                               'UNSUPPORTED_FORMAT' if is_format else 'PACKAGE_INVALID', message)
+        except ImportConflict as exc:
+            return self._error(409, exc.code, str(exc), extra=exc.extra)
         except storage.RevisionConflict as exc:
             # CAS 失败：与既有 409 契约一致（带服务端最新 token）
             return self._error(409, 'REVISION_CONFLICT', str(exc),

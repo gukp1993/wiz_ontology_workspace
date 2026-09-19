@@ -18,6 +18,7 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-19 | **新增配置迁移 7 接口**（07 分册）：export-preview（依赖闭包冻结快照+exportToken）、export（ZIP 二进制下载，独立二进制分派不影响旧 /api/export）、stage（begin/chunk 有界分片上传 512KiB/片、包≤20MiB）、import-preview（安全解析+命名预检，零资产写入）、import（previewToken+requestId 原子导入：每次主动导入新建本体/项目/编排/模型配置，同 requestId 重试幂等、改参数 409）、import-result（requestId 回执查询，持久化先于 token 过期）、discard。包格式 wiz-workbench-config-package formatVersion=1；不含受管理凭据；业务稳定 ID 恒等保留、资产级 ID 重建；解压≤100MiB/条目≤2000/单文件≤10MiB/TTL 30 分钟 | 7 个 /api/config-package-* 接口（新增） | zcode |
 | 2026-09-19 | `/api/flow-run` 新增可选 `testMode="isolated"` 隔离片段测试与稳定 ID `inputOverrides`（只覆盖范围外/未绑定输入；入口值同键赋值 400 歧义拒绝）；响应节点结果新增可选 `inputs`/`inputsTruncated`（有界预览，≤100 条/≈64KiB，不含凭据）；skipped 语义明确为失败沿所选范围传递性标记；targets `[]` 一律 400。旧调用（无 testMode：全图 revision/409/互斥、单节点技术名覆盖、多节点上游闭合链）语义不变 | POST /api/flow-run | zcode |
 | 2026-09-19 | 项目映射新增 `bindings.mappingDescriptions`（四类说明，schemaVersion=1）：写入结构/长度校验、旧客户端省略整块保留、显式清空按删键表达；validate/publish 追加说明结构与失效引用检查（失效阻断）；property-preview 遇非空说明在取数前返回不支持 | project-state / project-save / project-validate / project-publish / project-upgrade-check / project-property-preview | zcode |
 | 2026-09-18 | 首次整理：梳理 40 个在线接口，统一规范描述 | 全部 | — |
@@ -157,6 +158,7 @@
 | [04-编排与LLM接口](04-编排与LLM接口.md) | 函数编排 CRUD、配置检查、运行、LLM 提供方（13 个） |
 | [05-接口清单与规范差距](05-接口清单与规范差距.md) | 全量速查表 + 现状与标准 HTTP/REST 规范的差距与演进路线 |
 | [06-认证与账户接口](06-认证与账户接口.md) | 登录/注册/退出/登录态、会话 Cookie、数据按账号隔离与迁移命令（4 个，2026-09-18） |
+| [07-配置迁移接口](07-配置迁移接口.md) | 本体与项目配置打包导出/导入/结果/清理，包格式与分片上传（7 个，2026-09-19） |
 
 ---
 

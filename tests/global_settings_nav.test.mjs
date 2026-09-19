@@ -82,7 +82,8 @@ try {
     const sp = initialSpace('#settings-models', null)
     assert.equal(sp, 'ontology') // 无记忆时的兜底
     assert.equal(initialSpace('#settings-models', 'project'), 'project', '有项目记忆时保持项目空间供返回')
-    assert.deepEqual(settingsCategories.map(c => c.id), ['settings-models'])
+    // 20260919 配置迁移需求：设置中心新增「数据管理 / 配置迁移」分类
+    assert.deepEqual(settingsCategories.map(c => c.id), ['settings-models', 'settings-transfer'])
     assert.equal(settingsCategories[0].title, '模型设置')
     assert.equal(settingsCategories[0].group, '基础设置')
     // 旧 llm 不再是独立白名单键

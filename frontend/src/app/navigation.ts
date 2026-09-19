@@ -10,7 +10,7 @@ export const pages: Record<string, string> = {
   'f-home': '函数编排', 'f-editor': '编排编辑',
   tools: '更多工具', actions: '动作定义', interfaces: '接口定义', discover: '本体浏览', knowledge: '本体画布',
   explorer: '对象数据浏览', instances: '实例与计算预览', learning: '历史图谱导览', valuetypes: '值类型管理',
-  'settings-models': '模型设置',
+  'settings-models': '模型设置', 'settings-transfer': '配置迁移',
 }
 
 /** 旧 hash/内部跳转别名：全部归一到白名单键（任务板 §2 冻结）。 */
@@ -29,12 +29,13 @@ export const flowViews = ['f-home', 'f-editor']
 /** 项目映射空间承载的页面（含函数编排；编排不依赖选中项目，故与 projectViews 分开维护）。 */
 export const projectSpaceViews = [...projectViews, ...flowViews]
 /** 全局设置中心页面：独立于本体/项目两区（不参与 space 归属、lastOntologyView、业务 Saver 状态）。 */
-export const globalViews = ['settings-models']
+export const globalViews = ['settings-models', 'settings-transfer']
 export const isGlobalView = (v: string) => globalViews.includes(v)
 
 /** 设置分类注册表：只登记已实际实现的分类，不造空页。后续设置按 id/title/group 追加。 */
 export const settingsCategories = [
   { id: 'settings-models', title: '模型设置', group: '基础设置' },
+  { id: 'settings-transfer', title: '配置迁移', group: '数据管理' },
 ] as const
 
 /** 本体区侧栏菜单（扁平顺序即渲染顺序）；「更多工具」不进表，由 App 单独渲染。 */

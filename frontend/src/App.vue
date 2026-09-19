@@ -29,6 +29,7 @@ import ProjectVersion from './project/ProjectVersion.vue'
 import FlowList from './flow/FlowList.vue'
 import FlowEditor from './flow/FlowEditor.vue'
 import ModelSettings from './tools/LlmProviders.vue'
+import ConfigurationTransfer from './settings/ConfigurationTransfer.vue'
 import { decodeState, requestBody, type WorkbenchState } from './ontology/modelFormat'
 import { shortcutAction } from './app/shortcuts'
 import { READ_TIMEOUT_MS, SaveRequestError, isOriginRejected, localAccessUrl } from './app/http'
@@ -126,6 +127,8 @@ const projectSaver = createSaver('项目草稿',
 
 // --- 函数编排区 Saver：独立状态线（不携带本体/项目数据）；保存响应附带最新配置检查 ---
 const flowId = ref(''), flowSaveErrors = ref<string[]>([]), flowCheck = ref<any>(null), flowCheckSig = ref('')
+// 配置迁移预选（概览快捷导出入口 → settings-transfer）：本体/项目 id
+const transferPreselect = ref<{ ontologyId?: string; projectId?: string }>({})
 // 从模型设置返回编排的现场恢复通道：页签 + 节点焦点 + 模型列表刷新信号
 const flowInspectorTab = ref('')
 const flowFocusNode = ref<{ id: string; token: number } | null>(null)
@@ -394,7 +397,7 @@ async function switchSpace(s: 'ontology' | 'project') { if (s === space.value) r
   // 进入项目区：侧栏需要项目列表；项目状态由 navigate 的主路径按需加载（等待中仍可切回本体）
   if (s === 'project') void ensureProjectList() }
 
-async function navigate(v: string, focus?: { type?: string; property?: string; impl?: string; connection?: string; contract?: string; definition?: string; tab?: string; create?: boolean }) {
+async function navigate(v: string, focus?: { type?: string; property?: string; impl?: string; connection?: string; contract?: string; definition?: string; tab?: string; create?: boolean; preselect?: { ontologyId?: string; projectId?: string } }) {
   v = normalizeView(v); if (!(v in pages)) return
   if (v === view.value && !focus) { /* 同页重入不触发离开保护 */ }
   else if (!(await requestLeave())) return
@@ -424,6 +427,8 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
   if (isGlobalView(v) && focus) {
     settingsReturn.value = { view: view.value, node: focus.definition || '', tab: typeof focus.tab === 'string' ? focus.tab : '' }
   }
+  // 概览快捷导出预选：进入配置迁移页时生效；直接从设置菜单进入则清空
+  transferPreselect.value = v === 'settings-transfer' && focus?.preselect ? focus.preselect : {}
   // 全局设置页：独立于两区——不改写 lastOntologyView、不切 space、不加载/校验业务数据
   if (isGlobalView(v)) {
     if (view.value !== v) { message.value = ''; error.value = false }
@@ -594,6 +599,12 @@ async function openReferencedOntology() {
     location.assign('?ontology=' + encodeURIComponent(id) + '#o-release')
   } catch (e) { notify((e as Error).message, true) }
 }
+async function openFromTransfer(kind: 'ontology' | 'project', id: string) {
+  if (!id) return
+  if (kind === 'ontology') await switchOntology(id)
+  else await loadProject(id)
+}
+
 async function switchOntology(id: string) { if (id === ontologyId || busy.value) return; if (!(await requestLeave())) return; busy.value = true; try { await guardUnsaved(ontologySaver); enterOntology(id) } catch (e) { if ((e as Error).message !== 'cancelled') notify((e as Error).message, true); busy.value = false } }
 // 工作概览「查看项目」：真实选中该项目（loadProject 含离开保护/flush/确认），成功才进项目概览；
 // 不改引用版本（H09：不自动升级）。loadProject 返回 false（用户取消或失败）时不导航。
@@ -944,7 +955,10 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <div class="shell" :class="{mini: railMini}" :inert="modalOpen"><div v-if="message" id="feedback" :class="{error}" role="status">{{message}}</div>
 <main v-if="onGlobalView">
 <!-- 模型设置独立渲染：不依赖本体/项目加载结果（20260918 需求 §3.2），不显示业务校验/发布/撤销 -->
-<ModelSettings/>
+<ModelSettings v-if="view === 'settings-models'"/>
+<ConfigurationTransfer v-else-if="view === 'settings-transfer'" :preselect="transferPreselect"
+                       @open-ontology="openFromTransfer('ontology', $event)"
+                       @open-project="openFromTransfer('project', $event)"/>
 </main>
 <main v-else-if="booting||ontologyLoad==='loading'"><section class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:92%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:96%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:78%"></div></section><p v-if="ontologySlow" class="muted" role="status">仍在加载，请稍候…（超过 {{ Math.round(READ_TIMEOUT_MS/1000) }} 秒仍未返回会给出重试入口）</p></main>
 <!-- G1/G2：本体必要读取失败——给出状态与恢复入口，不能渲染成「没有本体」 -->
