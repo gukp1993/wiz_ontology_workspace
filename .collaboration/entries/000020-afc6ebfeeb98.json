@@ -1,0 +1,23 @@
+{
+  "ticket": "248e2f19a7cf4d16ac8b21fdf6fdb642",
+  "task": "项目映射普通模式与严格模式",
+  "status": "decision",
+  "summary": "用户确认项目映射支持普通模式（自然语言描述，由大模型在查询时理解）与严格模式（现有结构化映射及编排）；严格模式仍是主力。当前仅讨论，未授权实施。",
+  "decisions": [
+    "普通模式以自然语言记录对象来源与属性取值规则，不强制先生成固定 SQL 或编排。",
+    "保留严格模式作为主力建设方向；普通模式作为补充，不替代已有结构化配置。"
+  ],
+  "verification": [
+    "本轮仅确认产品方向，无业务代码或数据改动，无运行验证。"
+  ],
+  "next": [
+    "继续讨论模式选择粒度、两种配置的切换和生效规则；这些细节尚未确认。"
+  ],
+  "references": [],
+  "actor": "codex",
+  "created_at": "2026-09-19T06:16:41.215445+00:00",
+  "sequence": 20,
+  "filename": "000020-afc6ebfeeb98.json",
+  "record_hash": "a3aee2954ec9fdba85f5b4efeaf7c29fbbb61243c979bf01e5f681c9a3c1adbf",
+  "context_advanced": false
+}
