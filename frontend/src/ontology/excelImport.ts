@@ -7,26 +7,17 @@
 //  - 数据验证（下拉）不算数据；纯格式空单元格（t==='z'）不算记录；
 //  - 额外可见列/额外 Sheet 有用户数据 → 报错并列位置，不静默丢弃；
 //  - 文本字段必须是文字：数字/布尔/日期单元格指出需填写文字，不擅自改写。
-export const SHEETS = ['对象', '属性', '规则', '动作', '链接'] as const
+export const SHEETS = ['对象', '属性', '规则', '动作'] as const
 export type SheetName = (typeof SHEETS)[number]
 
 export const HEADERS: Record<SheetName, string[]> = {
   对象: ['对象名称', '业务定义'],
-  属性: ['属性名称', '业务定义', '数据类型', '观测值类型', '显示格式', '关联对象'],
-  规则: ['规则名称', '业务定义', '规则内容', '输出结果', '关联对象'],
-  动作: ['动作名称', '业务定义', '业务效果', '关联对象'],
-  链接: ['链接名称', '业务定义', '起始对象', '目标对象', '数量关系', '反向名称'],
+  属性: ['属性名称', '业务定义', '数据类型', '观测值类型', '显示格式'],
+  规则: ['规则名称', '业务定义', '规则内容', '输出结果'],
+  动作: ['动作名称', '业务定义', '业务效果'],
 }
 /** 名称列（每表第一业务列）。 */
-export const NAME_COLUMN: Record<SheetName, string> = { 对象: '对象名称', 属性: '属性名称', 规则: '规则名称', 动作: '动作名称', 链接: '链接名称' }
-
-/** 允许缺失的表头/表（20260919 关系导入）：旧模板没有「关联对象」列；整张「链接」表可缺省。 */
-export const OPTIONAL_HEADERS = new Set(['关联对象'])
-export const OPTIONAL_SHEETS = new Set<SheetName>(['链接'])
-
-/** 数量关系：模板中文文案 ↔ 本体枚举值（与页面 CARDINALITY 一致）。 */
-export const CARDINALITY_LABELS: Record<string, string> = { '一对一': 'one-to-one', '一对多': 'one-to-many', '多对一': 'many-to-one', '多对多': 'many-to-many' }
-export const LINK_DEFAULT_CARDINALITY = 'many-to-one'
+export const NAME_COLUMN: Record<SheetName, string> = { 对象: '对象名称', 属性: '属性名称', 规则: '规则名称', 动作: '动作名称' }
 
 export const MAX_FILE_BYTES = 1024 * 1024
 export const MAX_BUSINESS_ROWS = 1000
@@ -144,12 +135,7 @@ export function scanSheets(wb: any): { scan: Record<string, SheetScan>; issues: 
   const issues: ParseIssue[] = []
   for (const name of SHEETS) {
     const ws = wb.Sheets[name]
-    if (!ws) {
-      // 「链接」表可缺省：旧模板/只填定义的文件没有这张表不算错
-      if (OPTIONAL_SHEETS.has(name)) continue
-      issues.push({ sheet: name, row: 0, column: '', message: '缺少工作表「' + name + '」。请使用下载的模板填写。' })
-      continue
-    }
+    if (!ws) { issues.push({ sheet: name, row: 0, column: '', message: '缺少工作表「' + name + '」。请使用下载的模板填写。' }); continue }
     const ref = String(ws['!ref'] || 'A1:A1')
     const range = decodeRange(ref)
     // 列隐藏信息（模板 H 列等辅助列）
@@ -173,7 +159,6 @@ export function scanSheets(wb: any): { scan: Record<string, SheetScan>; issues: 
     }
     const expect = HEADERS[name]
     for (const h of expect) {
-      if (OPTIONAL_HEADERS.has(h) && (seen.get(h) || 0) === 0) continue // 旧模板允许没有「关联对象」列
       if ((seen.get(h) || 0) === 0) issues.push({ sheet: name, row: headerRow, column: '', message: '缺少表头「' + h + '」。无内容的表也要保留完整表头。' })
       else if ((seen.get(h) || 0) > 1) issues.push({ sheet: name, row: headerRow, column: h, message: '表头「' + h + '」重复出现，无法识别业务列。' })
     }

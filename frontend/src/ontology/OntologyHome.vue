@@ -15,7 +15,7 @@ const props=defineProps<{state:any}>()
 const emit=defineEmits<{navigate:[view:string,focus?:any]}>()
 // Excel 模板下载与导入（20260917 需求 §2）：入口在概览顶部；导入面板关闭后刷新统计/校验
 const importOpen=ref(false)
-const templateHref=()=>((import.meta as any).env?.BASE_URL||'/')+'templates/ontology-import-v2.xlsx'
+const templateHref=()=>((import.meta as any).env?.BASE_URL||'/')+'templates/ontology-import-v1.xlsx'
 // 下载模板：用按钮触发程序化下载——原生 <a> 与工作台按钮不同款，用户反馈「下载链接没有样式」
 function downloadTemplate(){
   const a=document.createElement('a')
