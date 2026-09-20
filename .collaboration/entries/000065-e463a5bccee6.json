@@ -1,0 +1,32 @@
+{
+  "ticket": "53e9d213fa9f4b7b90e42d405a0f74e0",
+  "task": "实施 图谱编辑器源码整体复用（P0–P4 收尾提交 573a586）",
+  "status": "implemented",
+  "summary": "整体复制旧编辑器（HEAD b2f10d1，8 文件 SHA256 与计划一致）到 frontend/src/ontology/legacyGraph/：EditorView/Preview/MultiPreview+组件/composables/core/shared，交互逐行保留，类型扩为当前五类；新增 legacyBridge 适配层（lg: 稳定 ID 投影、领域命令走 before-change/changed/保存协调器、撤销=领域快照、坐标=视图偏好、外部变化检测）；保存接 commit-now，版本管理→校验与发布页，发布版本只读预览（单图/多本体多选），坐标导入导出+离线图谱包客户端生成，jsonId 有损默认阻止；旧 MCP/问数/徽标/另存版本/jsonId 导入移除并登记；删除上一版只读控制器消除双控制器。",
+  "decisions": [
+    "节点/边身份=lg:<类型前缀>:<领域稳定ID>；边身份=定义 ID（链接/共享引用/归属）或类型+双方 ID（规则/动作关联），平行链接与自关联如实上图",
+    "删除保护与当前建模一致（graphReferences/规则与动作引用/共享引用计数）；批量连线先全量校验整批拒绝；引用边删除=属性转私有继承字段，归属边删除=删私有属性",
+    "jsonId 导出含动作/私有属性/共享引用/时间序列等不可表达内容时默认阻止并列损失清单；完整迁移走配置迁移；图谱包=store-only ZIP（坐标+离线预览 HTML，无凭据断网可看）",
+    "旧 3 秒自动保存/版本快照/第二套存储切断；本体切换/新建经 App 既有守卫链路（switchOntology/createOntologyNamed）"
+  ],
+  "verification": [
+    "build（vue-tsc+vite）通过；tests/ontology_graph.test.mjs 12/12（模型断言保留）+ tests/legacy_graph_bridge.test.mjs 12/12（新增领域断言）",
+    "既有前端回归全过：object_workspace 7/ontology_home 27/global_interaction 7/save_queue 22/undo_history 7",
+    "修改内容对照表（逐文件适配+旧功能→当前入口+C01–C05 口径+已知限制）见 文档/需求/20260919_图谱编辑器源码整体复用/修改内容清单.md；开发计划 §5.1 已回填"
+  ],
+  "next": [
+    "子代理验收与打磨循环补齐：R01–R18 隔离浏览器逐项走查、四档宽度截图、500/1200 性能对比、失败与 409/账号切换实测（§5.1 如实登记未测项）",
+    "用户验收 18765：本体→对象建模→本体图谱（新编辑器）；重点核对新建/连线/删除/撤销走当前保存链路"
+  ],
+  "references": [
+    "frontend/src/ontology/legacyGraph/（全部迁入文件+legacyBridge.js+offlineBundle.js+LegacyGraphHost.vue）",
+    "frontend/src/ontology/ObjectWorkspace.vue；frontend/src/App.vue；OntologyGraph.vue 已删除",
+    "文档/需求/20260919_图谱编辑器源码整体复用/修改内容清单.md；开发计划.md §5.1；git 573a586"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-20T00:55:46.124716+00:00",
+  "sequence": 65,
+  "filename": "000065-e463a5bccee6.json",
+  "record_hash": "3b2d3625601eeedf8565111f56e735d350b3cacd3872b2bdd183bdc342197969",
+  "context_advanced": false
+}

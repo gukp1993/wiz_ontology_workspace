@@ -623,6 +623,8 @@ async function removeNode(id: string, label: string, confirmText?: string) {
       :latest-release="props.latestRelease"
       :focus-target="props.graphFocus || ''"
       @navigate="onGraphNavigate"
+      @before-change="p => emit('before-change', p)"
+      @changed="() => emit('changed')"
       @switch-ontology="onSwitchOntology"
       @create-ontology="onCreateOntology"
     />

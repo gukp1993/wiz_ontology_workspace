@@ -1,0 +1,66 @@
+/* legacy.css —— 迁入编辑器的全局样式（自旧仓库 frontend/src/style.css 提取编辑器依赖的规则）。
+   全部选择器限定在 .legacy-editor-root 容器内并以其作用域变量为准，不污染当前工作台表单与全局样式
+   （需求 P1：旧全局 CSS 只复制编辑器依赖规则并限定容器）。 */
+
+/* 旧版设计令牌（限定容器：当前工作台 :root 的同名变量值不同，不能混用） */
+.legacy-editor-root {
+  --ink: #172126;
+  --muted: #6b777c;
+  --line: #d9e0e2;
+  --paper: #fff;
+  --panel: #f8faf9;
+  --canvas: #f3f7f6;
+  --accent: #14705d;
+  --accent2: #0e5648;
+  --soft: #e8f3ef;
+  --shadow: 0 12px 34px rgba(23, 33, 38, .13);
+  --amber: #b45309;
+  --danger: #b91c1c;
+  color: var(--ink);
+  font: 14px/1.5 Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+}
+.legacy-editor-root button { font: inherit; color: inherit; cursor: pointer; }
+.legacy-editor-root input, .legacy-editor-root textarea, .legacy-editor-root select { font: inherit; color: inherit; }
+.legacy-editor-root input:focus, .legacy-editor-root textarea:focus, .legacy-editor-root select:focus { outline: none; }
+
+/* ---- 按钮（旧仓库 style.css .btn 原样 + 前缀） ---- */
+.legacy-editor-root .btn {
+  height: 33px; padding: 0 14px; border: 1px solid var(--line); background: #fff;
+  border-radius: 7px; font-size: 12px; font-weight: 600; color: var(--ink);
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.legacy-editor-root a.btn { text-decoration: none; }
+.legacy-editor-root .btn:hover { background: #f3f6f5; border-color: #bdc8ca; }
+.legacy-editor-root .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.legacy-editor-root .btn.primary:hover { background: var(--accent2); border-color: var(--accent2); }
+.legacy-editor-root .btn.active { background: var(--soft); border-color: var(--accent); color: var(--accent2); }
+.legacy-editor-root .btn.danger { color: var(--danger); border-color: #f3c1bd; }
+.legacy-editor-root .btn.danger:hover { background: #fdf3f3; border-color: #e2a6a0; }
+.legacy-editor-root .btn:disabled { opacity: .45; cursor: not-allowed; background: #fff; color: var(--ink); border-color: var(--line); }
+
+/* ---- 弹窗（旧仓库 style.css .modal-mask/.modal 原样 + 前缀） ---- */
+.legacy-editor-root .modal-mask {
+  position: fixed; inset: 0; background: rgba(23, 33, 38, .35);
+  display: none; align-items: center; justify-content: center; z-index: 30;
+}
+.legacy-editor-root .modal-mask.show { display: flex; }
+.legacy-editor-root .modal {
+  background: #fff; border-radius: 10px; width: 430px; max-width: 92vw;
+  padding: 20px 22px; box-shadow: var(--shadow); border: 1px solid var(--line);
+}
+.legacy-editor-root .modal h3 { font-size: 15px; margin: 0 0 14px; }
+.legacy-editor-root .modal .field { margin-bottom: 14px; }
+.legacy-editor-root .modal .field label {
+  display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 600;
+}
+.legacy-editor-root .modal .field input[type=text], .legacy-editor-root .modal .field textarea, .legacy-editor-root .modal .field select {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+  font-size: 13px; background: #fff; outline: none; display: block; margin-top: 0;
+}
+.legacy-editor-root .modal .field textarea { min-height: 72px; resize: vertical; }
+.legacy-editor-root .modal .field input:focus, .legacy-editor-root .modal .field textarea:focus, .legacy-editor-root .modal .field select:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 2px var(--soft);
+}
+.legacy-editor-root .modal .err { color: var(--danger); font-size: 12px; margin: 8px 0 0; display: none; }
+.legacy-editor-root .modal .err.show { display: block; }
+.legacy-editor-root .modal .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }

@@ -358,6 +358,7 @@
 <script setup>
 import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount, inject } from 'vue'
 import cytoscape from 'cytoscape'
+import './legacy.css'
 import { createLegacyBridge, bridgeSignature } from './legacyBridge'
 import { buildJsonIdLocal, jsonIdLosses, buildOfflineBundle, downloadBlob } from './offlineBundle'
 import { toast } from './composables/useToast'
@@ -393,6 +394,8 @@ const bridge = createLegacyBridge({
   emitChanged: () => emit('changed'),
 })
 const state = bridge.state
+// 五类常量：必须在任何初始化即调用的函数（loadTypeVisible 等）之前声明（TDZ 防护）
+const ALL_TYPES = ['对象', '共享属性', '私有属性', '规则', '动作']
 
 const canvasEl = ref(null)
 const cy = shallowRef(null)
@@ -528,7 +531,6 @@ function currentDraft() {
   }
   return draft
 }
-const ALL_TYPES = ['对象', '共享属性', '私有属性', '规则', '动作']
 function updateCounts() {
   if (!cy.value) return
   nodeCount.value = cy.value.nodes().length
@@ -1048,6 +1050,17 @@ function redo() {
 function captureDomain() {
   return bridge.captureUndo()
 }
+// 领域命令包装（P0 修复）：执行前记录领域快照，成功后入撤销栈；
+// 失败（桥未变更）不入栈、不污染 redo。Ctrl+Z 经 applyUndo 换回真实模型。
+function domainCmd(fn) {
+  const snap = captureDomain()
+  const r = fn()
+  if (r && r.error) return r
+  undoStack.push({ domain: snap })
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift()
+  redoStack = []
+  return r
+}
 
 function bindCyEvents() {
   cy.value.on('tap', (evt) => {
@@ -1172,11 +1185,20 @@ function initCy() {
   bindCyEvents()
   // 视口偏好（适配：旧版不存视口；现按账号+本体隔离持久化）
   const vp = state.prefsViewport
-  if (vp && Number.isFinite(vp.zoom) && vp.pan && Number.isFinite(vp.pan.x) && Number.isFinite(vp.pan.y)) {
+  const validVp = vp && Number.isFinite(vp.zoom) && vp.pan && Number.isFinite(vp.pan.x) && Number.isFinite(vp.pan.y)
+    && !(Math.abs(vp.zoom - 0.1) < 1e-6 && vp.pan.x === 0 && vp.pan.y === 0) // 退化值（0 尺寸画布写下的 minZoom/pan=0）不恢复
+  if (validVp) {
     cy.value.zoom(Math.min(Math.max(vp.zoom, cy.value.minZoom()), cy.value.maxZoom()))
     cy.value.pan({ x: vp.pan.x, y: vp.pan.y })
+  } else {
+    // 无有效记忆（首次打开 / 历史退化值）：适应可见节点，避免落在 minZoom
+    const vis = cy.value.nodes().filter(n => n.visible())
+    if (vis.length) { try { cy.value.fit(vis, 50) } catch { /* 空集合保原视口 */ } }
   }
   cy.value.on('pan zoom', () => {
+    // 尺寸为 0 时（容器尚未布局/被遮挡）不保存视口：那时 zoom/pan 是退化值，
+    // 写入会把下次打开钉在 minZoom（实测 0.1）。
+    if (cy.value.width() <= 0 || cy.value.height() <= 0) return
     state.prefsViewport = { zoom: cy.value.zoom(), pan: { x: cy.value.pan().x, y: cy.value.pan().y } }
     bridge.persistPrefs()
   })
@@ -1262,7 +1284,7 @@ function openNewNode() {
   showNewNode.value = true
 }
 function createNode({ type, name }) {
-  const r = bridge.domainCreateNode({ type, name })
+  const r = domainCmd(() => bridge.domainCreateNode({ type, name }))
   if (r.error) { toast(r.error, true); return }
   const pos = centerPos()
   // 连续新建错开，避免新节点全部堆叠在视口中心
@@ -1280,7 +1302,7 @@ function openNodeEdit(el) {
   showNodeEdit.value = true
 }
 function saveNode({ name, data }) {
-  const r = bridge.domainSaveNode(editNode.value.id, { name, data })
+  const r = domainCmd(() => bridge.domainSaveNode(editNode.value.id, { name, data }))
   if (r.error) { toast(r.error, true); return }
   const el = cy.value.getElementById(editNode.value.id)
   refreshFromBridge()
@@ -1296,7 +1318,7 @@ async function deleteNode() {
     ? `删除节点「${editNode.value.name}」将连带删除 ${nEdges} 条连线；引用保护与级联规则由当前建模约束执行。确认删除？`
     : `确认删除节点「${editNode.value.name}」？`
   if (await confirmDialog(msg)) {
-    const r = bridge.domainDeleteNode(editNode.value.id)
+    const r = domainCmd(() => bridge.domainDeleteNode(editNode.value.id))
     if (r.error) { toast(r.error, true); return }
     refreshFromBridge()
     showNodeEdit.value = false
@@ -1480,7 +1502,7 @@ function createEdges({ relation, description }) {
   }
   // 领域批量连线：桥先全量校验（对象链接/共享引用/规则与动作引用/非法组合），
   // 全部合法一次提交；有失败整批拒绝并列出原因（需求 §3.2）。
-  const r = bridge.domainCreateEdges(valid.map((t) => ({ sourceId: srcId, targetId: t.id })), { relation, description })
+  const r = domainCmd(() => bridge.domainCreateEdges(valid.map((t) => ({ sourceId: srcId, targetId: t.id })), { relation, description }))
   if (r.error) {
     toast('连线未执行：' + r.error, true)
     return
@@ -1550,7 +1572,7 @@ function editInspNode() {
 }
 function saveInspector() {
   if (insp.value?.kind !== 'edge') return
-  const r = bridge.domainSaveEdge(insp.value.id, { relation: insp.value.relation, description: insp.value.description })
+  const r = domainCmd(() => bridge.domainSaveEdge(insp.value.id, { relation: insp.value.relation, description: insp.value.description }))
   if (r.error) { toast(r.error, true); return }
   refreshFromBridge()
   toast('已保存连线修改')
@@ -1562,7 +1584,7 @@ async function delInspector() {
     : el.data('kind') === '私有属性' ? '该连线是私有属性的归属关系，删除将一并删除该私有属性定义。确认？'
     : '删除这条连线？'
   if (await confirmDialog(tip)) {
-    const r = bridge.domainDeleteEdge(insp.value.id)
+    const r = domainCmd(() => bridge.domainDeleteEdge(insp.value.id))
     if (r.error) { toast(r.error, true); return }
     refreshFromBridge()
     clearInspector()
@@ -1587,7 +1609,7 @@ async function deleteSelection(els) {
   if (await confirmDialog(msg)) {
     const nodeIds = els.filter((e) => e.isNode()).map((e) => e.id())
     const edgeIds = els.filter((e) => e.isEdge()).map((e) => e.id())
-    const r = bridge.domainDeleteSelection(nodeIds, edgeIds) // 先全量校验再一次提交
+    const r = domainCmd(() => bridge.domainDeleteSelection(nodeIds, edgeIds)) // 先全量校验再一次提交
     if (r.error) { toast(r.error, true); return }
     refreshFromBridge()
     clearInspector()
@@ -1653,8 +1675,8 @@ async function onCoordinatesFile(e) {
   if (!file) return
   exitLinking()
   clearInspector()
-  if (state.graphId == null) {
-    toast('请先新建或选择一个图谱', true)
+  if (!hasGraph.value) {
+    toast('请先选择本体', true)
     return
   }
   let coords
