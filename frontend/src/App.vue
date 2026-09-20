@@ -168,11 +168,6 @@ const flowSaver = createSaver('编排草稿',
     if (d.check) { flowCheck.value = d.check; flowCheckSig.value = sig }
     return d
   })
-// 顶栏检查结论的新鲜度：配置再变动后旧结论不再展示（与编辑页快照规则一致）
-watch(() => [flowState.value && configSignature(flowState.value), flowCheckSig.value], () => {
-  if (flowCheck.value && flowCheckSig.value !== (flowState.value ? configSignature(flowState.value) : '')) flowCheck.value = null
-})
-
 // working 即旧 state/projectState 的替代（Saver 的同一个 ref，切换/撤销/重载都替换它）。
 const state = ontologySaver.working as Ref<WorkbenchState | null>
 const revision = ontologySaver.revision
@@ -184,6 +179,13 @@ const flowDirty = computed(() => flowSaver.status.value !== 'saved')
 // 当前项目的数据连接（仅元数据，含 MySQL 与 Redis）：SQL/Redis 节点下拉与编排配置检查的引用上下文
 const projectConnections = computed(() => (projectState.value?.connections?.connections || [])
   .map((c: any) => ({ id: c.id, name: c.name, engine: c.engine })))
+
+// 顶栏检查结论的新鲜度：配置再变动后旧结论不再展示（与编辑页快照规则一致）。
+// 必须放在 flowState 声明之后：watch 注册时同步执行 getter，声明前读取会抛
+// 「Cannot access 'flowState' before initialization」导致客户端 setup 整体失败。
+watch(() => [flowState.value && configSignature(flowState.value), flowCheckSig.value], () => {
+  if (flowCheck.value && flowCheckSig.value !== (flowState.value ? configSignature(flowState.value) : '')) flowCheck.value = null
+})
 
 // --- T00 表单守卫：局部表单注册/离开保护/提交助手（契约见 app/formGuard.ts） ---
 // shallowRef + 不可变更新：深响应 ref 会把数组元素包成代理对象，unregister 的恒等

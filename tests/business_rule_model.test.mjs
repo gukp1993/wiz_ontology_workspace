@@ -4,7 +4,8 @@
 // 运行：node --import ./tests/ts_hooks.mjs tests/business_rule_model.test.mjs
 import assert from 'node:assert/strict'
 import { RULE_FIELDS, RULE_LEGACY_FIELDS, rulesOf, ruleAssociationsOf, ruleById, rulesOfObject,
-         objectsOfRule, commitRuleAssociations, ruleComboKey } from '../frontend/src/ontology/businessRuleModel.ts'
+         objectsOfRule, commitRuleAssociations, ruleComboKey,
+         ruleFieldErrors, ruleRecordValid, ruleDraftOf } from '../frontend/src/ontology/businessRuleModel.ts'
 
 const state = {
   workflow: {
@@ -71,4 +72,29 @@ commitRuleAssociations(target, [
 assert.deepEqual(target.workflow.businessRuleAssociations,
                  [{ objectTypeId: 'mg:A', ruleId: 'x' }, { objectTypeId: 'mg:B', ruleId: 'z' }])
 
-console.log('通过：容错读取、双向引用、前缀等价、组合去重、三字段协议与历史 output 兼容。')
+// ── A01（2026-09-20 验收修复）：记录级文本字段校验（与后端 workflow.py 镜像） ────────────────
+// 名称/业务定义必填文本；规则内容选填文本；非文本一律报「必须是文本」，绝不静默转字符串。
+assert.deepEqual(ruleFieldErrors({ name: 'n', description: 'd' }), {}, '名称+定义（无 content 键）合法')
+assert.deepEqual(ruleFieldErrors({ name: 'n', description: 'd', content: '' }), {}, 'content 空串合法（选填）')
+assert.deepEqual(ruleFieldErrors({ name: 'n', description: 'd', content: '   ' }), {}, 'content 纯空白合法（选填）')
+assert.deepEqual(ruleFieldErrors({ name: 'n', description: 'd', content: null }), {}, 'content=null 按未填处理')
+assert.deepEqual(Object.keys(ruleFieldErrors({ name: '  ', description: '' })).sort(), ['description', 'name'],
+                 '空白必填项分别报错')
+assert.deepEqual(Object.keys(ruleFieldErrors({ name: null, description: 'd' })), ['name'], 'name=null 报必填')
+for (const value of [{ wrong: 'object' }, ['wrong'], 3, true]) {
+  const errors = ruleFieldErrors({ name: 'n', description: 'd', content: value })
+  assert.deepEqual(Object.keys(errors), ['content'], `content 为 ${JSON.stringify(value)} 时报错`)
+  assert.match(errors.content, /必须是文本/, `content 非文本给「必须是文本」文案（${JSON.stringify(value)}）`)
+}
+assert.match(ruleFieldErrors({ name: { a: 1 }, description: 'd' }).name, /必须是文本/,
+             '名称非文本同样受控报错（不 String() 掩盖）')
+assert.equal(ruleRecordValid({ name: 'n', description: 'd' }), true, 'ruleRecordValid：最小合法记录')
+assert.equal(ruleRecordValid({ name: 'n', description: 'd', content: { bad: 1 } }), false,
+             'ruleRecordValid：非法 content 不可保存')
+// 非文本旧值进入编辑草稿时保留原值（由校验报错提示用户改写），不被静默清洗
+const legacyDraft = ruleDraftOf({ id: 'r1', name: '旧规则', description: 'd', content: { wrong: 'object' }, output: '历史' })
+assert.deepEqual(legacyDraft.content, { wrong: 'object' }, '编辑草稿保留非文本旧值（不清洗）')
+assert.ok(!('output' in legacyDraft), '编辑草稿不含 output（历史只读）')
+assert.deepEqual(Object.keys(ruleFieldErrors(legacyDraft)), ['content'], '保留的非法值在保存校验时被报出')
+
+console.log('通过：容错读取、双向引用、前缀等价、组合去重、三字段协议、历史 output 兼容与 A01 记录级校验。')

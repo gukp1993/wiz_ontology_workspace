@@ -4,7 +4,8 @@
 // 运行：node --import ./tests/ts_hooks.mjs tests/action_model.test.mjs
 import assert from 'node:assert/strict'
 import { isActionV2, actionsOf, associationsOf, effectiveAssociations, associationsOfObject,
-         objectsOfAction, actionBindingsOf, commitAssociations, comboKey } from '../frontend/src/ontology/actionModel.ts'
+         objectsOfAction, actionBindingsOf, commitAssociations, comboKey,
+         actionFieldErrors, actionRecordValid } from '../frontend/src/ontology/actionModel.ts'
 
 const state = {
   workflow: {
@@ -77,4 +78,22 @@ assert.equal(record.effect, '设备退出充放电运行状态', '改名/改定�
 assert.deepEqual(Object.keys(record).sort(), ['definitionVersion', 'description', 'effect', 'id', 'name'],
                  '记录键集合不因三字段保存发生变化（不新增/不删除存储键）')
 
-console.log('通过：关联推导与去重、双向查询、前缀等价、容错读取、写回去重、effect 选填。')
+// ── A01（2026-09-20 验收修复）：v2 动作记录级文本校验（与后端 workflow.py 动作分支镜像） ──────
+assert.deepEqual(actionFieldErrors({ name: 'n', description: 'd' }), {}, '名称+定义（无 effect 键）合法')
+for (const value of ['', '   ', null]) {
+  assert.deepEqual(actionFieldErrors({ name: 'n', description: 'd', effect: value }), {},
+                   `effect 为 ${JSON.stringify(value)} 合法（选填，按未填处理）`)
+}
+for (const value of [['wrong'], { wrong: 'object' }, 3, true]) {
+  const errors = actionFieldErrors({ name: 'n', description: 'd', effect: value })
+  assert.deepEqual(Object.keys(errors), ['effect'], `effect 为 ${JSON.stringify(value)} 时受控报错`)
+  assert.match(errors.effect, /必须是文本/, `effect 非文本给「必须是文本」文案（${JSON.stringify(value)}）`)
+}
+assert.deepEqual(Object.keys(actionFieldErrors({ name: ' ', description: 'd' })), ['name'], '空白名称报必填')
+assert.deepEqual(Object.keys(actionFieldErrors({ name: 'n', description: '   ' })), ['description'], '空白定义报必填')
+assert.match(actionFieldErrors({ name: 'n', description: null }).description, /请填写/,
+             'description=null 报可读的必填文案（不再 AttributeError 泛化）')
+assert.equal(actionRecordValid({ name: 'n', description: 'd', effect: ['bad'] }), false,
+             'actionRecordValid：非文本 effect 不可保存')
+
+console.log('通过：关联推导与去重、双向查询、前缀等价、容错读取、写回去重、effect 选填与 A01 记录级校验。')

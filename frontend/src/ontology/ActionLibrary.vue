@@ -12,7 +12,7 @@ import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
 import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
-import { actionsOf, isActionV2, objectsOfAction } from './actionModel'
+import { actionsOf, isActionV2, objectsOfAction, actionFieldErrors } from './actionModel'
 import { useOntTable } from './ontList'
 import { actionDeleteCheck, externalDependencies, externalDependencyTarget } from './dependencyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
@@ -34,7 +34,9 @@ const detailId = ref('') // 只读详情抽屉
 const refsId = ref('') // 关联对象抽屉
 const refFilter = ref<'all' | 'linked' | 'unlinked'>('all')
 const message = ref(''), saving = ref(false)
-const draft = ref<{ name: string; description: string; effect: string }>({ name: '', description: '', effect: '' })
+// draft 的字段值可能是非文本历史值（A01 验收修复：保留原值报「必须是文本」，不静默转字符串）。
+const draft = ref<any>({ name: '', description: '', effect: '' })
+const fieldErrors = ref<Record<string, string>>({})
 let baseline = ''
 let converting = false // 历史动作「转换为新格式」进入编辑：保存时替换旧结构
 
@@ -116,9 +118,11 @@ function openEdit(id: string) {
   const a: any = actionById(id)
   if (!a) return
   editId.value = id
-  draft.value = { name: a.name || '', description: a.description || '', effect: a.effect || '' }
+  // A01：文本原样、非文本旧值保留原值（由保存校验给出字段级原因）。
+  draft.value = { name: a.name ?? '', description: a.description ?? '', effect: a.effect ?? '' }
   baseline = JSON.stringify(draft.value)
   converting = false
+  fieldErrors.value = {}
   mode.value = 'edit'
   message.value = ''
   blockedDeps.value = []
@@ -130,9 +134,10 @@ async function openConvert(id: string) {
   if (!a) return
   if (!(await appConfirm({ message: '将此历史动作转换为新格式编辑？保存后旧格式的适用对象、输入参数、提交条件、权限与验收字段会被新结构替代并移除，且需重新发布后项目引用才会更新。继续吗？' }))) return
   editId.value = id
-  draft.value = { name: a.name || '', description: a.description || '', effect: a.effect || '' }
+  draft.value = { name: a.name ?? '', description: a.description ?? '', effect: a.effect ?? '' }
   baseline = JSON.stringify(draft.value)
   converting = true
+  fieldErrors.value = {}
   mode.value = 'edit'
   message.value = ''
   blockedDeps.value = []
@@ -150,9 +155,15 @@ async function submit(apply: () => void, action?: { actionLabel: string; target?
 }
 async function save() {
   if (saving.value) return
-  const name = draft.value.name.trim(), desc = draft.value.description.trim(), effect = draft.value.effect.trim()
-  // 20260920 字段精简：动作名称/业务定义必填；预期效果（effect）选填。
-  if (!name || !desc) { message.value = '请填写动作名称和业务定义。'; return }
+  // 20260920 字段精简 + A01 验收修复：名称/业务定义必填文本；预期效果选填文本。
+  // 口径在 actionFieldErrors（与后端 workflow.py 动作分支镜像）；非文本旧值给字段级原因而非崩溃。
+  fieldErrors.value = actionFieldErrors(draft.value)
+  if (Object.keys(fieldErrors.value).length) {
+    message.value = Object.values(fieldErrors.value).join('；')
+    return
+  }
+  const name = draft.value.name.trim(), desc = draft.value.description.trim()
+  const effect = typeof draft.value.effect === 'string' ? draft.value.effect.trim() : draft.value.effect
   saving.value = true
   const targetId = editId.value
   const isNew = !rows.value.some((a: any) => a.id === targetId)

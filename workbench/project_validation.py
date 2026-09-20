@@ -509,10 +509,82 @@ def _flow_constant_ok(flow_type, value):
     return True
 
 
+def _flow_check_context(ctx):
+    """项目校验传给 flows.check_flow 的上下文（每次 validate_project 解析一次）。
+
+    - connections：本项目数据连接元数据（SQL/Redis 节点引用的存在性上下文）；
+    - credential_ids：本项目 API 凭据 id 集合（HTTP 节点认证引用）；无项目/不可读 → None
+      （check_flow 会跳过该项存在性检查，不把「项目侧无上下文」当编排错误）；
+    - llm_meta：账号已配置的 LLM 提供方元数据；账号尚未配置任何提供方时为 []，
+      由 `_flow_struct_errors` 按编排是否声明提供方决定是否传入（见该函数注释）。
+    凭据/提供方目录属于账号级读取，失败一律按「无上下文」跳过，不阻断结构检查本身。
+    """
+    resolved = ctx.get('flow_check_context')
+    if resolved is not None:
+        return resolved
+    credential_ids = None
+    project_id = str((ctx.get('state') or {}).get('projectId') or '')
+    if project_id:
+        try:
+            from workbench import api_credentials
+            credential_ids = api_credentials.ids(project_id)
+        except Exception:  # noqa: BLE001 凭据目录不可读：跳过该项（与动作绑定既有处理一致）
+            credential_ids = None
+    try:
+        from workbench import llm_providers
+        llm_meta = llm_providers.list_metadata()
+    except Exception:  # noqa: BLE001 提供方目录不可读：按未知处理
+        llm_meta = None
+    resolved = {'connections': ctx.get('connections') or None,
+                'credential_ids': credential_ids, 'llm_meta': llm_meta}
+    ctx['flow_check_context'] = resolved
+    return resolved
+
+
+def _flow_declares_provider(flow_state):
+    """编排是否显式声明了 LLM 提供方（用于区分「账号还没配模型」与「引用的模型没了」）。"""
+    nodes = flow_state.get('nodes') if isinstance(flow_state, dict) else None
+    for node in nodes or []:
+        impl = node.get('implementation') if isinstance(node, dict) else None
+        if isinstance(impl, dict) and str(impl.get('providerId') or '').strip():
+            return True
+    return False
+
+
+def _flow_struct_errors(flow_id, flow_state, ctx):
+    """编排自身结构/配置错误（R02，2026-09-20）：复用 flows.check_flow，不执行任何节点。
+
+    返回 error 文案列表；同一次 validate_project 内按 flowId 缓存（同一编排被多属性/
+    多绑定引用只查一次）。上下文（本项目连接/凭据、账号模型元数据）由
+    `_flow_check_context` 解析后按真实协议传入，避免误拒合法编排也避免漏检失效实现。
+
+    提供方列表为空时按「账号尚未配置模型」处理，仅在编排显式声明了 providerId 时传入
+    空列表（此时 check_flow 报「尚未配置 LLM 提供方」，即引用已失效），否则传 None 跳过
+    ——账号级引导状态不是编排结构错误，由编排编辑页承担提示。
+    检查器自身抛错同样 fail-closed（阻断而非放行）。
+    """
+    cache = ctx.setdefault('flow_struct_cache', {})
+    if flow_id in cache:
+        return cache[flow_id]
+    context = _flow_check_context(ctx)
+    llm_meta = context['llm_meta']
+    if llm_meta == [] and not _flow_declares_provider(flow_state):
+        llm_meta = None
+    try:
+        report = flows.check_flow(flow_state, context['connections'], llm_meta,
+                                  context['credential_ids'])
+        cache[flow_id] = [str(e) for e in (report.get('errors') or []) if str(e)]
+    except Exception as exc:  # noqa: BLE001 编排检查失败必须阻断，不得静默放行
+        cache[flow_id] = [f'编排检查失败（{type(exc).__name__}），暂不能校验该引用']
+    return cache[flow_id]
+
+
 def _check_flow_binding(value, flow_state, b, ot, prop, graph, node, shape, dep_edges):
     """kind='flow' 函数编排取值校验：编排存在、输出存在且类型相容、输入绑定齐全合法。只读。
 
-    flow_state 为 None 表示编排不存在或已删除（由调用方读取并缓存）。"""
+    flow_state 为 None 表示编排不存在或已删除（由调用方读取并缓存）。
+    编排自身结构错误由调用方先经 `_flow_struct_errors` 单独判定并阻断；本函数只负责
+    所选输出与输入绑定是否与当前编排签名一致。"""
     blocking = []
     if flow_state is None:
         return ['引用的函数编排不存在或已删除']
@@ -1014,8 +1086,13 @@ def _check_property_sources(ctx, errors, warnings, items):
                         blocking.append(f'引用的函数编排 {flow_id}：读取失败（{reason}），'
                                         f'暂不能校验；请稍后重试')
                     else:
-                        blocking.extend(_check_flow_binding(value, flow_state, b, ot, prop,
-                                                            graph, node, shape, dep_edges))
+                        # 编排自身结构/配置错误（复用 check_flow，不运行节点；R02 2026-09-20）：
+                        # 空壳、输出未绑定、节点实现失效等让该属性取值引用不可用，必须阻断发布。
+                        binding_blocking = _check_flow_binding(value, flow_state, b, ot, prop,
+                                                               graph, node, shape, dep_edges)
+                        struct_errors = _flow_struct_errors(flow_id, flow_state, ctx)
+                        blocking.extend(f'引用的函数编排：{e}' for e in struct_errors)
+                        blocking.extend(binding_blocking)
             elif kind in ('field', 'related'):
                 source_id = str(value.get('source', '') or '')
                 source = sources.get(source_id) if source_id else None
@@ -1502,6 +1579,7 @@ def _check_action_bindings(ctx, errors, warnings, items):
     valid_pairs = {(r['objectTypeId'].removeprefix('mg:'), r['actionId'])
                    for r in effective_action_associations(ontology_state)}
     flow_ids = None
+    flow_deps = {}   # flowId → dependency_state 三态（同一编排多处引用只读一次）
     try:
         from workbench import flows
         flow_ids = {f.get('id') for f in flows.listing() if isinstance(f, dict) and f.get('id')}
@@ -1560,6 +1638,18 @@ def _check_action_bindings(ctx, errors, warnings, items):
                     issues.append(f'引用的函数编排 {flow_id}：读取失败，暂不能校验该绑定；请稍后重试')
                 elif flow_id not in flow_ids:
                     issues.append('引用的函数编排不存在或已删除')
+                else:
+                    # 编排自身结构错误（R02 2026-09-20）：动作的实现编排不可用同样阻断。
+                    dep = flow_deps.get(flow_id)
+                    if dep is None:
+                        dep = flows.dependency_state(flow_id)
+                        flow_deps[flow_id] = dep
+                    if dep.get('status') == 'unreadable':
+                        issues.append(f'引用的函数编排 {flow_id}：读取失败，暂不能校验该绑定；请稍后重试')
+                    elif dep.get('status') == 'missing' or isinstance(dep.get('state'), dict) and dep['state'].get('status') == 'deleted':
+                        issues.append('引用的函数编排不存在或已删除')
+                    elif isinstance(dep.get('state'), dict):
+                        issues.extend(f'引用编排：{e}' for e in _flow_struct_errors(flow_id, dep['state'], ctx))
             else:
                 issues.append(f'实现方式无效：{kind}')
         if '同一对象类型与动作重复配置绑定' not in issues and issues:

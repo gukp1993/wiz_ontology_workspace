@@ -198,6 +198,8 @@ def post_project_write(payload, path):
     projects.clean_id(project_state.get('projectId'))
     # 目录以服务端缓存为准：避免不同客户端的过期副本影响校验与修订哈希。
     # 损坏条目只跳过该连接（校验路径另行出 error）；存储层失败冒泡 → 503（不降级为空）。
+    # 这一次读取同时给出 payload/fingerprint/generation（同一条 SELECT），发布路径把它
+    # 作为依赖基线一并使用（R03）：校验所用 payload 与提交复核所用代际来自同一快照。
     meta, degraded_catalogs = _catalog_meta(project_state['projectId'])
     project_state['bindings']['catalogs'] = {
         cid: entry['payload'] for cid, entry in (meta or {}).items()
@@ -211,7 +213,7 @@ def post_project_write(payload, path):
         # 校验请求省略说明块时按当前已存草稿合并（仅用于校验，不写库）
         saved, _ = projects.load(project_state['projectId'])
         mapping_descriptions.merge_omitted(project_state, saved)
-        deps = _dependency_snapshot(project_state)
+        deps = _dependency_snapshot(project_state, catalog_meta=meta)
         report = _validate_with_degraded(project_state, ontology_state, degraded_catalogs)
         report['baseline'] = _baseline_payload(project_state, deps, meta)
         return report, 200
@@ -282,8 +284,11 @@ def post_project_write(payload, path):
         if path == '/api/project-publish':
             if not has_reference:
                 return {'error': '该项目尚未绑定本体版本，无法发布：请先在项目信息中完成绑定。'}, 422
-            # 依赖快照取在校验之前：提交前复核此快照（校验后任何依赖变化 → 拒绝）
-            deps = _dependency_snapshot(project_state)
+            # 依赖快照取在校验之前：提交前复核此快照（校验后任何依赖变化 → 拒绝）。
+            # 目录令牌直接取自本次校验所用 payload 的同一读取（R03），不再第二次读取目录，
+            # 「payload 已读、令牌未读」的更新窗口因此不存在；编排令牌仍在此读取（变化会被
+            # 事务内复核捕获）。
+            deps = _dependency_snapshot(project_state, catalog_meta=meta)
             report = _validate_with_degraded(project_state, referenced_ontology(project_state),
                                              degraded_catalogs)
             if report['errors']:
@@ -323,11 +328,29 @@ def post_project_write(payload, path):
         return {'revision': result['revision']}, 200
 
 
-def _dependency_snapshot(project_state):
-    """只读依赖快照（校验与发布重验使用同一函数，口径一致）。"""
+def _dependency_snapshot(project_state, catalog_meta=None):
+    """只读依赖快照（校验与发布重验使用同一函数，口径一致）。
+
+    R03（2026-09-20 验收修复）：目录依赖必须与校验所用 payload 属于**同一读取基线**。
+    `_catalog_meta` 的一次读取同时返回 payload/fingerprint/generation（单条 SELECT），
+    发布路径把该 `catalog_meta` 传入本函数后，目录令牌直接由它派生，不再另行读一次——
+    否则「payload 读取后、依赖令牌读取前」的目录更新会让校验用旧 payload、提交复核用新
+    代际，从而把未经同基线校验的内容发布出去。编排令牌仍在本函数内读取（读点在校验之前，
+    编排状态由校验器自身读取；若窗口内变化，同事务复核会发现令牌不一致 → 409）。
+    未传 `catalog_meta` 时保持既有整表读取（供不依赖目录 payload 的调用方使用）。
+    """
     from workbench.storage.engine import read_connection
     with read_connection() as conn:
-        return projects.dependency_probe(conn, project_state)
+        deps = projects.dependency_probe(conn, project_state)
+    if catalog_meta is not None:
+        deps['catalogs'] = _catalog_deps(catalog_meta)
+    return deps
+
+
+def _catalog_deps(meta):
+    """目录依赖令牌 `fingerprint:generation`（与 projects.dependency_probe 同口径）。"""
+    return {str(cid): f'{str(entry.get("fingerprint") or "")}:{int(entry.get("generation") or 0)}'
+            for cid, entry in (meta or {}).items() if isinstance(entry, dict)}
 
 
 def _baseline_payload(project_state, deps, meta):

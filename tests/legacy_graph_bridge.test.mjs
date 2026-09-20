@@ -305,11 +305,12 @@ check('图谱编辑规则：output 键缺失时只跳过该键（不写入空串
   assert.equal(rule.content, 'x', '缺 content 键 → 保留历史值（字段精简后表单可能不带该键）')
 })
 
-check('图谱编辑规则：显式携带 output 键时仍按传入值写入（兼容旧调用方）', () => {
+check('图谱编辑规则：显式携带 output 键时按传入值写入（兼容旧调用方）', () => {
   const st2 = makeState()
   const b2 = makeBridge(st2, [])
   b2.reload(true)
-  const r = b2.domainSaveNode('lg:rule:rule_soc', { name: 'SOC计算规则', data: { name: 'SOC计算规则', description: '', content: 'x', output: '  新输出说明  ' } })
+  // A02 后本用例改为合法业务定义：output 透传语义不变
+  const r = b2.domainSaveNode('lg:rule:rule_soc', { name: 'SOC计算规则', data: { name: 'SOC计算规则', description: '业务定义', content: 'x', output: '  新输出说明  ' } })
   assert.ok(!r.error, r.error)
   assert.equal(st2.workflow.businessRules.find(x => x.id === 'rule_soc').output, '新输出说明', '显式传键时去首尾空白后写入')
 })
@@ -335,6 +336,145 @@ check('图谱编辑动作：显式传空 effect 键时按传入值清空（表�
   const r = b2.domainSaveNode('lg:action:act_stop', { name: '停止充放电', data: { name: '停止充放电', description: 'd', effect: '' } })
   assert.ok(!r.error, r.error)
   assert.equal(st2.workflow.actions.find(x => x.id === 'act_stop').effect, '', '显式空值仍可写入（键存在才写）')
+})
+
+// ── A02（20260920 验收修复）：图谱保存与规则/动作库同一记录级校验 ──────────────
+// 此前 legacyBridge.domainSaveNode 直接写 description（status quo：清空业务定义返回 {} 并把定义写成空串、
+// 发 changed 触发持久化）。现在名称/业务定义必填文本，失败时记录不变、零事件；历史 output 与未知字段零丢失。
+const eventsOf = (log2, kind) => log2.filter(x => x[0] === kind).length
+
+check('A02 规则：业务定义清空被拒绝（{error}、记录深比较不变、零 changed/before）', () => {
+  const st2 = makeState()
+  st2.workflow.businessRules[0].description = '原业务定义'
+  const log2 = []
+  const b2 = makeBridge(st2, log2)
+  b2.reload(true)
+  const beforeDomain = JSON.parse(JSON.stringify(st2))
+  const beforeDraft = JSON.stringify(b2.state.draft.nodes.find(n => n.id === 'lg:rule:rule_soc'))
+  const r = b2.domainSaveNode('lg:rule:rule_soc', { name: 'x', data: { name: 'x', description: '   ', content: 'c' } })
+  assert.ok(r.error, '空白业务定义应被拒绝')
+  assert.match(r.error, /业务定义/, '原因定位到字段')
+  assert.deepEqual(st2, beforeDomain, '领域记录逐字段不变（name/content/output 都未写）')
+  assert.equal(eventsOf(log2, 'changed'), 0, '零 changed（不触发保存）')
+  assert.equal(eventsOf(log2, 'before'), 0, '零 before（不产生撤销点）')
+  assert.equal(JSON.stringify(b2.state.draft.nodes.find(n => n.id === 'lg:rule:rule_soc')), beforeDraft, '画布投影不变')
+})
+
+check('A02 动作：业务定义清空被拒绝（{error}、记录深比较不变、零 changed/before）', () => {
+  const st2 = makeState()
+  st2.workflow.actions[0].description = '原动作定义'
+  st2.workflow.actions[0].effect = '设备停机'
+  const log2 = []
+  const b2 = makeBridge(st2, log2)
+  b2.reload(true)
+  const beforeDomain = JSON.parse(JSON.stringify(st2))
+  const r = b2.domainSaveNode('lg:action:act_stop', { name: '停止充放电', data: { name: '停止充放电', description: ' \n ', effect: '新效果' } })
+  assert.ok(r.error, '空白业务定义应被拒绝')
+  assert.match(r.error, /业务定义/, '原因定位到字段')
+  assert.deepEqual(st2, beforeDomain, '动作记录与关联逐字段不变（effect/definitionVersion/status 未被写入）')
+  assert.equal(eventsOf(log2, 'changed'), 0, '零 changed')
+  assert.equal(eventsOf(log2, 'before'), 0, '零 before')
+})
+
+check('A02 非文本值一律受控报错（对象/数组/数值/布尔）、绝不 String() 掩盖，记录不变', () => {
+  const cases = [{ k: 1 }, ['a', 'b'], 3, true]
+  for (const bad of cases) {
+    const st2 = makeState()
+    st2.workflow.businessRules[0].description = '原业务定义'
+    st2.workflow.actions[0].description = '原动作定义'
+    const log2 = []
+    const b2 = makeBridge(st2, log2)
+    b2.reload(true)
+    const beforeDomain = JSON.parse(JSON.stringify(st2))
+    const rr = b2.domainSaveNode('lg:rule:rule_soc', { name: 'SOC计算规则', data: { name: 'SOC计算规则', description: bad, content: 'c' } })
+    assert.ok(rr.error, `规则非文本业务定义应被拒绝（${JSON.stringify(bad)}）`)
+    assert.match(rr.error, /业务定义必须是文本/, `给「必须是文本」的可读文案（${rr.error}）`)
+    const ra = b2.domainSaveNode('lg:action:act_stop', { name: '停止充放电', data: { name: '停止充放电', description: bad } })
+    assert.ok(ra.error, `动作非文本业务定义应被拒绝（${JSON.stringify(bad)}）`)
+    assert.match(ra.error, /业务定义必须是文本/, '给「必须是文本」的可读文案')
+    assert.deepEqual(st2, beforeDomain, '两种节点类型记录都不变（未被 [object Object] 污染）')
+    assert.equal(eventsOf(log2, 'changed'), 0, '零 changed')
+    assert.equal(eventsOf(log2, 'before'), 0, '零 before')
+  }
+  // 名称同样必填文本：data 里的非文本名称、以及 name 参数（真正写入 r.name/a.name 的值）非文本都受控报错
+  const st3 = makeState()
+  const b3 = makeBridge(st3, [])
+  b3.reload(true)
+  const before3 = JSON.parse(JSON.stringify(st3))
+  const r3 = b3.domainSaveNode('lg:rule:rule_soc', { name: 'SOC计算规则', data: { name: { a: 1 }, description: 'd' } })
+  assert.ok(r3.error && /规则名称必须是文本/.test(r3.error), r3.error)
+  const r4 = b3.domainSaveNode('lg:rule:rule_soc', { name: { a: 1 }, data: { name: 'SOC计算规则', description: 'd' } })
+  assert.ok(r4.error && /规则名称必须是文本/.test(r4.error), `name 参数非文本时报可读原因而非崩溃（${r4.error}）`)
+  const r5 = b3.domainSaveNode('lg:action:act_stop', { name: 7, data: { name: '停止充放电', description: 'd' } })
+  assert.ok(r5.error && /动作名称必须是文本/.test(r5.error), r5.error)
+  assert.equal(r3.fieldErrors.name, '规则名称必须是文本（当前为对象）', 'fieldErrors 给到具体字段（供表单定位）')
+  assert.deepEqual(st3, before3, '记录不变')
+})
+
+check('A02 名称空白/撞名仍走原有判断（既有文案与语义不被替换，失败零事件）', () => {
+  const st2 = makeState()
+  const log2 = []
+  const b2 = makeBridge(st2, log2)
+  b2.reload(true)
+  const r = b2.domainSaveNode('lg:rule:rule_soc', { name: '   ', data: { name: '   ', description: 'd' } })
+  assert.equal(r.error, '名称不能为空', 'blank 名称保持原有文案（nameDuplication 语义不变）')
+  assert.equal(eventsOf(log2, 'changed') + eventsOf(log2, 'before'), 0, '空名失败零事件')
+  // 合法保存一次（同一名称改定义，自身不算撞名）
+  const r2 = b2.domainSaveNode('lg:rule:rule_soc', { name: 'SOC计算规则', data: { name: 'SOC计算规则', description: 'd' } })
+  assert.ok(!r2.error, r2.error)
+  assert.equal(eventsOf(log2, 'changed'), 1, '合法保存一次 changed')
+  // 新建同名规则后改名撞名 → 原「已存在同名规则」文案，且不产生任何事件
+  const created = b2.domainCreateNode({ type: '规则', name: '同名规则' })
+  assert.equal(created.id, 'lg:rule:' + created.domainId, '新建节点 id 形状不变')
+  const eventCounts = ['changed', 'before'].map((k) => eventsOf(log2, k))
+  const rr = b2.domainSaveNode('lg:rule:rule_soc', { name: '同名规则', data: { name: '同名规则', description: 'd3' } })
+  assert.ok(rr.error && /已存在同名规则/.test(rr.error), rr.error)
+  assert.deepEqual(['changed', 'before'].map((k) => eventsOf(log2, k)), eventCounts, '撞名失败保存零新增事件')
+})
+
+check('A02 名称+业务定义通过、内容/效果留空仍可保存（各一次 changed/before）', () => {
+  const st2 = makeState()
+  const log2 = []
+  const b2 = makeBridge(st2, log2)
+  b2.reload(true)
+  const rr = b2.domainSaveNode('lg:rule:rule_soc', { name: 'SOC计算规则', data: { name: 'SOC计算规则', description: '新的业务定义', content: '' } })
+  assert.ok(!rr.error, rr.error)
+  assert.equal(st2.workflow.businessRules.find(x => x.id === 'rule_soc').content, '', '规则内容可留空')
+  assert.equal(st2.workflow.businessRules.find(x => x.id === 'rule_soc').description, '新的业务定义', '业务定义写入')
+  const ra = b2.domainSaveNode('lg:action:act_stop', { name: '停止充放电', data: { name: '停止充放电', description: '动作定义', effect: '' } })
+  assert.ok(!ra.error, ra.error)
+  assert.equal(st2.workflow.actions.find(x => x.id === 'act_stop').effect, '', '预期效果可留空')
+  assert.equal(eventsOf(log2, 'changed'), 2, '两次合法保存各一次 changed')
+  assert.equal(eventsOf(log2, 'before'), 2, '两次合法保存各一次 before')
+})
+
+check('A02 零丢失：历史 output/output 缺键、未知扩展字段、稳定 id 与关联均不动', () => {
+  const st2 = makeState()
+  st2.workflow.businessRules[0].description = '原业务定义'
+  st2.workflow.businessRules[0].unknownExt = { source: 'legacy' }
+  const b2 = makeBridge(st2, [])
+  b2.reload(true)
+  // ① 缺 output 键：历史值保留（表单不再提交该键）
+  const r1 = b2.domainSaveNode('lg:rule:rule_soc', { name: 'SOC计算规则', data: { name: 'SOC计算规则', description: '新定义' } })
+  assert.ok(!r1.error, r1.error)
+  const rule = st2.workflow.businessRules.find(x => x.id === 'rule_soc')
+  assert.equal(rule.output, 'y', '缺 output 键 → 历史值保留')
+  assert.equal(rule.content, 'x', '缺 content 键 → 原值保留')
+  assert.equal(rule.id, 'rule_soc', '稳定 id 不变')
+  assert.deepEqual(rule.unknownExt, { source: 'legacy' }, '未知扩展字段不丢')
+  assert.equal(st2.workflow.businessRuleAssociations.length, 1, '规则关联不变')
+  // ② 显式携带 output 键：按传入值写入（兼容旧调用方，键存在才写）
+  const r2 = b2.domainSaveNode('lg:rule:rule_soc', { name: 'SOC计算规则', data: { name: 'SOC计算规则', description: '新定义', content: 'x', output: '  修订后的输出说明  ' } })
+  assert.ok(!r2.error, r2.error)
+  assert.equal(st2.workflow.businessRules.find(x => x.id === 'rule_soc').output, '修订后的输出说明', '显式键去首尾空白后写入')
+  // ③ 动作：缺 effect 键保留原值、definitionVersion 与关联不变
+  st2.workflow.actions[0].effect = '设备退出充放电'
+  const r3 = b2.domainSaveNode('lg:action:act_stop', { name: '停止充放电', data: { name: '停止充放电', description: '动作定义' } })
+  assert.ok(!r3.error, r3.error)
+  const act = st2.workflow.actions.find(x => x.id === 'act_stop')
+  assert.equal(act.effect, '设备退出充放电', '缺 effect 键 → 原值保留')
+  assert.equal(act.definitionVersion, 2, 'definitionVersion 不变')
+  assert.equal(st2.workflow.actionAssociations.length, 1, '动作关联不变')
 })
 
 // ── 撤销：换回真实领域模型 ────────────────────────────────────────────────

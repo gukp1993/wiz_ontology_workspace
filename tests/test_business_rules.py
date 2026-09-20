@@ -210,5 +210,68 @@ blank_output = dict(RULE, output='   ')
 check(not definition_errors(onto_state([blank_output], [])) and not str(blank_output['output']).strip(),
       'R04 空白 output 不阻断校验（历史区按空白不显示）')
 
+# --- A01（2026-09-20 验收修复）：字段类型边界 + 正式发布路由拒绝且零版本写入 ---------------
+# 独立复现：规则 content 传对象、动作 effect 传数组，此前经正式 post_publish 返回 200 并出版本。
+check(any('必须是文本' in e for e in definition_errors(onto_state([dict(RULE, content={'wrong': 'object'})], []))),
+      'A01 规则 content 为对象 → 校验报「必须是文本」（不 str 掩盖）',
+      definition_errors(onto_state([dict(RULE, content={'wrong': 'object'})], [])))
+check(any('必须是文本' in e for e in definition_errors(onto_state([dict(RULE, content=['wrong'])], []))),
+      'A01 规则 content 为数组 → 校验报「必须是文本」')
+check(any('必须是文本' in e for e in definition_errors(onto_state([dict(RULE, name={'bad': 1})], []))),
+      'A01 规则 name 为对象 → 校验报「必须是文本」')
+null_desc = definition_errors(onto_state([dict(RULE, description=None)], []))
+check(any('规则' in e and '缺少业务定义' in e for e in null_desc),
+      'A01 规则 description=null → 定位到规则与字段的可读报错（不再 AttributeError 泛化）', null_desc)
+check(not any('配置不完整或不受当前执行器支持' in e for e in null_desc),
+      'A01 规则 description=null 不落外层泛化错误', null_desc)
+
+from workbench import model_routes  # noqa: E402
+from workbench.model_format import encode_state as _encode  # noqa: E402
+
+
+def publish_route(identifier, state_in):
+    """走正式 post_publish 路由函数（同 HTTP 处理器调用路径）。"""
+    payload = {'state': _encode(state_in), 'revision': workspaces.current_token(identifier),
+               'changeType': 'initial'}
+    return model_routes.post_publish(payload)
+
+
+def version_labels(identifier):
+    return [e['version'] for e in versions.listing(identifier)]
+
+
+a01_created = workspaces.create('A01 字段类型本体', model_routes.blank_state('A01 字段类型本体'))
+a01_id = a01_created['id']
+a01_state = onto_state([dict(RULE)], [{'objectTypeId': 'mg:StorageDevice', 'ruleId': 'rule-1'}])
+# post_publish 要求命名空间上下文为默认值（防远程 context 注入），故用 blank_state 的 context
+a01_state['ontology']['@context'] = copy.deepcopy(model_routes.blank_state()['ontology']['@context'])
+a01_state['workspaceId'] = a01_id
+a01_state['metrics'] = {'metrics': []}
+a01_state['rules'] = {'rules': []}
+workspaces.write_draft(copy.deepcopy(a01_state))
+resp, status = publish_route(a01_id, a01_state)
+check(status == 200 and resp.get('version') == '1.0.0',
+      'A01 对照：合法规则经正式发布路由 200 且产出 1.0.0', (status, resp))
+labels_after_ok = version_labels(a01_id)
+check(labels_after_ok == ['1.0.0'], 'A01 对照版本列表为 1.0.0', labels_after_ok)
+
+for bad_value, title in (({'wrong': 'object'}, '对象'), (['wrong'], '数组'), (3, '数值'), (True, '布尔值')):
+    bad_state = copy.deepcopy(a01_state)
+    bad_state['workflow']['businessRules'][0]['content'] = bad_value
+    resp, status = publish_route(a01_id, bad_state)
+    check(status == 422 and any('必须是文本' in e for e in resp.get('errors', [])),
+          f'A01 规则 content 为{title} → 正式发布路由 422 且给「必须是文本」', (status, resp))
+    check(version_labels(a01_id) == labels_after_ok,
+          f'A01 规则 content 为{title} 拒绝发布后零新增版本', version_labels(a01_id))
+
+# description=null：路由返回可读错误（不是泛化 500/异常）
+null_state = copy.deepcopy(a01_state)
+null_state['workflow']['businessRules'][0]['description'] = None
+resp, status = publish_route(a01_id, null_state)
+joined = '；'.join(resp.get('errors', [])) if isinstance(resp, dict) else str(resp)
+check(status == 422 and '缺少业务定义' in joined and 'NoneType' not in joined,
+      'A01 规则 description=null 正式路由 422 且文案定位字段（不暴露 NoneType）', (status, resp))
+check(version_labels(a01_id) == labels_after_ok, 'A01 description=null 拒绝后零新增版本')
+
 print(f'\n{len(PASSED)} 项断言全部通过')
 shutil.rmtree(TMP, ignore_errors=True)

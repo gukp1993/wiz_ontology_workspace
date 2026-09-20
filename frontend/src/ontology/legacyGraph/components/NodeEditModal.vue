@@ -59,6 +59,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { SEMANTIC_TYPES, TYPE_COLOR } from '../shared/constants'
 import { FIELDS, LEGACY_FIELDS } from '../shared/fields'
+import { collectFieldErrors } from '../../recordFields'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -88,6 +89,15 @@ watch(
   },
 )
 
+/** 记录级必填校验（键 → 文案）：仅规则/动作节点按图谱 FIELDS 的 required 标记逐字段校验，
+ *  与规则库/动作库、图谱领域桥同一份 recordFields 口径；其他节点类型保持原有行为。 */
+function recordFieldErrors(type, data) {
+  if (type !== '规则' && type !== '动作') return {}
+  return collectFieldErrors(
+    (FIELDS[type] || []).filter((spec) => spec.required).map((spec) => [spec.key, spec.label, data[spec.key], true]),
+  )
+}
+
 function collectData() {
   const data = {}
   ;(FIELDS[props.node.type] || []).forEach((spec) => {
@@ -108,11 +118,16 @@ function save() {
   const errs = []
   if (!n) errs.push('名称不能为空')
   if (n !== props.node.name && props.existingNames.includes(n)) errs.push(`名称「${n}」已存在`)
+  const data = collectData()
+  // A02（20260920 验收修复）：图谱保存与规则/动作库、后端 workflow.py 同一记录级口径——
+  // 名称与业务定义必填文本，非文本值给字段级可读原因（不 String() 掩盖）。必填标记与字段
+  // 标题取自图谱 FIELDS 规范（required: true），不在此另立一套；对象/共享/私有属性不新增要求。
+  for (const reason of Object.values(recordFieldErrors(props.node.type, data))) errs.push(reason)
   if (errs.length) {
     error.value = errs.join('；')
     return
   }
-  emit('save', { name: n, data: collectData() })
+  emit('save', { name: n, data })
 }
 </script>
 

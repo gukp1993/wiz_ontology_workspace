@@ -112,10 +112,23 @@ for value in (None, 0, {'a': 1}, ['x']):
     check(any('动作定义未完整：effect' in e for e in errs),
           f'历史动作 effect 为 {value!r} 时按未填报缺失（不崩溃、不悄悄转字符串）', errs)
 
-# v2 动作的 effect 为 null/非文本同样不阻断（选填，不参与任何 strip/比较）
+# v2 动作的 effect 为 null/空白仍按未填处理（选填语义保持；A01 后非文本改为受控报错，见下）
 for value in (None, '', '   '):
     check(not definition_errors(onto_state([dict(A2, effect=value)])),
           f'R05 v2 动作 effect 为 {value!r} 时零错误', definition_errors(onto_state([dict(A2, effect=value)])))
+
+# A01（2026-09-20 验收修复）：v2 动作 effect 非文本（对象/数组/数值/布尔）必须受控报错，
+# 不再被静默跳过（此前 effect 完全不检查，数组/对象可正式发布）
+for value in ({'wrong': 'object'}, ['wrong'], 3, True):
+    errs = definition_errors(onto_state([dict(A2, effect=value)]))
+    check(any('必须是文本' in e for e in errs),
+          f'A01 v2 动作 effect 为 {value!r} → 校验报「必须是文本」', errs)
+null_desc_action = definition_errors(onto_state([dict(A2, description=None)]))
+check(any('缺少业务描述' in e and '停止充放电' in e for e in null_desc_action),
+      'A01 v2 动作 description=null → 定位动作与字段的可读文案（不再 AttributeError 泛化）', null_desc_action)
+check(not any('NoneType' in e for e in null_desc_action), 'A01 description=null 文案不暴露 NoneType', null_desc_action)
+check(not definition_errors(onto_state([dict(A2, name='停止充放电', description='d')])),
+      'A01 最小 v2 动作（无 effect 键）仍零错误')
 
 # --- 2. 关联集合校验（验收 4：删除保护；§5 去重/悬空） ------------------------------
 
@@ -304,6 +317,58 @@ published = projects.publish(pstate)
 check(published.get('version') == 'v1', '项目发布成功')
 releases = projects.published_versions('p1')
 check(releases and releases[-1].get('version') == 'v1', '项目发布清单可读')
+
+# --- A01（2026-09-20 验收修复）：动作 effect 非文本经正式发布路由必须 422 且零版本写入 --------
+# 独立验收复现：effect 传数组经 post_publish 返回 200 并产出 1.0.0、快照保留非法值。
+from workbench import model_routes  # noqa: E402
+from workbench.model_format import encode_state as _encode  # noqa: E402
+
+
+def publish_route(identifier, state_in):
+    return model_routes.post_publish({'state': _encode(state_in),
+                                      'revision': workspaces.current_token(identifier),
+                                      'changeType': 'initial'})
+
+
+def version_labels(identifier):
+    return [e['version'] for e in versions.listing(identifier)]
+
+
+act_created = workspaces.create('A01 动作本体', model_routes.blank_state('A01 动作本体'))
+act_id = act_created['id']
+act_state = onto_state([dict(A2)], [{'objectTypeId': 'mg:StorageDevice', 'actionId': 'act_stop'}])
+act_state['ontology']['@context'] = copy.deepcopy(model_routes.blank_state()['ontology']['@context'])
+act_state['workspaceId'] = act_id
+act_state['metrics'] = {'metrics': []}
+act_state['rules'] = {'rules': []}
+workspaces.write_draft(copy.deepcopy(act_state))
+resp, status = publish_route(act_id, act_state)
+check(status == 200 and resp.get('version') == '1.0.0',
+      'A01 对照：合法 v2 动作经正式发布路由 200 且产出 1.0.0', (status, resp))
+labels_ok = version_labels(act_id)
+
+for bad_value, title in ((['wrong'], '数组'), ({'wrong': 'object'}, '对象'), (3, '数值'), (True, '布尔值')):
+    bad_state = copy.deepcopy(act_state)
+    bad_state['workflow']['actions'][0]['effect'] = bad_value
+    resp, status = publish_route(act_id, bad_state)
+    check(status == 422 and any('必须是文本' in e for e in resp.get('errors', [])),
+          f'A01 动作 effect 为{title} → 正式发布路由 422 且给「必须是文本」', (status, resp))
+    check(version_labels(act_id) == labels_ok,
+          f'A01 动作 effect 为{title} 拒绝发布后零新增版本', version_labels(act_id))
+
+# 合法空值仍可发布（选填语义不变）：effect 缺失/空串/纯空白分别发布 → 均成功，不补键
+for value in (None, '', '   '):
+    ok_state = copy.deepcopy(act_state)
+    if value is None:
+        ok_state['workflow']['actions'][0].pop('effect', None)
+    else:
+        ok_state['workflow']['actions'][0]['effect'] = value
+    resp, status = publish_route(act_id, ok_state)
+    check(status == 200 and resp.get('version'),
+          f'A01 动作 effect 为 {value!r} 时仍可发布（选填空值语义保持）', (status, resp))
+    snapshot = versions.read_state(act_id, resp['version'])['workflow']['actions'][0]
+    check(('effect' not in snapshot) if value is None else (snapshot.get('effect') == value),
+          f'A01 effect {value!r} 发布快照不被清洗/补充', snapshot)
 
 print(f'\n{len(PASSED)} 项断言全部通过')
 shutil.rmtree(TMP, ignore_errors=True)
