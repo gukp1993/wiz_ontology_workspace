@@ -421,7 +421,7 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
       return notify(reason, true)
     }
   }
-  else if (projectSpaceViews.includes(v)) { void ensureProjectList() } // 函数编排等项目空间页面不依赖项目，但侧栏列表需后台加载（否则一直停在“正在加载项目”）
+  else if (projectSpaceViews.includes(v)) { void restoreStoredProject() } // 函数编排等项目空间页面不依赖项目：侧栏列表 + 上次项目后台恢复（刷新后项目上下文不丢）
   if (v === 'f-editor' && !flowState.value) return notify('请先在编排列表中选择或新建编排', true)
   if (focus?.type) { propertyFocusType.value = focus.type; bindingFocusType.value = focus.type }
   if (focus?.property) propertyFocusId.value = focus.property
@@ -725,6 +725,14 @@ async function ensureProjectContext(): Promise<boolean> {
   if (!initial) return false
   return loadProject(initial, true)
 }
+// 编排页等非项目业务页：加载侧栏列表后，若存在「上次选择的项目」则后台恢复（刷新/深链保持项目上下文）。
+// 刻意不自动选第一个项目——编排不依赖项目，未选择过的用户不应被自动绑上项目上下文。
+async function restoreStoredProject(): Promise<void> {
+  if (!(await ensureProjectList())) return
+  if (projectState.value && projectId.value) return
+  const stored = prefGet(projectStoreKey)
+  if (stored && projects.value.some((p: any) => p.id === stored)) void loadProject(stored, true)
+}
 async function createProjectDone(id: string) {
   // 先刷新列表再加载；加载完成后再刷一次（项目状态本身也带着最新名称，以后端为准）
   await ensureProjectList()
@@ -896,7 +904,7 @@ async function settleInitialView() {
       if (!projectState.value && (projectListState.value === 'error' || projectLoadError.value)) { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
       else if (!ready && !projectState.value && projectListState.value === 'ready') { view.value = 'p-home'; history.replaceState(null, '', '#p-home') }
     }
-    else { void ensureProjectList() } // 编排页等项目空间页面：侧栏项目列表后台加载，不阻塞页面
+    else { void restoreStoredProject() } // 编排页等项目空间页面：侧栏列表后台加载 + 上次项目上下文恢复（不阻塞页面）
     // 函数编排：恢复上次打开的编排（编排页不依赖本体/项目状态）
     if (view.value === 'f-editor') {
       const storedFlow = prefGet(flowStoreKey)
