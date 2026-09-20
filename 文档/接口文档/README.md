@@ -18,6 +18,11 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-20 | 保存边界悬空引用检查范围补全与比较口径修正（20260920 需求 11～13 第二轮复验 S1～S3）：
+① 检查范围补齐接口定义 `interfaces[].properties` / `implementations`，以及 functions/actions/interfaces 三类的字段级引用（适用对象类型、输出属性、链接/计算/接口引用、顶层 `function_ref`、步骤与属性绑定、参数、`properties`/`implementations` 清单）、签名槽位 `inputs/outputs[].ref`（含 `kind=base` 带 id 情形）、图内取值函数与嵌套值类型——与前端 `graphReferenceEntries` 对齐；
+② 比较键改为「来源稳定 id + 引用字段/槽位身份 + 目标 id」，业务名称只进展示文案：既有失效引用仅改名称可继续保存，同名同文案但身份不同的新失效引用仍阻断；
+③ 旧 `rules.rules[].member_type` 与指标 `rule_ref` 判定改为对真实旧规则 id 集比较，修正有效旧引用被误报。
+不改变 422 `BROKEN_REFERENCE`、零写入、revision 不推进、首次保存不阻断等既有语义（详见 02 §2.2） | POST /api/save | zcode |
 | 2026-09-20 | 本体草稿保存边界新增**悬空引用阻断**（20260920 需求 11～13 / 验收意见保存边界）：`POST /api/save` 与当前 head 草稿逐条比较引用完整性（图内 domain/range、契约签名 ref、动作/规则关联、值类型、指标），**仅当本次保存新引入失效引用**时返回 422 `BROKEN_REFERENCE` 并列出具体引用；历史遗留失效引用与「未填写完整」仍按 200 + errors 保存，不锁死草稿（详见 02 §2.2） | POST /api/save | zcode |
 | 2026-09-19 | 函数编排取值放开「列表输出 → 时间序列属性」（01 §3.1）：`kind='flow'` 绑定新增可选 `result:{valueField,timestampField}`（元素对象字段稳定 id）；仅当输出为 list<object{fields…}> 时可绑时间序列属性，取值字段须为 number、时间字段须为 datetime，缺失/不存在/类型不符校验阻断；对象输出与「标量属性绑列表」仍拒绝；标量输出绑定形状不变（不写 result）。执行语义仍随编排取值执行能力一并实现，本轮仅配置与校验 | POST /api/project-validate、POST /api/project-publish、POST /api/projects（项目状态内携带） | zcode |
 | 2026-09-19 | flow-run 输入预览改为精确有界：inputs 序列化 ≤65536 字节（UTF-8）、列表 ≤100 项，截断以 previewTruncated 标记结构表示（R06）（原记录误插于表头之前，本轮回位） | 04 §3.1 | zcode |

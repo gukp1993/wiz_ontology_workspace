@@ -17,7 +17,9 @@
      菜单平铺），粘贴多行/批量复用为低频项收在页头「更多操作」。修改共享定义的引用影响在表单内如实展示（usage 信息）；
      单值与序列不能引用同一份形态不兼容的共享定义（shapeConflict）。
      删除定义（20260920 统一语义）：契约/接口/项目映射或对象属性引用一律阻断并列出名称+
-     定位入口（引用位置抽屉）；无引用才允许确认删除，不自动私有化。 -->
+     定位入口（引用位置抽屉）；无引用才允许确认删除，不自动私有化。
+     外部依赖「去处理」（S4，20260920 验收）：跳转携带 returnTo（原共享定义 id/名称），处理完可
+     一步返回本页引用位置抽屉继续操作；带 focusId 进入但非编辑时同样打开引用位置抽屉。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
@@ -31,7 +33,7 @@ import { useOntTable } from './ontList'
 import { externalDependencies, externalDependencyTarget, sharedDeleteCheck } from './dependencyModel'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
-const props = defineProps<{ state: any; canvasReturn?: string; focusId?: string; editFocus?: boolean }>()
+const props = defineProps<{ state: any; canvasReturn?: string; focusId?: string; editFocus?: boolean; openUsages?: boolean }>()
 const emit = defineEmits(['before-change', 'changed', 'navigate'])
 function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
 
@@ -105,7 +107,14 @@ const emptyHint = computed(() => hasFilter.value ? '调整关键词或筛选条�
 function openEditor(id = '') { editor.value = { id }; feedback.value = '' }
 // 图谱「编辑」跳转（2026-09-20）：按 focusId 直接打开指定共享定义的编辑表单
 //（保存/取消后经页头「← 返回图谱」回画布并定位原节点）。
-watch(() => [props.focusId, props.editFocus], ([id, edit]) => { if (id && edit) openEditor(String(id)) }, { immediate: true })
+// S4（20260920 验收）：外部依赖「去处理」处理完依赖后带 focus:{definition}+openUsages 跳回本页，
+// 直接恢复引用位置抽屉——用户可继续看剩余依赖、继续去处理，或按提示删除该定义。
+// 仅显式 openUsages 才开抽屉：普通进入（含菜单重入）不带该标记时不受历史 focusId 影响。
+watch(() => [props.focusId, props.editFocus, props.openUsages], ([id, edit, usages]) => {
+  if (!id) return
+  if (edit) openEditor(String(id))
+  else if (usages) usagesId.value = String(id)
+}, { immediate: true })
 function onSaved(payload: { id: string }) { editor.value = null; locate(payload.id) }
 // 来自图谱的编辑：保存/返回图谱直接回画布并定位（不再停留在库页）
 function onSharedSaved(payload: { id: string }) { if (props.canvasReturn) { editor.value = null; backToGraph(); return } onSaved(payload) }
@@ -127,15 +136,25 @@ const usageTarget = computed(() => usagesId.value ? definitions.value.find((s: a
 const usageRows = computed(() => usageTarget.value ? referencesOf(graph.value, usageTarget.value['@id']).map((p: any) => ({ id: p['@id'], domain: p['rdfs:domain']?.['@id'] || '', name: typeName(p['rdfs:domain']?.['@id']), api: p['mg:apiName'] || String(p['@id']).replace(/^mg:/, '') })) : [])
 // R5（20260920 验收）：契约/接口/动作/规则/项目映射等外部依赖列出并给「去处理」定位入口；
 // 无入口的依赖只列名称与原因（不丢失信息，也不伪造跳转）。
+// S4（20260920 验收）：去处理时携带 returnTo（原共享定义 id + 名称），目标页显示「← 返回共享属性「x」」，
+// 处理完依赖可一步跳回本页的引用位置抽屉继续操作；不自动替用户删除。
 const externalDeps = computed(() => usageTarget.value ? externalDependencies(props.state, usageTarget.value['@id']) : [])
 function goExternal(dep: any) {
   const target = externalDependencyTarget(dep)
   if (!target) return
+  const s = usageTarget.value
+  const returnTo = s ? { view: 'library', focus: { definition: s['@id'] }, label: '共享属性「' + (s['rdfs:label'] || '未命名共享属性') + '」' } : undefined
   usagesId.value = ''
-  emit('navigate', target.view, target.focus)
+  emit('navigate', target.view, returnTo ? { ...target.focus, returnTo } : target.focus)
 }
 function editFromDetail() { const id = detailId.value; detailId.value = ''; openEditor(id) }
-function openRef(r: { domain: string; id: string }) { usagesId.value = ''; emit('navigate', 'objects', { type: r.domain, property: r.id }) }
+// S4：对象属性引用行同样携带返回上下文——对象建模处理完可一步回到本共享定义继续操作。
+function openRef(r: { domain: string; id: string }) {
+  const label = '共享属性「' + (usageTarget.value?.['rdfs:label'] || '未命名共享属性') + '」'
+  usagesId.value = ''
+  emit('navigate', 'objects', { type: r.domain, property: r.id,
+    returnTo: { view: 'library', focus: { definition: usageTarget.value?.['@id'] || '' }, label } })
+}
 
 // ── 页头更多操作：粘贴多行 / 批量复用（功能不删，入口从页面底部 details 收进菜单）──
 const pageMenuItems = [{ id: 'paste', label: '粘贴多行属性到对象' }, { id: 'batch', label: '批量复用对象属性' }]

@@ -582,7 +582,8 @@ def post_save(payload):
             return {'error': '此本体已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
         errors = validate(state)
         # 20260920 需求 11～13 保存边界（接口文档 02 §2.2）：只阻断**本次新引入**的悬空引用，
-        # 历史遗留失效引用与「未填写完整」仍允许保存（不锁死草稿）。
+        # 历史遗留失效引用与「未填写完整」仍允许保存（不锁死草稿）。比较键是来源/槽位/目标的
+        # 稳定 ID，业务名称只进展示文案——既有失效引用改名不算新引入。
         from workbench import references as references_mod
         previous = workspaces.read_draft(identifier) if head_token else None
         newly_broken, ok = references_mod.new_broken_references(previous, state)

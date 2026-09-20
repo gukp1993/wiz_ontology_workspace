@@ -44,7 +44,10 @@ import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 // graphReturn/graphFocus（20260919 图谱画布优化）：图谱「打开定义」跳转后的返回上下文——
 // graphReturn=true 直接落在图谱视图（视图记忆由迁入编辑器 legacyGraph 按账号 + 本体恢复），
 // graphFocus 为目标业务稳定 ID，用于返回后在画布中定位（目标已删除则清空选择并提示）。
-const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string; focusCreate?: boolean; graphReturn?: boolean; graphFocus?: string; canvasReturn?: string; saveState?: { kind: string; text: string }; latestRelease?: string; editFocus?: boolean }>(), emit = defineEmits(['before-change', 'changed', 'navigate', 'switch-ontology', 'create-ontology'])
+const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string; focusCreate?: boolean; graphReturn?: boolean; graphFocus?: string; canvasReturn?: string; saveState?: { kind: string; text: string }; latestRelease?: string; editFocus?: boolean; returnTo?: { view: string; focus?: Record<string, any>; label: string } }>(), emit = defineEmits(['before-change', 'changed', 'navigate', 'switch-ontology', 'create-ontology'])
+// S4（20260920 验收）：从共享属性库「对象属性引用」定位而来时的来源上下文（App 分发）；
+// 对象建模只是定位目标页，返回入口让用户处理完引用后回到原共享定义继续操作。
+function backToSource() { if (props.returnTo) emit('navigate', props.returnTo.view, { ...(props.returnTo.focus || {}), openUsages: true } as any) }
 // 具名撤销（20260918）：emit('before-change', { actionLabel, target?, mergeKey? })；App 侧兼容字符串与对象
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
@@ -646,6 +649,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
       <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
       <button role="tab" class="active" :aria-selected="true">本体图谱</button>
     </div>
+    <button v-if="returnTo" type="button" class="ow-return-src" @click="backToSource">← 返回{{ returnTo.label }}</button>
     <LegacyGraphHost
       :state="state"
       :ontology-id="state?.workspaceId || ''"
@@ -708,6 +712,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
         <button role="tab" :aria-selected="false" @click="mode = 'graph'">本体图谱</button>
       </div>
       <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
+      <button v-else-if="returnTo" type="button" @click="backToSource">← 返回{{ returnTo.label }}</button>
       <button class="primary" @click="openObjectEditor(true)">＋ 新建对象</button>
     </div>
     <div ref="ldRef" class="ld" :class="{ 'ld-stacked': isStacked, 'ld-detail-open': stackedDetail }" :style="{ '--ld-h': ldH + 'px' }">

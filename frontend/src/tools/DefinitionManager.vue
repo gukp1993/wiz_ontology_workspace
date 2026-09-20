@@ -6,7 +6,10 @@ import { appConfirm } from '../shared/appConfirm'
 import EditorLayout from '../shared/EditorLayout.vue'
 import Field from '../shared/EditorField.vue'
 import SourceReference from '../ontology/SourceReference.vue'
-const props=defineProps({state:Object,kind:String,projectState:Object,focusId:String});const emit=defineEmits(['before-change','changed'])
+const props=defineProps({state:Object,kind:String,projectState:Object,focusId:String,returnTo:Object});const emit=defineEmits(['before-change','changed','navigate'])
+// S4（20260920 验收）：从资产库外部依赖「去处理」跳入时携带来源定义上下文（returnTo），
+// 页头「← 返回接口「x」」回到原定义继续操作；聚焦接口定义本身仍走 focusId 选中，不自动删除。
+function backToSource(){const r=props.returnTo as any;if(!r)return;emit('navigate',r.view,{...(r.focus||{}),openUsages:true})}
 const query=ref(''),tab=ref('business')
 const selected=ref(''),result=ref(null),message=ref(''),busy=ref(false),objects=ref([]),parameters=ref({}),newProperty=ref('')
 const rows=computed(()=>props.state.workflow[props.kind]),item=computed(()=>rows.value.find(n=>n.id===selected.value))
@@ -37,7 +40,7 @@ const title=id=>types.value.find(t=>t['@id']==='mg:'+id)?.['rdfs:label']||id
 function missing(t){return item.value.properties.filter(id=>!graph.value.some(p=>p['@type']==='owl:DatatypeProperty'&&p['rdfs:domain']?.['@id']==='mg:'+t&&p['mg:sharedProperty']?.['@id']===id)).map(id=>shared.value.find(s=>s['@id']===id)?.['rdfs:label']||id)}
 
 </script>
-<template><EditorLayout :title="labels[kind]" :subtitle="kind==='functions'?'业务专家描述怎样计算，开发负责实现。没有计算需求时可跳过。':kind==='actions'?'业务专家定义修改效果与条件，开发实施权限和执行。只读场景可跳过。':'共同使用多种对象时再定义接口；不是 HTTP 接口。'" :items="list" :selected="selected" v-model:search="query" :create-label="'新建'+labels[kind]" @create="create" @select="selected=$event">
+<template><EditorLayout :title="labels[kind]" :subtitle="kind==='functions'?'业务专家描述怎样计算，开发负责实现。没有计算需求时可跳过。':kind==='actions'?'业务专家定义修改效果与条件，开发实施权限和执行。只读场景可跳过。':'共同使用多种对象时再定义接口；不是 HTTP 接口。'" :items="list" :selected="selected" v-model:search="query" :create-label="'新建'+labels[kind]" @create="create" @select="selected=$event"><template #actions><button v-if="returnTo" type="button" @click="backToSource">← 返回{{returnTo.label}}</button></template>
 <section v-if="item" class="card detail-card" :key="item.id"><div class="detail-heading"><div><span class="eyebrow">{{labels[kind]}}</span><h2>{{item.name||'填写新定义'}}</h2></div><span class="status-pill">{{kind==='interfaces'?'定义维护':item.implementation_ref?'已登记实现':'待开发实现'}}</span></div><div v-if="kind!=='functions'" class="editor-tabs"><button :class="{active:tab==='business'}" @click="tab='business'">业务定义</button><button v-if="kind!=='interfaces'" :class="{active:tab==='inputs'}" @click="tab='inputs'">输入与输出</button><button v-if="kind!=='interfaces'" :class="{active:tab==='preview'}" @click="tab='preview'">验收与试运行</button><button :class="{active:tab==='technical'}" @click="tab='technical'">开发交接</button></div>
 <div v-show="tab==='business'"><div class="fill-hint">填写名称、用途和业务规则。原始资料可在下方展开参考，未确认的口径请明确标注。</div><Field label="名称" :model-value="item.name" required :example="kind==='functions'?'计算系统SOC':kind==='actions'?'调整设备所属系统':'SOC信息对象'" @before-change="before" @update:model-value="update('name',$event)"/><Field label="业务描述" type="textarea" :model-value="item.description" required :example="kind==='functions'?'查询指定系统、指定时刻的SOC，并解释来源。':kind==='actions'?'更正或调整设备的系统归属。':'统一读取系统、设备和簇的SOC信息。'" @before-change="before" @update:model-value="update('description',$event)"/>
 <fieldset v-if="kind==='functions'" class="sample-panel"><legend>适用对象类型 *</legend><p class="field-help">可多选，至少选择一项；所选对象共用本计算口径。</p><div class="choice-grid"><label v-for="option in objectOptions" :key="option.value" class="check-option"><input type="checkbox" :checked="applicableTypes(item).includes(option.value)" @change="toggleType(option.value,$event)">{{option.label}}</label></div><p v-if="!applicableTypes(item).length" class="inline-error">请至少选择一个适用对象类型。</p></fieldset>

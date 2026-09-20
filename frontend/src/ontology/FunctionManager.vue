@@ -1,6 +1,9 @@
 <!-- ─── 计算契约（本体区，T06 原型对齐）─── 列表 → 独立编辑表单（替换主内容）。
-     协议冻结（勿改）：props {state:any; focusId?:string}；emits ['before-change','changed','properties']
+     协议冻结：props {state:any; focusId?:string}；emits ['before-change','changed','properties']
      （App.vue 绑定 @properties=openProperties @before-change=pushUndo @changed=changed）。
+     S4（20260920 验收）新增可选 props.returnTo 与 emit 'navigate'（原冻结项语义不变）：从资产库
+     外部依赖「去处理」跳入时携带来源定义上下文，页头/编辑表单给出「← 返回共享属性「x」」，
+     处理完依赖一步回到来源定义继续操作；不自动替用户再次删除。
      两态：selected 为空 = 清单（名称、输入→输出摘要、编辑入口）；非空 = 编辑态。
      编辑态（D10 消除 + T00 契约）：打开表单 = 深拷贝本地草稿 draft，打字只改草稿不 touch 自动保存；
      保存经 inject('form-save').submitForm('ontology', mutate) 一次持久化，成功关闭返回列表并定位高亮，
@@ -15,7 +18,10 @@ import ContractParameter from './ContractParameter.vue'
 import {graphReferences} from './editorModel'
 import type{FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 import {signatureDataType, dataTypeLabel, effectiveProperty} from './propertyModel'
-const props=defineProps<{state:any;focusId?:string}>(),emit=defineEmits(['before-change','changed','properties'])
+const props=defineProps<{state:any;focusId?:string;returnTo?:{view:string;focus?:Record<string,any>;label:string}}>(),emit=defineEmits(['before-change','changed','properties','navigate'])
+// S4：返回来源定义（资产库外部依赖「去处理」的来源上下文）；openUsages 让共享库回到引用位置抽屉，
+// 其余目标页按各自 focus 定位；上下文的清理由 App 的 navigate 统一完成。
+function backToSource(){if(props.returnTo)emit('navigate',props.returnTo.view,{...(props.returnTo.focus||{}),openUsages:true})}
 const clone=(x:any)=>JSON.parse(JSON.stringify(x))
 // --- T00 表单守卫接入（契约见 app/formGuard.ts）---
 const guardApi=inject<FormGuardAPI>('form-guard')!
@@ -95,7 +101,7 @@ function convertLegacy(){const f=legacyItem.value;if(!f)return;emit('before-chan
 <template>
 <!-- 编辑态：独立契约表单（本地草稿；主内容整体替换，无并列清单） -->
 <template v-if="draft">
-<div class="edit-top"><button @click="closeEditor">← 返回契约列表</button></div>
+<div class="edit-top"><button type="button" @click="closeEditor">← 返回契约列表</button><button v-if="returnTo" type="button" class="row-link" @click="backToSource">← 返回{{returnTo.label}}</button></div>
 <section class="card detail-card">
 <div class="detail-heading"><div><h2>{{isNew?'新建计算契约':'维护 · '+(draft.name||'未命名契约')}}</h2></div><span class="status-pill">{{draft.outputs.length||0}} 个输出</span></div>
 <p v-if="notice" class="fill-hint">{{notice}}</p>
@@ -136,7 +142,7 @@ function convertLegacy(){const f=legacyItem.value;if(!f)return;emit('before-chan
 </template>
 <!-- 历史定义：只读展示（guide_version 1/2 永不改写；转换为显式动作） -->
 <template v-else-if="legacyItem">
-<div class="edit-top"><button @click="selected=''">← 返回契约列表</button></div>
+<div class="edit-top"><button type="button" @click="selected=''">← 返回契约列表</button><button v-if="returnTo" type="button" class="row-link" @click="backToSource">← 返回{{returnTo.label}}</button></div>
 <section class="card detail-card"><div class="detail-heading"><div><span class="eyebrow">历史定义</span><h2>{{legacyItem.name||'未命名函数'}}</h2></div><span class="status-pill">待核对</span></div>
 <div class="fill-hint">这是历史定义：原文完整保留，尚未拆分为通用契约与项目实现。转成契约不会删除原文。</div>
 <Field label="名称" :model-value="legacyItem.name" disabled/>
@@ -149,7 +155,7 @@ function convertLegacy(){const f=legacyItem.value;if(!f)return;emit('before-chan
 </template>
 <!-- 列表态：名称 + 输入→输出摘要 + 编辑入口 -->
 <template v-else>
-<div class="manager-heading"><div><h2>计算契约</h2><p>说明一个业务能力需要提供什么、希望得到什么。具体实现放在项目映射中。</p></div><button class="primary" @click="newContract">＋ 新建契约</button></div>
+<div class="manager-heading"><div><h2>计算契约</h2><p>说明一个业务能力需要提供什么、希望得到什么。具体实现放在项目映射中。</p></div><button v-if="returnTo" type="button" @click="backToSource">← 返回{{returnTo.label}}</button><button class="primary" @click="newContract">＋ 新建契约</button></div>
 <section class="card">
 <div class="panelhead list-head"><span class="muted">共 {{contractRows.length}} 项契约</span><input v-model="query" type="search" placeholder="搜索契约名称…" aria-label="搜索契约"></div>
 <div v-if="contractRows.length">
@@ -173,7 +179,7 @@ function convertLegacy(){const f=legacyItem.value;if(!f)return;emit('before-chan
 </template>
 </template>
 <style scoped>
-.edit-top{margin-bottom:14px}
+.edit-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .list-head{margin-bottom:6px;flex-wrap:wrap;gap:10px}
 .list-head input[type=search]{width:min(240px,100%);margin:0}
 .line-row{display:flex;align-items:center;gap:14px;padding:13px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:7px}

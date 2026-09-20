@@ -13,13 +13,16 @@ import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
 import { actionsOf, isActionV2, objectsOfAction } from './actionModel'
 import { useOntTable } from './ontList'
-import { actionDeleteCheck } from './dependencyModel'
+import { actionDeleteCheck, externalDependencies, externalDependencyTarget } from './dependencyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
-const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string; editFocus?: boolean }>()
+// returnTo（S4，20260920 验收）：从资产库外部依赖「去处理」跳转而来时的来源定义上下文（App 分发）。
+const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string; editFocus?: boolean; returnTo?: { view: string; focus?: Record<string, any>; label: string } }>()
 const emit = defineEmits(['before-change', 'changed', 'navigate'])
 function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
+// S4：返回来源定义（共享属性/规则等）继续操作；openUsages 让共享库回到引用位置抽屉。
+function backToSource() { if (props.returnTo) emit('navigate', props.returnTo.view, { ...(props.returnTo.focus || {}), openUsages: true } as any) }
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
 
@@ -86,7 +89,7 @@ watch(mode, m => { m === 'edit' ? guardApi.register(guard) : guardApi.unregister
 onBeforeUnmount(() => guardApi.unregister(guard))
 
 function closeEditor() { mode.value = 'list' }
-function openDetail(id: string) { message.value = ''; detailId.value = id }
+function openDetail(id: string) { message.value = ''; blockedDeps.value = []; detailId.value = id }
 function openRefs(id: string) { refsId.value = id }
 function goObject(objectTypeId: string) { emit('navigate', 'objects', { type: objectTypeId, tab: 'actions' }) }
 function backToOrigin() {
@@ -104,6 +107,7 @@ function openNew() {
   converting = false
   mode.value = 'edit'
   message.value = ''
+  blockedDeps.value = []
   detailId.value = ''
   refsId.value = ''
 }
@@ -116,6 +120,7 @@ function openEdit(id: string) {
   converting = false
   mode.value = 'edit'
   message.value = ''
+  blockedDeps.value = []
   detailId.value = ''
   refsId.value = ''
 }
@@ -129,6 +134,7 @@ async function openConvert(id: string) {
   converting = true
   mode.value = 'edit'
   message.value = ''
+  blockedDeps.value = []
   detailId.value = ''
   refsId.value = ''
 }
@@ -171,13 +177,31 @@ async function save() {
 }
 // 删除定义（20260920 需求 13 统一语义）：有对象关联或契约/接口等依赖 → 阻断并列出业务名称与原因；
 // 无依赖 → 确认后删除。判断与对象页、图谱共用 actionDeleteCheck，不在此处另写规则。
+// S4（20260920 验收）：阻断时除提示外，给外部依赖（契约/接口/规则/映射）行内「去处理」入口，
+// 跳转携带 returnTo 回到本动作；不提供强制删除、不自动解除引用。
+const blockedDeps = ref<any[]>([])
+const blockedAction = ref<any>(null)
 async function remove(id: string) {
   const a: any = actionById(id)
   if (!a) return
   const check = actionDeleteCheck(props.state, a.id)
-  if (check.blocked) { message.value = check.message; return }
+  if (check.blocked) {
+    message.value = check.message
+    blockedAction.value = a
+    blockedDeps.value = externalDependencies(props.state, a.id).filter((d: any) => externalDependencyTarget(d))
+    return
+  }
   if (!(await appConfirm({ message: '删除动作「' + (a.name || a.id) + '」？当前没有对象关联此动作；删除的是当前草稿定义，已发布版本不变。可通过撤销恢复。', danger: true }))) return
-  if (await submit(() => { const actions = props.state.workflow.actions; actions.splice(actions.indexOf(a), 1) })) message.value = '已删除动作定义。'
+  if (await submit(() => { const actions = props.state.workflow.actions; actions.splice(actions.indexOf(a), 1) })) { message.value = '已删除动作定义。'; blockedDeps.value = []; blockedAction.value = null }
+}
+function goExternal(dep: any) {
+  const target = externalDependencyTarget(dep)
+  if (!target) return
+  const a = blockedAction.value
+  if (!a) return
+  const returnTo = { view: 'actions', focus: { definition: a.id }, label: '动作「' + (a.name || '未命名动作') + '」' }
+  blockedDeps.value = []
+  emit('navigate', target.view, { ...target.focus, returnTo })
 }
 </script>
 <template>
@@ -190,11 +214,16 @@ async function remove(id: string) {
       <p>集中维护共享动作库：只写名称、业务定义、业务效果。对象建模中选择哪些对象支持此动作；具体执行由项目绑定配置。</p>
     </div>
     <div class="ont-actions">
+      <button v-if="returnTo" type="button" @click="backToSource">← 返回{{ returnTo.label }}</button>
       <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
       <button type="button" class="primary" @click="openNew">＋ 新建动作</button>
     </div>
   </div>
   <p v-if="message" :class="message.startsWith('已') ? 'inline-success' : 'inline-error'" role="alert">{{ message }}</p>
+  <!-- S4：阻断删除时给出外部依赖的「去处理」定位（跳转携带 returnTo，处理完可返回本动作继续删除） -->
+  <p v-if="blockedDeps.length" class="blocked-deps">去处理：
+    <button v-for="(d, i) in blockedDeps" :key="'bd' + i" type="button" class="row-link" @click="goExternal(d)">{{ d.name }}（{{ d.reason }}）→</button>
+  </p>
   <OntologyList
       :search="actionsTable.q.value" @update:search="actionsTable.q.value = $event"
       :total="actionsTable.filtered.value.length" :page="actionsTable.page.value" :page-count="actionsTable.pageCount.value"
@@ -267,6 +296,7 @@ async function remove(id: string) {
     <p class="muted">历史字段不会在读写时丢失；转为新格式需显式确认替代。</p></details>
   <p class="ont-hint">动作描述不会执行任何指令；本期不定义输入参数、提交条件或执行表单。项目实现请在项目映射的「对象映射 → 动作绑定」中配置。</p>
   <template #footer>
+    <button v-if="returnTo" type="button" @click="backToSource">← 返回{{ returnTo.label }}</button>
     <button v-if="focusOrigin?.type" type="button" @click="backToOrigin">返回来源对象</button>
     <button type="button" class="primary" @click="editFromDetail">{{ detailIsLegacy ? '转为新格式编辑' : '编辑' }}</button>
   </template>
@@ -289,6 +319,7 @@ async function remove(id: string) {
 .ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
 .ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
 .ont-ref-row small{color:var(--muted);font-size:12px;font-weight:400}
+.blocked-deps{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:6px 0 0}
 .technical-section p{margin:8px 0;line-height:1.7}
 .param-line{border-bottom:1px solid var(--line);padding:8px 0;font-size:13px}
 </style>

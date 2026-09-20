@@ -17,8 +17,11 @@ import LinkMappings from './LinkMappings.vue'
 import ActionBindings from './ActionBindings.vue'
 import {lmPendingOf} from './LinkMappings.vue'
 import {psPendingOf} from './PropertySources.vue'
-const props=defineProps<{projectState:any;refState:any;focusType?:string;report?:any}>()
+const props=defineProps<{projectState:any;refState:any;focusType?:string;report?:any;returnTo?:{view:string;focus?:Record<string,any>;label:string}}>()
 const emit=defineEmits(['before-change','changed','navigate','open-ontology'])
+// S4（20260920 验收）：外部依赖「去处理」跳到本页时，页头给「← 返回共享属性「x」」入口；
+// 处理完映射引用可一步回到来源定义继续；openUsages 让共享库恢复引用位置抽屉（前后端接口不变）。
+function backToSource(){if(props.returnTo)emit('navigate',props.returnTo.view,{...(props.returnTo.focus||{}),openUsages:true})}
 const selected=ref(''),detail=ref('sources'),search=ref('')
 const editorOpen=ref(false)
 const graph=computed(()=>props.refState?.ontology?.['@graph']||[])
@@ -108,6 +111,7 @@ function onGotoTargetProperties(t:string){
 <template><div v-if="!refState" class="card"><div class="empty-state"><div class="empty-state-ico">◇</div><p>该项目尚未绑定本体版本（或引用版本无法读取）。请到「项目概览」页的项目信息中完成「绑定本体与版本」后，再开始对象映射。</p><button @click="emit('navigate','p-home')">返回项目概览</button></div></div>
 <template v-else>
 <p class="muted" style="margin:0 0 16px">先选对象，再配置实例识别、属性取值与链接映射。对象定义引用版本 {{projectState.ontologyVersion}}，不跟随本体草稿。</p>
+<p v-if="returnTo" class="return-to" style="margin:-8px 0 16px"><button type="button" class="row-link" @click="backToSource">← 返回{{returnTo.label}}</button></p>
 <ReferenceNotice v-if="!editorOpen" :project-state="projectState" :object-type="selected" @navigate="emit('navigate',$event)" @open-ontology="emit('open-ontology')"/>
 <div class="mapping-workspace" :class="{'mapping-editor-active':editorOpen}">
 <aside v-if="!editorOpen" class="card mapping-list"><h3>对象类型 · {{types.length}}</h3><input v-model="search" placeholder="搜索对象类型" aria-label="搜索对象绑定"><button v-for="t in visibleTypes" :key="t['@id']" :class="{active:selected===t['@id'].slice(3)}" @click="pick(t['@id'].slice(3))"><strong>{{t['rdfs:label']}}</strong><small>{{bound(t['@id'].slice(3))?'已启用映射':'尚未启用'}}</small></button><p v-if="!visibleTypes.length">没有匹配的对象类型</p></aside>

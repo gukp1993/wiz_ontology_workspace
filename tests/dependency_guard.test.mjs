@@ -235,6 +235,105 @@ await check('⑮ 移除引用与转为私有语义（源码语义检查）', asy
     'detachProperty 保留对象属性节点与 ID')
 })
 
+// ── ⑯ S4（20260920 验收）：外部依赖「去处理」携带 returnTo，处理完能返回原共享定义继续操作 ──
+await check('⑯ 共享库 goExternal 携带 returnTo（原共享定义 id + 名称）', async () => {
+  const src = readFileSync(resolve('frontend/src/ontology/SharedLibrary.vue'), 'utf8')
+  assert.match(src, /const returnTo = s \? \{ view: 'library', focus: \{ definition: s\['@id'\] \}/, 'returnTo 应指向原共享定义')
+  assert.match(src, /label: '共享属性「' \+ \(s\['rdfs:label'\]/, 'returnTo 应带业务名称（不是裸 id）')
+  assert.match(src, /emit\('navigate', target\.view, returnTo \? \{ \.\.\.target\.focus, returnTo \} : target\.focus\)/, '跳转应带上 returnTo')
+  assert.match(src, /usagesId\.value = ''/, '离开前关闭原抽屉（返回时重新打开）')
+})
+
+await check('⑰ App 分发 returnTo：navigate 形参、ref、无条件清空、透传五个目标页', async () => {
+  const src = readFileSync(resolve('frontend/src/App.vue'), 'utf8')
+  assert.match(src, /edit\?: boolean; openUsages\?: boolean; returnTo\?: \{ view: string; focus\?: Record<string, any>; label: string \}/, 'navigate 形参应接受 returnTo')
+  assert.match(src, /const definitionReturn = ref<\{ view: string; focus\?: Record<string, any>; label: string \} \| null\>\(null\)/, 'App 持有 returnTo 上下文')
+  assert.match(src, /definitionReturn\.value = focus\?\.returnTo \|\| null/, '每次跳转无条件更新（无来源即清空，避免陈旧返回）')
+  assert.match(src, /usagesFocusFlag\.value = !!focus\?\.openUsages/, 'openUsages 标记随跳转更新')
+  for (const [tag, label] of [['FunctionManager', '契约'], ['DefinitionManager', '接口'], ['BusinessRuleLibrary', '规则'],
+                              ['ActionLibrary', '动作'], ['ProjectBinding', '对象映射']]) {
+    assert.match(src, new RegExp('<' + tag + '[^>]*:return-to="definitionReturn"'), label + ' 页未接收 returnTo')
+  }
+  assert.match(src, /<SharedLibrary[^>]*:open-usages="usagesFocusFlag"/, '共享库应接收 openUsages（回到引用位置抽屉）')
+})
+
+await check('⑱ 四个目标页接收并渲染返回来源入口（不新建菜单、不新增页面）', async () => {
+  const pages = {
+    'FunctionManager.vue': /emit\('navigate',\s*props\.returnTo\.view/,
+    'BusinessRuleLibrary.vue': /emit\('navigate',\s*props\.returnTo\.view/,
+    'ActionLibrary.vue': /emit\('navigate',\s*props\.returnTo\.view/,
+  }
+  const propDecl = /returnTo\?:\s*\{\s*view:\s*string;\s*focus\?:\s*Record<string,\s*any>;\s*label:\s*string\s*\}/
+  for (const [file, emitPattern] of Object.entries(pages)) {
+    const src = readFileSync(resolve('frontend/src/ontology/' + file), 'utf8')
+    assert.match(src, propDecl, file + ' 应声明可选 returnTo prop')
+    assert.match(src, /← 返回\{\{\s*returnTo\.label\s*\}\}/, file + ' 应渲染「← 返回来源定义」入口')
+    assert.match(src, emitPattern, file + ' 点击应经既有 navigate 事件返回')
+    assert.ok(!/return-menu|new-page|新增菜单/.test(src), file + ' 不得新建菜单/页面')
+  }
+  const dm = readFileSync(resolve('frontend/src/tools/DefinitionManager.vue'), 'utf8')
+  assert.match(dm, /returnTo:Object/, 'DefinitionManager 应声明 returnTo prop')
+  assert.match(dm, /emit\('navigate',\s*r\.view/, 'DefinitionManager 应经既有 navigate 事件返回')
+  assert.match(dm, /← 返回\{\{returnTo\.label\}\}/, 'DefinitionManager 应渲染返回入口')
+  // 返回共享库时带 openUsages：App → SharedLibrary → 引用位置抽屉
+  const fn = readFileSync(resolve('frontend/src/ontology/FunctionManager.vue'), 'utf8')
+  assert.match(fn, /openUsages:true/, '返回跳转应带 openUsages')
+  const shared = readFileSync(resolve('frontend/src/ontology/SharedLibrary.vue'), 'utf8')
+  assert.match(shared, /openUsages\?: boolean/, '共享库应声明 openUsages prop')
+  assert.match(shared, /else if \(usages\) usagesId\.value = String\(id\)/, 'openUsages + focusId → 打开引用位置抽屉')
+  assert.match(shared, /if \(edit\) openEditor\(String\(id\)\)/, 'editFocus 打开编辑表单的行为保留')
+})
+
+// ── ⑲ S4：规则库/动作库删除阻断时给出外部依赖「去处理」入口，且不提供强制删除 ──
+await check('⑲ 规则库 blocked：引用对象抽屉内列外部依赖并可去处理（带 returnTo 回原规则）', async () => {
+  const src = readFileSync(resolve('frontend/src/ontology/BusinessRuleLibrary.vue'), 'utf8')
+  assert.match(src, /externalDependencies\(props\.state, ownersRule\.value\.id\)/, '外部依赖取数走统一模块')
+  assert.match(src, /function goExternal\(dep: any\)/, '应提供去处理入口')
+  assert.match(src, /label: '规则「' \+ \(rule\.name \|\| '未命名规则'\) \+ '」'/, 'returnTo 应回原规则并带名称')
+  assert.match(src, /view: 'rules', focus: \{ definition: rule\.id \}/, 'returnTo 应定位原规则定义')
+  assert.ok(!/强制删除|forceDelete/.test(src.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\/[^\n]*/g, '')), '不得提供强制删除')
+})
+
+await check('⑳ 动作库 blocked：消息区下方给出外部依赖去处理行，且不提供强制删除', async () => {
+  const src = readFileSync(resolve('frontend/src/ontology/ActionLibrary.vue'), 'utf8')
+  assert.match(src, /externalDependencies\(props\.state, a\.id\)\.filter/, '外部依赖取数走统一模块')
+  assert.match(src, /v-if="blockedDeps\.length" class="blocked-deps"/, '阻断提示下应有去处理行')
+  assert.match(src, /function goExternal\(dep: any\)/, '应提供去处理入口')
+  assert.match(src, /label: '动作「' \+ \(a\.name \|\| '未命名动作'\) \+ '」'/, 'returnTo 应回原动作并带名称')
+  assert.match(src, /view: 'actions', focus: \{ definition: a\.id \}/, 'returnTo 应定位原动作定义')
+  assert.ok(!/强制删除|forceDelete/.test(src.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\/[^\n]*/g, '')), '不得提供强制删除')
+})
+
+// ── ㉑ S4：返回路径必须恢复共享库引用位置抽屉；「去处理/返回」不得夹带删除（不自动替用户再删） ──
+await check('㉑ S4 返回路径完整：五页返回带 openUsages、共享库 edit 优先、去处理无删除副作用', async () => {
+  // 返回共享库时统一带 openUsages，App 才能用 focusId 恢复「引用位置」抽屉（继续处理剩余依赖）。
+  const backFiles = {
+    'frontend/src/ontology/FunctionManager.vue': '契约页',
+    'frontend/src/ontology/BusinessRuleLibrary.vue': '规则库',
+    'frontend/src/ontology/ActionLibrary.vue': '动作库',
+    'frontend/src/tools/DefinitionManager.vue': '接口页',
+    'frontend/src/project/ProjectBinding.vue': '对象映射页',
+  }
+  for (const [rel, label] of Object.entries(backFiles)) {
+    const src = readFileSync(resolve(rel), 'utf8')
+    assert.match(src, /emit\('navigate',[^\n]*openUsages:\s*true/, label + ' 返回跳转应带 openUsages（回到引用位置抽屉）')
+  }
+  // 共享库保持「edit 优先」：仅显式 openUsages 才开引用位置抽屉，普通进入不受历史 focusId 影响。
+  const shared = readFileSync(resolve('frontend/src/ontology/SharedLibrary.vue'), 'utf8')
+  assert.match(shared, /if \(edit\) openEditor\(String\(id\)\)\s*\n\s*else if \(usages\) usagesId\.value = String\(id\)/,
+    '共享库应保持 edit 优先、仅显式 openUsages 才开引用位置抽屉')
+  // 无定位入口的依赖不伪造跳转（按钮禁用，只列名称与原因）。
+  assert.match(shared, /:disabled="!externalDependencyTarget\(d\)"/, '无定位入口的依赖应禁用（不伪造跳转）')
+  // 「去处理」只做导航：处理依赖后不自动替用户再次删除（handler 内不得出现删除动作）。
+  for (const rel of ['frontend/src/ontology/SharedLibrary.vue', 'frontend/src/ontology/BusinessRuleLibrary.vue',
+                     'frontend/src/ontology/ActionLibrary.vue']) {
+    const body = new RegExp('function goExternal\\(dep: any\\) \\{([\\s\\S]*?)\\n\\}').exec(readFileSync(resolve(rel), 'utf8'))?.[1] || ''
+    assert.ok(body, rel + ' 未找到 goExternal 主体')
+    assert.ok(!/splice|removeShared|removeRule|remove\(/.test(body), rel + '「去处理」不得携带删除动作')
+    assert.match(body, /emit\('navigate'/, rel + '「去处理」应只经既有 navigate 跳转')
+  }
+})
+
 const failed = results.filter(r => !r.ok)
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`)
 if (failed.length) process.exit(1)

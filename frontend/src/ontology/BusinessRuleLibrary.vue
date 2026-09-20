@@ -16,12 +16,15 @@ import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
 import { useOntTable } from './ontList'
 import { objectsOfRule, RULE_FIELDS, rulesOf } from './businessRuleModel'
-import { ruleDeleteCheck } from './dependencyModel'
+import { externalDependencies, externalDependencyTarget, ruleDeleteCheck } from './dependencyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
-const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string; editFocus?: boolean }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
+// returnTo（S4，20260920 验收）：从资产库外部依赖「去处理」跳转而来时的来源定义上下文（App 分发）。
+const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string; editFocus?: boolean; returnTo?: { view: string; focus?: Record<string, any>; label: string } }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
 function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
+// S4：返回来源定义（共享属性等）继续操作；openUsages 让共享库回到引用位置抽屉。
+function backToSource() { if (props.returnTo) emit('navigate', props.returnTo.view, { ...(props.returnTo.focus || {}), openUsages: true } as any) }
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
 
@@ -74,6 +77,17 @@ const currentRule = computed(() => rows.value.find((r: any) => r.id === dialog.v
 const detailRule = computed(() => dialog.value?.kind === 'detail' ? currentRule.value : null)
 const ownersRule = computed(() => dialog.value?.kind === 'owners' ? currentRule.value : null)
 const ownersNames = computed(() => dialog.value?.id ? dedupeTypes(objectsOfRule(props.state, dialog.value.id)) : [])
+// S4（20260920 验收）：阻断删除的规则若还被契约/接口/动作/映射等直接引用，在同一抽屉列出「去处理」定位
+//（对象引用在下方已有入口；这里只补外部依赖，无入口的依赖只列名称与原因，不伪造跳转）。
+const ownersExternalDeps = computed(() => ownersRule.value ? externalDependencies(props.state, ownersRule.value.id).filter((d: any) => externalDependencyTarget(d)) : [])
+function goExternal(dep: any) {
+  const target = externalDependencyTarget(dep)
+  if (!target) return
+  const rule = ownersRule.value
+  const returnTo = rule ? { view: 'rules', focus: { definition: rule.id }, label: '规则「' + (rule.name || '未命名规则') + '」' } : undefined
+  dialog.value = null
+  emit('navigate', target.view, returnTo ? { ...target.focus, returnTo } : target.focus)
+}
 const editTargetName = computed(() => draft.value?.name || '')
 
 watch(rows, v => {
@@ -196,6 +210,7 @@ async function removeRule(id: string) {
       <p>用自然语言维护通用业务规则；对象建模中引用，项目实现与执行不在本期范围。</p>
     </div>
     <div class="ont-actions">
+      <button v-if="returnTo" type="button" @click="backToSource">← 返回{{ returnTo.label }}</button>
       <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
       <button type="button" class="primary" @click="openEdit()">＋ 新建规则</button>
     </div>
@@ -238,12 +253,15 @@ async function removeRule(id: string) {
   <div class="ont-field"><span class="ont-field-label">规则内容</span><p>{{ detailRule.content || '暂无规则内容。' }}</p></div>
   <div class="ont-field"><span class="ont-field-label">输出结果</span><p>{{ detailRule.output || '暂无输出说明。' }}</p></div>
   <template #footer>
+    <button v-if="returnTo" type="button" @click="backToSource">← 返回{{ returnTo.label }}</button>
     <button v-if="focusOrigin?.type" type="button" @click="backToOrigin">返回来源对象</button>
     <button type="button" class="primary" @click="editFromDrawer">编辑</button>
   </template>
 </OntDrawer>
 
-<!-- 引用对象抽屉（原 owners 弹窗）：反查引用对象类型并可跳到对象建模「规则」页签。 -->
+<!-- 引用对象抽屉（原 owners 弹窗）：反查引用对象类型并可跳到对象建模「规则」页签；
+     S4（20260920 验收）：同时列出契约/接口/动作/映射等外部依赖的「去处理」入口，
+     跳转携带 returnTo，处理完依赖可一步返回本规则继续删除。 -->
 <OntDrawer v-if="ownersRule" :title="ownersRule.name || '未命名规则'" subtitle="引用对象" @close="dialog = null">
   <p v-if="!ownersNames.length" class="muted owners-empty">暂无对象引用此规则。</p>
   <template v-else>
@@ -252,7 +270,14 @@ async function removeRule(id: string) {
       <span class="ont-ref-go">查看对象规则 →</span>
     </button>
   </template>
-  <p class="ont-hint">引用关系在对象建模的「规则」页签中维护；这里只读反查。</p>
+  <template v-if="ownersExternalDeps.length">
+    <p class="inline-error">此规则还被以下内容直接引用；处理完后可返回本规则继续删除：</p>
+    <button v-for="(d, i) in ownersExternalDeps" :key="'ext' + i" type="button" class="ont-ref-row" @click="goExternal(d)">
+      <span><strong>{{ d.name }}</strong><small>{{ d.reason }}</small></span>
+      <span class="ont-ref-go">去处理 →</span>
+    </button>
+  </template>
+  <p class="ont-hint">引用关系在对象建模的「规则」页签中维护；这里只读反查。处理依赖期间不会自动解除任何引用，也不会替用户删除规则。</p>
 </OntDrawer>
 
 
@@ -288,5 +313,7 @@ async function removeRule(id: string) {
 .ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
 /* 引用对象抽屉行：名称居左、动作居右（骨架走全局 .ont-ref-row）。 */
 .ont-ref-go{flex:none;margin-left:auto;color:var(--blue);font-size:12px;font-weight:500}
+/* 外部依赖行（S4）：名称下的原因副标题 */
+.ont-ref-row small{display:block;margin-top:2px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .owners-empty{padding:18px 0}
 </style>
