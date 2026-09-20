@@ -41,7 +41,9 @@ export function graphReferenceEntries(state,id): ReferenceEntry[]{
   if(n.id===id)continue
   const label=n.name||n.id
   const tag={sourceKind:WORKFLOW_KIND[kind],sourceId:n.id}
-  if(list(n.object_types).some(matches))add(label,'适用对象类型',tag)
+  // 适用对象类型：历史 object_types（多选）与 V3 契约 applicable_objects 都是当前草稿依赖
+  // （后端 references.py 同一遍历；B1 修正：此前前端漏判 applicable_objects，删除对象时不预告而保存被 422）。
+  for(const key of ['object_types','applicable_objects'])if(list(n[key]).some(matches))add(label,'适用对象类型',tag)
   for(const step of list(n.steps))if(matches(step.function_ref))add(label,'函数调用步骤',tag)
   for(const binding of list(n.property_bindings))if(matches(binding.object_type)||matches(binding.property_ref))add(label,'函数属性绑定',tag)
   for(const [key,reason] of Object.entries({object_type:'目标对象',output_property:'输出属性',relation_ref:'操作链接',function_ref:'调用计算',interface_ref:'接口引用'}))if(matches(n[key]))add(label,reason,tag)

@@ -353,6 +353,84 @@ def check_unit():
     if not any('成员关系' in e for e in broken_messages(dangling_relation)):
         fail('旧规则成员关系悬空应检出', broken_messages(dangling_relation))
     ok('单元⑨', '旧 rules 引用：有效放行 / 真实删除阻断 / 历史失效放行')
+
+    # B2（20260920 W3 最小修复）：domain / range 省 mg: 前缀（裸名）时后端同样命中引用
+    s9 = graph_state()
+    bare_ok = clone(s9)
+    bare_ok['ontology']['@graph'][3]['rdfs:domain'] = {'@id': 'obj_a'}  # 裸名但等价 mg:obj_a
+    if broken_messages(bare_ok):
+        fail('裸名 domain 命中已存在对象不应误报', broken_messages(bare_ok))
+    legacy_ids = clone(s9)
+    legacy_ids['ontology']['@graph'][0]['@id'] = 'obj_a'   # 历史数据节点 id 本身是裸名
+    for node in legacy_ids['ontology']['@graph']:
+        for key in ('rdfs:domain', 'rdfs:range'):
+            if node.get(key, {}).get('@id') == 'mg:obj_a':
+                node[key] = {'@id': 'obj_a'}
+    if broken_messages(legacy_ids):
+        fail('节点 id 与引用同为裸名（历史数据）不应误报', broken_messages(legacy_ids))
+    bare = clone(s9)
+    bare['ontology']['@graph'][3]['rdfs:domain'] = {'@id': 'obj_gone'}
+    errs9 = broken_messages(bare)
+    if not any('所属的对象类型不存在（obj_gone）' in e for e in errs9):
+        fail('裸名 domain 指向不存在对象应报悬空', errs9)
+    if not any(k.endswith(':rdfs:domain:mg:obj_gone') for k in broken_keys(bare)):
+        fail('裸名悬空的比较键按 mg: 规范身份（历史数据改写法不产生新条目）', broken_keys(bare))
+    newly9, allowed9 = new_broken(s9, bare)
+    if allowed9 or not newly9:
+        fail('新增裸名悬空 domain 应阻断保存', (newly9, allowed9))
+    bare_range = clone(s9)
+    bare_range['ontology']['@graph'][5]['rdfs:range'] = {'@id': 'obj_gone'}  # 链接省前缀的终点
+    if not any('链接终点对象类型不存在（obj_gone）' in e for e in broken_messages(bare_range)):
+        fail('裸名 range（链接终点）应报悬空', broken_messages(bare_range))
+    if not broken_messages(s9):
+        pass  # 基线无悬空（上面已断言）
+    ok('单元⑩', 'B2：裸名 domain/range 与前端同口径命中悬空（带前缀口径不变）')
+
+    # B1（20260920 W3 最小修复）：applicable_objects 是当前草稿依赖——后端阻断，前端同步预告
+    prev_b1 = graph_state()
+    prev_b1['workflow']['functions'] = [contract_record(outputs=[], applicable_objects=['mg:obj_b'])]
+    if broken_messages(prev_b1):
+        fail('契约适用对象引用存在的对象不应报悬空', broken_messages(prev_b1))
+    cur_b1 = clone(prev_b1)
+    cur_b1['ontology']['@graph'] = [n for n in cur_b1['ontology']['@graph'] if n['@id'] != 'mg:obj_b']
+    newly_b1, allowed_b1 = new_broken(prev_b1, cur_b1)
+    if allowed_b1 or not any('适用对象类型不存在（mg:obj_b）' in e for e in newly_b1):
+        fail('删除被契约 applicable_objects 引用的对象类型应阻断（前端 objectDeleteCheck 同步）',
+             (newly_b1, allowed_b1))
+    ok('单元⑪', 'B1：applicable_objects 引用对象 → 后端删除阻断（前端同判定见 dependency_guard）')
+
+    # B3（20260920 W3 最小修复）：无稳定 id 的签名槽位不用所在序号比较，删除/重排其他槽位不误报
+    hist = graph_state()
+    hist['workflow']['functions'] = [{'id': 'fn_noid', 'name': '无槽位id契约', 'guide_version': 3, 'outputs': [
+        {'name': '有效输出', 'ref': {'kind': 'property', 'id': 'mg:p_priv'}},
+        {'name': '历史悬空输出', 'ref': {'kind': 'property', 'id': 'mg:gone_prop'}}]}]
+    if len(broken_entries(hist)) != 1:
+        fail('应恰有一条历史悬空（无稳定 id 槽位）', broken_entries(hist))
+    shifted = clone(hist)
+    shifted['workflow']['functions'][0]['outputs'] = shifted['workflow']['functions'][0]['outputs'][1:]
+    if broken_keys(shifted) != broken_keys(hist):
+        fail('同一条悬空引用在前后槽位变化后比较键应保持', (broken_keys(hist), broken_keys(shifted)))
+    newly_shift, allowed_shift = new_broken(hist, shifted)
+    if not allowed_shift or newly_shift:
+        fail('删除前置槽位不应把历史悬空误报为新引入', (newly_shift, allowed_shift))
+    added_b3 = clone(shifted)
+    added_b3['workflow']['functions'][0]['outputs'] = added_b3['workflow']['functions'][0]['outputs'] + [
+        {'name': '新增悬空输出', 'ref': {'kind': 'property', 'id': 'mg:gone_prop'}}]
+    newly_add, allowed_add = new_broken(shifted, added_b3)
+    if allowed_add or not newly_add:
+        fail('新增同目标悬空槽位仍应阻断（保护不放松）', (newly_add, allowed_add))
+    valid_b3 = graph_state()
+    valid_b3['workflow']['functions'] = [{'id': 'fn_noid', 'name': '无槽位id契约', 'guide_version': 3, 'outputs': [
+        {'name': '原本有效输出', 'ref': {'kind': 'property', 'id': 'mg:p_priv'}}]}]
+    if broken_messages(valid_b3):
+        fail('引用存在的属性不应报悬空', broken_messages(valid_b3))
+    dropped_target = clone(valid_b3)
+    dropped_target['ontology']['@graph'] = [n for n in dropped_target['ontology']['@graph']
+                                            if n['@id'] != 'mg:p_priv']
+    newly_del, allowed_del = new_broken(valid_b3, dropped_target)
+    if allowed_del or not newly_del:
+        fail('删除槽位引用的目标仍应阻断（保护不削弱）', (newly_del, allowed_del))
+    ok('单元⑫', 'B3：无稳定 id 槽位按目标出现序号比较——前置槽位删除不误报、新增/删除目标仍阻断')
     return True
 
 

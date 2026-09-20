@@ -230,6 +230,26 @@ check('R3 共享引用边删除不触发 detachShared（无残留 mg:valueSuffix
   assert.ok(st2.ontology['@graph'].some(n => n['@id'] === 'mg:sp_power'), '共享定义保留')
 })
 
+check('B1 图谱命令：对象被契约 applicable_objects 引用时删除阻断且状态不变', () => {
+  const st2 = makeState()
+  // 清掉对象自身的属性/链接/规则/动作依赖，确保阻断只来自契约 applicable_objects
+  st2.ontology['@graph'] = st2.ontology['@graph'].filter(n => n['@id'] !== 'mg:p_dev_power'
+    && !(n['@type'] === 'owl:ObjectProperty'
+      && (['rdfs:domain', 'rdfs:range'].some(k => n[k]?.['@id'] === 'mg:object_device'))))
+  st2.workflow.businessRuleAssociations = []
+  st2.workflow.actionAssociations = []
+  st2.workflow.functions = [{ id: 'fn1', name: '查询设备契约', guide_version: 3, applicable_objects: ['mg:object_device'], outputs: [] }]
+  const log2 = []
+  const b2 = makeBridge(st2, log2)
+  b2.reload(true)
+  const before = JSON.stringify(st2.ontology['@graph'])
+  const r = b2.domainDeleteNode('lg:obj:mg:object_device')
+  assert.ok(r.error, '应阻断（此前仅后端保存边界会 422）')
+  assert.match(r.error, /查询设备契约/, '阻断文案应含契约名称')
+  assert.equal(JSON.stringify(st2.ontology['@graph']), before, '状态不变')
+  assert.equal(log2.filter(x => x[0] === 'changed').length, 0, '不产生变更事件')
+})
+
 // ── 撤销：换回真实领域模型 ────────────────────────────────────────────────
 check('R06/§3.2 撤销快照恢复真实模型（非仅画布）', () => {
   const snap = bridge.captureUndo()

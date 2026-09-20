@@ -334,6 +334,31 @@ await check('㉑ S4 返回路径完整：五页返回带 openUsages、共享库 
   }
 })
 
+// ── B1（20260920 W3 最小修复）：applicable_objects 是当前草稿依赖，前端删除判定必须同步 ──
+await check('B1 契约 applicable_objects 引用对象 → 对象删除预告阻断（与后端 new_broken_references 同口径）', async () => {
+  const state = sampleState()
+  // 清掉对象自身的属性/规则依赖，确保阻断只来自契约的 applicable_objects
+  state.ontology['@graph'] = state.ontology['@graph'].filter((n) => n['@id'] !== 'mg:p1' && n['@id'] !== 'mg:priv1')
+  state.workflow.businessRuleAssociations = []
+  state.workflow.functions = [{ id: 'fn1', name: '查询储能soc', guide_version: 3, applicable_objects: ['mg:obj1'], outputs: [] }]
+  const check = dep.objectDeleteCheck(state, 'mg:obj1')
+  assert.equal(check.blocked, true, '适用对象引用应阻断对象删除')
+  assert.ok(check.deps.some(d => d.reason === '适用对象类型' && d.sourceKind === 'contract' && d.sourceId === 'fn1'),
+    '依赖条目应含适用对象类型与契约来源（供「去处理」定位）')
+  assert.match(check.message, /查询储能soc/)
+  // 未引用时不误报；省 mg: 前缀写法同样命中（与后端 field_ref 的 _full 容错一致）
+  const bare = sampleState()
+  bare.ontology['@graph'] = bare.ontology['@graph'].filter((n) => n['@id'] !== 'mg:p1' && n['@id'] !== 'mg:priv1')
+  bare.workflow.businessRuleAssociations = []
+  bare.workflow.functions = [{ id: 'fn1', name: '查询储能soc', guide_version: 3, applicable_objects: ['obj1'], outputs: [] }]
+  assert.equal(dep.objectDeleteCheck(bare, 'mg:obj1').blocked, true, '省前缀写法同样命中')
+  const free = sampleState()
+  free.ontology['@graph'] = free.ontology['@graph'].filter((n) => n['@id'] !== 'mg:p1' && n['@id'] !== 'mg:priv1')
+  free.workflow.businessRuleAssociations = []
+  free.workflow.functions = [{ id: 'fn1', name: '查询储能soc', guide_version: 3, applicable_objects: ['mg:obj2'], outputs: [] }]
+  assert.equal(dep.objectDeleteCheck(free, 'mg:obj1').blocked, false, '其他对象的适用应不受影响')
+})
+
 const failed = results.filter(r => !r.ok)
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`)
 if (failed.length) process.exit(1)

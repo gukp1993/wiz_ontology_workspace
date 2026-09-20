@@ -15,19 +15,21 @@
 graphReferenceEntries 对齐，前端会拦的删除这里同样会拦）：
 1. 图内引用：rdfs:domain / rdfs:range、mg:sharedProperty、mg:valueType、
    取值函数（mg:valueSource.functionId）、嵌套值类型（mg:constraint 的 elementValueType / fields[].valueType）；
+   domain/range 与前端 matches 同口径，同时接受 mg: 前缀与裸名（B2 修正：裸名 o1 按 mg:o1 核对）；
 2. 计算/动作/接口三类定义的签名槽位 inputs/outputs 的 ref:{kind:object|property|base}
    （base 只在带稳定 id 时按图内引用核对，正常 base 引用只有 dataType）；
-3. 计算/动作/接口三类定义的字段级引用：适用对象类型、输出属性、链接/计算/接口引用、
-   顶层取值函数调用、步骤调用、属性绑定、参数；以及 properties（必需共享属性）/ implementations
-   （实现对象类型）清单（前端对三类定义同样遍历，实际数据主要在接口定义上）；
+   槽位无稳定 id 时用「同槽位内同一目标引用的出现序号」做槽位身份，不用所在序号（B3 修正）；
+3. 计算/动作/接口三类定义的字段级引用：适用对象类型（object_type / object_types / applicable_objects）、
+   输出属性、链接/计算/接口引用、顶层取值函数调用、步骤调用、属性绑定、参数；以及 properties
+   （必需共享属性）/ implementations（实现对象类型）清单（前端对三类定义同样遍历，实际数据主要在接口定义上）；
 4. 动作/规则关联的 objectTypeId / ruleId / actionId；
 5. 指标（metrics）的 rule_ref / applicable_types；旧 rules 的成员类型与成员关系。
 
 前端另有两块不在本模块范围，已在接口文档 02 §2.2 注明：
 * 「接口实现完整性」保护（删除实现对象上最后一条满足接口要求的共享属性实例，
-  editorModel.graphReferenceEntries 第 60～62 行）：那不是悬空引用（接口引用的共享属性仍在），
+  editorModel.graphReferenceEntries 的「实现对象必需属性」分支）：那不是悬空引用（接口引用的共享属性仍在），
   删除后由发布校验提示补齐；
-* 项目映射 `state.bindings` 的引用（第 65～78 行）：属项目区状态，走 `/api/project-save`
+* 项目映射 `state.bindings` 的引用（同一遍历中 `mapped` / `object_bindings` 分支）：属项目区状态，走 `/api/project-save`
   与项目校验，不经过本体保存边界。
 """
 
@@ -58,6 +60,26 @@ def _canon(target, known):
         return value
     candidate = _full(value)
     return candidate if candidate in known else value
+
+
+def _canon_graph_ref(target, known):
+    """domain/range 目标的图内引用核对（B2 修正）：返回 (引用 id, 是否按图内引用处理)。
+
+    与前端 editorModel.graphReferenceEntries 的 matches 同口径——稳定 id 精确命中优先，
+    其次补 mg: 前缀命中；仍不命中且是不含冒号的裸名时，按 mg: 补齐后的身份核对（前端对
+    「稳定 id 与去前缀短名」同判，删除目标对象时同样命中该引用，后端不能放行）；
+    其他带前缀写法（xsd:/http: 等）保持原样跳过。
+    节点 id 本身是裸名（历史数据）时精确命中，不臆造 mg: 前缀，避免误报。
+    """
+    value = str(target or '').strip()
+    if not value:
+        return '', False
+    canonical = _canon(value, known)
+    if canonical in known:
+        return canonical, True
+    if ':' not in value:
+        return _full(value), True
+    return value, value.startswith('mg:')
 
 
 def _ref_id(node, key):
@@ -145,18 +167,19 @@ def broken_references(state):
     for node in by_id.values():
         label = name_of(node)
         source_id = node['@id']
-        domain = _ref_id(node, 'rdfs:domain')
-        if domain.startswith('mg:') and domain not in classes:
+        domain_raw = _ref_id(node, 'rdfs:domain')
+        domain, domain_is_ref = _canon_graph_ref(domain_raw, classes)
+        if domain_is_ref and domain not in classes:
             errors.append(_entry(f'graph:{source_id}:rdfs:domain:{domain}',
-                                 f'「{label}」所属的对象类型不存在（{domain}）'))
-        range_ref = _ref_id(node, 'rdfs:range')
-        if range_ref.startswith('mg:'):
-            # 链接的 range 指向对象类型；数据属性的 range 允许指向值类型（两边都算存在）
-            known = classes if node.get('@type') == KIND_OBJECT_PROP else classes | value_types
-            if range_ref not in known:
-                reason = '链接终点对象类型' if node.get('@type') == KIND_OBJECT_PROP else '数据类型'
-                errors.append(_entry(f'graph:{source_id}:rdfs:range:{range_ref}',
-                                     f'「{label}」的{reason}不存在（{range_ref}）'))
+                                 f'「{label}」所属的对象类型不存在（{domain_raw}）'))
+        # 链接的 range 指向对象类型；数据属性的 range 允许指向值类型（两边都算存在）
+        known_range = classes if node.get('@type') == KIND_OBJECT_PROP else classes | value_types
+        range_raw = _ref_id(node, 'rdfs:range')
+        range_ref, range_is_ref = _canon_graph_ref(range_raw, known_range)
+        if range_is_ref and range_ref not in known_range:
+            reason = '链接终点对象类型' if node.get('@type') == KIND_OBJECT_PROP else '数据类型'
+            errors.append(_entry(f'graph:{source_id}:rdfs:range:{range_ref}',
+                                 f'「{label}」的{reason}不存在（{range_raw}）'))
         shared = _ref_id(node, 'mg:sharedProperty')
         if shared and shared not in properties:
             errors.append(_entry(f'graph:{source_id}:mg:sharedProperty:{shared}',
@@ -175,18 +198,25 @@ def broken_references(state):
         if element and _canon(element, value_types) not in value_types:
             errors.append(_entry(f'graph:{source_id}:mg:constraint.elementValueType:{_full(element)}',
                                  f'「{label}」数组元素引用的值类型不存在（{element}）'))
+        fields_seen = {}
         for index, field in enumerate(constraint.get('fields') or []):
             if not isinstance(field, dict):
                 continue
             type_ref = str(field.get('valueType') or '')
             if type_ref and _canon(type_ref, value_types) not in value_types:
-                # 槽位身份用字段名（值类型约束要求字段名非空且唯一），没有名称才退回序号
-                slot = str(field.get('name') or f'#{index}')
+                # 槽位身份用字段名（值类型约束要求字段名非空且唯一）；没有名称时才退回标识，
+                # 且用「同一目标引用的出现序号」而非所在序号（B3 同口径：其他字段增删不改写比较键）。
+                slot = str(field.get('name') or '')
+                if not slot:
+                    marker = f'valueType:{_full(type_ref)}'
+                    ordinal = fields_seen.get(marker, 0)
+                    fields_seen[marker] = ordinal + 1
+                    slot = f'{marker}#{ordinal}'
                 errors.append(_entry(f'graph:{source_id}:mg:constraint.fields:{slot}:valueType:{_full(type_ref)}',
                                      f'「{label}」结构体字段「{field.get("name") or index}」引用的值类型不存在（{type_ref}）'))
 
     # 2) 三类定义（计算/动作/接口）的签名槽位 inputs/outputs（V3 ref:{kind,id}），
-    #    与前端 editorModel.graphReferenceEntries 的第 53～58 行遍历一致。
+    #    与前端 editorModel.graphReferenceEntries 的签名槽位遍历一致。
     for kind, kind_label in WORKFLOW_KINDS:
         for index, record in enumerate(workflow.get(kind) or []):
             if not isinstance(record, dict):
@@ -194,6 +224,11 @@ def broken_references(state):
             record_id = str(record.get('id') or f'#{index}')
             label = record.get('name') or record.get('id') or f'未命名{kind_label}'
             for slot, slot_label in (('inputs', '输入'), ('outputs', '输出')):
+                # B3（20260920 W3 最小修复）：没有稳定 id 的槽位不再用「所在序号」做槽位身份，
+                # 改用「同槽位内同一目标引用的出现序号」——删除/重排其他槽位不会改写既有失效
+                # 引用的比较键（不再把历史遗留失效误报为新引入），而新增同目标槽位仍产生新键，
+                # 不放松「新增悬空引用阻断保存」的保护。
+                same_target_seen = {}
                 for item_index, item in enumerate(record.get(slot) or []):
                     if not isinstance(item, dict):
                         continue
@@ -202,7 +237,12 @@ def broken_references(state):
                     target = str(ref.get('id') or '')
                     if not target:
                         continue
-                    slot_id = str(item.get('id') or f'#{item_index}')
+                    slot_id = str(item.get('id') or '')
+                    if not slot_id:
+                        marker = f'{ref_kind}:{_full(target)}'
+                        ordinal = same_target_seen.get(marker, 0)
+                        same_target_seen[marker] = ordinal + 1
+                        slot_id = f'{marker}#{ordinal}'
                     item_label = str(item.get('name') or '') or f'#{item_index + 1}'
                     src_slot = f'{kind}:{record_id}:{slot}:{slot_id}'
                     if ref_kind == 'object' and _canon(target, classes) not in classes:
@@ -233,9 +273,9 @@ def broken_references(state):
             field_ref(src, 'output_property', record.get('output_property'), properties, f'{prefix}的输出属性不存在')
             field_ref(src, 'relation_ref', record.get('relation_ref'), relations, f'{prefix}引用的链接类型不存在')
             field_ref(src, 'interface_ref', record.get('interface_ref'), interface_ids, f'{prefix}引用的接口不存在')
-            # 顶层取值函数调用（历史 functions 记录写法，前端第 47 行同样遍历）
+            # 顶层取值函数调用（历史 functions 记录写法，前端对三类定义同样遍历 function_ref）
             field_ref(src, 'function_ref', record.get('function_ref'), function_ids, f'{prefix}调用的计算契约不存在')
-            # 必需共享属性 / 实现对象类型清单（前端第 48～49 行对三类定义都遍历，实际主要在接口定义）
+            # 必需共享属性 / 实现对象类型清单（前端对三类定义都遍历，实际主要在接口定义）
             for target in _list(record.get('properties')):
                 value = str(target or '').strip()
                 if value and _canon(value, by_id) not in by_id:
