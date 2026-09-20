@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`8382f3ce9f1b5391`
+上下文版本：`d71d12e117a6e0cb`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,16 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 澄清编排交付说明与可执行脚本的期望 · codex · 已确认决定
+
+时间：2026-09-20T02:13:08.221066+00:00；记录：`.collaboration/entries/000077-495d8fa6a0a8.json`
+
+用户澄清原期望：SOC规则以函数编排维护，交给LLM的是说明和完整可执行脚本，固定步骤减少推理；正在比较与纯自然语言步骤方案。建议以说明+可执行实现为成熟规则主路径，消费端工具实际执行，规则MCP仍无业务连接。
+
+- 决定：建议区分LLM选择规则/补参数与外部执行环境执行代码，不把模型模拟代码当执行。；编排应作为可执行规则的编辑来源，说明/实现由同一规则派生，避免两份手工维护；尚未授权实现脚本导出。；脚本交付需要输入输出、运行依赖及逻辑数据源绑定约定，凭据留消费侧；纯自然语言适合探索和未固化规则。
+- 验证：核对flow_executor._exec_python当前仍调用LLM evaluate_json，没有将其当确定性Python运行器。
+- 下一步：确认消费端脚本执行环境与数据工具接口后，才能确定可执行交付形式。
 
 ### 讨论规则MCP定位下函数编排的价值 · codex · 已确认决定
 
@@ -131,14 +141,3 @@
 - 验证：tests/flow_editor_bind.test.mjs 18 项全过（E01-E04）；flow_model、flow_test_workspace 回归全过；build（vue-tsc）通过；隔离实例 18904 浏览器实测（已清理）：建立绑定→点「编排输入」→点目标节点→弹窗预选入口参数→确认后连线派生+自动保存+问题计数更新；再点来源节点→点「编排输出」→绑定弹窗→确认后第二条连线+「检查通过」；18765 已 restart 200；真实数据零写入
 - 下一步：用户在 18765 用「设备SOC计算（Redis版）-副本」试：建立绑定→点「编排输入」→点新 HTTP 节点；若还想要画布直接拖线，可再提
 - 依据/文档：frontend/src/flow/FlowEditor.vue；frontend/src/flow/FlowCanvas.vue；tests/flow_editor_bind.test.mjs；git 38b426d
-
-### 实施 图谱编辑器源码整体复用（P0–P4 收尾提交 573a586） · zcode · 已实施，待验收
-
-时间：2026-09-20T00:55:46.124716+00:00；记录：`.collaboration/entries/000065-e463a5bccee6.json`
-
-整体复制旧编辑器（HEAD b2f10d1，8 文件 SHA256 与计划一致）到 frontend/src/ontology/legacyGraph/：EditorView/Preview/MultiPreview+组件/composables/core/shared，交互逐行保留，类型扩为当前五类；新增 legacyBridge 适配层（lg: 稳定 ID 投影、领域命令走 before-change/changed/保存协调器、撤销=领域快照、坐标=视图偏好、外部变化检测）；保存接 commit-now，版本管理→校验与发布页，发布版本只读预览（单图/多本体多选），坐标导入导出+离线图谱包客户端生成，jsonId 有损默认阻止；旧 MCP/问数/徽标/另存版本/jsonId 导入移除并登记；删除上一版只读控制器消除双控制器。
-
-- 决定：节点/边身份=lg:<类型前缀>:<领域稳定ID>；边身份=定义 ID（链接/共享引用/归属）或类型+双方 ID（规则/动作关联），平行链接与自关联如实上图；删除保护与当前建模一致（graphReferences/规则与动作引用/共享引用计数）；批量连线先全量校验整批拒绝；引用边删除=属性转私有继承字段，归属边删除=删私有属性；jsonId 导出含动作/私有属性/共享引用/时间序列等不可表达内容时默认阻止并列损失清单；完整迁移走配置迁移；图谱包=store-only ZIP（坐标+离线预览 HTML，无凭据断网可看）；旧 3 秒自动保存/版本快照/第二套存储切断；本体切换/新建经 App 既有守卫链路（switchOntology/createOntologyNamed）
-- 验证：build（vue-tsc+vite）通过；tests/ontology_graph.test.mjs 12/12（模型断言保留）+ tests/legacy_graph_bridge.test.mjs 12/12（新增领域断言）；既有前端回归全过：object_workspace 7/ontology_home 27/global_interaction 7/save_queue 22/undo_history 7；修改内容对照表（逐文件适配+旧功能→当前入口+C01–C05 口径+已知限制）见 文档/需求/20260919_图谱编辑器源码整体复用/修改内容清单.md；开发计划 §5.1 已回填
-- 下一步：子代理验收与打磨循环补齐：R01–R18 隔离浏览器逐项走查、四档宽度截图、500/1200 性能对比、失败与 409/账号切换实测（§5.1 如实登记未测项）；用户验收 18765：本体→对象建模→本体图谱（新编辑器）；重点核对新建/连线/删除/撤销走当前保存链路
-- 依据/文档：frontend/src/ontology/legacyGraph/（全部迁入文件+legacyBridge.js+offlineBundle.js+LegacyGraphHost.vue）；frontend/src/ontology/ObjectWorkspace.vue；frontend/src/App.vue；OntologyGraph.vue 已删除；文档/需求/20260919_图谱编辑器源码整体复用/修改内容清单.md；开发计划.md §5.1；git 573a586
