@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`81a874dab7a9ff69`
+上下文版本：`5399d4d9c6b15f05`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -18,7 +18,65 @@
 - 2026-09-18 审查修改意见已交付：文档/代码审查修改意见_20260918.md。设置交接机制时看到后续代码已有导出/恢复及错误处理修改，不能继续把旧缺陷全部标为待修；本轮未重新验收这些业务修复。
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
+- 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
+
 ## 最近交接（新 → 旧）
+
+### 从物料自动构建本体：创建独立worktree · codex · 需求已交付
+
+时间：2026-09-20T08:42:58.175117+00:00；记录：`.collaboration/entries/000125-e301dc9bff94.json`
+
+按用户授权仅创建开发环境：codex/ontology-build，独立目录wiz_kq_builder_v2-ontology-build，基于最新已提交main 4a12fead6356d5d6cc5f778c84963cddef6779f1。登记端口18871及专属空数据根，已同步执行指令和开发计划；分支文档提交78393e8。未开始业务开发。
+
+- 决定：仅创建环境；安装依赖、初始化数据库、启动服务和实施等待后续开发指令。；主目录现有未提交业务修改未带入或改动；集成合并仍需用户明确授权。
+- 验证：两份登记文档在主目录与worktree内容一致，git diff --check通过。；18871端口空闲，专属数据目录为空，未创建.venv或数据库，未启动服务。
+- 下一步：后续执行者使用已登记worktree内执行指令，不重复创建worktree，不在main开发。
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/执行指令.md；文档/需求/20260920_从物料自动构建本体/开发计划.md
+
+### 集成成功后自动清理开发环境约定 · codex · 已确认决定
+
+时间：2026-09-20T08:35:50.005451+00:00；记录：`.collaboration/entries/000124-d510e725ab27.json`
+
+用户要求集成完即删除对应开发环境，已固化到AGENTS、稳定基线和当前自动构建计划/指令。仅规则修改，未删除任何目录或分支。
+
+- 决定：集成并合并授权包含集成验证和main合并成功后的自动清理，无需另发清理指令或等待主服务重启。；清理本任务开发/临时集成worktree、已合并分支、专属依赖/运行产物及登记可丢弃的隔离测试数据；先保存提交/验收证据，停止匹配的服务并释放端口。；未提交/未合并、他人仍写入、未知或需保留数据阻断相关清理并报告，不强制删除；真实主库、原始物料和其他任务不在范围。
+- 验证：三份文档自动清理及保护边界、相对链接检查通过；git diff --check通过。当前只有main工作树，没有执行实际清理。
+- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 创建工作树与集成合并明确提示词约定 · codex · 已确认决定
+
+时间：2026-09-20T08:31:39.494829+00:00；记录：`.collaboration/entries/000123-b63d4d42d13a.json`
+
+按用户最新要求修改AGENTS和共享基线：创建worktree与集成合并均由用户明确触发；同步自动构建需求的计划和指令，定义标准提示词与阶段停止点。未创建工作树或执行合并。
+
+- 决定：默认zcode收到创建指令后创建worktree；仅创建指令不开始开发，后续开发/修复复用同一环境。；Codex独立验收指定提交，通过后停在待用户授权集成；验收通过不隐含合并。；用户明确集成并合并后Codex负责临时集成worktree、普通冲突修复、组合验证和main更新；不重复询问同一授权，不默认重启主服务。；文档模板或其他工具交接不构成执行授权；用户可明确合并多个授权阶段，需求冲突另行确认。
+- 验证：AGENTS/计划/指令的提示词、授权边界和相对链接检查通过；git diff --check通过。无业务代码改动。
+- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 独立分支工作树与串行集成规范固化 · codex · 已确认决定
+
+时间：2026-09-20T08:24:26.103154+00:00；记录：`.collaboration/entries/000122-dcd5e6a120cd.json`
+
+按用户授权将独立分支/worktree/端口/数据与串行集成规范写入AGENTS，并同步共享稳定基线及本体自动构建计划、执行指令。仅文档变更，未创建分支或搬移当前开发。
+
+- 决定：后续业务开发每需求从已提交main创建独立分支和worktree，隔离端口、数据及依赖；当前main未提交任务不自动stash/reset/搬移。；单一集成负责人在临时集成环境合入最新main并验证；main干净且基线未变后快进更新，冲突处理不能直接ours/theirs。；所有后续开发计划与执行指令必须自包含开工、环境登记、验证、合并、启动、回退及清理流程。；纯讨论、需求/原型与治理文档可仅提交自身文档；本规则不是已安装的自动分支/合并服务。
+- 验证：AGENTS及本次计划/指令的隔离、合并、回退关键条款和相对链接检查通过。；git diff --check通过；无业务代码改动，未构建、测试或重启服务。
+- 下一步：后续生成指令采用新规则；正在main开发的任务由原执行者完成阶段或协调迁移，不自动操作。
+- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 统一维护改版v2独立验收 · codex · 已验证
+
+时间：2026-09-20T08:06:47.302898+00:00；记录：`.collaboration/entries/000121-d44011600c1f.json`
+
+基线06eee30独立验收未通过：确认3项P1；已追加开发计划11.5，未修改业务代码。
+
+- 决定：延期UI不列验收项；不能以实施记录全部通过代替独立证据。
+- 验证：构建通过，前端5套定向回归和后端发布/编排/目录/升级专项通过；目录套件仍有2项规格观察。；R01真实App客户端mount抛flowState初始化前访问异常，原SSR测试漏检。；R02空壳编排check_flow报输出未绑定，项目属性校验errors仍为空。；R03目录payload读取后、首次依赖token读取前更新目录，发布返回200并生成v3，预期409零写入。；隔离根与假账号验证，无真实数据修改；未做浏览器视觉验收。
+- 下一步：修复R01-R03后定向复验，校正文档F06/F07通过结论及测试规格观察。
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md
 
 ### 执行 20260920_本体与项目统一维护体验改版 执行指令（v2 功能保护，多Agent并行）——实施完成交接 · zcode · 已实施，待验收
 
@@ -99,51 +157,3 @@ W3 阶段：A 三项最小修复完成（B1 前端补 applicable_objects 三入�
 - 下一步：建议协调者（接口文档 owner）在 02 §2.2 补登记 B2 裸名/mg: 容错与 B3 槽位身份口径两句。；浏览器点击级复验、HTTP 组、build、提交按指令留给协调者。
 - 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2（B1/B2/B3）；文档/接口文档/02-本体区接口.md §2.2；workbench/references.py / frontend/src/ontology/editorModel.ts
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 角色F 复核记录更正（断言计数） · zcode · 已验证
-
-时间：2026-09-20T07:00:14.126561+00:00；记录：`.collaboration/entries/000113-86ba9c34bbe2.json`
-
-更正上一条交接（记录 000112）中的断言计数：tests/ui_protection_independent.test.mjs 实际为 60 项 check、全部通过（原文写 58，系笔误）；运行命令与结论不变，exit=0。其余结论（P03/P04/P05 行为、两项缺陷、E 既有测试回归）不受影响。
-
-- 验证：grep -c '^通过：' 输出 60；node --import ./tests/ts_hooks.mjs tests/ui_protection_independent.test.mjs → exit=0
-
-### 角色F：E/C/L 前端产物独立复核（P03/P04/P05） · zcode · 已验证
-
-时间：2026-09-20T06:59:31.974362+00:00；记录：`.collaboration/entries/000112-4073fea0c300.json`
-
-新增 tests/ui_protection_independent.test.mjs（真实 SFC 编译 + 真实模板 SSR + 受控 stub，58 项断言全过）：P03 换连接/换表保存后除身份三键外项目绑定逐字段不变（sources[].matchLeft/matchRight/table、属性、relations、说明、未知字段、未知 kind 来源对象）；未知 kind 只保留「移除」、无「修改」入口；P05 编排详情复核必重新取数（r-1→r-2 界面不再使用旧声明）、500→failed（「编排待读取」，引用保留、文案不含「不存在」）、404→missing、重试成功后恢复；refreshCatalogOf stale 返回 ok:false 且不写 catalogs；ConnectionManager 删除连接在 ok:false/reject/进行中都不提示成功且行保留。E 既有测试 object_sources/source_config_retention 全过（未修改）。仅新增本测试文件，未改生产代码，未跑 build、未访问真实数据/18765/外网。
-
-- 验证：node --import ./tests/ts_hooks.mjs tests/ui_protection_independent.test.mjs → 全部通过（58 项）；node --import ./tests/ts_hooks.mjs tests/object_sources.test.mjs → 通过；source_config_retention.test.mjs → 全部通过；node --import ./tests/ts_hooks.mjs tests/connection_manager.test.mjs → 通过（C 自测，仅运行未修改）；隔离根临时目录 + WIZ_WORKBENCH_PORT=18997；未访问真实数据/18765/外网
-- 下一步：缺陷①（低危·UI 提示）：ConnectionManager.referencesOf 未识别 inlineSql 属性来源连接（只查 kind=database/redis 与实现 connection），UI 判无引用并提示「已删除连接」，而服务端 projects.referenced_connection_ids 覆盖 inlineSql，project-save 会 422 REFERENCE_IN_USE 拒绝（数据仍受保护，但用户看到的是保存失败）。；缺陷②（中低·过严）：PropertySources.saveDraft 在编排读取失败时经 issuesOf 直接阻止保存，包括只改项目说明未改结构的情形；G1 只要求读取失败 fail-closed 阻断发布，未要求阻断草稿保存。；两项均未改生产代码，交 L 决定是否最小修复并补用例；最终验收仍归 Codex。
-- 依据/文档：tests/ui_protection_independent.test.mjs；frontend/src/project/{ObjectSources,PropertySources,ConnectionManager}.vue；bindingModel.ts；workbench/projects.py:54 referenced_connection_ids / :157 save_boundary_issues；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2 G1
-
-### 本体自动化构建管线范围确认 · codex · 已确认决定
-
-时间：2026-09-20T06:40:44.084764+00:00；记录：`.collaboration/entries/000111-5e9d66e9fbf8.json`
-
-用户进一步确定通过LLM多轮交互澄清生成范围，第一版仅支持生成新本体；仍为产品讨论，未授权实施。
-
-- 决定：延续仅生成本体、集成工作台、多种混合业务物料和弱证据候选清单的既定边界。；范围不限制为一句话输入，采用LLM多轮对话逐步澄清。；第一版仅生成新本体，不追加或覆盖已有本体。
-- 下一步：讨论物料辅助澄清、范围确认摘要及生成后人工裁剪的具体交互。
-
-### 规则动作字段精简与Excel模板同步 · codex · 需求已交付
-
-时间：2026-09-20T06:39:26.873462+00:00；记录：`.collaboration/entries/000110-0ca4a15cc80d.json`
-
-交付需求说明、开发计划、执行指令及简洁表头新版空Excel模板；未修改正式业务代码和下载入口。
-
-- 决定：规则名称/业务定义必填，规则内容选填；动作名称/业务定义必填，预期效果选填且沿用effect键。；不新增范围/例外/边界字段；旧规则output保留且只读展示，旧Excel业务效果别名兼容，双列冲突阻断。；本轮按用户指定交付三份文档和模板，无额外原型；新下载模板需与解析器同步上线，不恢复v2延期UI改造。
-- 验证：四页模板逐页渲染检查通过；XLSX表头、空白区、冻结首行、隐藏列、数据验证与条件格式保留检查通过。；文档链接检查通过；未验证Excel原生下拉或正式工作台导入，未改业务代码。
-- 下一步：其他harness按执行指令实施前后端校验、页面、导入兼容和模板入口，完成R01-R11验收。
-- 依据/文档：文档/需求/20260920_规则动作字段精简与Excel模板同步/需求说明.md；文档/需求/20260920_规则动作字段精简与Excel模板同步/开发计划.md；文档/需求/20260920_规则动作字段精简与Excel模板同步/执行指令.md；文档/需求/20260920_规则动作字段精简与Excel模板同步/本体模型填写模板_规则动作精简.xlsx
-
-### 角色A 本体保护验收（只读审计）：O01/O02 行为矩阵 + S1-S4 复验 · zcode · 已验证
-
-时间：2026-09-20T06:16:09.594589+00:00；记录：`.collaboration/entries/000107-131f6db44a41.json`
-
-只读审计：复验 S1-S4 通过（test_references 18 步、dependency_guard 21/21、legacy_graph_bridge 全过、object_workspace 7/7、ont_list_unified 4/4）；O01/O02 行为矩阵逐项取证，多数已满足。发现两处前后端一致性偏差（均低危 fail-closed、无真实数据写入）：① applicable_objects 后端拦、前端不预告；② 无 mg: 前缀的 domain/range 前端拦、后端放行。未改任何代码/测试，未做浏览器点击闭环。最终验收仍归 Codex。
-
-- 验证：范围：只读；改动文件 0（git status 仅他人未跟踪报告文件）；未跑 http 组、未访问真实数据/外网。；S1 三类全量遍历基本成立（functions/actions/interfaces、签名槽位、properties/implementations、steps/property_bindings/历史 inputs）；S2 稳定键成立（改名放行、改目标阻断）；S3 旧 rules id 集成立；S4 returnTo 链路成立（App 分发 + 目标页返回入口 + openUsages 抽屉恢复）。；矩阵要点：确认指纹=编辑内容+原定义+引用集合（dependencyModel.ts:241-261）、取消零写（PropertyManager.vue:130）、409/失败后旧确认失效（:211-216）；转私有保留对象属性 ID 与内容（propertyModel.ts:39 实跑 @id 不变）；规则/动作移除关联不删定义；五类删除均阻断式无强制删除；图谱批量预检+快照回滚（legacyBridge.js:515-556）；后端 POST /api/save 只拦新引入悬空引用（model_routes.py:575-594）。；两项偏差复现：① applicable_objects 引用对象时前端 graphReferenceEntries=[]、objectDeleteCheck.blocked=false，后端 new_broken_references 阻断；② rdfs:domain 省前缀 o1 时前端命中引用，后端 ([] , True) 放行。
-- 下一步：建议最小改动（未实施）：① editorModel.ts:44 或 dependencyModel 同步 applicable_objects（或明确后端更严为有意设计并登记接口文档）；② references.py 的 domain/range 判定加 mg: 前缀容错。；浏览器点击级闭环（确认弹窗取消/失效、批量删除、图谱删除）本轮未做，需隔离实例复核。；HEAD 已推进到 a72f4c3（仅新增 docs 一文件），代码与基线 82923e3 相同。
-- 依据/文档：workbench/references.py:110-311；workbench/model_routes.py:575-594；frontend/src/ontology/dependencyModel.ts:100-261；editorModel.ts:22-91；frontend/src/ontology/PropertyManager.vue:89-218；frontend/src/ontology/legacyGraph/legacyBridge.js:317-600；tests/test_references.py；tests/dependency_guard.test.mjs
