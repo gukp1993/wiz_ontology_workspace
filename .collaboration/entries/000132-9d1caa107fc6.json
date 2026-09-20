@@ -1,0 +1,21 @@
+{
+  "ticket": "151703e05eaa4d1cbc7f006c1e67dec6",
+  "task": "system-deep-test环境与测试指令",
+  "status": "ready",
+  "summary": "用户要求全方位测试环境并改名test；已创建worktree/test、codex/test，端口18931，测试计划与执行指令在该分支提交；尚未启动或测试。",
+  "decisions": [
+    "基于main d6c73c2，无其他分支未合入修复；测试harness只测试报告，不改业务代码、不合并。"
+  ],
+  "verification": [],
+  "next": [],
+  "references": [
+    "worktree/test/文档/需求/20260921_系统全方位深度测试/执行指令.md",
+    "worktree/test/文档/需求/20260921_系统全方位深度测试/测试计划.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-20T16:05:33.930212+00:00",
+  "sequence": 132,
+  "filename": "000132-9d1caa107fc6.json",
+  "record_hash": "b60c63ce1ff7bf5642e918bf122771d244e9fef4dc62384e24de61adc7fac42a",
+  "context_advanced": false
+}
