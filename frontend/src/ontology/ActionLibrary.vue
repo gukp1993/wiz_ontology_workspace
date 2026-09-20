@@ -12,7 +12,7 @@ import OntDrawer from '../shared/OntDrawer.vue'
 import Field from '../shared/EditorField.vue'
 import { actionsOf, isActionV2, objectsOfAction } from './actionModel'
 import { useOntTable } from './ontList'
-import { graphReferences } from './editorModel'
+import { actionDeleteCheck } from './dependencyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
@@ -168,14 +168,14 @@ async function save() {
   // 来自图谱的「编辑」跳转：保存成功直接回画布（2026-09-20）
   if (props.canvasReturn) backToGraph()
 }
+// 删除定义（20260920 需求 13 统一语义）：有对象关联或契约/接口等依赖 → 阻断并列出业务名称与原因；
+// 无依赖 → 确认后删除。判断与对象页、图谱共用 actionDeleteCheck，不在此处另写规则。
 async function remove(id: string) {
   const a: any = actionById(id)
   if (!a) return
-  const users = objectsOfAction(props.state, a.id)
-  if (isActionV2(a) && users.length) { message.value = '暂不能删除：此动作仍被 ' + users.map(typeName).join('、') + ' 引用；请先到对象建模移除关联。'; return }
-  const refs = graphReferences(props.state, a.id)
-  if (refs.length) { message.value = '暂不能删除：请先处理引用（' + refs.join('、') + '）。'; return }
-  if (!(await appConfirm({ message: '删除动作「' + (a.name || a.id) + '」？可通过撤销恢复。', danger: true }))) return
+  const check = actionDeleteCheck(props.state, a.id)
+  if (check.blocked) { message.value = check.message; return }
+  if (!(await appConfirm({ message: '删除动作「' + (a.name || a.id) + '」？当前没有对象关联此动作；删除的是当前草稿定义，已发布版本不变。可通过撤销恢复。', danger: true }))) return
   if (await submit(() => { const actions = props.state.workflow.actions; actions.splice(actions.indexOf(a), 1) })) message.value = '已删除动作定义。'
 }
 </script>

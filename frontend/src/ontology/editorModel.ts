@@ -8,13 +8,15 @@ export const textSet=(obj,key,value)=>{obj[key]=value}
 export function business(record){return record?.['mg:business']?.['@value']||{}}
 export function setBusiness(record,key,value){record['mg:business']??={'@type':'@json','@value':{}};record['mg:business']['@value'][key]=value}
 // Inspect only live schema references; provenance text and imported source candidates are not dependencies.
-export function graphReferences(state,id){
- const graph=state.ontology?.['@graph']||[],refs=new Set<string>()
+// 20260920 需求 13：结构化返回（名称+原因），供列表/图谱/资产库统一展示；graphReferences 保留字符串形态兼容旧调用。
+export interface ReferenceEntry { name: string; reason: string }
+export function graphReferenceEntries(state,id): ReferenceEntry[]{
+ const graph=state.ontology?.['@graph']||[],refs=new Map<string,ReferenceEntry>()
  const target=graph.find(n=>n['@id']===id),short=id.replace(/^mg:/,'')
  const ref=value=>typeof value==='string'?value:value?.['@id']
  const matches=value=>!!ref(value)&&[id,short].includes(ref(value))
  const list=value=>Array.isArray(value)?value:[]
- const add=(label,reason)=>refs.add(`${label}（${reason}）`)
+ const add=(name,reason)=>{const key=name+'（'+reason+'）';if(!refs.has(key))refs.set(key,{name,reason})}
  for(const n of graph){
   if(n['@id']===id)continue
   const source=n['mg:valueSource']?.['@value']
@@ -34,6 +36,14 @@ export function graphReferences(state,id){
   if(list(n.properties).some(matches))add(label,'接口要求属性')
   if(list(n.implementations).some(matches))add(label,'接口实现对象')
   for(const input of list(n.inputs))for(const key of ['object_type','property_ref','value_type','value_type_ref','interface_ref'])if(matches(input[key]))add(label,`参数 ${input.name||''}`)
+  // V3 契约签名（guide_version 3）：inputs/outputs 的 ref:{kind,id} 直接指向对象/属性/值类型——
+  // 共享定义被接口/契约引用时同样是当前草稿依赖（20260920 需求 13 / A13）。
+  for(const slot of ['inputs','outputs'])for(const item of list(n[slot])){
+   const kind=item?.ref?.kind,rid=item?.ref?.id
+   if(kind==='property'&&matches(rid))add(label,`${slot==='outputs'?'输出':'输入'} ${item.name||''}（引用属性）`.trim())
+   else if(kind==='object'&&matches(rid))add(label,`${slot==='outputs'?'输出':'输入'} ${item.name||''}（引用对象）`.trim())
+   else if(kind==='base'&&matches(rid))add(label,`${slot==='outputs'?'输出':'输入'} ${item.name||''}（引用值类型）`.trim())
+  }
   // Removing the last local shared-property reference would break an implemented interface.
   if(kind==='interfaces'&&target?.['@type']==='owl:DatatypeProperty'&&list(n.implementations).some(t=>ref(t)?.replace(/^mg:/,'')===ref(target['rdfs:domain'])?.replace(/^mg:/,''))) {
    const shared=ref(target['mg:sharedProperty'])
@@ -60,5 +70,6 @@ export function graphReferences(state,id){
   if(matches(rule.member_type))add(rule.name||rule.id,'规则成员类型')
   if(list(rule.membership_relations).some(matches))add(rule.name||rule.id,'规则成员关系')
  }
- return [...refs]
+ return [...refs.values()]
 }
+export function graphReferences(state,id){return graphReferenceEntries(state,id).map(r=>r.name+'（'+r.reason+'）')}

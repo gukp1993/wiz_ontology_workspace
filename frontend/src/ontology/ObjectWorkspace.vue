@@ -33,6 +33,7 @@ import { useOntTable, type OntTable } from './ontList'
 import { appConfirm } from '../shared/appConfirm'
 import { prefGet, prefSet } from '../app/auth'
 import { graphReferences, shortType } from './editorModel'
+import { actionDeleteCheck, objectDeleteCheck, ruleDeleteCheck, sharedDeleteCheck } from './dependencyModel'
 import { actionsOf, associationsOf, associationsOfObject, commitAssociations } from './actionModel'
 import { commitRuleAssociations, ruleAssociationsOf, rulesOf, rulesOfObject } from './businessRuleModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
@@ -617,16 +618,21 @@ watch(() => props.editFocus, (v) => {
 // 动作关联随对象删除一并清理（需求 §5）；规则引用走引用保护——须先移除引用（业务规则一期 §5）。
 // confirmText：行语义化确认文案（删除属性/删除链接/删除动作各说各的影响），缺省沿用对象删除文案。
 async function removeNode(id: string, label: string, confirmText?: string) {
-  const refs = graphReferences(props.state, id)
-  if (refs.length) { message.value = '暂不能删除：请先处理引用（' + refs.join('、') + '）。'; return }
-  const ruleRefs = ruleAssociationsOf(props.state).filter(a => a.objectTypeId === id || a.objectTypeId === 'mg:' + id.replace(/^mg:/, ''))
-  if (ruleRefs.length) { message.value = `暂不能删除：此对象仍引用 ${ruleRefs.length} 条业务规则；请先到「规则」页签删除规则引用。`; return }
-  const assocCount = associationsOfObject(props.state, id).length
-  const extra = assocCount ? `此对象有 ${assocCount} 条动作关联，删除对象将同时移除这些关联（动作定义与项目绑定保留）。` : ''
-  if (!(await appConfirm({ message: (confirmText || '删除「' + (label || id) + '」？可通过撤销恢复。') + extra }))) return
+  // 20260920 需求 13 统一语义：
+  //  - 对象（owl:Class）：阻断式删除，完整列出属性/链接/规则/动作关联的名称与原因（objectDeleteCheck）；
+  //  - 属性/链接：契约、接口、项目映射等直接依赖时同步阻断（graphReferences）；
+  //    共享引用属性是「移除引用」（共享定义与其他对象不动），私有属性是「删除属性」。
+  const node: any = graph.value.find((n: any) => n['@id'] === id)
+  if (node?.['@type'] === 'owl:Class') {
+    const check = objectDeleteCheck(props.state, id)
+    if (check.blocked) { message.value = check.message; return }
+  } else {
+    const refs = graphReferences(props.state, id)
+    if (refs.length) { message.value = '暂不能删除：请先处理引用（' + refs.join('、') + '）。'; return }
+  }
+  if (!(await appConfirm({ message: confirmText || '删除「' + (label || id) + '」？可通过撤销恢复。' }))) return
   emit('before-change', { actionLabel: '删除「' + (label || id) + '」', target: { kind: 'object', id } })
   props.state.ontology['@graph'] = graph.value.filter((n: any) => n['@id'] !== id)
-  if (assocCount) commitAssociations(props.state, associationsOf(props.state).filter(a => a.objectTypeId !== id && a.objectTypeId !== 'mg:' + id.replace(/^mg:/, '')))
   emit('changed')
 }
 </script>

@@ -2,10 +2,11 @@
      列：名称（→只读详情抽屉）｜业务定义两行摘要｜引用对象（去重对象类型数徽标 → 引用对象抽屉）｜操作仅「编辑」。
      搜索匹配名称+业务定义；引用情况筛选（全部/有引用/无引用）；名称 zh-CN 排序 + 分页（useOntTable）——
      搜索/筛选/排序/分页只是视图，不触发保存、不产生撤销记录。名称承担查看，不重复放「查看」按钮；
-     不显示更多菜单，不新增删除/复制（与一期业务能力一致）。
+     操作列 编辑｜删除：删除为 20260920 需求 12 的安全删除（有对象/契约依赖阻断并定位，
+     无依赖确认后删除当前草稿定义；与图谱、对象页共用 ruleDeleteCheck 同一判断）。
      编辑为内嵌四字段表单（2026-09-20：由弹窗改为与动作/对象/属性页一致的内嵌布局；
      form-save 一次落盘、失败保留表单不假成功），编辑期间注册 T00 表单守卫；
-     详情/引用对象为只读抽屉，Esc/遮罩/关闭均可退；一期无删除、复制、分类、状态、依赖与执行。 -->
+     详情/引用对象为只读抽屉，Esc/遮罩/关闭均可退；无复制、分类、状态与执行。 -->
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
@@ -14,6 +15,7 @@ import OntDrawer from '../shared/OntDrawer.vue'
 import Field from '../shared/EditorField.vue'
 import { useOntTable } from './ontList'
 import { objectsOfRule, RULE_FIELDS, rulesOf } from './businessRuleModel'
+import { ruleDeleteCheck } from './dependencyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
@@ -162,6 +164,28 @@ function goObject(objectTypeId: string) {
   dialog.value = null
   emit('navigate', 'objects', { type: objectTypeId, tab: 'rules' })
 }
+
+// ── 安全删除（20260920 需求 12/13）：与图谱/对象页共用同一依赖判断（ruleDeleteCheck）。
+// 有对象引用或契约/接口等直接依赖 → 阻断：列出业务名称并打开「引用对象」抽屉作为定位入口；
+// 无依赖 → 确认后从当前草稿删除（撤销可恢复；不动已发布版本）。不得提供强制删除。 ──
+async function removeRule(id: string) {
+  const rule: any = rows.value.find((r: any) => r.id === id)
+  if (!rule) return
+  const check = ruleDeleteCheck(props.state, id)
+  if (check.blocked) {
+    message.value = check.message
+    dialog.value = { kind: 'owners', id }
+    return
+  }
+  if (!(await appConfirm({ message: `删除规则「${rule.name || id}」？当前没有对象引用此规则；删除的是当前草稿定义，已发布版本不变。可通过顶部撤销恢复。`, danger: true }))) return
+  const list0 = props.state.workflow.businessRules as any[]
+  const r = await formSave.submitForm('ontology', () => {
+    const idx = list0.indexOf(rule)
+    if (idx >= 0) list0.splice(idx, 1)
+  }, { actionLabel: '删除规则「' + (rule.name || id) + '」', target: { kind: 'rule', id } })
+  if (!r.ok) { message.value = r.message; return }
+  message.value = '已删除规则定义。'
+}
 </script>
 <template>
 <section v-if="mode === 'list'" class="card ont-block">
@@ -201,7 +225,7 @@ function goObject(objectTypeId: string) {
           :title="row.refs.length ? '查看引用「' + row.name + '」的对象类型' : '暂无对象引用此规则'"
           @click="openOwners(row.id)">{{ row.refs.length ? row.refs.length + ' 个对象' : '暂无引用' }}</button>
       </td>
-      <td class="ont-ops"><button type="button" class="row-link" @click="openEdit(row.id)">编辑</button></td>
+      <td class="ont-ops"><button type="button" class="row-link" @click="openEdit(row.id)">编辑</button><button type="button" class="row-link danger" @click="removeRule(row.id)">删除</button></td>
     </tr>
   </OntologyList>
   <p v-if="message" :class="message.startsWith('规则已保存') ? 'inline-success' : 'inline-error'" role="alert" style="margin-top:12px">{{ message }}</p>
@@ -231,8 +255,9 @@ function goObject(objectTypeId: string) {
 </OntDrawer>
 
 
-<!-- 编辑/新建：内嵌完整表单（2026-09-20 用户要求，与动作/对象/属性页一致，不再用弹窗） -->
-<section v-else class="card detail-card">
+<!-- 编辑/新建：内嵌完整表单（2026-09-20 用户要求，与动作/对象/属性页一致，不再用弹窗）。
+     显式条件而非 v-else：中间插入了抽屉组件，v-else 会错误链到抽屉上导致列表态也渲染表单。 -->
+<section v-if="mode === 'edit'" class="card detail-card">
   <div class="detail-heading">
     <div><span class="eyebrow">{{ isNewRule ? '新建规则' : '编辑规则' }}</span><h2>{{ draft?.name || '未命名规则' }}</h2></div>
     <span class="status-pill">四字段业务规则</span>

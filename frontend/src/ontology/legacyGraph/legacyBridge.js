@@ -20,6 +20,7 @@ import {
 } from '../businessRuleModel'
 import { effectiveProperty, localProperties, referencesOf } from '../propertyModel'
 import { graphReferences } from '../editorModel'
+import { actionDeleteCheck, objectDeleteCheck, ruleDeleteCheck, sharedDeleteCheck } from '../dependencyModel'
 import { prefGet, prefSet } from '../../app/auth'
 import { dataTypeToLabel, labelToDataType } from './shared/fields.js'
 
@@ -320,30 +321,29 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
     const target = { obj: '对象', sp: '共享属性', pp: '私有属性', rule: '规则', action: '动作' }[family]
     const label = nodeNameOf(nodeId)
     if (target === '对象') {
-      const refs = graphReferences(s, domainId)
-      if (refs.length) return { error: `暂不能删除：请先处理引用（${refs.join('、')}）。` }
-      const ruleRefs = ruleAssociationsOf(s).filter(a => fullTypeId(a.objectTypeId) === domainId)
-      if (ruleRefs.length) return { error: `暂不能删除：此对象仍引用 ${ruleRefs.length} 条业务规则；请先在「规则」页签移除引用。` }
-      const assocCount = effectiveAssociations(s).filter(a => fullTypeId(a.objectTypeId) === domainId).length
+      // 20260920 统一语义（需求 13）：与对象页 objectDeleteCheck 同一判断——属性/链接/规则/动作关联任一存在即阻断，
+      // 列出业务名称与原因；不提供一键级联清理（此前会静默清理动作关联）。
+      const check = objectDeleteCheck(s, domainId)
+      if (check.blocked) return { error: check.message }
       emitBeforeChange({ actionLabel: `删除对象「${label}」`, target: { kind: 'object', id: domainId } })
       s.ontology['@graph'] = graph().filter(n => n['@id'] !== domainId)
-      if (assocCount) commitAssociations(s, effectiveAssociations(s).filter(a => fullTypeId(a.objectTypeId) !== domainId))
     } else if (target === '共享属性') {
-      const refs = referencesOf(graph(), domainId)
-      if (refs.length) return { error: `暂不能删除：${refs.length} 个对象属性正引用此共享定义；请先移除引用。` }
+      // 20260920 统一语义：与共享属性库/对象页同一判断（对象属性引用或契约/接口依赖都阻断并列出名称）
+      const check = sharedDeleteCheck(s, domainId)
+      if (check.blocked) return { error: check.message }
       emitBeforeChange({ actionLabel: `删除共享属性「${label}」`, target: { kind: 'sharedProperty', id: domainId } })
       s.ontology['@graph'] = graph().filter(n => n['@id'] !== domainId)
     } else if (target === '私有属性') {
       emitBeforeChange({ actionLabel: `删除私有属性「${label}」`, target: { kind: 'property', id: domainId } })
       s.ontology['@graph'] = graph().filter(n => n['@id'] !== domainId)
     } else if (target === '规则') {
-      const refs = ruleAssociationsOf(s).filter(a => trim(a.ruleId) === domainId)
-      if (refs.length) return { error: `暂不能删除：${refs.length} 个对象仍引用此规则；请先移除引用。` }
+      const check = ruleDeleteCheck(s, domainId)
+      if (check.blocked) return { error: check.message }
       emitBeforeChange({ actionLabel: `删除规则「${label}」`, target: { kind: 'rule', id: domainId } })
       s.workflow.businessRules = (s.workflow.businessRules || []).filter(r => r.id !== domainId)
     } else {
-      const refs = effectiveAssociations(s).filter(a => trim(a.actionId) === domainId)
-      if (refs.length) return { error: `暂不能删除：${refs.length} 个对象仍关联此动作；请先移除关联。` }
+      const check = actionDeleteCheck(s, domainId)
+      if (check.blocked) return { error: check.message }
       emitBeforeChange({ actionLabel: `删除动作「${label}」`, target: { kind: 'action', id: domainId } })
       s.workflow.actions = (s.workflow.actions || []).filter(a => a.id !== domainId)
     }
@@ -516,19 +516,17 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
     const target = { obj: '对象', sp: '共享属性', pp: '私有属性', rule: '规则', action: '动作' }[family]
     if (!target) return '未知节点类型'
     if (target === '对象') {
-      const refs = graphReferences(s, domainId)
-      if (refs.length) return `暂不能删除「${nodeNameOf(nodeId)}」：请先处理引用（${refs.join('、')}）。`
-      const ruleRefs = ruleAssociationsOf(s).filter(a => fullTypeId(a.objectTypeId) === domainId)
-      if (ruleRefs.length) return `暂不能删除「${nodeNameOf(nodeId)}」：此对象仍引用 ${ruleRefs.length} 条业务规则。`
+      const check = objectDeleteCheck(s, domainId)
+      if (check.blocked) return check.message
     } else if (target === '共享属性') {
-      const refs = referencesOf(graph(), domainId)
-      if (refs.length) return `暂不能删除「${nodeNameOf(nodeId)}」：${refs.length} 个对象属性正引用此共享定义。`
+      const check = sharedDeleteCheck(s, domainId)
+      if (check.blocked) return check.message
     } else if (target === '规则') {
-      const refs = ruleAssociationsOf(s).filter(a => trim(a.ruleId) === domainId)
-      if (refs.length) return `暂不能删除「${nodeNameOf(nodeId)}」：${refs.length} 个对象仍引用此规则。`
+      const check = ruleDeleteCheck(s, domainId)
+      if (check.blocked) return check.message
     } else if (target === '动作') {
-      const refs = effectiveAssociations(s).filter(a => trim(a.actionId) === domainId)
-      if (refs.length) return `暂不能删除「${nodeNameOf(nodeId)}」：${refs.length} 个对象仍关联此动作。`
+      const check = actionDeleteCheck(s, domainId)
+      if (check.blocked) return check.message
     }
     return ''
   }

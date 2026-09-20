@@ -16,7 +16,8 @@
      本页不再承担；跨对象批量能力：引用到对象/复制为私有为行内操作（20260919 从「⋯」
      菜单平铺），粘贴多行/批量复用为低频项收在页头「更多操作」。修改共享定义的引用影响在表单内如实展示（usage 信息）；
      单值与序列不能引用同一份形态不兼容的共享定义（shapeConflict）。
-     删除定义沿用原语义：契约/接口/项目映射直接引用时拦截；仅本地引用时先私有化再删。 -->
+     删除定义（20260920 统一语义）：契约/接口/项目映射或对象属性引用一律阻断并列出名称+
+     定位入口（引用位置抽屉）；无引用才允许确认删除，不自动私有化。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
@@ -25,8 +26,9 @@ import RowMenu from '../shared/RowMenu.vue'
 import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
 import PropertyManager from './PropertyManager.vue'
-import { listShared, referencesOf, externalReferencesOf, shapeConflict, copyAsPrivate, propertyDataType, dataTypeLabel, propertyTypeLabel, detachProperty, makeProperty, localProperties, effectiveProperty, addReference, asShared, parsePropertyRows } from './propertyModel'
+import { listShared, referencesOf, externalReferencesOf, shapeConflict, copyAsPrivate, propertyDataType, dataTypeLabel, propertyTypeLabel, makeProperty, localProperties, effectiveProperty, addReference, asShared, parsePropertyRows } from './propertyModel'
 import { useOntTable } from './ontList'
+import { sharedDeleteCheck } from './dependencyModel'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
 const props = defineProps<{ state: any; canvasReturn?: string; focusId?: string; editFocus?: boolean }>()
@@ -164,22 +166,21 @@ function copyOne() {
 
 // ── 行内操作（20260919 按用户要求从「⋯」更多菜单平铺到行内）：引用到对象/复制为私有仍走原有弹窗，删除沿用保护语义 ──
 
-// ── 删除定义：契约/接口/项目映射直接引用时禁止；仅有本地属性引用时先解除引用并拷贝内容，防静默断链 ──
+// ── 删除定义（20260920 需求 12/13 统一语义）：有对象属性引用或契约/接口/项目映射引用 → 阻断并列出名称与定位；
+// 无引用 → 确认后删除。不再自动私有化：想保留内容请用对象属性行的「转为私有」再删除。 ──
 async function removeShared(s: any) {
   if (!s) return
-  const external = externalReferencesOf(props.state, s['@id'])
-  if (external.length) { feedback.value = '暂不能删除：此共享定义仍被契约、接口或项目映射直接引用，请先处理：' + external.join('、'); return }
-  const usages = referencesOf(graph.value, s['@id'])
-  const count = usages.length
-  const tip = count
-    ? `此共享定义被 ${count} 个对象属性引用。删除后会把这些引用转为各自对象的本地私有属性（复制名称、类型、单位等完整内容，此后不再跟随共享定义同步），再删除共享定义本身；可通过顶部撤销恢复。`
-    : `删除共享定义「${s['rdfs:label'] || '未命名'}」？删除后各对象若仍需要该属性，只能改为本地私有属性单独维护；可通过顶部撤销恢复。`
-  if (!(await appConfirm({ message: tip, danger: true }))) return
+  const check = sharedDeleteCheck(props.state, s['@id'])
+  if (check.blocked) {
+    feedback.value = check.message
+    usagesId.value = s['@id']  // 定位入口：引用位置抽屉（可跳回对象属性）
+    return
+  }
+  if (!(await appConfirm({ message: `删除共享定义「${s['rdfs:label'] || '未命名'}」？当前没有任何对象引用此定义；删除后需重新创建。可通过顶部撤销恢复。`, danger: true }))) return
   mutate(() => {
-    for (const p of usages) detachProperty(p, graph.value)
     props.state.ontology['@graph'] = graph.value.filter((n: any) => n['@id'] !== s['@id'])
   }, '删除共享属性「' + (s['rdfs:label'] || '未命名') + '」', { kind: 'sharedProperty', id: s['@id'] })
-  feedback.value = count ? `已删除共享定义，并已把共享内容拷贝到 ${count} 个原引用属性，各自独立维护。` : '已删除共享定义。'
+  feedback.value = '已删除共享定义。'
 }
 
 // ── 更多操作 · 粘贴多行（原对象属性页能力移入，功能不删） ──

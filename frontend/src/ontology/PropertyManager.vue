@@ -13,7 +13,7 @@
        form-save.submitForm('ontology', mutate) 一次落盘；!r.ok 留在表单显示 r.message，
        输入不丢；编辑期间绝不 emit('changed')（不走打字自动保存）。
      共享引用属性（mg:sharedProperty）：表单只读 + 「打开共享定义」（就地切换为维护
-       共享定义，带引用影响提示，原型 edit-shared）与「解除为私有」（detachProperty，
+       共享定义，带引用影响提示，原型 edit-shared）与「转为私有」（detachProperty，
        经 form-save 落盘）；「转为共享属性」（asShared）保留在更多设置中。
      类型保护：数据类型下拉用 editorModel.dataTypeOptionsFor（常用四类 + 数组/结构体），
        已有 integer/dateTime 等精确类型打开再保存不改写；基础类型变化仅清理与旧类型
@@ -24,6 +24,7 @@ import Field from '../shared/EditorField.vue'
 import PropertyFormatting from './PropertyFormatting.vue'
 import { dataTypeOptionsFor } from './editorModel'
 import { makeProperty, effectiveProperty, localProperties, detachProperty, asShared, propertyDataType, setPropertyDataType, referencesOf } from './propertyModel'
+import { impactFingerprint, sharedImpactOf, type SharedImpact } from './dependencyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 const props = withDefaults(defineProps<{ state: any; kind: 'property' | 'shared'; targetTypeId?: string; propertyId?: string; canvasReturn?: string }>(), { targetTypeId: '', propertyId: '', canvasReturn: '' })
@@ -84,6 +85,49 @@ function setObservation(v:string){
 // 显示名称不再经属性表单标记：用户约定单独建“显示名称”属性并绑定名称列；
 // 已有 mg:isDisplayName 标记数据与项目侧推导不受影响（保存时不改动标记）。
 
+// ── 共享定义高影响保存确认（20260920 需求 11）──────────────────────────────────
+// 仅「数据类型/观测值类型/业务定义」等影响含义的变化需要确认；名称/显示格式变化直接保存。
+// 确认绑定「编辑内容 + 当前引用集合」指纹：编辑再变或引用变化都会失效，必须重新确认（不缓存永久布尔）。
+const impactOpen = ref(false)
+const impact = ref<SharedImpact | null>(null)
+const impactAck = ref(false)
+const impactError = ref('')
+let impactFp = ''
+
+function currentImpact(): SharedImpact | null {
+  const id = editingShared.value ? sharedRefId.value : (props.kind === 'shared' ? props.propertyId : '')
+  if (!id) return null
+  const before = graph.value.find((n: any) => n['@id'] === id)
+  if (!before) return null
+  return sharedImpactOf(props.state, id, before, draft.value)
+}
+// 编辑期间引用集合变化（其他标签页/撤销）会让既有确认失效：指纹比对。
+function fingerprintNow(id: string): string { return impactFingerprint(props.state, id, draft.value) }
+
+function openImpact(info: SharedImpact, id: string) {
+  impact.value = info
+  impactAck.value = false
+  impactError.value = ''
+  impactFp = fingerprintNow(id)
+  impactOpen.value = true
+}
+
+function confirmImpact() {
+  const id = editingShared.value ? sharedRefId.value : (props.kind === 'shared' ? props.propertyId : '')
+  if (!id || !impact.value) return
+  if (!impactAck.value) { impactError.value = '请先勾选「已查看字段变化与受影响对象」。'; return }
+  if (fingerprintNow(id) !== impactFp) {  // 内容或引用已变化：确认失效
+    impactError.value = '当前编辑内容或引用关系已变化，本次确认已失效；请重新核对后再次确认。'
+    impact.value = currentImpact()
+    impactAck.value = false
+    impactFp = fingerprintNow(id)
+    return
+  }
+  impactOpen.value = false
+  void doSave()
+}
+function cancelImpact() { impactOpen.value = false; impactError.value = ''; impactAck.value = false }
+
 // ── 文案与上下文 ──
 const error = ref(''), saving = ref(false)
 const typeName = (id: string) => graph.value.find((n: any) => n['@type'] === 'owl:Class' && n['@id'] === id)?.['rdfs:label'] || id || '—'
@@ -141,6 +185,17 @@ async function save() {
   if (readonly.value) { emit('close'); return }  // 只读共享引用：主按钮=返回属性清单
   const problem = validate()
   if (problem) { error.value = problem; return }
+  // 共享定义（含就地维护）高影响修改：先打开影响确认（需求 11）
+  const info = currentImpact()
+  if (info?.highImpact) {
+    const id = editingShared.value ? sharedRefId.value : (props.kind === 'shared' ? props.propertyId : '')
+    openImpact(info, id)
+    return
+  }
+  await doSave()
+}
+
+async function doSave() {
   const d = draft.value
   const ok = await runSave(() => {
     let node: any
@@ -152,7 +207,12 @@ async function save() {
       // 显示名称标记不在表单维护（用户以独立“显示名称”属性承担）；保存时保留节点既有标记。
     }
   })
-  if (!ok) return
+  if (!ok) {
+    // 失败/409：确认随基线失效，重新保存必须重新核对影响（需求 §5）
+    impactFp = ''
+    return
+  }
+  impactFp = ''
   emit('saved', { id: props.propertyId || d['@id'], kind: editingShared.value ? 'shared' : props.kind, targetTypeId: props.targetTypeId || undefined })
 }
 </script>
@@ -174,9 +234,9 @@ async function save() {
       <p>此属性引用共享定义，名称、类型、单位与格式化跟随共享定义统一维护（{{ usageText }}）。</p>
       <div class="tools">
         <button type="button" @click="openSharedDef">打开共享定义</button>
-        <button type="button" :disabled="saving" @click="detach">{{ saving ? '处理中…' : '解除为私有' }}</button>
+        <button type="button" :disabled="saving" @click="detach">{{ saving ? '处理中…' : '转为私有' }}</button>
       </div>
-      <small>解除为私有会把共享内容拷贝为本地定义，此后独立维护，不再跟随共享定义更新。</small>
+      <small>转为私有会保留本对象属性及生效内容（ID 不变），解除共享关系；此后独立维护，不再跟随共享定义更新。</small>
     </template>
     <template v-else>
       <p>正在维护共享定义：{{ usageText }}；保存后全部引用同步生效。</p>
@@ -207,6 +267,39 @@ async function save() {
     </div>
     <span>只影响当前本体草稿；已发布版本不变。</span>
   </div>
+
+  <!-- 影响确认（20260920 需求 11）：字段前后值 + 受影响对象 → 属性；勾选后才提交当前草稿。 -->
+  <div v-if="impactOpen" class="modal-backdrop" @click.self="cancelImpact">
+    <section class="modal-card prop-impact" role="dialog" aria-modal="true" aria-label="确认共享修改影响">
+      <h2>确认共享修改影响</h2>
+      <p class="muted">修改「{{ draft?.['rdfs:label'] || '未命名' }}」的{{ impact?.highImpact ? '数据类型或业务定义' : '内容' }}会同步到全部引用对象；仅修改当前本体草稿，已发布版本不变。</p>
+      <table class="impact-table">
+        <thead><tr><th>字段</th><th>修改前</th><th>修改后</th></tr></thead>
+        <tbody>
+          <tr v-for="f in impact?.fields || []" :key="f.key">
+            <td>{{ f.label }}</td><td class="diff-old">{{ f.old }}</td><td class="diff-new">{{ f.new }}</td>
+          </tr>
+          <tr v-if="!(impact?.fields || []).length"><td colspan="3" class="muted">未检测到影响含义的字段变化。</td></tr>
+        </tbody>
+      </table>
+      <h3 class="impact-sub">受影响对象（{{ (impact?.usages || []).length }} 处引用）</h3>
+      <ul v-if="(impact?.usages || []).length" class="impact-usages">
+        <li v-for="u in impact!.usages" :key="(u.objectId || '') + '#' + (u.propertyId || '')">
+          <strong>{{ u.name }}</strong><span class="muted"> · {{ u.reason }}</span>
+        </li>
+      </ul>
+      <p v-else class="muted">当前没有对象引用此共享定义。</p>
+      <label class="check-option impact-ack">
+        <input type="checkbox" v-model="impactAck">
+        <span>我已查看字段变化与受影响对象。此次保存不修改已发布版本。</span>
+      </label>
+      <p v-if="impactError" class="inline-error" role="alert">{{ impactError }}</p>
+      <div class="tools impact-actions">
+        <button type="button" @click="cancelImpact">返回编辑</button>
+        <button type="button" class="primary" :disabled="saving" @click="confirmImpact">{{ saving ? '保存中…' : '确认并保存' }}</button>
+      </div>
+    </section>
+  </div>
 </section>
 </template>
 
@@ -218,4 +311,16 @@ async function save() {
 .prop-form :deep(.form-grid .editor-field.full){grid-column:1/-1}
 .prop-more button{margin-top:10px}
 .prop-footer .tools{flex-wrap:wrap}
+.prop-impact{width:min(640px,94vw);max-height:88vh;overflow:auto}
+.prop-impact h2{margin:0 0 8px}
+.impact-table{width:100%;border-collapse:collapse;margin:12px 0}
+.impact-table th,.impact-table td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:13px;vertical-align:top}
+.impact-table th{color:var(--muted);font-weight:500;background:var(--paper-2)}
+.diff-old{color:var(--muted);text-decoration:line-through}
+.diff-new{color:var(--blue-ink);font-weight:600}
+.impact-sub{font-size:14px;margin:14px 0 6px}
+.impact-usages{margin:0;padding-left:18px;max-height:180px;overflow:auto}
+.impact-usages li{margin:4px 0;font-size:13px}
+.impact-ack{margin:14px 0 6px}
+.impact-actions{justify-content:flex-end}
 </style>
