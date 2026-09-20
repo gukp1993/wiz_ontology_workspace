@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`d1e34749547711fa`
+上下文版本：`0991f15be5f275f9`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,15 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 澄清智能问数MCP只提供规则不连接数据 · codex · 已确认决定
+
+时间：2026-09-20T02:05:55.231667+00:00；记录：`.collaboration/entries/000075-9e4f86a9f8ba.json`
+
+用户进一步明确：智能问数的MCP提供本体语义及项目查询规则（简单映射/函数编排），供大模型推理，不连接业务数据源，不直接返回SOC等真实查询结果。纠正此前将其默认视作查询执行服务的建议。
+
+- 决定：已确认：该MCP为定义与规则供给边界，不包含业务数据连接或凭据执行。；大模型推理与规则提供保留；实际业务数据读取位置尚待确认，不假定已有独立执行器。；建议规则携带逻辑来源标识、输入输出与步骤依赖，连接解析由消费方负责；这是建议，不是已确认新字段需求。
+- 下一步：确认现有智能问数服务通过什么工具读取数据库/Redis及执行计算，再确定规则交付边界。
 
 ### 按用户纠正归档顶层架构评审 · codex · 需求已交付
 
@@ -136,14 +145,3 @@
 - 下一步：用户验收 18765：编排列表/编辑器/测试视图/LLM 配置页；未尽事项见打磨日志（flow 取值预览属执行能力未做、SSR F 黑名单留多租户评估、mapping_forms 既有基线失败属他人）
 - 依据/文档：文档/需求/20260919_函数编排持续打磨/打磨日志.md；frontend/src/flow/（全部组件）；workbench/flows.py、flow_executor.py、flow_routes.py、flow_http.py、llm_client.py、llm_providers.py；git 38806d5..a5401a2（11 提交）
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 四提交独立验收（4799bcb/b7bc31b/581b80c/c039746） · zcode · 已验证
-
-时间：2026-09-19T21:51:48.334963+00:00；记录：`.collaboration/entries/000063-601f9faadeee.json`
-
-独立验收通过：四提交回归全绿（flows 94/llm 40/executor 33/test_plan 70/flow_model 46/flow_test_workspace 36 全过，build vue-tsc+vite exit0）；五项重点 diff 审查全部通过；隔离实例 18933 API 断言 endpoint 带换行/制表符均 400「接口地址不能包含换行或控制字符」且未落库；无 P1/P2 新问题。
-
-- 决定：FlowCanvas nodeIds 过滤=渲染节点集精确闭合：derivedEdges 自滤悬挂引用、flowInput 边 source=INPUT_NODE 在集合内、output 悬挂 nodeId 正确丢弃；旧过滤因 el.group 恒真（普通对象无 group 字段），commit 描述准确；topologyOf 剔除 classes 自洽：run-failed/run-waiting/test-checked/bind-src 四动态类 refreshData 全量重算，boundary 静态，无仅在 sync 加类的路径；TypeEditor list→list/object→object 保留用户已配 elementType/fields（仅缺失才初始化默认）；llm_client read(_MAX_RESPONSE+1) 对恰好 1MB 无误判；非 dict 分支在解析成功后判，顺序正确；4799bcb parameterId 前后端同源（flows.py iid/oid ↔ row.input.id/out.id）；b7bc31b watchEffect setup 即时初始化收敛无循环；581b80c list_metadata 每调用读一次，快照语义不变
-- 验证：python3 tests/test_flows.py=94、test_llm_providers.py=40、test_flow_executor.py=33、test_flow_test_plan.py=70 全过；node ts_hooks 两套件 flow_model 46/flow_test_workspace 36 全过（后者计数大于任务书 29，为后续提交新增用例，非异常）；npm run build（vue-tsc）通过，仅存量 chunk>500kB 警告；隔离实例 18933（WIZ_WORKBENCH_ROOT+WIZ_DATABASE_URL 临时 sqlite+临时账号）llm-provider-save 断言过，llm-providers 列表空；实例/临时目录已清理，18765 与真实数据零写入
-- 下一步：P3：_extract_json 首个 opener 落在字符串内提取失败后不回退找后续块，极边缘不影响既有用例
-- 依据/文档：git 4799bcb b7bc31b 581b80c c039746；frontend/src/flow/FlowCanvas.vue、TypeEditor.vue、NodeConfig.vue；workbench/llm_client.py、llm_providers.py、flows.py
