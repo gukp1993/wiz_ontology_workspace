@@ -1,0 +1,28 @@
+{
+  "ticket": "869276143a65424a9092e8b4f3a00447",
+  "task": "创建工作树与集成合并明确提示词约定",
+  "status": "decision",
+  "summary": "按用户最新要求修改AGENTS和共享基线：创建worktree与集成合并均由用户明确触发；同步自动构建需求的计划和指令，定义标准提示词与阶段停止点。未创建工作树或执行合并。",
+  "decisions": [
+    "默认zcode收到创建指令后创建worktree；仅创建指令不开始开发，后续开发/修复复用同一环境。",
+    "Codex独立验收指定提交，通过后停在待用户授权集成；验收通过不隐含合并。",
+    "用户明确集成并合并后Codex负责临时集成worktree、普通冲突修复、组合验证和main更新；不重复询问同一授权，不默认重启主服务。",
+    "文档模板或其他工具交接不构成执行授权；用户可明确合并多个授权阶段，需求冲突另行确认。"
+  ],
+  "verification": [
+    "AGENTS/计划/指令的提示词、授权边界和相对链接检查通过；git diff --check通过。无业务代码改动。"
+  ],
+  "next": [],
+  "references": [
+    "AGENTS.md",
+    ".collaboration/baseline.md",
+    "文档/需求/20260920_从物料自动构建本体/开发计划.md",
+    "文档/需求/20260920_从物料自动构建本体/执行指令.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-20T08:31:39.494829+00:00",
+  "sequence": 123,
+  "filename": "000123-b63d4d42d13a.json",
+  "record_hash": "302171a69447300cd0bd81a286f5bbbb43b9b09f489aef64d8327aeb94388590",
+  "context_advanced": true
+}
