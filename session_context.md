@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`5399d4d9c6b15f05`
+上下文版本：`5bbdb1f341ad3d1a`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 固化细粒度任务拆分与多agent并行原则 · codex · 已确认决定
+
+时间：2026-09-20T08:50:05.079340+00:00；记录：`.collaboration/entries/000126-22be989cfdfc.json`
+
+AGENTS新增细粒度任务拆分与多agent并行原则：后续开发计划和执行指令先列任务依赖、交付物、文件owner和验收标准，再按独立性分批并行；协调者负责热点文件、串行Git操作及组合验证。
+
+- 决定：尽可能细分到可独立交付和验证的任务，不机械按文件或行数拆分。；支持多agent并行但不扩大业务授权，不自动创建额外worktree，不跳过独立验收与用户合并授权。；本轮仅更新主仓库治理规则，未开发业务功能、未修改已有任务分支。
+- 验证：AGENTS文档差异检查通过；未运行业务构建或测试（仅治理文档修改）。
+- 依据/文档：AGENTS.md
 
 ### 从物料自动构建本体：创建独立worktree · codex · 需求已交付
 
@@ -144,16 +154,4 @@ W3 阶段：A 三项最小修复完成（B1 前端补 applicable_objects 三入�
 - 验证：原型JS语法通过；Node VM最小DOM的19项交互检查通过，涵盖失效、依赖、冲突与失败保留。；相对链接、两文件交付、HTML解析及无网络调用检查通过。未做浏览器视觉验收，未运行正式应用构建或业务测试。
 - 下一步：用户评审原型和需求范围，确认后再生成开发计划与执行指令。
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/需求说明.md；文档/需求/20260920_从物料自动构建本体/交互原型_v1.html
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 角色A W3：本体保护三项最小修复（B1 applicable_objects 一致 / B2 domain-range 前缀容错 / B3 槽位序号回退误报） · zcode · 已实施，待验收
-
-时间：2026-09-20T07:02:30.679046+00:00；记录：`.collaboration/entries/000114-7ec34699bb8d.json`
-
-按开发计划 §11.2 三项低危缺陷最小修复并实测。B1：editorModel.graphReferenceEntries 同步 applicable_objects，对象删除检查与图谱保留命令现预告阻断，与后端 new_broken_references 同口径（dependencyModel/legacyBridge 生产码经核查无需改）。B2：references.py 新增 _canon_graph_ref，domain/range 接受 mg: 前缀与裸名（裸名按 mg: 核对，节点 id 为裸名的历史数据精确命中不误报，xsd:/http: 行为不变）。B3：无稳定 id 的签名槽位与 mg:constraint.fields 无名称槽位改用「同槽位内同一目标引用的出现序号」做身份——删除前置槽位不再误报历史悬空，新增同目标槽位/删除目标仍阻断。仅改自己独占文件：editorModel.ts、references.py、test_references.py、dependency_guard.test.mjs、legacy_graph_bridge.test.mjs。未 git add/commit，未改接口文档。
-
-- 决定：B1 选「前端同步」而非登记差异：后端 applicable_objects 拦截源于编辑器统一删除判定，非有意更严；前端补判后删除即预告阻断。；B2 与前端 matches 同口径：精确命中优先、其次补 mg:；裸名仍不命中时按 mg: 身份核对，不放松也不臆造其他前缀身份。；B3 槽位身份 = 引用类别+目标 id+同目标出现序号（有稳定 id 仍优先用 id）；比较键仍只由稳定 ID 组成，新增悬空必产生新键，保护不放松。；生产改动限定 2 个文件、共十余行；未新增样式/布局/菜单/弹窗/抽屉；未触碰他人 owner 文件、金样、真实数据。
-- 验证：python3 tests/run.py --test test_references.py → 全部 21 步通过（原 18 步 + 单元⑩B2/⑪B1/⑫B3；HTTP①～⑧ 原样通过）。；node --import ./tests/ts_hooks.mjs tests/dependency_guard.test.mjs → 22/22 项通过（新增 B1 前端预告阻断断言）。；node --import ./tests/ts_hooks.mjs tests/legacy_graph_bridge.test.mjs → 全部通过（新增 B1 图谱 domainDeleteNode 阻断+状态不变）；object_workspace 7/7；ont_list_unified 4/4。；python3 tests/run.py --test test_validation_split.py → 金样 97 样例 / 507 项断言全部通过，errors/warnings/items 逐字节等价（未改金样）。；cd frontend && npm run typecheck → exit=0（按要求未跑 npm run build）。
-- 下一步：建议协调者（接口文档 owner）在 02 §2.2 补登记 B2 裸名/mg: 容错与 B3 槽位身份口径两句。；浏览器点击级复验、HTTP 组、build、提交按指令留给协调者。
-- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2（B1/B2/B3）；文档/接口文档/02-本体区接口.md §2.2；workbench/references.py / frontend/src/ontology/editorModel.ts
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
