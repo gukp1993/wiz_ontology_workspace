@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`400b810d63778722`
+上下文版本：`4473854bca8ecd92`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 编辑页返回控件全局统一 + 图谱工具栏选中裁切（用户三项反馈，提交 eab7545） · zcode · 已实施，待验收
+
+时间：2026-09-20T04:56:41.459626+00:00；记录：`.collaboration/entries/000099-3354d332f4b9.json`
+
+按用户三项反馈修复：① 规则编辑表单补返回图谱——新增共享组件 shared/EditorHead.vue（canvasReturn→「← 返回图谱」+「关闭」，否则 backLabel），规则表单首部渲染；② 动作返回图谱样式统一——动作列表页头改为仅列表态渲染（编辑卡升为同级 v-else），编辑表单首部改用同一 EditorHead，对象/链接/私有属性/共享属性/规则/动作六种编辑表单现由同一组件渲染同一控件；③ 选中节点后工具栏裁切——状态区与全图/详情/1跳/2跳/最大化 合成 .tool-right 整组，工具行宽屏允许换行（整组落第二行右对齐），≤1100 在 scoped 内回退单行横向滚动，并删除 legacy.css 里重复的 nowrap/wrap 声明（布局收口单点定义）。顺带清理 6 处 Field example 写成「例如：…」导致占位符「例如：例如：…」。
+
+- 决定：编辑表单头部返回控件收敛为唯一共享组件 EditorHead：位置（表单卡首元素）、文案（canvasReturn 时「← 返回图谱」+「关闭」）、样式由组件统一，各页不再自复制按钮行；列表态页头只属于列表态（动作页原先把返回按钮留在页头，编辑态仍渲染，与其它页的卡内返回控件不同构）；图谱工具行布局只保留一处定义（EditorView scoped）：宽屏换行让右端按钮不被裁切，窄屏回退横向滚动保画布高度；legacy.css 不再重复声明同类属性（该处已因同优先级互相覆盖返工过一次）
+- 验证：浏览器（隔离实例 18849，同构夹具 4 对象/3 共享/11 私有/4 链接/2 规则/2 动作）：五类编辑页头部按钮文案与坐标一致（「← 返回图谱」x=271,y=99 +「关闭」x=382,y=99），非图谱来源显示「← 返回规则列表/动作列表」；工具栏：1440/1280 选中节点后 0 裁切（最大化按钮 right = 工具行 right；rowSW=rowCW），1024/768 单行横向滚动且画布 651/616px 可用；0 控制台错误；返回闭环：编辑表单点「← 返回图谱」回到画布且原节点仍选中（selected=lg:pp:mg:rated_power）；build（vue-tsc+vite）通过；新增 editor_head_consistency 19 项、graph_toolbar_layout 8 项；回归 ontology_graph、legacy_graph_bridge、object_workspace 7/7、ontology_home 27、global_interaction 7/7、save_queue 22/22、ont_list_unified 4/4、dependency_guard 15/15；后端 quick 3/3、unit 26/26；18765 已重启（http 200），记录见开发计划 §5.9
+- 下一步：用户在 18765 强刷（Cmd+Shift+R）后验收三项：双击规则/动作节点进入的编辑表单左上角有「← 返回图谱」；五类编辑页头部样式一致；选中节点后工具栏「最大化」不再被裁切；独立子代理验收进行中（并行），结论与任何不一致项待其回报后处理
+- 依据/文档：frontend/src/shared/EditorHead.vue；frontend/src/ontology/{ObjectWorkspace,PropertyManager,BusinessRuleLibrary,ActionLibrary,FunctionManager}.vue；frontend/src/ontology/legacyGraph/EditorView.vue（.tool-right 分组与响应式）；frontend/src/ontology/legacyGraph/legacy.css；tests/editor_head_consistency.test.mjs；tests/graph_toolbar_layout.test.mjs；文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.9；git eab7545
 
 ### 本体维护保留项11至13独立验收 · codex · 已验证
 
@@ -139,13 +150,3 @@ Delivered requirements and interactive prototype for project configuration maint
 - 验证：build（vue-tsc+vite）通过；ontology_graph 12/12、legacy_graph_bridge 12/12；隔离实例 18845 浏览器实测：顶行 0 按钮（仅节点/连线/已保存状态），工具行=整理节点+五类chips+搜索+全图/详情/最大化；0 控制台错误；画布 584px；截图 07_1440_工具栏精简后.png；记录见开发计划 §5.5
 - 下一步：用户在 18765 强刷（Cmd+Shift+R）查看精简后的工具栏；如需恢复某入口（如多图谱预览/导入导出）或进一步删除剩余工具行按钮，请明确指示
 - 依据/文档：frontend/src/ontology/legacyGraph/EditorView.vue（模板精简）；文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.5；git 774e705
-
-### 本体建设产品完整性评审 · codex · 已验证
-
-时间：2026-09-20T03:09:52.582303+00:00；记录：`.collaboration/entries/000087-b62248ef8160.json`
-
-完成源码与需求层评审，未修改业务代码、未生成开发计划、未写真实数据。基础五类建模与列表/画布/Excel已有实现，优先缺口在版本恢复、跨入口一致性、语义变更识别、影响确认和本体资产维护。浏览器视觉与完整迁移本轮未重新验收。
-
-- 决定：评审建议仅供讨论，不授权实施；动作参数和提交条件、Excel关系导入、生成口径等历史暂缓不自动恢复。
-- 验证：现有legacy_graph_bridge、ontology_import、ontology_home测试均通过；不覆盖全部UI与删除依赖边界。；contracts.classify最小内存样例：对象业务说明发生语义改变仍归compatible。；源码确认图谱私有属性删除未复用graphReferences；业务规则列表无删除而图谱有删除；SQLite发布与ZIP恢复断层仍存在。
-- 下一步：用户确认版本恢复、统一引用保护、语义变更确认和本体归档等建议的优先级。

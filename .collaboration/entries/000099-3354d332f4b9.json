@@ -1,0 +1,34 @@
+{
+  "ticket": "4894be44119c4bbfa015e5fcf80daab2",
+  "task": "编辑页返回控件全局统一 + 图谱工具栏选中裁切（用户三项反馈，提交 eab7545）",
+  "status": "implemented",
+  "summary": "按用户三项反馈修复：① 规则编辑表单补返回图谱——新增共享组件 shared/EditorHead.vue（canvasReturn→「← 返回图谱」+「关闭」，否则 backLabel），规则表单首部渲染；② 动作返回图谱样式统一——动作列表页头改为仅列表态渲染（编辑卡升为同级 v-else），编辑表单首部改用同一 EditorHead，对象/链接/私有属性/共享属性/规则/动作六种编辑表单现由同一组件渲染同一控件；③ 选中节点后工具栏裁切——状态区与全图/详情/1跳/2跳/最大化 合成 .tool-right 整组，工具行宽屏允许换行（整组落第二行右对齐），≤1100 在 scoped 内回退单行横向滚动，并删除 legacy.css 里重复的 nowrap/wrap 声明（布局收口单点定义）。顺带清理 6 处 Field example 写成「例如：…」导致占位符「例如：例如：…」。",
+  "decisions": [
+    "编辑表单头部返回控件收敛为唯一共享组件 EditorHead：位置（表单卡首元素）、文案（canvasReturn 时「← 返回图谱」+「关闭」）、样式由组件统一，各页不再自复制按钮行",
+    "列表态页头只属于列表态（动作页原先把返回按钮留在页头，编辑态仍渲染，与其它页的卡内返回控件不同构）",
+    "图谱工具行布局只保留一处定义（EditorView scoped）：宽屏换行让右端按钮不被裁切，窄屏回退横向滚动保画布高度；legacy.css 不再重复声明同类属性（该处已因同优先级互相覆盖返工过一次）"
+  ],
+  "verification": [
+    "浏览器（隔离实例 18849，同构夹具 4 对象/3 共享/11 私有/4 链接/2 规则/2 动作）：五类编辑页头部按钮文案与坐标一致（「← 返回图谱」x=271,y=99 +「关闭」x=382,y=99），非图谱来源显示「← 返回规则列表/动作列表」",
+    "工具栏：1440/1280 选中节点后 0 裁切（最大化按钮 right = 工具行 right；rowSW=rowCW），1024/768 单行横向滚动且画布 651/616px 可用；0 控制台错误",
+    "返回闭环：编辑表单点「← 返回图谱」回到画布且原节点仍选中（selected=lg:pp:mg:rated_power）",
+    "build（vue-tsc+vite）通过；新增 editor_head_consistency 19 项、graph_toolbar_layout 8 项；回归 ontology_graph、legacy_graph_bridge、object_workspace 7/7、ontology_home 27、global_interaction 7/7、save_queue 22/22、ont_list_unified 4/4、dependency_guard 15/15；后端 quick 3/3、unit 26/26",
+    "18765 已重启（http 200），记录见开发计划 §5.9"
+  ],
+  "next": [
+    "用户在 18765 强刷（Cmd+Shift+R）后验收三项：双击规则/动作节点进入的编辑表单左上角有「← 返回图谱」；五类编辑页头部样式一致；选中节点后工具栏「最大化」不再被裁切",
+    "独立子代理验收进行中（并行），结论与任何不一致项待其回报后处理"
+  ],
+  "references": [
+    "frontend/src/shared/EditorHead.vue；frontend/src/ontology/{ObjectWorkspace,PropertyManager,BusinessRuleLibrary,ActionLibrary,FunctionManager}.vue",
+    "frontend/src/ontology/legacyGraph/EditorView.vue（.tool-right 分组与响应式）；frontend/src/ontology/legacyGraph/legacy.css",
+    "tests/editor_head_consistency.test.mjs；tests/graph_toolbar_layout.test.mjs",
+    "文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.9；git eab7545"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-20T04:56:41.459626+00:00",
+  "sequence": 99,
+  "filename": "000099-3354d332f4b9.json",
+  "record_hash": "8213de5f85376f47529415739e617b19d4fc15af70ac990fae0bb8ee85bf810d",
+  "context_advanced": false
+}
