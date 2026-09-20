@@ -42,7 +42,7 @@ import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 // graphReturn/graphFocus（20260919 图谱画布优化）：图谱「打开定义」跳转后的返回上下文——
 // graphReturn=true 直接落在图谱视图（视图记忆由迁入编辑器 legacyGraph 按账号 + 本体恢复），
 // graphFocus 为目标业务稳定 ID，用于返回后在画布中定位（目标已删除则清空选择并提示）。
-const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string; focusCreate?: boolean; graphReturn?: boolean; graphFocus?: string; canvasReturn?: string; saveState?: { kind: string; text: string }; latestRelease?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate', 'switch-ontology', 'create-ontology'])
+const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string; focusCreate?: boolean; graphReturn?: boolean; graphFocus?: string; canvasReturn?: string; saveState?: { kind: string; text: string }; latestRelease?: string; editFocus?: boolean }>(), emit = defineEmits(['before-change', 'changed', 'navigate', 'switch-ontology', 'create-ontology'])
 // 具名撤销（20260918）：emit('before-change', { actionLabel, target?, mergeKey? })；App 侧兼容字符串与对象
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
@@ -182,6 +182,7 @@ function openPropertyEditor(typeId: string, propertyId: string) {
 function onPropertySaved(payload: { id: string; targetTypeId?: string }) {
   const e = editor.value
   editor.value = null
+  if (props.canvasReturn) { backToGraph(); return } // 来自图谱：保存后直接回画布
   selected.value = payload.targetTypeId || (e?.kind === 'property' ? e.targetTypeId : '') || selected.value
   detailTab.value = e?.kind === 'property' ? e.returnTab : 'props'
   locateRow(payload.id, propsList)
@@ -590,6 +591,20 @@ watch([() => props.focusDefinition, detailTab], ([id, tab]) => {
   else if (tab === 'links') void locateRow(id, linksList)
 }, { immediate: true })
 
+// 图谱「编辑」跳转（2026-09-20，用户要求）：详情「编辑」按钮携 edit:true 进入本页时，
+// 直接打开对应编辑表单（对象 / 链接）；属性表单已由 focusProperty 分支打开，此处不重复。
+// 必须排在前面的定位 watch 之后（Vue 按创建顺序触发，前面的分支会清空 editor）。
+watch(() => props.editFocus, (v) => {
+  if (!v) return
+  if (props.focusDefinition && detailTab.value === 'links'
+      && graph.value.some((n: any) => n['@id'] === props.focusDefinition && n['@type'] === 'owl:ObjectProperty')) {
+    openLinkEditor(props.focusDefinition)
+    return
+  }
+  if (props.focusProperty) return // 属性：既有 focusProperty 分支已打开表单
+  if (props.focusType && objects.value.some((o: any) => o['@id'] === props.focusType)) openObjectEditor(false)
+}, { immediate: true })
+
 // 引用检查与 EntityManager 同一套：有引用先提示，不静默断链；confirm 后删除，可撤销。
 // 动作关联随对象删除一并清理（需求 §5）；规则引用走引用保护——须先移除引用（业务规则一期 §5）。
 // confirmText：行语义化确认文案（删除属性/删除链接/删除动作各说各的影响），缺省沿用对象删除文案。
@@ -631,9 +646,12 @@ async function removeNode(id: string, label: string, confirmText?: string) {
   </div>
   <!-- 编辑态：主内容整体替换为一个完整表单（原型 ui.editor ? editorView() : pageView()） -->
   <template v-if="editor">
-    <PropertyManager v-if="editor.kind === 'property'" :key="editor.propertyId || 'new'" :state="state" kind="property" :target-type-id="editor.targetTypeId" :property-id="editor.propertyId" @close="closeEditor" @saved="onPropertySaved"/>
+    <PropertyManager v-if="editor.kind === 'property'" :key="editor.propertyId || 'new'" :state="state" kind="property" :target-type-id="editor.targetTypeId" :property-id="editor.propertyId" :canvas-return="canvasReturn" @back-to-graph="backToGraph" @close="closeEditor" @saved="onPropertySaved"/>
     <section v-else-if="editor.kind === 'object'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
+      <div class="ow-editor-head">
+        <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
+        <button type="button" @click="closeEditor">{{ canvasReturn ? '关闭' : '← 返回对象' }}</button>
+      </div>
       <div class="detail-heading"><div><span class="eyebrow">对象类型</span><h2>{{ editor.isNew ? '新建对象类型' : '维护对象定义' }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
@@ -646,7 +664,10 @@ async function removeNode(id: string, label: string, confirmText?: string) {
       </div>
     </section>
     <section v-else-if="editor.kind === 'link'" class="card detail-card ow-editor">
-      <div class="ow-editor-head"><button type="button" @click="closeEditor">← 返回对象</button></div>
+      <div class="ow-editor-head">
+        <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
+        <button type="button" @click="closeEditor">{{ canvasReturn ? '关闭' : '← 返回对象' }}</button>
+      </div>
       <div class="detail-heading"><div><span class="eyebrow">业务链接</span><h2>{{ editor.isNew ? '定义业务链接' : '维护 · ' + (linkDraft?.label || '未命名链接') }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">

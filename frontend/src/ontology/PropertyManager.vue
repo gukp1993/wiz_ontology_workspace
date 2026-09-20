@@ -26,8 +26,8 @@ import { dataTypeOptionsFor } from './editorModel'
 import { makeProperty, effectiveProperty, localProperties, detachProperty, asShared, propertyDataType, setPropertyDataType, referencesOf } from './propertyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
-const props = withDefaults(defineProps<{ state: any; kind: 'property' | 'shared'; targetTypeId?: string; propertyId?: string }>(), { targetTypeId: '', propertyId: '' })
-const emit = defineEmits<{ close: []; saved: [payload: { id: string; kind: 'property' | 'shared'; targetTypeId?: string }] }>()
+const props = withDefaults(defineProps<{ state: any; kind: 'property' | 'shared'; targetTypeId?: string; propertyId?: string; canvasReturn?: string }>(), { targetTypeId: '', propertyId: '', canvasReturn: '' })
+const emit = defineEmits<{ close: []; 'back-to-graph': []; saved: [payload: { id: string; kind: 'property' | 'shared'; targetTypeId?: string }] }>()
 
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
@@ -160,7 +160,8 @@ async function save() {
 <template>
 <section class="card detail-card prop-form">
   <div class="prop-form-head">
-    <button type="button" @click="emit('close')">← {{ kind === 'property' ? '返回对象' : '返回共享属性库' }}</button>
+    <button v-if="props.canvasReturn" type="button" @click="emit('back-to-graph')">← 返回图谱</button>
+    <button type="button" @click="emit('close')">{{ props.canvasReturn ? '关闭' : '← ' + (kind === 'property' ? '返回对象' : '返回共享属性库') }}</button>
   </div>
   <div class="detail-heading">
     <div><p class="prop-form-context">{{ kind === 'shared' || editingShared ? '共享属性库' : contextName }}</p><h2>{{ title }}</h2></div>

@@ -29,7 +29,7 @@ import { listShared, referencesOf, externalReferencesOf, shapeConflict, copyAsPr
 import { useOntTable } from './ontList'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
-const props = defineProps<{ state: any; canvasReturn?: string }>()
+const props = defineProps<{ state: any; canvasReturn?: string; focusId?: string; editFocus?: boolean }>()
 const emit = defineEmits(['before-change', 'changed', 'navigate'])
 function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
 
@@ -101,7 +101,12 @@ const emptyHint = computed(() => hasFilter.value ? '调整关键词或筛选条�
 
 // ── 维护定义 / 新建：独立表单（PropertyManager kind='shared'），保存成功后定位行 ──
 function openEditor(id = '') { editor.value = { id }; feedback.value = '' }
+// 图谱「编辑」跳转（2026-09-20）：按 focusId 直接打开指定共享定义的编辑表单
+//（保存/取消后经页头「← 返回图谱」回画布并定位原节点）。
+watch(() => [props.focusId, props.editFocus], ([id, edit]) => { if (id && edit) openEditor(String(id)) }, { immediate: true })
 function onSaved(payload: { id: string }) { editor.value = null; locate(payload.id) }
+// 来自图谱的编辑：保存/返回图谱直接回画布并定位（不再停留在库页）
+function onSharedSaved(payload: { id: string }) { if (props.canvasReturn) { editor.value = null; backToGraph(); return } onSaved(payload) }
 // 保存后定位行：必要时清筛选并翻到目标行所在页，再高亮滚动（data-lib-row 在 <tr> 上）。
 async function locate(id: string) {
   if (!id) return
@@ -214,7 +219,7 @@ function distribute() {
 
 <template>
 <!-- 编辑态：主内容整体替换为独立共享属性表单 -->
-<PropertyManager v-if="editor" :key="editor.id || 'new'" :state="state" kind="shared" :property-id="editor.id" @close="editor = null" @saved="onSaved"/>
+<PropertyManager v-if="editor" :key="editor.id || 'new'" :state="state" kind="shared" :property-id="editor.id" :canvas-return="canvasReturn" @back-to-graph="backToGraph" @close="editor = null" @saved="onSharedSaved"/>
 <template v-else>
 <!-- 页头（§3.2 资产库）：标题+一句说明在左，更多操作与唯一主入口在右 -->
 <section class="ont-lib-head">

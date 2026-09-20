@@ -16,7 +16,7 @@ import { objectsOfRule, RULE_FIELDS, rulesOf } from './businessRuleModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
-const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
+const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string; editFocus?: boolean }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
 function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
@@ -55,7 +55,12 @@ const ownersNames = computed(() => dialog.value?.id ? dedupeTypes(objectsOfRule(
 const editTargetName = computed(() => draft.value?.name || '')
 
 watch(rows, v => { if (dialog.value && !v.some((r: any) => r.id === dialog.value!.id)) dialog.value = null }, { immediate: true })
-watch(() => props.focusId, id => { if (id && rows.value.some((r: any) => r.id === id)) { list.q.value = ''; refFilter.value = '全部'; openDetail(id) } }, { immediate: true })
+// 图谱「编辑」跳转（editFocus）：直接进编辑弹窗；否则按既有行为开只读详情抽屉。
+watch(() => props.focusId, id => {
+  if (!id || !rows.value.some((r: any) => r.id === id)) return
+  list.q.value = ''; refFilter.value = '全部'
+  if (props.editFocus) openEdit(id); else openDetail(id)
+}, { immediate: true })
 
 const dirty = computed(() => dialog.value?.kind === 'edit' && JSON.stringify(draft.value) !== baseline)
 const guard = { isDirty: () => dirty.value, discard: () => closeDialog() }
@@ -115,6 +120,8 @@ async function saveEdit() {
   dialog.value = null
   draft.value = null
   message.value = '规则已保存到本体草稿。'
+  // 来自图谱的「编辑」跳转：保存成功直接回画布并定位原节点（图谱编辑闭环，2026-09-20）
+  if (props.canvasReturn) { backToGraph(); return }
 }
 function goObject(objectTypeId: string) {
   dialog.value = null

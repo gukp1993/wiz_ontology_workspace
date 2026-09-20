@@ -26,14 +26,7 @@
       </div>
 
       <div class="body">
-        <div class="top-row">
-          <div class="status">
-            <span class="count">节点 <b>{{ nodeCount }}</b> · 连线 <b>{{ edgeCount }}</b></span>
-            <span class="save" :class="{ unsaved: saveDotClass === 'unsaved' }"><span class="dot" :class="saveDotClass"></span>{{ saveText }}</span>
-          </div>
-        </div>
-
-        <!-- 第二行：画布编辑工具（需先有版本） -->
+        <!-- 画布工具行（2026-09-20 排版优化：单行 + 状态右对齐，把高度让给画布） -->
         <div class="tool-row" v-if="hasGraph">
           <button class="btn" title="整理节点布局：按类型分组排列（效果满意再保存）· 快捷键无需记忆，随时可用「撤销整理」还原" @click="autoLayout">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v12M2 8h12M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
@@ -56,6 +49,10 @@
             <button v-if="searchQ" class="search-clear" title="清除搜索" @click="clearSearch">×</button>
           </div>
           <!-- 回到全图视图：常驻显示，F 放大聚焦后可随时一键退出 -->
+          <div class="status">
+            <span class="count">节点 <b>{{ nodeCount }}</b> · 连线 <b>{{ edgeCount }}</b></span>
+            <span class="save" :class="{ unsaved: saveDotClass === 'unsaved' }"><span class="dot" :class="saveDotClass"></span>{{ saveText }}</span>
+          </div>
           <button class="btn inspector-fit-all" title="回到全图视图（清除聚焦定位，退出放大）" @click="fitAllGraph">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></svg>
             <span>全图</span>
@@ -120,8 +117,7 @@
               <p v-else class="note">（无关联连线）</p>
             </div>
             <div class="actions">
-              <button class="btn primary" @click="editInspNode">编辑</button>
-              <button class="btn" @click="openInspDefinition">打开定义 ↗</button>
+              <button class="btn primary" @click="editInspNode">编辑 ↗</button>
             </div>
           </div>
         </template>
@@ -144,7 +140,6 @@
           </div>
           <div class="actions">
             <button v-if="inspEdgeEditable" class="btn primary" @click="saveInspector">保存</button>
-            <button class="btn" @click="openInspDefinition">打开定义 ↗</button>
             <button class="btn danger" @click="delInspector">删除</button>
           </div>
         </template>
@@ -1484,23 +1479,17 @@ function showInspector(el) {
   }
 }
 const inspEdgeEditable = computed(() => insp.value?.kind === 'edge' && insp.value.edgeKind === '对象链接')
-// 打开定义（补接）：节点→对应定义页；对象链接→起点对象链接页签并定位（返回按边定位）
-function openInspDefinition() {
-  if (!insp.value) return
-  if (insp.value.kind === 'edge') {
-    if (!inspEdgeEditable.value) { toast('引用类连线请在对应库页维护'); return }
-    const linkId = insp.value.domainId
-    const srcNode = state.draft.nodes.find((n) => n.id === insp.value.sourceId || n.id === cy.value.getElementById(insp.value.id).source().id())
-    emit('navigate', 'objects', { type: srcNode?.domainId || '', tab: 'links', definition: linkId, canvas: true, canvasNode: insp.value.id })
-  } else {
-    const n = state.draft.nodes.find((x) => x.id === insp.value.id)
-    if (!n) return
-    if (n.type === '对象') emit('navigate', 'objects', { type: n.domainId, canvas: true, canvasNode: n.id })
-    else if (n.type === '共享属性') emit('navigate', 'library', { definition: n.domainId, canvas: true, canvasNode: n.id })
-    else if (n.type === '私有属性') emit('navigate', 'objects', { type: (n.data?.ownerDomainId || ''), property: n.domainId, tab: 'props', canvas: true, canvasNode: n.id })
-    else if (n.type === '规则') emit('navigate', 'rules', { definition: n.domainId, canvas: true, canvasNode: n.id })
-    else emit('navigate', 'actions', { definition: n.domainId, canvas: true, canvasNode: n.id })
-  }
+// 编辑跳转（2026-09-20 用户要求，取代原「打开定义」）：详情「编辑」把该节点交给
+// 工作台既有编辑表单页（对象/属性/共享属性/规则/动作），携 edit:true 让目标页直接打开编辑表单；
+// 同时携画布返回上下文（canvas/canvasNode=lg 节点 ID），保存或取消后经「← 返回图谱」回到画布并定位。
+function openEditInWorkspace(n) {
+  if (!n) return
+  const common = { canvas: true, canvasNode: n.id, edit: true }
+  if (n.type === '对象') emit('navigate', 'objects', { type: n.domainId, ...common })
+  else if (n.type === '共享属性') emit('navigate', 'library', { definition: n.domainId, ...common })
+  else if (n.type === '私有属性') emit('navigate', 'objects', { type: n.data?.ownerDomainId || '', property: n.domainId, tab: 'props', ...common })
+  else if (n.type === '规则') emit('navigate', 'rules', { definition: n.domainId, ...common })
+  else emit('navigate', 'actions', { definition: n.domainId, ...common })
 }
 function showNodeInspector(el) {
   insp.value = {
@@ -1516,10 +1505,12 @@ function clearInspector() {
   showNodeEdit.value = false
   editNode.value = { id: '', type: '实体', name: '', data: {} }
 }
-// 节点面板「编辑」→ 复用双击的 NodeEditModal
+// 节点面板「编辑」→ 跳转到该节点的编辑页面（2026-09-20 用户要求；双击仍为画布内快速编辑）
 function editInspNode() {
-  if (insp.value?.kind !== 'node' || !cy.value) return
-  openNodeEdit(cy.value.getElementById(insp.value.id))
+  if (insp.value?.kind !== 'node') return
+  const n = state.draft.nodes.find((x) => x.id === insp.value.id)
+  if (!n) { toast('节点已不存在', true); return }
+  openEditInWorkspace(n)
 }
 function saveInspector() {
   if (insp.value?.kind !== 'edge') return
@@ -1767,7 +1758,7 @@ onBeforeUnmount(() => {
 .pe-actions { display: flex; gap: 8px; }
 .legacy-editor-root { height: 100%; min-height: 0; }
 .legacy-editor-root.max { position: fixed; inset: 0; z-index: 90; background: var(--canvas); }
-.brand-sub { font-size: 11px; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-sub { font-size: 11px; color: var(--muted); max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .edge-kind { display: inline-block; margin-left: 8px; font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; vertical-align: 1px; }
 .editor { display: flex; flex-direction: column; height: 100%; }
 .topbar {

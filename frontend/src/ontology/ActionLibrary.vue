@@ -16,7 +16,7 @@ import { graphReferences } from './editorModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
-const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string }>()
+const props = defineProps<{ state: any; focusId?: string; focusOrigin?: { type?: string; tab?: string }; canvasReturn?: string; editFocus?: boolean }>()
 const emit = defineEmits(['before-change', 'changed', 'navigate'])
 function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
 const guardApi = inject<FormGuardAPI>('form-guard')!
@@ -66,13 +66,14 @@ const editingExisting = computed(() => rows.value.some((a: any) => a.id === edit
 
 // 数据变化时保持编辑目标一致性：编辑目标被移除（撤销/外部删除）则退回列表，guard 随 mode 注销。
 watch(rows, v => { if (mode.value === 'edit' && !v.some((a: any) => a.id === editId.value)) mode.value = 'list' })
-// 深链定位：清空筛选并打开该动作的只读详情抽屉（§7）。
+// 深链定位：清空筛选并打开该动作（§7）；图谱「编辑」跳转（editFocus）时直接进编辑表单。
 watch(() => props.focusId, id => {
   if (id && rows.value.some((a: any) => a.id === id)) {
     actionsTable.reset()
     refFilter.value = 'all'
     message.value = ''
     refsId.value = ''
+    if (props.editFocus) { openEdit(id); return }
     detailId.value = id
     if (mode.value === 'edit') mode.value = 'list'
   }
@@ -164,6 +165,8 @@ async function save() {
   converting = false
   mode.value = 'list'
   message.value = '已保存到本体草稿；已发布版本需重新发布后更新。'
+  // 来自图谱的「编辑」跳转：保存成功直接回画布（2026-09-20）
+  if (props.canvasReturn) backToGraph()
 }
 async function remove(id: string) {
   const a: any = actionById(id)

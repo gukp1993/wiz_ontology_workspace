@@ -110,3 +110,27 @@
   .legacy-editor-root .search-box { margin-left: 4px; }
   .legacy-editor-root .shortcut-hint { display: none; }
 }
+
+
+/* ---- 头部排版优化（2026-09-20，用户要求"UI 界面优化"） ----
+   旧两行头部（空状态行 + 工具行）压成一行：品牌区更紧凑、工具行单行可横向滚动、
+   状态区右对齐；顶部留白收紧，把高度让给画布。 */
+.legacy-editor-root .topbar { padding: 6px 12px; }
+.legacy-editor-root .brand { padding-right: 12px; margin-right: 10px; min-width: 92px; }
+.legacy-editor-root .brand h1 { font-size: 13px; }
+.legacy-editor-root .tool-row {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 0; padding-top: 0; border-top: 0;
+  flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.legacy-editor-root .tool-row > * { flex: 0 0 auto; }
+.legacy-editor-root .tool-row .status {
+  margin-left: auto; padding-left: 10px; border-left: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px; white-space: nowrap;
+  position: sticky; right: 0; background: #fff; padding-right: 2px;
+}
+.legacy-editor-root .tool-row .search-box { margin-left: 6px; }
+.legacy-editor-root .tool-row .type-filter { margin-left: 4px; }
+/* 画布因头部变矮自动加高；撤销条/提示保持原样 */
+.legacy-editor-root .layout-undo { bottom: 18px; }
