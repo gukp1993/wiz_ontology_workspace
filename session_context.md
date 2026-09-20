@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`0113d667b9e42b14`
+上下文版本：`d1e34749547711fa`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,16 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 按用户纠正归档顶层架构评审 · codex · 需求已交付
+
+时间：2026-09-20T02:01:12.384444+00:00；记录：`.collaboration/entries/000074-b0aac1f926f4.json`
+
+用户澄清需要归档更前一轮顶层产品定位/领域架构/业务闭环完整回答，而非生成计划与项目说明问答。已生成正确Markdown，保留原轮次待确认状态，不混入后续MCP方向答复。
+
+- 决定：本次仅归档指定历史回答，不撤销已确认MCP方向，不修改业务代码。
+- 验证：内容含定位、职责图、顶层缺口表、两条业务链、分工与架构决策；相对链接检查通过。
+- 依据/文档：文档/交付物/20260920_本体建模与项目映射完整性评审/顶层产品定位与领域架构评审.md
 
 ### 生成计划与项目说明解释归档 · codex · 需求已交付
 
@@ -137,14 +147,3 @@
 - 验证：python3 tests/test_flows.py=94、test_llm_providers.py=40、test_flow_executor.py=33、test_flow_test_plan.py=70 全过；node ts_hooks 两套件 flow_model 46/flow_test_workspace 36 全过（后者计数大于任务书 29，为后续提交新增用例，非异常）；npm run build（vue-tsc）通过，仅存量 chunk>500kB 警告；隔离实例 18933（WIZ_WORKBENCH_ROOT+WIZ_DATABASE_URL 临时 sqlite+临时账号）llm-provider-save 断言过，llm-providers 列表空；实例/临时目录已清理，18765 与真实数据零写入
 - 下一步：P3：_extract_json 首个 opener 落在字符串内提取失败后不回退找后续块，极边缘不影响既有用例
 - 依据/文档：git 4799bcb b7bc31b 581b80c c039746；frontend/src/flow/FlowCanvas.vue、TypeEditor.vue、NodeConfig.vue；workbench/llm_client.py、llm_providers.py、flows.py
-
-### 函数编排打磨六提交独立验收（38806d5/8e5b7d2/75bc160/4341a7a/1e6aecc/5c3235b） · zcode · 已验证
-
-时间：2026-09-19T21:29:29.463026+00:00；记录：`.collaboration/entries/000062-f08da4796606.json`
-
-独立验收通过：六提交回归全绿（flows 94/executor 33/test_plan 70/sql_dialect 25/llm 40/project_flow_source 29/两个 node 套件/5c3235b 归档 build exit0）；隔离实例 18847 API 断言四项全过（NODE_ID_DUPLICATE、REDIS_COMMAND_MISSING、成环 flow-run 422、范围外节点错误不拦片段 200）；无 P1/P2 新问题。
-
-- 决定：75bc160 的 422 门只额外拦流程级全局错误，非 target 节点级错误不拦，API 实证 200；4341a7a 代次守卫自洽：cacheContext 先 runGen++ 再释放，晚回包不落新上下文；declSig 含 type，隐藏空文本勾选无残留死锁；1e6aecc 公式键随迁在 before/changed 之间符合快照机制，撤销整体一步，仅缺 actionLabel 回退通用文案（原有模式）；范围内 listing 逐编排查 LLM 元数据为 P3 性能瑕疵，已在此后提交 581b80c 修复
-- 验证：python3 tests/test_flows.py 等 6 套件全过；node --import tests/ts_hooks.mjs 两套件全过；git archive 5c3235b 到临时目录 npm run build exit 0（vue-tsc+vite）；隔离实例 18847（WIZ_WORKBENCH_ROOT/WIZ_DATABASE_URL 临时）flow-check/flow-run 四断言过，服务与临时目录已清理，18765 与真实数据零写入
-- 下一步：P3 建议：renameTechnical 补 actionLabel；calc 输出改名撞已有名时 formulas 同名键覆盖边缘
-- 依据/文档：git 38806d5..5c3235b；workbench/flow_routes.py；workbench/flows.py；frontend/src/flow/FlowTestWorkspace.vue；frontend/src/flow/NodeConfig.vue
