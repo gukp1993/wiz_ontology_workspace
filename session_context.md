@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`cf47782bf0605618`
+上下文版本：`e4e506a53ea7c6c5`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,28 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 建立绑定支持编排输入/输出边界节点（用户反馈） · zcode · 已实施，待验收
+
+时间：2026-09-20T01:15:53.927974+00:00；记录：`.collaboration/entries/000066-47b43115c2c1.json`
+
+用户反馈建立绑定不能选编排输入节点。已实施 38b426d：编排输入可作来源（点边界节点→点目标节点，绑定弹窗来源预选「编排入口参数」）；编排输出可作目标（点来源节点→点边界节点，弹「绑定到编排输出」选输出声明与来源输出端口，预选未占用端口、类型不相容禁用确认）；语义守卫保留（输出不能作来源/输入不能作目标，明确提示）；模式栏文案更新。顺带修复测试自查发现的真实缺陷：来源为边界节点时在 nodes 列表找 source 失败导致入口绑定被静默丢弃。新增 tests/flow_editor_bind.test.mjs 18 项组件行为测试。
+
+- 决定：边界绑定不新增数据契约：仍写 目标输入 source={kind:'flowInput'} 与 编排输出 binding={kind:'node'}，与既有存储/校验完全一致；确认前做类型相容预检（复用 flowModel.typesCompatible）：不相容不写入并保留弹窗让用户改；等于把后端校验前置为可读提示；编排输出弹窗预选「未被占用的输出端口」，多输出节点减少选择成本
+- 验证：tests/flow_editor_bind.test.mjs 18 项全过（E01-E04）；flow_model、flow_test_workspace 回归全过；build（vue-tsc）通过；隔离实例 18904 浏览器实测（已清理）：建立绑定→点「编排输入」→点目标节点→弹窗预选入口参数→确认后连线派生+自动保存+问题计数更新；再点来源节点→点「编排输出」→绑定弹窗→确认后第二条连线+「检查通过」；18765 已 restart 200；真实数据零写入
+- 下一步：用户在 18765 用「设备SOC计算（Redis版）-副本」试：建立绑定→点「编排输入」→点新 HTTP 节点；若还想要画布直接拖线，可再提
+- 依据/文档：frontend/src/flow/FlowEditor.vue；frontend/src/flow/FlowCanvas.vue；tests/flow_editor_bind.test.mjs；git 38b426d
+
+### 实施 图谱编辑器源码整体复用（P0–P4 收尾提交 573a586） · zcode · 已实施，待验收
+
+时间：2026-09-20T00:55:46.124716+00:00；记录：`.collaboration/entries/000065-e463a5bccee6.json`
+
+整体复制旧编辑器（HEAD b2f10d1，8 文件 SHA256 与计划一致）到 frontend/src/ontology/legacyGraph/：EditorView/Preview/MultiPreview+组件/composables/core/shared，交互逐行保留，类型扩为当前五类；新增 legacyBridge 适配层（lg: 稳定 ID 投影、领域命令走 before-change/changed/保存协调器、撤销=领域快照、坐标=视图偏好、外部变化检测）；保存接 commit-now，版本管理→校验与发布页，发布版本只读预览（单图/多本体多选），坐标导入导出+离线图谱包客户端生成，jsonId 有损默认阻止；旧 MCP/问数/徽标/另存版本/jsonId 导入移除并登记；删除上一版只读控制器消除双控制器。
+
+- 决定：节点/边身份=lg:<类型前缀>:<领域稳定ID>；边身份=定义 ID（链接/共享引用/归属）或类型+双方 ID（规则/动作关联），平行链接与自关联如实上图；删除保护与当前建模一致（graphReferences/规则与动作引用/共享引用计数）；批量连线先全量校验整批拒绝；引用边删除=属性转私有继承字段，归属边删除=删私有属性；jsonId 导出含动作/私有属性/共享引用/时间序列等不可表达内容时默认阻止并列损失清单；完整迁移走配置迁移；图谱包=store-only ZIP（坐标+离线预览 HTML，无凭据断网可看）；旧 3 秒自动保存/版本快照/第二套存储切断；本体切换/新建经 App 既有守卫链路（switchOntology/createOntologyNamed）
+- 验证：build（vue-tsc+vite）通过；tests/ontology_graph.test.mjs 12/12（模型断言保留）+ tests/legacy_graph_bridge.test.mjs 12/12（新增领域断言）；既有前端回归全过：object_workspace 7/ontology_home 27/global_interaction 7/save_queue 22/undo_history 7；修改内容对照表（逐文件适配+旧功能→当前入口+C01–C05 口径+已知限制）见 文档/需求/20260919_图谱编辑器源码整体复用/修改内容清单.md；开发计划 §5.1 已回填
+- 下一步：子代理验收与打磨循环补齐：R01–R18 隔离浏览器逐项走查、四档宽度截图、500/1200 性能对比、失败与 409/账号切换实测（§5.1 如实登记未测项）；用户验收 18765：本体→对象建模→本体图谱（新编辑器）；重点核对新建/连线/删除/撤销走当前保存链路
+- 依据/文档：frontend/src/ontology/legacyGraph/（全部迁入文件+legacyBridge.js+offlineBundle.js+LegacyGraphHost.vue）；frontend/src/ontology/ObjectWorkspace.vue；frontend/src/App.vue；OntologyGraph.vue 已删除；文档/需求/20260919_图谱编辑器源码整体复用/修改内容清单.md；开发计划.md §5.1；git 573a586
 
 ### 函数编排持续打磨（开发+子代理验收交替，≥50轮交互） · zcode · 已实施，待验收
 
@@ -133,26 +155,3 @@
 - 下一步：Chrome已停在导入本体工作概览，可继续编辑；先前清洗说明中的口径冲突与计划规则缺项仍待用户确认。
 - 依据/文档：http://127.0.0.1:18765/?ontology=b3b65efd-7147-40a1-908a-9c68fdc2f535#o-home；文档/交付物/20260919_储能图谱清洗转换/清洗说明.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 函数编排列表输出绑定时间序列属性（用户反馈下拉禁选） · zcode · 已实施，待验收
-
-时间：2026-09-19T13:18:47.417667+00:00；记录：`.collaboration/entries/000054-a7852dbf43bf.json`
-
-用户反馈对象映射选「采样值取值规则」后取值输出「采样序列·列表」禁选。根因：原规则一刀切禁止 list/object 编排输出绑定属性（前后端镜像），恰好挡住时间序列属性主场景（该编排输出 list<object{timestamp,value}> 正是序列形状）。按契约先行放开：kind='flow' 新增可选 result:{valueField,timestampField}（元素对象字段稳定 id），时间序列属性可绑 list<object{fields}> 输出；标量属性绑列表、对象输出仍拒绝；标量输出绑定形状不变。提交 1854e5d。
-
-- 决定：result 仅在列表输出绑时间序列时使用：取值字段须 number、时间字段须 datetime，缺失/不存在/类型不符阻断（前后端镜像）；执行语义随编排取值执行能力一并实现，本轮仅配置与校验；bindingModel 解码严格校验 result 结构（偏离走 unknown 零丢失），提交仅在有映射时写出，既有标量绑定存储形状不变（金样/旧数据不受影响）；金样夹具不含 flow 样例（编排在临时根不可重放），该分支回归以 test_project_flow_source 为准 21→29 步；顺带修复 README 变更记录表上一轮 R06 行误插于表头之前的问题
-- 验证：build（vue-tsc）通过；test_project_flow_source 29 步、test_validation_split 金样 97 样例逐字节等价、test_value_shape、test_property_sources、test_project_api_roundtrip 13 步全过；mapping_forms 为既有他人基线失败（菜单文案断言，与本次无关）；隔离实例 18902 种子脚本复现用户场景（本体 timeSeries 属性+列表输出编排+flow 绑定）：project-save 与 project-validate 零错误；浏览器实测：取值输出下拉「采样序列·列表」可选中、取值字段/时间字段展示「采样值·数值/时间戳·日期时间」、属性清单摘要含字段映射且状态已配置；临时实例/临时目录/种子脚本/浏览器标签页已清理；18765 已 restart（后端校验变更生效）返回 200；真实数据零写入
-- 下一步：用户在 18765 对 采样soc 重新配置取值输出（选采样序列→选字段→保存）
-- 依据/文档：workbench/project_validation.py；frontend/src/project/bindingModel.ts；frontend/src/project/PropertySources.vue；tests/test_project_flow_source.py；git 1854e5d + 接口文档 01 §3.1
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 储能jsonId图谱清洗转当前本体数据 · codex · 已验证
-
-时间：2026-09-19T13:12:36.994572+00:00；记录：`.collaboration/entries/000053-1c0abf190305.json`
-
-生成独立清洗审阅稿及工作台可导入ZIP：6对象、16共享属性、35对象属性引用、7对象链接、21业务规则、7对象规则关联。未写真实工作台数据。
-
-- 决定：SOC拆实时数值和采样时间序列；动作建议计算保留业务规则，不自动生成控制动作。；保留全部原始134条记录、92条边的转换去向；项目取值说明另出参考，不生成可执行项目。；园区/电站、可调能力量纲、偏差单位、SOC百分比等歧义已标注；充放电计划规则保持不完整草稿，不虚构规则。
-- 验证：当前模型协议校验及encode/decode无损往返通过；包manifest和SHA256通过。；临时根和独立SQLite中调用当前配置迁移服务上传、预览、导入、读回通过，本体与工作流一致，新本体ID分配正确。；发布校验仅返回预期两条：充放电计划缺少规则内容、输出结果。未进行浏览器验收或业务公式运行验证。
-- 下一步：用户审阅清洗说明中的口径问题后，可通过配置迁移导入清洗待确认ZIP并继续补齐。
-- 依据/文档：文档/交付物/20260919_储能图谱清洗转换/清洗说明.md；文档/交付物/20260919_储能图谱清洗转换/储能本体_清洗待确认.zip；文档/交付物/20260919_储能图谱清洗转换/验证结果.json

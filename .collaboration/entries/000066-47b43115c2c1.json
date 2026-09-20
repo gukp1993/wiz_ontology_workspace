@@ -1,0 +1,31 @@
+{
+  "ticket": "d314a96fcd334ec2ac1f74e28725b3d1",
+  "task": "建立绑定支持编排输入/输出边界节点（用户反馈）",
+  "status": "implemented",
+  "summary": "用户反馈建立绑定不能选编排输入节点。已实施 38b426d：编排输入可作来源（点边界节点→点目标节点，绑定弹窗来源预选「编排入口参数」）；编排输出可作目标（点来源节点→点边界节点，弹「绑定到编排输出」选输出声明与来源输出端口，预选未占用端口、类型不相容禁用确认）；语义守卫保留（输出不能作来源/输入不能作目标，明确提示）；模式栏文案更新。顺带修复测试自查发现的真实缺陷：来源为边界节点时在 nodes 列表找 source 失败导致入口绑定被静默丢弃。新增 tests/flow_editor_bind.test.mjs 18 项组件行为测试。",
+  "decisions": [
+    "边界绑定不新增数据契约：仍写 目标输入 source={kind:'flowInput'} 与 编排输出 binding={kind:'node'}，与既有存储/校验完全一致",
+    "确认前做类型相容预检（复用 flowModel.typesCompatible）：不相容不写入并保留弹窗让用户改；等于把后端校验前置为可读提示",
+    "编排输出弹窗预选「未被占用的输出端口」，多输出节点减少选择成本"
+  ],
+  "verification": [
+    "tests/flow_editor_bind.test.mjs 18 项全过（E01-E04）；flow_model、flow_test_workspace 回归全过；build（vue-tsc）通过",
+    "隔离实例 18904 浏览器实测（已清理）：建立绑定→点「编排输入」→点目标节点→弹窗预选入口参数→确认后连线派生+自动保存+问题计数更新；再点来源节点→点「编排输出」→绑定弹窗→确认后第二条连线+「检查通过」",
+    "18765 已 restart 200；真实数据零写入"
+  ],
+  "next": [
+    "用户在 18765 用「设备SOC计算（Redis版）-副本」试：建立绑定→点「编排输入」→点新 HTTP 节点；若还想要画布直接拖线，可再提"
+  ],
+  "references": [
+    "frontend/src/flow/FlowEditor.vue",
+    "frontend/src/flow/FlowCanvas.vue",
+    "tests/flow_editor_bind.test.mjs",
+    "git 38b426d"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-20T01:15:53.927974+00:00",
+  "sequence": 66,
+  "filename": "000066-47b43115c2c1.json",
+  "record_hash": "1aa4c46d6de66bd850d3823b022a97bebcade1ec3b52c4c4b9700fc78d8940f3",
+  "context_advanced": false
+}
