@@ -1,8 +1,8 @@
 // 本体 Excel 导入 · 计划层（20260917 需求 §3/§4/§5/§6）。纯函数、无网络、无 Vue 依赖。
 // 职责：字段校验 → 同名决策（跳过 / 保留并自动重命名）→ 生成固定名称与稳定 ID 的导入定义。
 // 随机函数可注入以便确定性测试；预览生成的名称与 ID 在确认时原样使用，不再重新生成。
-import type { ParseIssue, RawRow, SheetName } from './excelImport'
-import { HEADERS, NAME_COLUMN, SHEETS } from './excelImport'
+import type { ParseIssue, RawCell, RawRow, SheetName } from './excelImport'
+import { HEADERS, HEADER_ALIASES, NAME_COLUMN, OPTIONAL_HEADERS, REQUIRED_HEADERS, SHEETS } from './excelImport'
 
 export type ImportPolicy = 'skip' | 'rename'
 export type ImportKind = SheetName
@@ -109,11 +109,32 @@ function buildAction(id: string, name: string, description: string, effect: stri
 
 // ── 单行字段校验（仅对真正待导入行执行；跳过行不再因其他缺项阻断） ──
 
-function validateRow(sheet: SheetName, cells: Record<string, string>): ParseIssue[] {
+function validateRow(sheet: SheetName, cells: Record<string, string>, row?: RawRow): ParseIssue[] {
   const issues: ParseIssue[] = []
-  const requireFields = HEADERS[sheet].slice(0, sheet === '属性' ? 3 : HEADERS[sheet].length)
+  // 20260920 字段精简：必填范围按 REQUIRED_HEADERS（规则/动作只要求名称+业务定义；属性前三项）。
+  const requireFields = REQUIRED_HEADERS[sheet]
   for (const field of requireFields) {
-    if (!String(cells[field] ?? '').trim()) issues.push({ sheet, row: 0, column: field, message: field + '：必填，请填写。' })
+    // 缺必填提示需点名具体字段（20260920 需求：待导入规则/动作缺业务定义时提示「请填写业务定义」）
+    if (!String(cells[field] ?? '').trim()) issues.push({ sheet, row: 0, column: field, message: field + '：必填，请填写' + field + '。' })
+  }
+  // 新旧效果列冲突（仅动作表且两列都存在时）
+  if (sheet === '动作' && row && effectConflict(row)) {
+    issues.push({ sheet, row: 0, column: '预期效果', message: '预期效果：新列与旧「业务效果」列都填写且内容不同，无法确定取值；请删除其中一列内容。' })
+  }
+  // 旧别名列（规则「输出结果」、动作「业务效果」）沿用同样严格校验：公式不执行、错误值与非文字
+  // 单元格必须修正；不能因为列名是历史别名就静默采用（尤其公式的缓存值）。
+  if (row) {
+    const aliasCells: [string, RawCell | undefined][] = sheet === '规则'
+      ? [['输出结果', legacyOutputCell(row)]]
+      : sheet === '动作' ? [['业务效果', row.cells['业务效果']]] : []
+    for (const [field, cell] of aliasCells) {
+      if (!cell) continue
+      if (cell.kind === 'formula') issues.push({ sheet, row: 0, column: field, message: field + '：业务内容不能使用 Excel 公式，请直接填写文字（不执行公式）。' })
+      else if (cell.kind === 'error') issues.push({ sheet, row: 0, column: field, message: field + '：单元格是 Excel 错误值（如 #REF!），请修正为文字。' })
+      else if (cell.kind === 'number' || cell.kind === 'boolean' || cell.kind === 'date') {
+        issues.push({ sheet, row: 0, column: field, message: field + '：请填写文字，不要填成' + (cell.kind === 'number' ? '数值' : cell.kind === 'boolean' ? '是／否' : '日期') + '格式。' })
+      }
+    }
   }
   if (sheet === '属性' && cells['数据类型'] !== undefined) {
     const raw = String(cells['数据类型'] ?? '').trim()
@@ -139,6 +160,34 @@ function propertyDataType(sheet: SheetName, cells: Record<string, string>): { ty
   if (base.type !== 'timeSeries') return base
   const obs = OBSERVATION_MAP[String(cells['观测值类型'] ?? '').trim()] || 'double'
   return { type: 'timeSeries', valueType: obs }
+}
+
+// ── 新旧列合并取值（20260920 表头精简）────────────────────────────────────────
+
+/** 旧规则「输出结果」单元格：规范列名优先；解析层对与规范同名的旧列按列位登记时（key 为列字母），
+ *  按旧模板固定列位（第 4 列 D）回读，保证旧四列文件的历史 output 零丢失。 */
+function legacyOutputCell(row: RawRow): RawCell | undefined {
+  return row.cells['输出结果'] ?? row.cells['D']
+}
+
+/** 旧规则「输出结果」列值（历史 output，零丢失保留；新模板无此列则为空）。 */
+function legacyOutputOf(row: RawRow): string {
+  return String(legacyOutputCell(row)?.text ?? '').trim()
+}
+
+/** 动作效果：新列「预期效果」与旧列「业务效果」合并——一侧空取另一侧，trim 后相同取一份。 */
+function effectOf(row: RawRow): string {
+  const canonical = String(row.cells['预期效果']?.text ?? '').trim()
+  const alias = String(row.cells['业务效果']?.text ?? '').trim()
+  if (canonical && alias && canonical !== alias) return canonical  // 冲突由 validateRow 阻断该批
+  return canonical || alias
+}
+
+/** 新旧效果列都非空且不同 → 阻断该批（绝不择一丢弃）。 */
+function effectConflict(row: RawRow): boolean {
+  const canonical = String(row.cells['预期效果']?.text ?? '').trim()
+  const alias = String(row.cells['业务效果']?.text ?? '').trim()
+  return !!(canonical && alias && canonical !== alias)
 }
 
 // ── 计划主入口 ──
@@ -195,7 +244,7 @@ export function buildPlan(rows: RawRow[], ctx: BuildContext): PlanOutcome {
         rowIssues.push({ sheet, row: row.row, column: f, message: f + '：请填写文字，不要填成' + (cell.kind === 'number' ? '数值' : cell.kind === 'boolean' ? '是／否' : '日期') + '格式。' })
       }
     }
-    rowIssues.push(...validateRow(sheet, cells).map(i => ({ ...i, row: row.row })))
+    rowIssues.push(...validateRow(sheet, cells, row).map(i => ({ ...i, row: row.row })))
     if (rowIssues.length) {
       issues.push(...rowIssues)
       decisions.push({ kind: sheet, sheet, row: row.row, originalName: name, finalName: '', disposition: 'error', reason: rowIssues[0].message })
@@ -221,13 +270,15 @@ export function buildPlan(rows: RawRow[], ctx: BuildContext): PlanOutcome {
         continue
       }
     }
+    // 旧模板「输出结果」有值：随导入原样保留为历史补充说明（预览可见；不阻断，不并入业务定义/规则内容）
+    if (sheet === '规则' && legacyOutputOf(row)) reason += '旧输出结果将保留为历史补充说明。'
     // 构造定义（稳定 ID 在预览时生成并固定）
     let definition: Record<string, any>
     const idFor = () => sheet === '对象' ? ctx.newObjectId() : sheet === '属性' ? ctx.newPropertyId() : sheet === '规则' ? ctx.newRuleId() : ctx.newActionId()
     if (sheet === '对象') definition = buildObject(idFor(), finalName, String(cells['业务定义'] ?? '').trim())
     else if (sheet === '属性') definition = buildSharedProperty(idFor(), finalName, String(cells['业务定义'] ?? '').trim(), propertyDataType(sheet, cells), String(cells['显示格式'] ?? ''))
-    else if (sheet === '规则') definition = buildRule(idFor(), finalName, String(cells['业务定义'] ?? '').trim(), String(cells['规则内容'] ?? '').trim(), String(cells['输出结果'] ?? '').trim())
-    else definition = buildAction(idFor(), finalName, String(cells['业务定义'] ?? '').trim(), String(cells['业务效果'] ?? '').trim())
+    else if (sheet === '规则') definition = buildRule(idFor(), finalName, String(cells['业务定义'] ?? '').trim(), String(cells['规则内容'] ?? '').trim(), legacyOutputOf(row))
+    else definition = buildAction(idFor(), finalName, String(cells['业务定义'] ?? '').trim(), effectOf(row))
     used[sheet].add(finalName)
     decisions.push({ kind: sheet, sheet, row: row.row, originalName: name, finalName, disposition, reason, definition })
   }

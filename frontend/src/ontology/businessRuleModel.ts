@@ -1,9 +1,13 @@
-// 业务规则一期（20260917）纯辅助，与 workbench/workflow.py 容错读取镜像：
-// workflow.businessRules 四字段规则 + workflow.businessRuleAssociations 单一引用集合。
+// 业务规则纯辅助，与 workbench/workflow.py 容错读取镜像：
+// workflow.businessRules 规则（2026-09-20 精简：名称/业务定义必填、规则内容选填；历史 output 零丢失）
+// + workflow.businessRuleAssociations 单一引用集合。
 // 对象类型统一为完整稳定 @id（含 mg: 前缀）；缺失键按空数组读取。
 export interface RuleAssociation { objectTypeId: string; ruleId: string }
 
-export const RULE_FIELDS: [string, string][] = [['name', '名称'], ['description', '业务定义'], ['content', '规则内容'], ['output', '输出结果']]
+// 编辑/新建表单字段（2026-09-20 精简）：不再提供「输出结果」输入；历史 output 见 RULE_LEGACY_FIELDS。
+export const RULE_FIELDS: [string, string][] = [['name', '规则名称'], ['description', '业务定义'], ['content', '规则内容']]
+/** 历史保留字段（只读展示，不参与编辑与必填校验）。 */
+export const RULE_LEGACY_FIELDS: [string, string][] = [['output', '历史补充说明（原输出结果）']]
 
 const fullType = (t: string) => (t.startsWith('mg:') ? t : 'mg:' + t)
 export const bareType = (t: string) => String(t || '').replace(/^mg:/, '')

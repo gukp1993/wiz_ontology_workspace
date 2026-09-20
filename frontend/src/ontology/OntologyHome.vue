@@ -21,7 +21,7 @@ const props=defineProps<{state:any}>()
 const emit=defineEmits<{navigate:[view:string,focus?:any];openProject:[id:string]}>()
 // Excel 模板下载与导入（20260917 需求既有能力，范围仍为四类定义）；导入后旧校验按指纹自动失效
 const importOpen=ref(false)
-const templateHref=()=>((import.meta as any).env?.BASE_URL||'/')+'templates/ontology-import-v1.xlsx'
+const templateHref=()=>((import.meta as any).env?.BASE_URL||'/')+'templates/ontology-import-rule-action-v1.xlsx'
 function downloadTemplate(){
   const a=document.createElement('a')
   a.href=templateHref(); a.download='本体模型填写模板.xlsx'

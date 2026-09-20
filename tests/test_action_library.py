@@ -1,10 +1,11 @@
-"""动作库与对象动作关联后端回归（20260917 需求）。
+"""动作库与对象动作关联后端回归（20260917 需求，20260920 字段精简后更新）。
 
-覆盖：v2 动作三字段校验与旧校验隔离、历史动作零丢失、actionAssociations 校验
+覆盖：v2 动作校验（20260920：名称/业务定义必填；预期效果 effect 选填、为空不阻断）
+与旧校验隔离、历史动作零丢失、actionAssociations 校验
 （去重/悬空引用/删除保护）、effective 关联推导（显式 ∪ 历史动作 object_type）、
 contracts.classify 变更分类（文本变化=pending、删除动作/关联=breaking、新增=compatible）、
 项目 actionBindings 校验（组合隔离、失效阻塞、未绑定不阻塞、编排存在性、未知结构零丢失）、
-发布快照携带关联与绑定、状态往返不丢字段。
+发布快照携带关联与绑定、状态往返不丢字段（R05：effect 原键读写、有值保留）。
 
 纯 python3 标准库直跑；WIZ_WORKBENCH_ROOT 挂临时数据根，真实 ontology/ 只读不碰。
 运行：python3 tests/test_action_library.py
@@ -22,7 +23,7 @@ sys.path.insert(0, str(REPO))
 TMP = Path(tempfile.mkdtemp(prefix='wiz_actions_'))
 os.environ['WIZ_WORKBENCH_ROOT'] = str(TMP)
 
-from workbench import contracts, projects, versions  # noqa: E402  （临时根就位后再 import）
+from workbench import contracts, projects, versions, workspaces  # noqa: E402  （临时根就位后再 import）
 from workbench.model_format import decode_state, encode_state  # noqa: E402
 from workbench.project_validation import validate_project  # noqa: E402
 from workbench.workflow import (definition_errors, effective_action_associations,  # noqa: E402
@@ -78,13 +79,21 @@ def proj_state(bindings=None):
             'implementations': [], 'parameters': {}}
 
 
-# --- 1. v2 动作校验（验收 1/7） ---------------------------------------------------
+# --- 1. v2 动作校验（验收 1/7；20260920 字段精简：仅名称/业务定义必填） -----------------
 
 errs = definition_errors(onto_state([dict(A2)]))
 check(not errs, '验收1 v2 动作仅三字段即可通过校验，不再要求对象/参数/条件/权限/验收', errs)
 
-bad = dict(A2, effect=' ')
-check(definition_errors(onto_state([bad])) == ['停止充放电 缺少业务效果'], 'v2 缺业务效果单独报错')
+minimal = {'id': 'act_minimal', 'name': '最小动作', 'description': '只填名称与业务定义',
+           'definitionVersion': 2, 'status': 'experimental'}
+check(not definition_errors(onto_state([dict(minimal)])),
+      'R01/R05 v2 动作缺 effect 键即可通过校验（预期效果选填）', definition_errors(onto_state([dict(minimal)])))
+for value in ('', '   ', None):
+    errs = definition_errors(onto_state([dict(A2, effect=value)]))
+    check(not errs, f'R05 v2 动作 effect 为 {value!r} 时报错已移除（空值按未填处理）', errs)
+for key, title in (('name', '名称'), ('description', '业务描述')):
+    errs = definition_errors(onto_state([dict(A2, **{key: '  '})]))
+    check(any(f'缺少{title}' in e for e in errs), f'R02 v2 动作缺 {title} 仍报错（必填项不变）', errs)
 
 for field, keep in [('criteria', None), ('permission', None)]:
     record = {k: v for k, v in LEGACY.items() if k != field}
@@ -95,6 +104,18 @@ errs = definition_errors(onto_state([dict(LEGACY)]))
 check(any('参数引用不存在的对象类型' in e for e in errs) and not any('动作定义未完整' in e for e in errs),
       '完整历史动作走旧校验路径（输入参数仍被检查；四字段齐全不再报未完整）', errs)
 check(is_action_v2(A2) and not is_action_v2(LEGACY), 'definitionVersion 区分新旧格式')
+
+# 兼容性审计最小修复：历史动作的 effect/criteria 等为 JSON null 时按「未填」报缺失，不再抛 AttributeError
+# （原实现 n.get(key,'').strip() 会让 definition_errors 崩溃，进而使保存/发布整体 500）
+for value in (None, 0, {'a': 1}, ['x']):
+    errs = definition_errors(onto_state([dict(LEGACY, effect=value, status='active')]))
+    check(any('动作定义未完整：effect' in e for e in errs),
+          f'历史动作 effect 为 {value!r} 时按未填报缺失（不崩溃、不悄悄转字符串）', errs)
+
+# v2 动作的 effect 为 null/非文本同样不阻断（选填，不参与任何 strip/比较）
+for value in (None, '', '   '):
+    check(not definition_errors(onto_state([dict(A2, effect=value)])),
+          f'R05 v2 动作 effect 为 {value!r} 时零错误', definition_errors(onto_state([dict(A2, effect=value)])))
 
 # --- 2. 关联集合校验（验收 4：删除保护；§5 去重/悬空） ------------------------------
 
@@ -230,6 +251,46 @@ check(snapshot['workflow'].get('actionAssociations') == [{'objectTypeId': 'mg:St
 
 roundtrip = decode_state(encode_state(workspaces_state))
 check(roundtrip['workflow'] == workspaces_state['workflow'], '本体状态 encode/decode 往返 workflow 零丢失')
+
+# --- R05：effect 保留原键、有值保留、无值不报错；稳定 id 与关联不变 -------------------
+
+# 无 effect 键的最小动作：保存→发布→读回，不凭空补键、不报错
+minimal_id = str(uuid4())
+minimal_state = onto_state([dict(minimal)], [{'objectTypeId': 'mg:StorageDevice', 'actionId': 'act_minimal'}])
+minimal_state['workspaceId'] = minimal_id
+minimal_state['metrics'] = {'metrics': []}
+minimal_state['rules'] = {'rules': []}
+workspaces.write_draft(minimal_state)
+minimal_back = workspaces.read_draft(minimal_id)
+check('effect' not in minimal_back['workflow']['actions'][0],
+      'R05 无 effect 的动作保存回读不补键（空值不落盘、不报错）', minimal_back['workflow']['actions'])
+check(minimal_back['workflow']['actions'][0]['id'] == 'act_minimal'
+      and minimal_back['workflow']['actionAssociations'] == [{'objectTypeId': 'mg:StorageDevice', 'actionId': 'act_minimal'}],
+      'R05 稳定 id 与对象动作关联不因字段精简改变', minimal_back['workflow'])
+minimal_entry = versions.publish(minimal_id, minimal_back, {'changeType': 'initial'})
+minimal_snapshot = versions.read_state(minimal_id, minimal_entry['version'])
+check(minimal_snapshot['workflow']['actions'][0].get('id') == 'act_minimal'
+      and 'effect' not in minimal_snapshot['workflow']['actions'][0],
+      'R05 无 effect 的动作可发布，快照同样不补键', minimal_snapshot['workflow'])
+
+# effect 有值：改名/改定义后保存，原键原值保留；发布快照同样保留
+keep_id = str(uuid4())
+keep_state = onto_state([dict(A2)], [{'objectTypeId': 'mg:StorageDevice', 'actionId': 'act_stop'}])
+keep_state['workspaceId'] = keep_id
+keep_state['metrics'] = {'metrics': []}
+keep_state['rules'] = {'rules': []}
+workspaces.write_draft(keep_state)
+edited = copy.deepcopy(keep_state)
+edited['workflow']['actions'][0].update({'name': '停止充放电（改名）', 'description': '业务定义微调'})
+workspaces.write_draft(edited, expected_token=workspaces.current_token(keep_id))
+keep_back = workspaces.read_draft(keep_id)
+check(keep_back['workflow']['actions'][0].get('effect') == A2['effect'],
+      'R05 改名/改定义保存后 effect 原键原值保留', keep_back['workflow']['actions'])
+keep_entry = versions.publish(keep_id, keep_back, {'changeType': 'pending'})
+check(versions.read_state(keep_id, keep_entry['version'])['workflow']['actions'][0].get('effect') == A2['effect'],
+      'R05 发布快照保留 effect 原值')
+check(is_action_v2(keep_back['workflow']['actions'][0]),
+      'R05 保存不改变 definitionVersion（不批量提升动作版本）')
 
 pstate = proj_state([{'id': 'r1', 'objectTypeId': 'StorageDevice', 'actionId': 'act_stop',
                       'implementation': {'kind': 'api', 'path': '/stop', 'roles': '运维', 'paramNotes': 'x'}}])

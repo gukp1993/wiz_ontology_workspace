@@ -18,6 +18,7 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-20 | **规则与动作字段精简**（20260920 需求）：规则 `name`/`description` 必填、`content` 选填、不再要求新填 `output`（旧 `output` 全程透传保留，只读展示为历史补充说明）；动作 `name`/`description` 必填、`effect` 改显示为「预期效果」且选填（存储键不变，不新建 expectedEffect）；非空值必须为文本。同步 Excel 导入协议（规则三列表头、动作「预期效果」列，旧「输出结果」/「业务效果」作别名，新旧效果都非空且不同报冲突阻断该批）与下载模板表头。校验变化：`POST /api/validate`、`/api/publish-check`、`POST /api/save` 的 `errors` 文案（详见 02 §4.9/§4.10） | POST /api/save、/api/validate、/api/publish-check（errors 内容） | zcode |
 | 2026-09-20 | **v2 功能保护冻结（本体与项目统一维护体验改版 v2，G1 契约先行）**：
 ① `/api/project-validate` 响应新增 `baseline`（本次检查实际读取的项目修订/本体引用/被引用编排修订/目录指纹与代际），并冻结依赖读取失败语义（编排读取失败→error 阻断发布；目录缓存损坏→error；存储不可用→503，均不得降级为「零问题」）；
 ② `/api/project-publish` 接入 `requestId` 幂等（复用 `wb_requests`，同 key 同内容回放 `idempotentReplay`、同 key 异内容 409，回执与发布同事务），并冻结发布依赖重验（校验后依赖被改→拒绝发布，`409` + `reason:"DEPENDENCY_CHANGED"`）；

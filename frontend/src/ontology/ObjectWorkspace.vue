@@ -852,7 +852,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
               :total="actionsList.filtered.value.length" :page="actionsList.page.value" :page-count="actionsList.pageCount.value"
               :sort-desc="actionsList.dir.value < 0"
               ariaLabel="对象动作列表" search-placeholder="搜索动作名称、定义或效果"
-              :columns="[{ label: '名称', width: '43%', sort: true }, { label: '业务效果', width: '39%' }, { label: '操作', width: '18%' }]"
+              :columns="[{ label: '名称', width: '43%', sort: true }, { label: '预期效果', width: '39%' }, { label: '操作', width: '18%' }]"
               :empty-title="actionsList.q.value ? '没有匹配的动作' : '还没有动作'"
               :empty-hint="actionsList.q.value ? '调整关键词再试试。' : '尚未添加动作，可从动作库选择此对象支持的动作。'"
               @sort="actionsList.toggleSort()" @page="actionsList.page.value += $event" @clear="actionsList.q.value = ''">
@@ -952,7 +952,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
   <OntDrawer v-if="actionDetail" :title="actionDetail.name || '未命名动作'" @close="actionDetailId = ''">
     <p v-if="actionDetail.missing" class="inline-warning">动作定义不存在（悬空引用）；只能删除本对象的关联，或到动作库重建。</p>
     <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ actionDetail.desc || '暂无业务定义。' }}</p></div>
-    <div class="ont-field"><span class="ont-field-label">业务效果</span><p>{{ actionDetail.effect || '暂未填写。' }}</p></div>
+    <div class="ont-field"><span class="ont-field-label">预期效果</span><p>{{ actionDetail.effect || '未填写' }}</p></div>
     <p v-if="actionDetail.legacy" class="ont-hint">历史格式动作：字段只读保留，可在动作定义库显式转换后编辑。</p>
     <template #footer>
       <button v-if="!actionDetail.missing" type="button" class="primary" @click="goActionLibrary">到动作定义维护</button>
@@ -960,8 +960,8 @@ async function removeNode(id: string, label: string, confirmText?: string) {
   </OntDrawer>
   <OntDrawer v-if="ruleDetail" :title="ruleDetail.name || '未命名规则'" @close="ruleDetailId = ''">
     <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ ruleDetail.description || '暂无业务定义。' }}</p></div>
-    <div class="ont-field"><span class="ont-field-label">规则内容</span><p>{{ ruleDetail.content || '暂无规则内容。' }}</p></div>
-    <div class="ont-field"><span class="ont-field-label">输出结果</span><p>{{ ruleDetail.output || '暂无输出说明。' }}</p></div>
+    <div class="ont-field"><span class="ont-field-label">规则内容</span><p>{{ ruleDetail.content || '未填写' }}</p></div>
+    <div v-if="String(ruleDetail.output || '').trim()" class="ont-field"><span class="ont-field-label">历史补充说明（原输出结果）</span><p>{{ ruleDetail.output }}</p></div>
     <template #footer>
       <button type="button" class="primary" @click="goRuleLibrary">到业务规则维护</button>
     </template>

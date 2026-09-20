@@ -13,8 +13,25 @@ export type SheetName = (typeof SHEETS)[number]
 export const HEADERS: Record<SheetName, string[]> = {
   对象: ['对象名称', '业务定义'],
   属性: ['属性名称', '业务定义', '数据类型', '观测值类型', '显示格式'],
-  规则: ['规则名称', '业务定义', '规则内容', '输出结果'],
-  动作: ['动作名称', '业务定义', '业务效果'],
+  规则: ['规则名称', '业务定义', '规则内容'],
+  动作: ['动作名称', '业务定义', '预期效果'],
+}
+/** 必填字段（20260920 字段精简：规则/动作只填名称+业务定义；属性前三项；对象两项）。 */
+export const REQUIRED_HEADERS: Record<SheetName, string[]> = {
+  对象: ['对象名称', '业务定义'],
+  属性: ['属性名称', '业务定义', '数据类型'],
+  规则: ['规则名称', '业务定义'],
+  动作: ['动作名称', '业务定义'],
+}
+/** 表头别名（旧模板列名 → 当前字段）：识别时同等接受，不改变必填与解析规则。 */
+export const HEADER_ALIASES: Record<SheetName, Record<string, string>> = {
+  对象: {}, 属性: {},
+  规则: { '输出结果': '输出结果' },   // 旧规则第四列：保留为历史 output，不参与必填
+  动作: { '业务效果': '预期效果' },   // 旧动作列名：与「预期效果」同义
+}
+/** 选填字段：缺失可接受（模板仍提供）。 */
+export const OPTIONAL_HEADERS: Record<SheetName, string[]> = {
+  对象: [], 属性: ['观测值类型', '显示格式'], 规则: ['规则内容', '输出结果'], 动作: ['预期效果'],
 }
 /** 名称列（每表第一业务列）。 */
 export const NAME_COLUMN: Record<SheetName, string> = { 对象: '对象名称', 属性: '属性名称', 规则: '规则名称', 动作: '动作名称' }
@@ -158,11 +175,27 @@ export function scanSheets(wb: any): { scan: Record<string, SheetScan>; issues: 
       if (!hidden && name) seen.set(name, (seen.get(name) || 0) + 1)
     }
     const expect = HEADERS[name]
+    const aliases = HEADER_ALIASES[name]
+    // 表头按名称识别，允许旧模板列名（别名同等接受）；必填列缺失才报错，选填列可省略。
     for (const h of expect) {
-      if ((seen.get(h) || 0) === 0) issues.push({ sheet: name, row: headerRow, column: '', message: '缺少表头「' + h + '」。无内容的表也要保留完整表头。' })
-      else if ((seen.get(h) || 0) > 1) issues.push({ sheet: name, row: headerRow, column: h, message: '表头「' + h + '」重复出现，无法识别业务列。' })
+      // 必填列缺失才算缺表头；别名列（旧「输出结果」/「业务效果」）视为同义存在。
+      const aliasPresent = Object.entries(aliases).some(([alias, canonical]) => canonical === h && (seen.get(alias) || 0) > 0)
+      const own = seen.get(h) || 0
+      if (own === 0 && !aliasPresent) {
+        if (REQUIRED_HEADERS[name].includes(h)) issues.push({ sheet: name, row: headerRow, column: '', message: '缺少表头「' + h + '」。无内容的表也要保留完整表头。' })
+      } else if (own > 1) {
+        // 只按规范列自身计数判重：新旧两列并存（旧列作别名）是合法的逐行合并场景，不算重复表头。
+        issues.push({ sheet: name, row: headerRow, column: h, message: '表头「' + h + '」重复出现，无法识别业务列。' })
+      }
     }
-    const businessCols = new Map(headers.filter(h => !h.hidden && expect.includes(h.name)).map(h => [h.name, h.column]))
+    // 业务列登记：规范列按自身名登记；别名列（含 identity 映射的旧「输出结果」）按列原名登记，
+    // 取值阶段再与规范列合并（importPlan 的 legacyOutputOf/effectOf）。
+    const businessCols = new Map<string, string>()
+    for (const h of headers) {
+      if (h.hidden) continue
+      if (expect.includes(h.name)) businessCols.set(h.name, h.column)
+      else if (Object.prototype.hasOwnProperty.call(aliases, h.name)) businessCols.set(h.name, h.column)
+    }
     const knownCols = new Set(headers.map(h => h.column))
     // 数据行：从表头下一行到 usedRange 结束；只关注业务列与「额外可见列」
     const dataRows: SheetScan['dataRows'] = []
@@ -175,7 +208,9 @@ export function scanSheets(wb: any): { scan: Record<string, SheetScan>; issues: 
         const type = cell ? String(cell.t) : 'z'
         const hasFormula = !!(cell && typeof cell.f === 'string' && cell.f.length)
         const hidden = hiddenCols.has(c + 1)
-        const hasContent = cellHasContent(cell?.v, type)
+        // 公式本身即内容：openpyxl 等工具写出的公式单元格没有缓存值（t='z' + f），
+        // 若只看值会被当成纯格式空单元格跳过，公式校验就永远不会触发。
+        const hasContent = hasFormula || cellHasContent(cell?.v, type)
         if (!hasContent) continue
         // 额外可见列（非隐藏、不在任何表头里）有内容 → 报错不丢弃
         if (!hidden && !knownCols.has(col)) {
@@ -186,8 +221,9 @@ export function scanSheets(wb: any): { scan: Record<string, SheetScan>; issues: 
         // 隐藏辅助列（模板 H 列枚举区）一律忽略：不算记录内容
         if (hidden) continue
         hasAny = true
-        const fieldName = [...businessCols.entries()].find(([, column]) => column === col)?.[0]
-        cells[fieldName || col] = { raw: cell.v, type, hasFormula, colHidden: hidden }
+        const rawName = [...businessCols.entries()].find(([, column]) => column === col)?.[0]
+        // 别名列（旧「输出结果」/「业务效果」）按原名保留在 cells 里，供取值时与规范列合并
+        cells[rawName || col] = { raw: cell.v, type, hasFormula, colHidden: hidden }
       }
       if (hasAny) dataRows.push({ row: r, cells })
     }
@@ -210,7 +246,9 @@ export function checkExtraSheets(wb: any): ParseIssue[] {
     for (let r = range.s.r; r <= range.e.r && !hasData; r++) {
       for (let c = range.s.c; c <= range.e.c; c++) {
         const cell = ws[colLetter(c + 1) + (r + 1)]
-        if (cellHasContent(cell?.v, cell ? String(cell.t) : 'z')) { hasData = true; break }
+        // 与业务表一致：无缓存值的公式单元格同样算内容（否则额外 Sheet 会被静默忽略）。
+        const formula = !!(cell && typeof cell.f === 'string' && cell.f.length)
+        if (formula || cellHasContent(cell?.v, cell ? String(cell.t) : 'z')) { hasData = true; break }
       }
     }
     if (hasData) issues.push({ sheet: name, row: 0, column: '', message: '存在模板以外的工作表「' + name + '」且含有内容，本次无法导入；请删除该工作表或使用模板。' })

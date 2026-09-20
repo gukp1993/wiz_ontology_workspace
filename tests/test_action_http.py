@@ -469,5 +469,30 @@ report = validate_project(proj_state([{'id': 'r1', 'objectTypeId': 'StorageDevic
 check(has(report['errors'], '尚未完成实例识别') and has(report['errors'], '未配置实例主键字段'),
       '无实例识别配置的数据库对象 instanceId 来源报错', report['errors'])
 
+# --- 13. 字段精简（20260920）后的动作仍可作为项目引用版本（R05） ----------------------
+
+# 只填名称/业务定义的最小 v2 动作（无 effect 键）：项目侧只按其输入与关联取数，
+# 不因缺预期的「预期效果」产生任何 error/warning/item。
+MINIMAL_ACTION = {'id': 'act_minimal', 'name': '最小动作', 'description': '只填名称与业务定义',
+                  'definitionVersion': 2, 'status': 'experimental'}
+REF_MINIMAL = onto_state([dict(MINIMAL_ACTION)], [{'objectTypeId': 'mg:StorageDevice', 'actionId': 'act_minimal'}])
+report = validate_project(proj_state([{'id': 'r1', 'objectTypeId': 'StorageDevice', 'actionId': 'act_minimal',
+                                       'implementation': v2(path=PATH_WITH_DEVICE,
+                                                            parameters=[param('deviceId', 'path', dict(INSTANCE))])}]),
+                          copy.deepcopy(REF_MINIMAL))
+check(report['errors'] == [] and report['warnings'] == [] and action_item(report)['status'] == 'valid',
+      'R05 无 effect 的动作可被项目绑定且校验零错误零警告（项目侧不读 effect）', report)
+check(action_item(report)['name'] == '动作绑定 · 储能设备 / 最小动作',
+      'R05 最小动作的绑定条目名称按名称拼接（不依赖 effect）', action_item(report))
+
+# effect 有值的动作：项目侧同理不受影响（原键读写，值保留在引用版本里）
+REF_WITH_EFFECT = onto_state([dict(ACTION, description='请求停止', effect='设备退出充放电运行状态')], ASSOC)
+report = validate_project(proj_state([{'id': 'r1', 'objectTypeId': 'StorageDevice', 'actionId': 'act_stop',
+                                       'implementation': copy.deepcopy(legal_impl)}]), copy.deepcopy(REF_WITH_EFFECT))
+check(report['errors'] == [] and action_item(report)['status'] == 'valid',
+      'R05 带 effect 的动作项目校验行为不变', report)
+check(REF_WITH_EFFECT['workflow']['actions'][0]['effect'] == '设备退出充放电运行状态',
+      'R05 校验只读：动作 effect 原值未被项目校验改写', REF_WITH_EFFECT['workflow']['actions'])
+
 print(f'\n全部通过（{len(PASSED)} 项断言）')
 shutil.rmtree(TMP, ignore_errors=True)

@@ -20,16 +20,22 @@ export const FIELDS = {
     { key: 'ownerName', label: '所属对象', type: 'text', readonly: true, hint: '创建时确定；当前不支持改变所属对象' },
   ],
   规则: [
+    // 20260920 字段精简：名称/业务定义必填、规则内容选填；历史 output 见 LEGACY_FIELDS（只读区）。
     { key: 'name', label: '规则名称', type: 'text', required: true },
-    { key: 'description', label: '业务定义', type: 'textarea', cls: 'definition', full: true },
-    { key: 'content', label: '规则内容', type: 'textarea', cls: 'definition', full: true, hint: '计算公式、口径、约束等详细内容' },
-    { key: 'output', label: '输出结果', type: 'textarea' },
+    { key: 'description', label: '业务定义', type: 'textarea', cls: 'definition', full: true, required: true },
+    { key: 'content', label: '规则内容', type: 'textarea', cls: 'definition', full: true, hint: '计算公式、口径、约束等详细内容（选填）' },
   ],
   动作: [
     { key: 'name', label: '动作名称', type: 'text', required: true },
-    { key: 'description', label: '业务定义', type: 'textarea', cls: 'definition', full: true },
-    { key: 'effect', label: '业务效果', type: 'textarea', hint: '动作要达成的业务效果（不会执行任何指令）' },
+    { key: 'description', label: '业务定义', type: 'textarea', cls: 'definition', full: true, required: true },
+    { key: 'effect', label: '预期效果', type: 'textarea', hint: '操作成功后期望出现的业务状态变化（选填，不会执行任何指令）' },
   ],
+}
+
+/** 历史只读字段（20260920 字段精简）：有值才展示，不参与编辑与必填；不进保存 payload。 */
+export const LEGACY_FIELDS = {
+  规则: [{ key: 'output', label: '历史补充说明（原输出结果）' }],
+  动作: [],
 }
 
 const DATA_TYPE_KEYS = { 文本: 'string', 数值: 'double', '是／否': 'boolean', 日期: 'date', 时间: 'dateTime', 数组: 'array', 结构体: 'struct' }
@@ -49,9 +55,10 @@ export function labelToDataType(label) {
 
 /**
  * 某类型节点的非空详情字段条目（复制自旧 fieldEntries，结构不变）。
+ * 历史只读字段（如规则 output）追加在末尾：图谱/预览的关联详情与规则库、对象页口径一致。
  */
 export function fieldEntries(type, data = {}) {
-  return (FIELDS[type] || [])
+  const entries = (FIELDS[type] || [])
     .map((spec) => {
       const v = data[spec.key]
       const isList = spec.type === 'list'
@@ -63,4 +70,10 @@ export function fieldEntries(type, data = {}) {
       return { key: spec.key, label: spec.label, isList: false, value: String(v) }
     })
     .filter(Boolean)
+  for (const spec of LEGACY_FIELDS[type] || []) {
+    const v = data[spec.key]
+    if (v == null || String(v).trim() === '') continue
+    entries.push({ key: spec.key, label: spec.label, isList: false, value: String(v), legacy: true })
+  }
+  return entries
 }

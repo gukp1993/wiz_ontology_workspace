@@ -271,11 +271,16 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
     } else if (target === '规则') {
       const r = (s.workflow.businessRules || []).find(x => x.id === domainId)
       if (!r) return { error: '定义已不存在' }
-      r.name = name; r.description = trim(data.description); r.content = trim(data.content); r.output = trim(data.output)
+      r.name = name; r.description = trim(data.description)
+      // 20260920 字段精简：content/历史 output 选填。仅当 data 显式携带该键时才写入——
+      // 表单已不再提供 output 输入，若按下标无条件赋值会把历史值清成空串（违反零丢失）。
+      if ('content' in data) r.content = trim(data.content)
+      if ('output' in data) r.output = trim(data.output)
     } else {
       const a = (s.workflow.actions || []).find(x => x.id === domainId)
       if (!a) return { error: '定义已不存在' }
-      a.name = name; a.description = trim(data.description); a.effect = trim(data.effect)
+      a.name = name; a.description = trim(data.description)
+      if ('effect' in data) a.effect = trim(data.effect)  // 预期效果选填，缺键保留原值
     }
     selfMutating = true
     emitChanged()

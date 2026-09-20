@@ -6,7 +6,9 @@
      无依赖确认后删除当前草稿定义；与图谱、对象页共用 ruleDeleteCheck 同一判断）。
      编辑为内嵌四字段表单（2026-09-20：由弹窗改为与动作/对象/属性页一致的内嵌布局；
      form-save 一次落盘、失败保留表单不假成功），编辑期间注册 T00 表单守卫；
-     详情/引用对象为只读抽屉，Esc/遮罩/关闭均可退；无复制、分类、状态与执行。 -->
+     详情/引用对象为只读抽屉，Esc/遮罩/关闭均可退；无复制、分类、状态与执行。
+     20260920 字段精简：编辑为三字段（规则名称/业务定义必填、规则内容选填），
+     历史 output 有值时只读展示为「历史补充说明」；不自动迁移、不清空。 -->
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
@@ -15,7 +17,7 @@ import OntDrawer from '../shared/OntDrawer.vue'
 import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
 import { useOntTable } from './ontList'
-import { objectsOfRule, RULE_FIELDS, rulesOf } from './businessRuleModel'
+import { objectsOfRule, RULE_FIELDS, RULE_LEGACY_FIELDS, rulesOf } from './businessRuleModel'
 import { externalDependencies, externalDependencyTarget, ruleDeleteCheck } from './dependencyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
@@ -42,16 +44,19 @@ const fieldErrors = ref<Record<string, string>>({})
 // 内嵌表单的字段展示元信息（与动作/对象页 Field 风格一致）
 const FIELD_LABEL: Record<string, string> = Object.fromEntries(RULE_FIELDS.map(([k, label]) => [k, label]))
 const FIELD_HELP: Record<string, string> = {
-  description: '这条规则解决什么业务问题、适用范围。',
-  content: '规则内容：计算公式、口径、参数等，逐条填写。',
-  output: '规则计算结果的含义与量纲。',
+  description: '这条规则解决什么业务问题、适用范围；范围与例外也写在这里。',
+  content: '规则内容（选填）：计算公式、口径、参数等，逐条填写。',
 }
 const FIELD_EXAMPLE: Record<string, string> = {
   name: '例如：储能SOC计算规则',
   description: '例如：按统一统计范围计算储能设备剩余电量占比。',
   content: '例如：soc = 剩余电量 / 额定容量 × 100。',
-  output: '例如：SOC 百分比，0–100。',
 }
+// 历史 output（20260920 字段精简）：有值时只读展示为历史补充说明；不参与编辑与必填。
+// 用独立 ref 承载（draft 只含三字段），避免被 payload 提交或影响 dirty 判定。
+const legacyOutputSource = ref('')
+const legacyOutput = computed(() => legacyOutputSource.value.trim())
+const LEGACY_LABEL = RULE_LEGACY_FIELDS[0][1]
 
 const graph = computed(() => props.state?.ontology?.['@graph'] || [])
 const typeName = (id: string) => { const n: any = graph.value.find(x => x['@id'] === id || x['@id'] === 'mg:' + id.replace(/^mg:/, '')); return n?.['rdfs:label'] || id }
@@ -111,9 +116,11 @@ function openOwners(id: string) { dialog.value = { kind: 'owners', id }; message
 function openEdit(id = '') {
   const rule: any = id ? rows.value.find((r: any) => r.id === id) : null
   if (id && !rule) return
+  // draft 只承载三字段；历史 output 单独只读展示（legacyOutput），不进 draft、不参与 dirty 比较。
   draft.value = rule
     ? Object.fromEntries(RULE_FIELDS.map(([k]) => [k, rule[k] || '']))
     : Object.fromEntries(RULE_FIELDS.map(([k]) => [k, '']))
+  legacyOutputSource.value = rule ? String(rule.output || '') : ''
   baseline = JSON.stringify(draft.value)
   fieldErrors.value = {}
   isNewRule.value = !id
@@ -146,21 +153,31 @@ function backToOrigin() {
 }
 function validate(): boolean {
   const errors: Record<string, string> = {}
-  for (const [key, label] of RULE_FIELDS) if (!String(draft.value[key] || '').trim()) errors[key] = `请填写${label}`
+  // 20260920 字段精简：仅规则名称/业务定义必填；规则内容与历史 output 选填。
+  for (const [key, label] of RULE_FIELDS) {
+    if (key === 'content') continue
+    if (!String(draft.value[key] || '').trim()) errors[key] = `请填写${label}`
+  }
   fieldErrors.value = errors
   return !Object.keys(errors).length
 }
 async function saveEdit() {
   if (saving.value || !draft.value) return
-  if (!validate()) return
+  if (!validate()) {
+    // 明确报错（R02）：EditorField 的 touched 提示只在失焦后出现，点保存必须给出可见原因。
+    message.value = Object.values(fieldErrors.value).join('；') || '请检查必填项。'
+    return
+  }
   saving.value = true
   const targetId = editId.value
   const name = draft.value.name.trim()
+  // 只提交三字段；历史 output 不进入 payload —— 保存时对既有记录原地保留（见下方 mutate）。
   const payload = Object.fromEntries(RULE_FIELDS.map(([k]) => [k, draft.value[k].trim()]))
   const list0 = props.state.workflow.businessRules = Array.isArray(props.state.workflow.businessRules) ? props.state.workflow.businessRules : []
   const existed = list0.some((x: any) => x === Object(x) && x.id === targetId)
   const r = await formSave.submitForm('ontology', () => {
     const hit = list0.find((x: any) => x === Object(x) && x.id === targetId)
+    // 已存在记录：只覆盖三字段，历史 output 与未知扩展原地保留（零丢失，不自动迁移）。
     if (hit) Object.assign(hit, payload)
     else list0.push({ id: targetId, ...payload })
     void name
@@ -250,8 +267,9 @@ async function removeRule(id: string) {
 <!-- 名称 → 只读详情抽屉（§7）：完整定义展示，不做保存；编辑走原四字段表单。 -->
 <OntDrawer v-if="detailRule" :title="detailRule.name || '未命名规则'" subtitle="业务规则详情" @close="dialog = null">
   <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ detailRule.description || '暂无业务定义。' }}</p></div>
-  <div class="ont-field"><span class="ont-field-label">规则内容</span><p>{{ detailRule.content || '暂无规则内容。' }}</p></div>
-  <div class="ont-field"><span class="ont-field-label">输出结果</span><p>{{ detailRule.output || '暂无输出说明。' }}</p></div>
+  <div class="ont-field"><span class="ont-field-label">规则内容</span><p>{{ detailRule.content || '未填写' }}</p></div>
+  <!-- 历史 output（20260920 字段精简）：有值才显示，只读补充说明，不要求用户迁移。 -->
+  <div v-if="String(detailRule.output || '').trim()" class="ont-field"><span class="ont-field-label">历史补充说明（原输出结果）</span><p>{{ detailRule.output }}</p></div>
   <template #footer>
     <button v-if="returnTo" type="button" @click="backToSource">← 返回{{ returnTo.label }}</button>
     <button v-if="focusOrigin?.type" type="button" @click="backToOrigin">返回来源对象</button>
@@ -289,14 +307,21 @@ async function removeRule(id: string) {
   <EditorHead :canvas-return="canvasReturn" back-label="← 返回规则列表" @back-to-graph="backToGraph" @close="cancelEdit"/>
   <div class="detail-heading">
     <div><span class="eyebrow">{{ isNewRule ? '新建规则' : '编辑规则' }}</span><h2>{{ draft?.name || '未命名规则' }}</h2></div>
-    <span class="status-pill">四字段业务规则</span>
+    <span class="status-pill">业务规则</span>
   </div>
   <div class="form-grid">
-    <Field v-for="[key] in RULE_FIELDS" :key="key" :label="FIELD_LABEL[key]" class="full"
+    <Field v-for="[key] in RULE_FIELDS" :key="key" :label="FIELD_LABEL[key]"
+      :class="key === 'name' ? 'full' : 'full'" :required="key !== 'content'"
       :type="key === 'name' ? 'text' : 'textarea'" :rows="key === 'content' ? 8 : 4"
-      :model-value="draft?.[key] || ''" :error="fieldErrors[key] || ''"
+      :model-value="draft?.[key] || ''"
       :help="FIELD_HELP[key] || ''" :example="FIELD_EXAMPLE[key] || ''"
       @update:model-value="onField(key, $event)"/>
+    <!-- 历史 output 只读区：有值时展示，提示可复制到规则内容后自行编辑；不参与保存。 -->
+    <div v-if="legacyOutput" class="rule-legacy full">
+      <p class="rule-legacy-label">{{ LEGACY_LABEL }}</p>
+      <p class="rule-legacy-value">{{ legacyOutput }}</p>
+      <small class="muted">历史数据保留展示，不参与校验与保存；如需调整可复制到上方「规则内容」后编辑。</small>
+    </div>
   </div>
   <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
   <div class="detail-footer">
@@ -316,4 +341,8 @@ async function removeRule(id: string) {
 /* 外部依赖行（S4）：名称下的原因副标题 */
 .ont-ref-row small{display:block;margin-top:2px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .owners-empty{padding:18px 0}
+/* 历史输出只读区（20260920）：浅底块，与可编辑字段视觉区分 */
+.rule-legacy{background:var(--paper-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin-top:4px}
+.rule-legacy-label{margin:0 0 4px;font-size:12px;font-weight:600;color:var(--muted)}
+.rule-legacy-value{margin:0 0 4px;white-space:pre-wrap;overflow-wrap:anywhere}
 </style>

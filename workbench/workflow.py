@@ -46,7 +46,7 @@ def business_rule_associations(state):
 
 
 def _business_rule_errors(state, classes):
-    """业务规则一期校验：四字段必填（发布禁止不完整规则）、标识唯一、引用存在、组合唯一。"""
+    """业务规则校验：名称/业务定义必填（20260920 精简；content/output 选填）、标识唯一、引用存在、组合唯一。"""
     w = state.get('workflow', {})
     rules = w.get('businessRules', [])
     if rules is None:
@@ -66,7 +66,8 @@ def _business_rule_errors(state, classes):
         elif rid in rule_ids:
             errors.append(f'业务规则存在重复标识：{rid}')
         rule_ids.add(rid if isinstance(rid, str) else '')
-        for key, title in (('name', '名称'), ('description', '业务定义'), ('content', '规则内容'), ('output', '输出结果')):
+        # 20260920 字段精简：名称/业务定义必填；规则内容与历史 output 选填（output 只保留不校验）
+        for key, title in (('name', '名称'), ('description', '业务定义')):
             if not str(rule.get(key) or '').strip():
                 errors.append(f'规则 {label} 缺少{title}')
     assoc = w.get('businessRuleAssociations', [])
@@ -168,8 +169,7 @@ def definition_errors(state):
                         if not any(p.get('mg:sharedProperty',{}).get('@id')==ref for p in own):errors.append(f'{label}：{t} 未满足共享属性 {ref}')
                 continue
             if kind=='actions' and is_action_v2(n):
-                # 本期简化动作：仅名称/业务描述/业务效果/状态；不再要求对象、参数、条件、权限、验收。
-                if not str(n.get('effect') or '').strip():errors.append(f'{label} 缺少业务效果')
+                # 20260920 字段精简：仅名称/业务定义必填（循环前段已校验），预期效果（effect）选填。
                 continue
             if kind=='functions' and n.get('guide_version')==2:
                 for key,title in (('input_description','输入'),('logic','计算规则'),('output_description_text','输出')):
@@ -212,7 +212,10 @@ def definition_errors(state):
 
             else:
                 for key in ('effect','criteria','permission','acceptance'):
-                    if not n.get(key,'').strip():errors.append(f'{label} 动作定义未完整：{key}')
+                    # 非文本（null/对象/数组）按「未填」报缺失，不把非字符串悄悄当文本比较（20260920 审计最小修复：
+                    # 原实现 n.get(key,'').strip() 遇 JSON null 直接 AttributeError，会让整份校验/保存/发布 500）。
+                    value=n.get(key)
+                    if not isinstance(value,str) or not value.strip():errors.append(f'{label} 动作定义未完整：{key}')
                 if n.get('relation_ref') and n['relation_ref'] not in rels:errors.append(f'{label} 链接类型引用不存在')
     dependencies={f['id']:[step.get('function_ref') for step in f.get('steps',[]) if step.get('function_ref')] for f in w.get('functions',[]) if f.get('guide_version')!=2}
     visiting=set();done=set()

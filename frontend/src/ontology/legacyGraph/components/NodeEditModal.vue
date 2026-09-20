@@ -38,6 +38,11 @@
             </select>
             <input v-else v-model="form[spec.key]" type="text" :readonly="spec.readonly" :title="spec.readonly ? spec.hint || '不可修改' : ''" />
           </div>
+          <!-- 历史只读区（20260920 字段精简）：旧 output 等保留字段有值时展示，不参与编辑与保存。 -->
+          <div v-for="spec in legacyFields" :key="'legacy-' + spec.key" class="field">
+            <label>{{ spec.label }} <span class="hint">· 历史数据，仅展示</span></label>
+            <textarea :value="props.node.data?.[spec.key] || ''" rows="3" readonly></textarea>
+          </div>
         </template>
       </div>
       <p class="err" :class="{ show: !!error }">{{ error }}</p>
@@ -53,7 +58,7 @@
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
 import { SEMANTIC_TYPES, TYPE_COLOR } from '../shared/constants'
-import { FIELDS } from '../shared/fields'
+import { FIELDS, LEGACY_FIELDS } from '../shared/fields'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -67,6 +72,8 @@ const form = reactive({})
 const error = ref('')
 
 const schema = computed(() => FIELDS[props.node.type] || [])
+// 历史只读字段（20260920 字段精简）：有值才展示，不参与编辑与保存。
+const legacyFields = computed(() => (LEGACY_FIELDS[props.node.type] || []).filter(spec => String(props.node.data?.[spec.key] || '').trim()))
 
 watch(
   () => props.show,

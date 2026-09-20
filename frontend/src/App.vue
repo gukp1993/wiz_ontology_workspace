@@ -98,7 +98,7 @@ function friendlyIssue(text: string) {
   const records = [...(state.value?.ontology?.['@graph'] || []), ...['functions', 'actions', 'interfaces'].flatMap(k => state.value?.workflow?.[k] || [])]
   return records.sort((a: any, b: any) => String(b['@id'] || b.id).length - String(a['@id'] || a.id).length).reduce((out: string, n: any) => { const id = n['@id'] || n.id; if (!id) return out; const kind = ({ 'owl:Class': '对象类型', 'owl:ObjectProperty': '链接类型', 'owl:DatatypeProperty': '属性', 'mg:SharedProperty': '共享属性', 'mg:ValueType': '值类型' } as any)[n['@type']] || '定义'; return out.split(id).join(`${n['rdfs:label'] || n.name || '未命名' + kind}（${id}）`) }, String(text))
 }
-const templateHref = ((import.meta as any).env?.BASE_URL || '/') + 'templates/ontology-import-v1.xlsx'
+const templateHref = ((import.meta as any).env?.BASE_URL || '/') + 'templates/ontology-import-rule-action-v1.xlsx'
 // 下载模板（20260918）：按钮与工作台按钮同款；此前裸链接无样式（用户反馈）
 function downloadTemplate() {
   const a = document.createElement('a')

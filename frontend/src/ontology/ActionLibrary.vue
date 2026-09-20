@@ -1,6 +1,7 @@
 <!-- 动作库（20260917 需求 §3.1；20260918 列表统一设计 §6.7/§5/§7/§8 改版）：
      取消左列表/右固定详情布局，改为全宽标准表格（OntologyList）＋名称点击只读详情抽屉
-     ＋关联对象抽屉（OntDrawer）。新格式动作（definitionVersion 2）只有名称/业务定义/业务效果
+     ＋关联对象抽屉（OntDrawer）。新格式动作（definitionVersion 2）为名称/业务定义/预期效果
+     （20260920 字段精简：前两项必填，预期效果选填；effect 存储键不变）
      三个必填业务字段；不选对象、不配输入参数/提交条件/审批/验收。历史动作只读保留（旧字段
      不丢失、不自动转换），编辑入口显式确认后转换为新格式。编辑/删除走 T00：form-guard
      离开保护 + form-save.submitForm 一次落盘。 -->
@@ -150,7 +151,8 @@ async function submit(apply: () => void, action?: { actionLabel: string; target?
 async function save() {
   if (saving.value) return
   const name = draft.value.name.trim(), desc = draft.value.description.trim(), effect = draft.value.effect.trim()
-  if (!name || !desc || !effect) { message.value = '请填写动作名称、业务定义和业务效果。'; return }
+  // 20260920 字段精简：动作名称/业务定义必填；预期效果（effect）选填。
+  if (!name || !desc) { message.value = '请填写动作名称和业务定义。'; return }
   saving.value = true
   const targetId = editId.value
   const isNew = !rows.value.some((a: any) => a.id === targetId)
@@ -211,7 +213,7 @@ function goExternal(dep: any) {
   <div class="ont-lib-head">
     <div>
       <h2>动作定义</h2>
-      <p>集中维护共享动作库：只写名称、业务定义、业务效果。对象建模中选择哪些对象支持此动作；具体执行由项目绑定配置。</p>
+      <p>集中维护共享动作库：名称、业务定义必填，预期效果选填。对象建模中选择哪些对象支持此动作；具体执行由项目绑定配置。</p>
     </div>
     <div class="ont-actions">
       <button v-if="returnTo" type="button" @click="backToSource">← 返回{{ returnTo.label }}</button>
@@ -229,7 +231,7 @@ function goExternal(dep: any) {
       :total="actionsTable.filtered.value.length" :page="actionsTable.page.value" :page-count="actionsTable.pageCount.value"
       :sort-desc="actionsTable.dir.value < 0"
       ariaLabel="动作定义列表" search-placeholder="搜索动作名称或业务定义"
-      :columns="[{ label: '名称', width: '32%', sort: true }, { label: '业务效果', width: '33%' }, { label: '关联对象', width: '18%' }, { label: '操作', width: '17%' }]"
+      :columns="[{ label: '名称', width: '32%', sort: true }, { label: '预期效果', width: '33%' }, { label: '关联对象', width: '18%' }, { label: '操作', width: '17%' }]"
       :empty-title="hasFilter ? '没有匹配的动作' : '还没有动作定义'"
       :empty-hint="hasFilter ? '调整关键词或筛选条件再试试。' : '使用右上角「＋ 新建动作」创建第一项。'"
     @sort="actionsTable.toggleSort()" @page="actionsTable.page.value += $event" @clear="clearFilters">
@@ -265,7 +267,7 @@ function goExternal(dep: any) {
   <div class="form-grid">
     <Field label="动作名称" class="full" :model-value="draft.name" required example="停止充放电" @update:model-value="draft.name = $event"/>
     <Field label="业务定义" type="textarea" class="full" :model-value="draft.description" required example="请求目标对象停止当前充电或放电。" help="这个动作有什么用途。" @update:model-value="draft.description = $event"/>
-    <Field label="业务效果" type="textarea" class="full" :model-value="draft.effect" rows="4" example="请求停止充放电，目标功率为 0，以设备反馈确认完成。" help="执行后期望发生什么；用业务语言描述，不会执行指令。" @update:model-value="draft.effect = $event"/>
+    <Field label="预期效果" type="textarea" class="full" :model-value="draft.effect" rows="4" example="设备退出充放电运行状态。" help="操作成功后期望出现的业务状态变化（选填）；不是接口响应结构，不会执行指令。" @update:model-value="draft.effect = $event"/>
   </div>
   <p class="field-help">不需要先选择作用对象（在对象建模中关联），也不维护参数清单——修改名称、调整归属等操作所需信息由项目实现配置。</p>
   <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
@@ -276,7 +278,7 @@ function goExternal(dep: any) {
 <!-- 只读详情抽屉（§7）：名称点击打开；footer 按格式分流编辑/转换入口 -->
 <OntDrawer v-if="detail" :title="detail.name || '未命名动作'" :subtitle="detailIsLegacy ? '历史动作 · 只读' : '动作定义'" @close="detailId = ''">
   <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ detail.description || '尚未填写。' }}</p></div>
-  <div class="ont-field"><span class="ont-field-label">业务效果</span><p>{{ detail.effect || '尚未填写。' }}</p></div>
+  <div class="ont-field"><span class="ont-field-label">预期效果</span><p>{{ detail.effect || '未填写' }}</p></div>
   <div class="ont-field">
     <span class="ont-field-label">关联对象</span>
     <p class="ont-hint">只读反向引用；同一份动作定义可被多个对象共用，点击定位到对象的动作页签。</p>

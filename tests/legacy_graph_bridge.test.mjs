@@ -250,6 +250,93 @@ check('B1 图谱命令：对象被契约 applicable_objects 引用时删除阻�
   assert.equal(log2.filter(x => x[0] === 'changed').length, 0, '不产生变更事件')
 })
 
+// ── 20260920 字段精简：图谱表单不再提交 output / effect 缺键（真实零丢失风险点） ──────
+const { FIELDS, LEGACY_FIELDS, fieldEntries } = await import('../frontend/src/ontology/legacyGraph/shared/fields.js')
+
+check('字段规范：规则编辑字段不再含 output，历史 output 走只读 LEGACY_FIELDS', () => {
+  const ruleKeys = FIELDS['规则'].map(s => s.key)
+  assert.deepEqual(ruleKeys, ['name', 'description', 'content'], '规则编辑字段为三字段')
+  assert.ok(FIELDS['规则'].find(s => s.key === 'description').required, '业务定义必填')
+  assert.ok(!ruleKeys.includes('output'), 'output 不在编辑字段（NodeEditModal.collectData 因此不提交该键）')
+  assert.deepEqual(LEGACY_FIELDS['规则'].map(s => s.key), ['output'], '历史 output 只在只读区展示')
+  assert.deepEqual(FIELDS['动作'].map(s => s.key), ['name', 'description', 'effect'], '动作编辑字段仍含 effect 键')
+  assert.ok(FIELDS['动作'].find(s => s.key === 'description').required, '动作业务定义必填')
+  assert.equal(FIELDS['动作'].find(s => s.key === 'effect').required, undefined, '预期效果不标必填')
+})
+
+check('图谱/预览关联详情：历史 output 以只读行展示，无值不占位（与规则库、对象页口径一致）', () => {
+  const legacy = fieldEntries('规则', { name: 'R', description: 'D', content: 'C', output: '历史输出的说明' })
+  assert.deepEqual(legacy.map(f => f.label), ['规则名称', '业务定义', '规则内容', '历史补充说明（原输出结果）'])
+  assert.equal(legacy[legacy.length - 1].value, '历史输出的说明')
+  assert.ok(legacy[legacy.length - 1].legacy, '历史行需标记，便于样式区分')
+  const noOutput = fieldEntries('规则', { name: 'R', description: 'D', content: 'C', output: '' })
+  assert.deepEqual(noOutput.map(f => f.label), ['规则名称', '业务定义', '规则内容'], '无历史值不显示历史行')
+  const blank = fieldEntries('规则', { name: 'R', description: 'D', content: 'C', output: '   ' })
+  assert.deepEqual(blank.map(f => f.label), ['规则名称', '业务定义', '规则内容'], '全空白同样不显示')
+  // 动作没有历史字段，不应被追加
+  assert.deepEqual(fieldEntries('动作', { name: 'A', description: 'D', effect: 'E' }).map(f => f.label), ['动作名称', '业务定义', '预期效果'])
+})
+
+check('图谱编辑规则：payload 无 output 键时历史 output 不被清空（改名/改定义照常）', () => {
+  const st2 = makeState()
+  const b2 = makeBridge(st2, [])
+  b2.reload(true)
+  // 模拟 NodeEditModal 保存：data 只含 FIELDS['规则'] 的键（无 output）
+  const r = b2.domainSaveNode('lg:rule:rule_soc', {
+    name: 'SOC计算规则（改名）',
+    data: { name: 'SOC计算规则（改名）', description: '新业务定义', content: '新规则内容' },
+  })
+  assert.ok(!r.error, r.error)
+  const rule = st2.workflow.businessRules.find(x => x.id === 'rule_soc')
+  assert.equal(rule.name, 'SOC计算规则（改名）', '名称已更新')
+  assert.equal(rule.description, '新业务定义', '业务定义已更新')
+  assert.equal(rule.content, '新规则内容', '规则内容已更新')
+  assert.equal(rule.output, 'y', '历史 output 原值保留，未被清空')
+})
+
+check('图谱编辑规则：output 键缺失时只跳过该键（不写入空串）', () => {
+  const st2 = makeState()
+  const b2 = makeBridge(st2, [])
+  b2.reload(true)
+  const r = b2.domainSaveNode('lg:rule:rule_soc', { name: '规则改名', data: { name: '规则改名', description: 'd' } })
+  assert.ok(!r.error, r.error)
+  const rule = st2.workflow.businessRules.find(x => x.id === 'rule_soc')
+  assert.equal(rule.output, 'y', '缺 output 键 → 保留历史值')
+  assert.equal(rule.content, 'x', '缺 content 键 → 保留历史值（字段精简后表单可能不带该键）')
+})
+
+check('图谱编辑规则：显式携带 output 键时仍按传入值写入（兼容旧调用方）', () => {
+  const st2 = makeState()
+  const b2 = makeBridge(st2, [])
+  b2.reload(true)
+  const r = b2.domainSaveNode('lg:rule:rule_soc', { name: 'SOC计算规则', data: { name: 'SOC计算规则', description: '', content: 'x', output: '  新输出说明  ' } })
+  assert.ok(!r.error, r.error)
+  assert.equal(st2.workflow.businessRules.find(x => x.id === 'rule_soc').output, '新输出说明', '显式传键时去首尾空白后写入')
+})
+
+check('图谱编辑动作：data 缺 effect 键时原值保留、不清空', () => {
+  const st2 = makeState()
+  st2.workflow.actions[0].effect = '设备退出充放电运行状态'
+  const b2 = makeBridge(st2, [])
+  b2.reload(true)
+  const r = b2.domainSaveNode('lg:action:act_stop', { name: '停止充放电', data: { name: '停止充放电', description: '新定义' } })
+  assert.ok(!r.error, r.error)
+  const act = st2.workflow.actions.find(x => x.id === 'act_stop')
+  assert.equal(act.effect, '设备退出充放电运行状态', 'effect 缺键保留原值（预期效果选填）')
+  assert.equal(act.definitionVersion, 2, 'definitionVersion 不变（不批量升级动作格式）')
+  assert.equal(st2.workflow.actionAssociations.length, 1, '对象动作关联不变')
+})
+
+check('图谱编辑动作：显式传空 effect 键时按传入值清空（表单显式清空语义保留）', () => {
+  const st2 = makeState()
+  st2.workflow.actions[0].effect = '设备退出充放电运行状态'
+  const b2 = makeBridge(st2, [])
+  b2.reload(true)
+  const r = b2.domainSaveNode('lg:action:act_stop', { name: '停止充放电', data: { name: '停止充放电', description: 'd', effect: '' } })
+  assert.ok(!r.error, r.error)
+  assert.equal(st2.workflow.actions.find(x => x.id === 'act_stop').effect, '', '显式空值仍可写入（键存在才写）')
+})
+
 // ── 撤销：换回真实领域模型 ────────────────────────────────────────────────
 check('R06/§3.2 撤销快照恢复真实模型（非仅画布）', () => {
   const snap = bridge.captureUndo()

@@ -1,9 +1,10 @@
-"""业务规则管理一期后端回归（20260917）。
+"""业务规则管理一期后端回归（20260917，20260920 字段精简后更新）。
 
 覆盖：workflow.businessRules / businessRuleAssociations 容错读取（老数据按空数组）、
-四字段必填校验、标识唯一、引用存在性与组合唯一（删除保护）、contracts.classify
+必填校验（20260920：名称/业务定义必填；规则内容与历史 output 选填、空值不阻断）、
+标识唯一、引用存在性与组合唯一（删除保护）、contracts.classify
 （新增=兼容、删除=破坏性、正文/定义/输出变化=待确认、仅名称变化=兼容）、
-草稿持久化与发布快照往返、既有 workflow 字段零丢失。
+草稿持久化与发布快照往返（R04：旧 output 保存发布后原值保留）、既有 workflow 字段零丢失。
 
 纯 python3 标准库直跑；WIZ_WORKBENCH_ROOT 挂临时数据根，真实 ontology/ 只读不碰。
 运行：python3 tests/test_business_rules.py
@@ -78,13 +79,23 @@ legacy_errs = definition_errors(legacy)
 check(any('旧动作 缺少业务描述' in e for e in legacy_errs) and not any('业务规则' in e or '对象规则' in e for e in legacy_errs),
       'A11 老数据既有校验不受影响，且不产生规则类错误', legacy_errs)
 
-# --- 四字段校验 ------------------------------------------------------------------
+# --- 必填字段校验（20260920 字段精简：名称/业务定义必填，规则内容与历史 output 选填） -----
 
-check(not definition_errors(onto_state()), '四字段齐全的规则与合法关联通过校验')
-for key, title in (('name', '名称'), ('description', '业务定义'), ('content', '规则内容'), ('output', '输出结果')):
+check(not definition_errors(onto_state()), '名称/业务定义齐全的规则与合法关联通过校验')
+for key, title in (('name', '名称'), ('description', '业务定义')):
     bad = dict(RULE, **{key: '  '})
     errs = definition_errors(onto_state([bad], []))
-    check(any(f'缺少{title}' in e for e in errs), f'缺 {title} 报错（发布禁止不完整规则）', errs)
+    check(any(f'缺少{title}' in e for e in errs), f'缺 {title} 报错（R02：必填项仍在发布前拦截）', errs)
+
+# R01/R02：规则内容（content）与历史 output 为空/空白/null/整键缺失都不阻断校验
+for key, title in (('content', '规则内容'), ('output', '输出结果')):
+    for value in ('', '   ', None):
+        errs = definition_errors(onto_state([dict(RULE, **{key: value})], []))
+        check(not errs, f'{title} 为 {value!r} 时不产生校验错误（选填）', errs)
+    missing = {k: v for k, v in RULE.items() if k != key}
+    check(not definition_errors(onto_state([missing], [])), f'{title} 整个键缺失也不阻断校验', definition_errors(onto_state([missing], [])))
+check(not definition_errors(onto_state([{'id': 'rule-min', 'name': '最小规则', 'description': '只填必填两项'}], [])),
+      'R01 只填名称+业务定义的新规则即可保存/发布（content/output 均无键）')
 
 dup = dict(RULE, name='另一条')
 errs = definition_errors(onto_state([dict(RULE), dup], []))
@@ -157,6 +168,47 @@ check(older['workflow']['businessRules'] == [dict(RULE)] and again['workflow']['
 
 roundtrip = decode_state(encode_state(onto_state()))
 check(roundtrip['workflow'] == onto_state()['workflow'], 'encode/decode 状态往返 workflow 零丢失')
+
+# --- R04：旧 output 零丢失（改名/保存/发布/配置导出导入后原值保留；只读历史区可见） --------
+
+legacy_rule = dict(RULE)                       # 含非空 output 的历史规则
+keep_id = str(uuid4())
+keep_state = onto_state([legacy_rule], [{'objectTypeId': 'mg:StorageDevice', 'ruleId': 'rule-1'}])
+keep_state['workspaceId'] = keep_id
+keep_state['metrics'] = {'metrics': []}
+keep_state['rules'] = {'rules': []}
+workspaces.write_draft(keep_state)
+
+# 前端表单只提交三字段（RULE_FIELDS），历史 output 由 Object.assign 之外的键原地保留：
+# 这里按同一语义构造「改名 + 改业务定义后保存」的下一状态。
+edited = copy.deepcopy(keep_state)
+edited['workflow']['businessRules'][0].update({'name': '改名后的规则', 'description': '定义微调'})
+workspaces.write_draft(edited, expected_token=workspaces.current_token(keep_id))
+keep_back = workspaces.read_draft(keep_id)
+check([r.get('output') for r in keep_back['workflow']['businessRules']] == [legacy_rule['output']],
+      'R04 改名/改定义保存后旧 output 原值保留（未传该键时不清空）', keep_back['workflow']['businessRules'])
+check([r.get('content') for r in keep_back['workflow']['businessRules']] == [legacy_rule['content']],
+      'R04 保存同时保留历史规则内容', keep_back['workflow']['businessRules'])
+
+keep_entry = versions.publish(keep_id, keep_back, {'changeType': 'pending'})
+keep_snapshot = versions.read_state(keep_id, keep_entry['version'])
+check(keep_snapshot['workflow']['businessRules'][0].get('output') == legacy_rule['output'],
+      'R04 发布快照保留旧 output', keep_snapshot['workflow']['businessRules'])
+
+# 配置导出/导入走的编码链路（encode_state 本体形态 + 事件流）不得改写 workflow 里的 output
+exported = encode_state(keep_back)
+check(json.dumps(exported['workflow'], sort_keys=True, ensure_ascii=False)
+      == json.dumps(keep_back['workflow'], sort_keys=True, ensure_ascii=False),
+      'R04 encode_state（导出/入库形态）不改写 workflow 历史字段')
+check(decode_state(exported)['workflow']['businessRules'][0].get('output') == legacy_rule['output'],
+      'R04 导出后再解码，旧 output 仍在', decode_state(exported)['workflow']['businessRules'])
+
+# 只读历史区可见性判据：非空才展示（前端 legacyOutput/NodeEditModal 同口径）；空白不显示
+check(all(str(r.get('output') or '').strip() for r in keep_back['workflow']['businessRules']),
+      'R04 历史区展示判据：有非空 output 才显示历史补充说明')
+blank_output = dict(RULE, output='   ')
+check(not definition_errors(onto_state([blank_output], [])) and not str(blank_output['output']).strip(),
+      'R04 空白 output 不阻断校验（历史区按空白不显示）')
 
 print(f'\n{len(PASSED)} 项断言全部通过')
 shutil.rmtree(TMP, ignore_errors=True)

@@ -1,4 +1,4 @@
-<!-- 业务规则弹窗（20260917 一期）：detail=只读四字段详情；edit=四字段编辑表单。
+<!-- 业务规则弹窗（历史组件，当前无调用方）：detail=只读详情；edit=三字段编辑（20260920 精简）。
      20260917 浅色改版：外层对齐全局弹窗（.modal-backdrop + .modal-card dialog-md，
      宽度 620px，内边距/滚动由全局 .modal-card 提供），底部按钮区用全局 .dialogtools
      （右对齐：查看=关闭+编辑，编辑=取消+保存），不再自定义卡片头/脚与宽度。
@@ -7,7 +7,7 @@
      allowEdit 控制详情底部是否显示"编辑"入口（规则库 true，对象规则页签只读 false）。 -->
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { RULE_FIELDS } from './businessRuleModel'
+import { RULE_FIELDS, RULE_LEGACY_FIELDS } from './businessRuleModel'
 
 const props = defineProps<{ mode: 'detail' | 'edit'; rule: any; isNew?: boolean; saving?: boolean; errors?: Record<string, string>; allowEdit?: boolean }>()
 const emit = defineEmits(['close', 'save', 'edit', 'field'])
@@ -32,11 +32,13 @@ function rowsOf(key: string) { return key === 'content' ? 10 : 3 }
 
     <template v-if="mode === 'detail'">
       <section v-for="[key, label] in RULE_FIELDS" :key="key" class="brc-readfield"><h3>{{ label }}</h3><p>{{ rule?.[key] || '—' }}</p></section>
+      <!-- 历史 output 只读展示（20260920 字段精简：不再作为输入项） -->
+      <section v-if="rule?.output" class="brc-readfield"><h3>{{ RULE_LEGACY_FIELDS[0][1] }}</h3><p>{{ rule.output }}</p></section>
       <div class="dialogtools"><button type="button" @click="emit('close')">关闭</button><button v-if="allowEdit" type="button" class="primary" @click="emit('edit')">编辑</button></div>
     </template>
 
     <form v-else ref="formEl" @submit.prevent="emit('save')">
-      <label v-for="[key, label] in RULE_FIELDS" :key="key" class="brc-field">{{ label }} <span class="required-mark" aria-hidden="true">*</span>
+      <label v-for="[key, label] in RULE_FIELDS" :key="key" class="brc-field">{{ label }} <span v-if="key !== 'content'" class="required-mark" aria-hidden="true">*</span>
         <input v-if="key === 'name'" :data-field="key" :value="rule?.[key] || ''" autocomplete="off" :aria-invalid="!!fieldError(key)" @input="input(key, $event)">
         <textarea v-else :data-field="key" :value="rule?.[key] || ''" :rows="rowsOf(key)" :aria-invalid="!!fieldError(key)" @input="input(key, $event)"></textarea>
         <small v-if="fieldError(key)" class="field-error" role="alert">{{ fieldError(key) }}</small>
@@ -47,7 +49,7 @@ function rowsOf(key: string) { return key === 'content' ? 10 : 3 }
 </div>
 </template>
 <style scoped>
-/* 仅保留四字段排版；卡片外观/按钮区走全局 .modal-card/.dialogtools。 */
+/* 三字段编辑 + 历史只读区排版；卡片外观/按钮区走全局 .modal-card/.dialogtools。 */
 .brc-readfield{margin-top:18px}
 .brc-readfield:first-of-type{margin-top:4px}
 .brc-readfield h3{margin:0 0 6px;font-size:14px}

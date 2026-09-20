@@ -172,10 +172,11 @@ export function buildGraphModel(state: any): GraphModel {
     const refs = ruleAssociationsOf(state).filter(a => trim(a.ruleId) === id)
     const detail: DetailField[] = [
       { label: '业务定义', value: trim(r.description) },
-      { label: '规则内容', value: trim(r.content) },
-      { label: '输出结果', value: trim(r.output) },
+      { label: '规则内容', value: trim(r.content) || '未填写' },
       { label: '引用对象数', value: String(refs.length) },
     ]
+    // 历史 output（20260920 字段精简）：有值才展示为历史补充说明，与资产库/对象页口径一致。
+    if (trim(r.output)) detail.splice(2, 0, { label: '历史补充说明（原输出结果）', value: trim(r.output) })
     const nav: NavTarget[] = [{ label: '打开规则定义', view: 'rules', focus: { definition: id } }]
     const owner = refs.map(a => fullTypeId(a.objectTypeId)).find(oid => objectIds.has(oid))
     if (owner) nav.unshift({ label: '打开所属对象规则页签', view: 'objects', focus: { type: owner, tab: 'rules' } })
@@ -186,7 +187,7 @@ export function buildGraphModel(state: any): GraphModel {
     const refs = effectiveAssociations(state).filter(r => trim(r.actionId) === id)
     const detail: DetailField[] = [
       { label: '业务定义', value: trim(a.description) },
-      { label: '业务效果', value: trim(a.effect) },
+      { label: '预期效果', value: trim(a.effect) },
       { label: '关联对象数', value: String(refs.length) },
     ]
     const nav: NavTarget[] = [{ label: '打开动作定义', view: 'actions', focus: { definition: id } }]

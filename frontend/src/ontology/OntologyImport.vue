@@ -188,7 +188,7 @@ const extraIssues = computed<ParseIssue[]>(() => {
   return plan.value.issues.filter(i => i.row === 0 || !covered.has(i.sheet + '#' + i.row))
 })
 
-function templateHref() { return (import.meta as any).env?.BASE_URL ? (import.meta as any).env.BASE_URL + 'templates/ontology-import-v1.xlsx' : '/templates/ontology-import-v1.xlsx' }
+function templateHref() { return (import.meta as any).env?.BASE_URL ? (import.meta as any).env.BASE_URL + 'templates/ontology-import-rule-action-v1.xlsx' : '/templates/ontology-import-rule-action-v1.xlsx' }
 function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) + ' KB' : (n / 1024 / 1024).toFixed(2) + ' MB' }
 
 async function requestClose() {
