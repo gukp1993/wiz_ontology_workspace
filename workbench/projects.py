@@ -545,44 +545,15 @@ from workbench.project_validation import validate_project  # noqa: F401,E402  (�
 
 def upgrade_check(state, current_state, target_state):
     from workbench.contracts import classify
+    from workbench.project_impact import binding_impacts
     diff = classify(current_state, target_state)
-    bindings = state.get('bindings', {})
-    implementations = state.get('implementations', [])
-    impacts = []
+    # 绑定级影响由 project_impact 纯函数按稳定身份匹配（2026-09-20 v2）：
+    # 稳定 id 精确匹配、共享属性继承（sharedPropertyId）与 valueTypeId 计入，
+    # 修正旧子串/endswith 匹配的误报（删未绑定定义不再牵连同名属性）与漏报（共享继承/相似 id）。
+    impacts, matched = binding_impacts(state, current_state, target_state, diff['reasons'])
     for reason in diff['reasons']:
         area, rid, severity, text = reason['area'], reason['id'], reason['severity'], reason['text']
-        matched = False
-        if area in ('objectTypes', 'linkTypes', 'properties', 'sharedProperties', 'valueTypes'):
-            for b in bindings.get('object_bindings', []):
-                if area == 'objectTypes' and bare(rid) == b.get('object_type'):
-                    impacts.append({'area': 'objectBinding', 'ref': b.get('object_type'), 'severity': severity,
-                                    'text': text + '；此对象的数据映射需要核对'})
-                    matched = True
-                for prop in b.get('properties', {}):
-                    if area in ('properties', 'sharedProperties') and (prop in rid or rid in prop or bare(rid).endswith(prop)):
-                        impacts.append({'area': 'propertyMapping', 'ref': f"{b.get('object_type')}.{prop}", 'severity': severity,
-                                        'text': text + '；此属性的来源绑定需要核对'})
-                        matched = True
-                for r in b.get('relations', []):
-                    if area == 'linkTypes' and bare(rid) == r.get('relation'):
-                        impacts.append({'area': 'linkMapping', 'ref': f"{b.get('object_type')}.{r.get('relation')}", 'severity': severity,
-                                        'text': text + '；此链接映射需要核对'})
-                        matched = True
-        if area == 'contracts':
-            for impl in implementations:
-                if isinstance(impl, dict) and impl.get('contractId') == rid:
-                    impacts.append({'area': 'implementation', 'ref': impl.get('id'), 'severity': severity,
-                                    'text': text + '；此实现需要核对或重写'})
-                    matched = True
-            for b in bindings.get('object_bindings', []):
-                for prop, value in (b.get('properties') or {}).items():
-                    if isinstance(value, dict) and value.get('kind') == 'computed':
-                        impl = next((i for i in implementations if isinstance(i, dict) and i.get('id') == value.get('implementation')), None)
-                        if impl and impl.get('contractId') == rid:
-                            impacts.append({'area': 'propertySource', 'ref': f"{b.get('object_type')}.{prop}", 'severity': severity,
-                                            'text': text + '；此属性的计算来源需要核对'})
-                            matched = True
-        if not matched and severity in ('breaking', 'pending'):
+        if (area, rid) not in matched and severity in ('breaking', 'pending'):
             impacts.append({'area': 'ontology', 'ref': rid, 'severity': severity, 'text': text + '；本项目当前配置未直接引用'})
     # 项目说明失效（2026-09-19）：说明指向的对象/属性/链接/动作在目标版本中消失 → 定位提示，不静默丢失
     from workbench import mapping_descriptions

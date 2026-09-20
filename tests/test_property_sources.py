@@ -60,7 +60,8 @@ def base_graph(soc_series=False):
             prop_node('device_code', 'string'), prop_node('temp_avg')]
 
 
-def validate(properties, graph=None, functions=None, implementations=None, parameters=None, catalogs=None):
+def validate(properties, graph=None, functions=None, implementations=None, parameters=None,
+             catalogs=None, degraded_catalogs=None):
     binding = {'object_type': 'Station', 'connection': 'mysql_main', 'table': 'station', 'primary_key': 'id',
                'title_key': '', 'properties': properties, 'relations': []}
     state = {'projectId': 'p1', 'name': '校验测试项目', 'ontologyId': 'storage', 'ontologyVersion': '1',
@@ -72,7 +73,7 @@ def validate(properties, graph=None, functions=None, implementations=None, param
              'parameters': parameters or {}}
     ontology = {'ontology': {'@context': {}, '@graph': base_graph() if graph is None else graph},
                 'workflow': {'functions': functions or []}}
-    return projects.validate_project(state, ontology)
+    return projects.validate_project(state, ontology, degraded_catalogs=degraded_catalogs)
 
 
 def soc_series_config():
@@ -320,6 +321,48 @@ def t_unknown_kind():
         f'非字符串非对象应报格式无效：{report2["errors"]}'
 
 
+# --- f) 属性键不存在 / 字段目录核对 / 目录缓存读取失败（2026-09-20 v2） -------------
+
+def t_property_key_missing_blocked():
+    """属性键在引用版本中不存在（被删除/改名）→ error 阻断，原配置保留。"""
+    report = validate({'ghost_prop': 'rated_power'})
+    assert any('引用的版本中不存在此属性' in e for e in source_errors(report, 'ghost_prop')), \
+        f'属性键不存在应 block：{report["errors"]}'
+    item = source_item(report, 'ghost_prop')
+    assert item['status'] == 'invalid' and '引用的版本中不存在此属性' in item['issues'], item
+    # 存在的属性不受影响（0／false／空串边界不误拒：合法配置零错误）
+    ok = validate({'rated_power': 'rated_power', 'device_code': 'device_code'})
+    assert ok['errors'] == [], f'存在属性的合法配置不得报错：{ok["errors"]}'
+
+
+def t_field_missing_with_catalog_blocked():
+    """field/related 来源字段：有目录但字段不存在 → error；目录缺失保持现状不报。"""
+    # 身份表字段 device_code 存在；目录中不存在的字段应 block
+    bad = validate({'rated_power': {'kind': 'field', 'field': 'no_such_field'}})
+    assert any('不在表' in e and 'no_such_field' in e for e in source_errors(bad, 'rated_power')), \
+        f'目录中不存在的字段应 block：{bad["errors"]}'
+    assert source_item(bad, 'rated_power')['status'] == 'invalid'
+    # 目录缺失（{}）时保持现状：不报字段错误（表结构过期另有提示路径）
+    no_catalog = validate({'rated_power': {'kind': 'field', 'field': 'no_such_field'}}, catalogs={})
+    assert not any('no_such_field' in e for e in source_errors(no_catalog, 'rated_power')), \
+        f'无目录时不应报字段缺失：{no_catalog["errors"]}'
+
+
+def t_degraded_catalogs_param():
+    """degraded_catalogs 形参：每个损坏连接一条 error（含 id/名称）+ connection 条目；默认 None 不变。"""
+    base = validate({'rated_power': 'rated_power'})
+    plain = validate({'rated_power': 'rated_power'}, degraded_catalogs=None)
+    assert plain == base, 'degraded_catalogs=None 时结果必须与既有行为逐字节一致'
+    with_degraded = validate({'rated_power': 'rated_power'}, degraded_catalogs=['mysql_main'])
+    # 文案含连接名称或 id（路由层兜底的等价口径：优先名称、无名回退 id）
+    assert any('目录缓存读取失败' in e and ('mysql_main' in e or '主数据库' in e)
+               for e in with_degraded['errors']), f'损坏连接应 block：{with_degraded["errors"]}'
+    conn_items = [i for i in with_degraded['items'] if i['kind'] == 'connection' and i['id'] == 'mysql_main']
+    assert conn_items and conn_items[-1]['status'] == 'invalid', f'应有 connection invalid 条目：{conn_items}'
+    # 名称来自项目连接配置（非 id 回退）
+    assert '主数据库' in conn_items[-1]['issues'][0], f'文案应含连接名称：{conn_items[-1]}'
+
+
 if __name__ == '__main__':
     run('a1) 旧字符串字段映射语义不破坏（通过）', t_legacy_string_mapping)
     run('b1) 合法 database 长表 SOC（timeSeries 目标）通过', t_database_series_valid)
@@ -342,6 +385,9 @@ if __name__ == '__main__':
     run('d1) computed 声明形态缺省 scalar 与序列目标不匹配 block', t_computed_shape_mismatch)
     run('d2) computed 声明形态匹配通过', t_computed_shape_match)
     run('e1) 未知 kind 报「属性来源方式无效」／非法结构报格式无效', t_unknown_kind)
+    run('f1) 属性键在引用版本中不存在 block，原配置保留', t_property_key_missing_blocked)
+    run('f2) field 来源字段有目录但不存在 block；无目录保持现状', t_field_missing_with_catalog_blocked)
+    run('f3) degraded_catalogs 形参生效（None 时逐字节不变）', t_degraded_catalogs_param)
     if FAILURES:
         print(f'\n{len(FAILURES)} 项失败：{", ".join(FAILURES)}')
         sys.exit(1)

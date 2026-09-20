@@ -4,6 +4,15 @@
 提示）、计算实现、属性来源（含 database match{kind:'property'} 依赖环检测）、链接映射、
 契约覆盖（实现输出环 + 被引用未实现警告）。
 
+依赖读取与失效（2026-09-20 v2 冻结，见接口文档 03 分册 §2.2/§3.3）：
+- `degraded_catalogs`（目录缓存损坏的连接 id 列表，由路由层依据存储层结果传入）：
+  每个连接追加一条 error 阻断发布；None/空 = 与既有行为逐字节一致。
+- 编排依赖经 `flows.dependency_state` 三态消费：missing 沿用既有「不存在或已删除」文案；
+  unreadable（含存储不可用，由 dependency_state 归一为 unreadable）一律 fail-closed
+  （error 阻断发布，绝不当「不存在」）。动作绑定的 `flows.listing()` 读取失败同样
+  fail-closed：`storage.StorageUnavailable` 原样抛出（路由 503），其他失败按行报 error。
+  校验只读，不删除、不改写任何原配置。
+
 B2 为机械提取：循环顺序、追加顺序、字符串文案、status 判定与原实现完全一致，
 行为修复不属于本包（由金样 tests/fixtures/validation_golden.json 锁定）。
 注意：开头仍按现存行为调用 derive_display_names 就地改写 state 的 title_key
@@ -25,6 +34,8 @@ from workbench.query_rules import is_query_rule, query_rule_errors, rule_input_e
 from workbench import action_http
 from workbench import calc_functions
 from workbench import flows
+
+from workbench import storage
 
 from workbench.contracts import is_contract
 from workbench.properties import effective, signature_data_type
@@ -69,7 +80,13 @@ def _inline_constant_ok(data_type, value):
     return True
 
 
-def validate_project(state, ontology_state):
+def validate_project(state, ontology_state, degraded_catalogs=None):
+    """项目草稿校验总入口（只读；不改写除 derive_display_names 既有改写外的任何数据）。
+
+    `degraded_catalogs`：目录缓存损坏（读取失败）的连接 id 列表，由路由层依据存储层
+    读取结果传入（03 分册 §2.2）。每个 id 追加一条 error（含连接 id/名称）+ 一条
+    `connection` items 条目阻断发布；`None`/空列表 = 与既有行为逐字节一致（金样不变）。
+    """
     derive_display_names(state, ontology_state)
     graph = ontology_state['ontology']['@graph']
     classes = {n['@id'] for n in graph if n['@type'] == 'owl:Class'}
@@ -98,7 +115,34 @@ def validate_project(state, ontology_state):
     _check_contract_coverage(ctx, errors, warnings)
     _check_action_bindings(ctx, errors, warnings, items)
     _check_mapping_descriptions(ctx, errors, warnings, items)
-    return {'errors': list(dict.fromkeys(errors)), 'warnings': list(dict.fromkeys(warnings)), 'items': items}
+    errors = list(dict.fromkeys(errors))
+    warnings = list(dict.fromkeys(warnings))
+    if degraded_catalogs:
+        ids = (degraded_catalogs if isinstance(degraded_catalogs, (list, tuple, set, frozenset))
+               else [degraded_catalogs])
+        _append_degraded_catalog_issues(state, ids, errors, items)
+    return {'errors': errors, 'warnings': warnings, 'items': items}
+
+
+def _append_degraded_catalog_issues(state, degraded_catalogs, errors, items):
+    """目录缓存损坏的连接：逐条 error + connection 条目（03 分册 §2.2，fail-closed）。
+
+    文案与 items 结构与路由层兜底 `_validate_with_degraded` 完全一致（B 落地后由本函数
+    统一出报告，路由层不再自行追加）。绝不静默跳过：跳过会让用户在目录读取失败时
+    把配置发布出去。
+    """
+    names = {str(c.get('id')): str(c.get('name') or c.get('id') or '')
+             for c in (state.get('connections') or {}).get('connections') or []
+             if isinstance(c, dict)}
+    for cid in degraded_catalogs:
+        label = names.get(str(cid)) or str(cid)
+        text = (f'数据连接 {label}：目录缓存读取失败（缓存内容损坏），'
+                f'无法核对表与字段；请重新刷新该连接的目录后再发布。')
+        if text not in errors:
+            errors.append(text)
+        items.append({'kind': 'connection', 'id': str(cid),
+                      'name': f'数据连接 · {label}',
+                      'status': 'invalid', 'issues': [text]})
 
 
 def _check_mapping_descriptions(ctx, errors, warnings, items):
@@ -579,7 +623,8 @@ def _check_property_sources(ctx, errors, warnings, items):
 
     # 本对象内 database 属性经 match {kind:'property'} 形成依赖图，用于循环依赖检测（§3 规则 5）。
     dep_edges = {}
-    flow_states = {}  # flowId → 编排草稿状态（None=不存在/已删除）；kind='flow' 校验共享缓存
+    # flowId → flows.dependency_state 三态结果（found/missing/unreadable），同一编排多属性引用共享缓存
+    flow_deps = {}
     for b in object_bindings:
         dep_ot = b.get('object_type', '')
         dep_props = b.get('properties') or {}
@@ -649,6 +694,10 @@ def _check_property_sources(ctx, errors, warnings, items):
             kind = value.get('kind') if isinstance(value, dict) else ('string' if isinstance(value, str) else '?invalid')
             node = property_node(graph, ot, prop)
             shape = value_shape(node, graph) if node is not None else 'scalar'
+            if node is None:
+                # 属性键在引用的本体版本中不存在（被删除或改名）：该属性绑定已失效、阻断发布。
+                # 原配置原样保留（只读校验），由用户在绑定处重新选择或确认移除。
+                blocking.append('引用的版本中不存在此属性')
             # 目标形态 timeSeries 的属性只允许 database 或 computed（§3 规则 8）。
             if shape == 'timeSeries':
                 if kind == 'redis':
@@ -943,29 +992,51 @@ def _check_property_sources(ctx, errors, warnings, items):
                         if ref.get('kind') == 'property' and ref.get('id') not in (node.get('mg:sharedProperty', {}).get('@id'), node['@id']):
                             warnings.append(f'属性 {prop} 的计算输出指向另一个属性定义，请核对业务口径')
             elif kind == 'flow':
-                # 函数编排取值（2026-09-18）：只读引用编排工作区的 flowId + 输出 + 输入绑定；
-                # 状态按 flowId 缓存（同一编排可被多个属性引用），删除的编排按不存在处理。
+                # 函数编排取值（2026-09-18）：只读引用编排工作区的 flowId + 输出 + 输入绑定。
+                # 依赖读取三态（2026-09-20 v2 冻结，见 03 分册 §2.2）：按 flowId 缓存
+                # flows.dependency_state —— missing 沿用「不存在或已删除」；unreadable
+                # 一律 fail-closed 报 error（绝不与「不存在」混同、也不跳过该检查后放行）；
+                # found 用其 state。软删除（status=deleted）按不存在处理。
                 flow_id = str(value.get('flow', '') or '').strip()
                 if not flow_id:
                     blocking.append('未选择函数编排')
                 else:
-                    if flow_id not in flow_states:
-                        try:
-                            state = flows.read_draft(flow_id)
-                        except ValueError:
-                            state = None
-                        if not isinstance(state, dict) or state.get('status') == 'deleted':
-                            state = None
-                        flow_states[flow_id] = state
-                    blocking.extend(_check_flow_binding(value, flow_states[flow_id], b, ot, prop,
-                                                        graph, node, shape, dep_edges))
+                    if flow_id not in flow_deps:
+                        flow_deps[flow_id] = flows.dependency_state(flow_id)
+                    dep = flow_deps[flow_id]
+                    dep_status = dep.get('status')
+                    flow_state = dep.get('state') if dep_status == 'found' else None
+                    if isinstance(flow_state, dict) and flow_state.get('status') == 'deleted':
+                        flow_state = None     # 软删除按不存在处理（文案与既有行为一致）
+                        dep_status = 'missing'
+                    if dep_status == 'unreadable':
+                        reason = str(dep.get('reason') or '读取失败')
+                        blocking.append(f'引用的函数编排 {flow_id}：读取失败（{reason}），'
+                                        f'暂不能校验；请稍后重试')
+                    else:
+                        blocking.extend(_check_flow_binding(value, flow_state, b, ot, prop,
+                                                            graph, node, shape, dep_edges))
             elif kind in ('field', 'related'):
                 source_id = str(value.get('source', '') or '')
                 source = sources.get(source_id) if source_id else None
                 if source_id and source is None:
                     blocking.append('属性引用的数据来源不存在')
-                if not str(value.get('field', '') or '').strip():
+                field_name = str(value.get('field', '') or '')
+                if not field_name.strip():
                     pending.append('未填写字段名')
+                elif not source_id or source is not None:
+                    # 有目录（该表字段目录可读）时字段必须命中；目录缺失/未刷新（None）保持现状不报
+                    # （表级过期提示由数据来源/对象映射分支给出）。换表后原配置保留，新表若恰好
+                    # 有同名字段也不自动确认——仍按目录逐项核对。
+                    if source is not None:
+                        src_conn = str(source.get('connection') or b.get('connection', '') or '')
+                        src_table = str(source.get('table') or '')
+                    else:
+                        src_conn = str(b.get('connection', '') or '')
+                        src_table = str(b.get('table', '') or '')
+                    src_fields = catalog_fields(catalog_tables(catalogs, src_conn), src_table)
+                    if src_fields is not None and field_name not in src_fields:
+                        blocking.append(f'引用的字段「{field_name}」不在表「{src_table}」的目录中，请重新选择字段')
                 if source is not None and source.get('cardinality') == 'many':
                     selection = value.get('selection')
                     if selection not in ('latest', 'sum', 'average'):
@@ -1434,8 +1505,10 @@ def _check_action_bindings(ctx, errors, warnings, items):
     try:
         from workbench import flows
         flow_ids = {f.get('id') for f in flows.listing() if isinstance(f, dict) and f.get('id')}
+    except storage.StorageUnavailable:
+        raise  # 存储不可用：原样抛出，由路由转 503（绝不降级为「跳过检查」）
     except Exception:
-        flow_ids = None  # 编排列表不可读时仅跳过存在性检查，其余校验照常
+        flow_ids = None  # 列表读取失败 → fail-closed：逐行 flow 绑定报 error（不再跳过存在性检查）
     seen = set()
     for index, row in enumerate(rows, 1):
         combo = f'#{index}'
@@ -1482,7 +1555,10 @@ def _check_action_bindings(ctx, errors, warnings, items):
                 flow_id = implementation.get('flowId')
                 if not str(flow_id or '').strip():
                     issues.append('函数编排未选择')
-                elif flow_ids is not None and flow_id not in flow_ids:
+                elif flow_ids is None:
+                    # 编排列表读取失败：fail-closed，绝不当成「不存在」也不跳过检查
+                    issues.append(f'引用的函数编排 {flow_id}：读取失败，暂不能校验该绑定；请稍后重试')
+                elif flow_id not in flow_ids:
                     issues.append('引用的函数编排不存在或已删除')
             else:
                 issues.append(f'实现方式无效：{kind}')

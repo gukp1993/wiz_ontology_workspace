@@ -8644,7 +8644,8 @@
    "report": {
     "errors": [
      "属性来源 Station.temp_avg：属性来源配置格式无效",
-     "属性来源 Station.health：属性来源方式无效"
+     "属性来源 Station.health：属性来源方式无效",
+     "属性来源 Station.ghost_prop：引用的版本中不存在此属性"
     ],
     "warnings": [
      "对象映射 Station：本体标记的显示名称属性尚未绑定数据字段，实例列表将显示为 ID"
@@ -8709,8 +8710,10 @@
       "kind": "propertySource",
       "id": "Station.ghost_prop",
       "name": "属性来源 · Station.ghost_prop",
-      "status": "valid",
-      "issues": []
+      "status": "invalid",
+      "issues": [
+       "引用的版本中不存在此属性"
+      ]
      }
     ]
    }
@@ -9170,6 +9173,7 @@
      "属性来源 Station.health：取最新记录必须指定排序时间字段",
      "属性来源 Station.station_name：汇总取值只适用于数值属性，请核对业务口径",
      "属性来源 Station.device_code：汇总取值只适用于数值属性，请核对业务口径",
+     "属性来源 Station.rated_power2：引用的版本中不存在此属性",
      "属性来源 Station.rated_power2：属性引用的数据来源不存在"
     ],
     "warnings": [
@@ -9251,6 +9255,7 @@
       "name": "属性来源 · Station.rated_power2",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "属性引用的数据来源不存在",
        "未填写字段名"
       ]
@@ -10230,11 +10235,18 @@
      "属性来源 Station.health：Redis 直连需要 Redis 连接",
      "属性来源 Station.device_code：属性引用的数据来源不存在",
      "属性来源 Station.station_name：属性引用的数据来源不存在",
+     "属性来源 Station.ghost_prop：引用的版本中不存在此属性",
      "属性来源 Station.ghost_prop：Key 模板占位符「{a}」未绑定参数",
+     "属性来源 Station.ghost2：引用的版本中不存在此属性",
      "属性来源 Station.ghost2：参数「p2」绑定配置无效",
+     "属性来源 Station.ghost3：引用的版本中不存在此属性",
      "属性来源 Station.ghost3：参数绑定的属性不是有效的字段来源",
+     "属性来源 Station.ghost4：引用的版本中不存在此属性",
      "属性来源 Station.ghost4：参数绑定的属性不是有效的字段来源",
+     "属性来源 Station.ghost5：引用的版本中不存在此属性",
      "属性来源 Station.ghost5：参数「pi」的身份表字段未填写",
+     "属性来源 Station.ghost6：引用的版本中不存在此属性",
+     "属性来源 Station.ghost7：引用的版本中不存在此属性",
      "属性来源 Station.ghost7：读取方式仅支持 GET 与 HGET",
      "属性来源 Station.ghost7：结果转换方式无效",
      "属性来源 Station.ghost7：缺失处理策略无效"
@@ -10315,6 +10327,7 @@
       "name": "属性来源 · Station.ghost_prop",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "Key 模板占位符「{a}」未绑定参数",
        "HGET 读取必须填写 Hash 字段"
       ]
@@ -10325,6 +10338,7 @@
       "name": "属性来源 · Station.ghost2",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "参数「p2」绑定配置无效"
       ]
      },
@@ -10334,6 +10348,7 @@
       "name": "属性来源 · Station.ghost3",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "参数绑定的属性不是有效的字段来源"
       ]
      },
@@ -10343,6 +10358,7 @@
       "name": "属性来源 · Station.ghost4",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "参数绑定的属性不是有效的字段来源"
       ]
      },
@@ -10352,6 +10368,7 @@
       "name": "属性来源 · Station.ghost5",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "参数「pi」的身份表字段未填写"
       ]
      },
@@ -10359,8 +10376,10 @@
       "kind": "propertySource",
       "id": "Station.ghost6",
       "name": "属性来源 · Station.ghost6",
-      "status": "valid",
-      "issues": []
+      "status": "invalid",
+      "issues": [
+       "引用的版本中不存在此属性"
+      ]
      },
      {
       "kind": "propertySource",
@@ -10368,6 +10387,7 @@
       "name": "属性来源 · Station.ghost7",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "读取方式仅支持 GET 与 HGET",
        "结果转换方式无效",
        "缺失处理策略无效"
@@ -11579,24 +11599,34 @@
      "属性来源 Station.rated_power：常量取值与字段类型不兼容",
      "属性来源 Station.health：匹配条件的身份表字段未填写",
      "属性来源 Station.station_name：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost_prop：引用的版本中不存在此属性",
      "属性来源 Station.ghost_prop：匹配条件引用的属性未填写",
      "属性来源 Station.ghost_prop：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost2：引用的版本中不存在此属性",
      "属性来源 Station.ghost2：匹配条件不能引用属性自身",
      "属性来源 Station.ghost2：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost3：引用的版本中不存在此属性",
      "属性来源 Station.ghost3：匹配条件引用的属性尚未配置数据映射",
      "属性来源 Station.ghost3：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost4：引用的版本中不存在此属性",
      "属性来源 Station.ghost4：匹配条件引用的属性尚未配置数据映射",
      "属性来源 Station.ghost4：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost5：引用的版本中不存在此属性",
      "属性来源 Station.ghost5：匹配条件的常量取值未填写",
      "属性来源 Station.ghost5：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost6：引用的版本中不存在此属性",
      "属性来源 Station.ghost6：匹配条件引用的项目参数不存在",
      "属性来源 Station.ghost6：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost7：引用的版本中不存在此属性",
      "属性来源 Station.ghost7：匹配条件比较值来源无效",
      "属性来源 Station.ghost7：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost8：引用的版本中不存在此属性",
      "属性来源 Station.ghost8：匹配条件未选择来源字段",
      "属性来源 Station.ghost8：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost9：引用的版本中不存在此属性",
      "属性来源 Station.ghost9：匹配条件操作符仅支持等于（eq）",
      "属性来源 Station.ghost9：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）",
+     "属性来源 Station.ghost10：引用的版本中不存在此属性",
      "属性来源 Station.ghost10：匹配条件配置格式无效",
      "属性来源 Station.ghost10：匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
     ],
@@ -11672,6 +11702,7 @@
       "name": "属性来源 · Station.ghost_prop",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件引用的属性未填写",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -11682,6 +11713,7 @@
       "name": "属性来源 · Station.ghost2",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件不能引用属性自身",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -11692,6 +11724,7 @@
       "name": "属性来源 · Station.ghost3",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件引用的属性尚未配置数据映射",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -11702,6 +11735,7 @@
       "name": "属性来源 · Station.ghost4",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件引用的属性尚未配置数据映射",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -11712,6 +11746,7 @@
       "name": "属性来源 · Station.ghost5",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件的常量取值未填写",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -11722,6 +11757,7 @@
       "name": "属性来源 · Station.ghost6",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件引用的项目参数不存在",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -11732,6 +11768,7 @@
       "name": "属性来源 · Station.ghost7",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件比较值来源无效",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -11742,6 +11779,7 @@
       "name": "属性来源 · Station.ghost8",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件未选择来源字段",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -11752,6 +11790,7 @@
       "name": "属性来源 · Station.ghost9",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件操作符仅支持等于（eq）",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -11762,6 +11801,7 @@
       "name": "属性来源 · Station.ghost10",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "匹配条件配置格式无效",
        "匹配条件至少一条需要绑定当前实例（当前实例主键或身份表字段）"
       ]
@@ -13376,10 +13416,16 @@
    "report": {
     "errors": [
      "属性来源 Station.device_code：多行处理方式仅支持取最新／求和／求平均",
+     "属性来源 Station.ghost1：引用的版本中不存在此属性",
      "属性来源 Station.ghost1：汇总取值只适用于数值字段，请核对业务口径",
+     "属性来源 Station.ghost2：引用的版本中不存在此属性",
      "属性来源 Station.ghost2：未选择值字段",
+     "属性来源 Station.ghost3：引用的版本中不存在此属性",
+     "属性来源 Station.ghost4：引用的版本中不存在此属性",
      "属性来源 Station.ghost4：次级排序方式仅支持升序或降序",
+     "属性来源 Station.ghost5：引用的版本中不存在此属性",
      "属性来源 Station.ghost5：缺失处理策略无效",
+     "属性来源 Station.ghost6：引用的版本中不存在此属性",
      "属性来源 Station.ghost6：单值属性不能映射时间序列结果"
     ],
     "warnings": [
@@ -13452,6 +13498,7 @@
       "name": "属性来源 · Station.ghost1",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "汇总取值只适用于数值字段，请核对业务口径"
       ]
      },
@@ -13461,6 +13508,7 @@
       "name": "属性来源 · Station.ghost2",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "未选择值字段"
       ]
      },
@@ -13468,8 +13516,10 @@
       "kind": "propertySource",
       "id": "Station.ghost3",
       "name": "属性来源 · Station.ghost3",
-      "status": "valid",
-      "issues": []
+      "status": "invalid",
+      "issues": [
+       "引用的版本中不存在此属性"
+      ]
      },
      {
       "kind": "propertySource",
@@ -13477,6 +13527,7 @@
       "name": "属性来源 · Station.ghost4",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "次级排序方式仅支持升序或降序"
       ]
      },
@@ -13486,6 +13537,7 @@
       "name": "属性来源 · Station.ghost5",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "缺失处理策略无效"
       ]
      },
@@ -13495,6 +13547,7 @@
       "name": "属性来源 · Station.ghost6",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      }
@@ -15958,20 +16011,34 @@
    "report": {
     "errors": [
      "属性来源 Station.soc：时间序列结果必须选择时间字段",
+     "属性来源 Station.ghost1：引用的版本中不存在此属性",
      "属性来源 Station.ghost1：未选择值字段",
      "属性来源 Station.ghost1：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost2：引用的版本中不存在此属性",
      "属性来源 Station.ghost2：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost3：引用的版本中不存在此属性",
      "属性来源 Station.ghost3：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost4：引用的版本中不存在此属性",
      "属性来源 Station.ghost4：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost5：引用的版本中不存在此属性",
      "属性来源 Station.ghost5：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost6：引用的版本中不存在此属性",
      "属性来源 Station.ghost6：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost7：引用的版本中不存在此属性",
      "属性来源 Station.ghost7：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost8：引用的版本中不存在此属性",
      "属性来源 Station.ghost8：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost9：引用的版本中不存在此属性",
      "属性来源 Station.ghost9：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost10：引用的版本中不存在此属性",
      "属性来源 Station.ghost10：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost11：引用的版本中不存在此属性",
      "属性来源 Station.ghost11：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost12：引用的版本中不存在此属性",
      "属性来源 Station.ghost12：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost13：引用的版本中不存在此属性",
      "属性来源 Station.ghost13：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost14：引用的版本中不存在此属性",
      "属性来源 Station.ghost14：单值属性不能映射时间序列结果"
     ],
     "warnings": [
@@ -16014,6 +16081,7 @@
       "name": "属性来源 · Station.ghost1",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "未选择值字段",
        "单值属性不能映射时间序列结果"
       ]
@@ -16024,6 +16092,7 @@
       "name": "属性来源 · Station.ghost2",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16033,6 +16102,7 @@
       "name": "属性来源 · Station.ghost3",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16042,6 +16112,7 @@
       "name": "属性来源 · Station.ghost4",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16051,6 +16122,7 @@
       "name": "属性来源 · Station.ghost5",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16060,6 +16132,7 @@
       "name": "属性来源 · Station.ghost6",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16069,6 +16142,7 @@
       "name": "属性来源 · Station.ghost7",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16078,6 +16152,7 @@
       "name": "属性来源 · Station.ghost8",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16087,6 +16162,7 @@
       "name": "属性来源 · Station.ghost9",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16096,6 +16172,7 @@
       "name": "属性来源 · Station.ghost10",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16105,6 +16182,7 @@
       "name": "属性来源 · Station.ghost11",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16114,6 +16192,7 @@
       "name": "属性来源 · Station.ghost12",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16123,6 +16202,7 @@
       "name": "属性来源 · Station.ghost13",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16132,6 +16212,7 @@
       "name": "属性来源 · Station.ghost14",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      }
@@ -16668,8 +16749,11 @@
    },
    "report": {
     "errors": [
+     "属性来源 Station.ghost1：引用的版本中不存在此属性",
      "属性来源 Station.ghost1：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost2：引用的版本中不存在此属性",
      "属性来源 Station.ghost2：单值属性不能映射时间序列结果",
+     "属性来源 Station.ghost3：引用的版本中不存在此属性",
      "属性来源 Station.ghost3：单值属性不能映射时间序列结果"
     ],
     "warnings": [
@@ -16711,6 +16795,7 @@
       "name": "属性来源 · Station.ghost1",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16720,6 +16805,7 @@
       "name": "属性来源 · Station.ghost2",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      },
@@ -16729,6 +16815,7 @@
       "name": "属性来源 · Station.ghost3",
       "status": "invalid",
       "issues": [
+       "引用的版本中不存在此属性",
        "单值属性不能映射时间序列结果"
       ]
      }
@@ -44226,7 +44313,9 @@
     }
    },
    "report": {
-    "errors": [],
+    "errors": [
+     "属性来源 Station.station_name：引用的字段「station_name」不在表「battery」的目录中，请重新选择字段"
+    ],
     "warnings": [],
     "items": [
      {
@@ -44261,8 +44350,10 @@
       "kind": "propertySource",
       "id": "Station.station_name",
       "name": "属性来源 · Station.station_name",
-      "status": "valid",
-      "issues": []
+      "status": "invalid",
+      "issues": [
+       "引用的字段「station_name」不在表「battery」的目录中，请重新选择字段"
+      ]
      },
      {
       "kind": "actionBinding",

@@ -1,9 +1,17 @@
-"""项目属性「函数编排」取值来源后端校验回归（2026-09-18 需求）。
+"""项目属性「函数编排」取值来源后端校验回归（2026-09-18 需求；2026-09-20 依赖三态扩展）。
 
 覆盖 `project_validation` 对 `kind='flow'` 的校验分支：编排存在性、输出选择与类型
 相容、对象/列表输出与时间序列属性拒绝、输入绑定齐全性与来源合法性（当前对象属性／
 固定值／实例编号）、固定值边界（0／false／空串为有效值）、输入类型相容表、引用属性
 存在性与类型匹配、编排签名变更（多余输入）、以及本对象内属性间的循环依赖检测。
+
+2026-09-20 新增（v2 冻结语义，03 分册 §2.2）：
+- 依赖三态消费 `flows.dependency_state`：unreadable（读取失败，含存储不可用）→ error
+  阻断发布，文案含「读取失败」与编排 id，绝不当「不存在」；missing → 既有「不存在或
+  已删除」；found → 正常校验（其 state 用于签名检查）。
+- 软删除（status=deleted）按「不存在」处理。
+- 动作绑定的编排存在性读取 fail-closed：`flows.listing()` 其他失败按行报 error，
+  `StorageUnavailable` 原样抛出（路由转 503）。
 
 纯 python3 标准库直跑；WIZ_WORKBENCH_ROOT 挂临时数据根，真实 ontology/ 只读不碰；
 编排用 flows 模块在临时根内自建，不依赖真实编排数据。
@@ -88,13 +96,29 @@ def proj(props):
             'implementations': [], 'parameters': {}}
 
 
-def make_flow(name, inputs=(), outputs=()):
-    """在临时根内创建编排：inputs/outputs 为编排级声明（与前端 flow state 结构一致）。"""
+def make_flow(name, inputs=(), outputs=(), wired=True, status='active'):
+    """在临时根内创建编排：inputs/outputs 为编排级声明（与前端 flow state 结构一致）。
+
+    wired=True（默认）同时建一个 Python 节点并把输入/输出接到它上面，使
+    `flows.check_flow` 零 error —— 编排自身合法是属性绑定通过校验的前提（2026-09-20）。
+    wired=False 只声明输入/输出（编排自身配置不完整），用于验证「编排自身错误 → 绑定阻断」。
+    """
     created = flows.create(name)
     state = flows.read_draft(created['id'])
     state.pop('_draft')
     state['inputs'] = [dict(i, id=i.get('id') or 'in_' + i['name']) for i in inputs]
     state['outputs'] = [dict(o, id=o.get('id') or 'out_' + o['name']) for o in outputs]
+    if wired:
+        node_inputs = [dict(i, id='nd_in_' + i['name'], source={'kind': 'flowInput', 'inputId': i['id']})
+                       for i in state['inputs']]
+        node_outputs = [dict(o, id='nd_out_' + o['name']) for o in state['outputs']]
+        state['nodes'] = [{'id': 'nd_impl', 'kind': 'python', 'name': '实现', 'inputs': node_inputs,
+                           'outputs': node_outputs,
+                           'implementation': {'language': 'python', 'code': 'def main():\n    return None\n'}}]
+        for out in state['outputs']:
+            out['binding'] = {'kind': 'node', 'nodeId': 'nd_impl',
+                              'outputId': 'nd_out_' + out['name']}
+    state['status'] = status
     flows.save_draft(state)
     return created['id']
 
@@ -260,5 +284,106 @@ self_ref = errs({'maxPower': flow_src(FLOW_A, 'out_power',
 check(has(self_ref, '循环依赖') or has(self_ref, '属性来源存在循环依赖'),
       '属性引用自身应阻断', self_ref)
 
+# 10) 依赖三态（2026-09-20 v2 冻结）：unreadable / missing / found / 软删除 ---------------------
+
+# 10a) unreadable：编排存在但读取失败（快照损坏等）→ error 阻断，文案含「读取失败」与编排 id
+_real_read_draft = flows.read_draft
+
+
+def _broken_read_draft(identifier):
+    if identifier == FLOW_A:
+        raise RuntimeError('模拟快照损坏')
+    return _real_read_draft(identifier)
+
+
+flows.read_draft = _broken_read_draft
+try:
+    unreadable = errs({'maxPower': flow_src(FLOW_A, 'out_power',
+                                            {'in_code': {'from': 'constant', 'value': 'x'},
+                                             'in_factor': {'from': 'constant', 'value': 1}})})
+finally:
+    flows.read_draft = _real_read_draft
+check(any('读取失败' in e and FLOW_A in e for e in unreadable),
+      '编排读取失败必须 fail-closed 报 error（含编排 id，不得按不存在处理）', unreadable)
+check(not has(unreadable, '不存在或已删除'),
+      '读取失败不得与「不存在」混同', unreadable)
+
+# 10b) found：读取成功后按既有规则继续校验（另见上面 1)~9) 全部用例）
+found_ok = errs({'deviceCode': dict(FIELD_CODE),
+                 'maxPower': flow_src(FLOW_A, 'out_power',
+                                      {'in_code': {'from': 'property', 'property': 'deviceCode'},
+                                       'in_factor': {'from': 'constant', 'value': 1}})})
+check(found_ok == [], 'found 状态正常校验通过', found_ok)
+
+# 10c) 软删除：按「不存在或已删除」处理（与既有文案一致，不算读取失败）
+D_DELETED = make_flow('已删除编排', outputs=[{'name': 'power', 'label': '功率', 'type': {'type': 'number'}}])
+flows.soft_delete(D_DELETED)
+deleted = errs({'maxPower': flow_src(D_DELETED, 'out_power')})
+check(has(deleted, '引用的函数编排不存在或已删除') and not has(deleted, '读取失败'),
+      '软删除的编排按不存在处理（不是读取失败）', deleted)
+
+# 11) 软删除与「found 用其 state」语义（承接 10c）：编排存在但为空壳时按既有签名规则报告，
+#     不引入新的阻断规则（编排自身 check_flow 的 error 是否阻断属性绑定属 P1 未启用项，见交付报告）
+FLOW_EMPTY_SHELL = make_flow('空壳编排', wired=False,
+                             outputs=[{'name': 'power', 'label': '功率', 'type': {'type': 'number'}}])
+shell = errs({'maxPower': flow_src(FLOW_EMPTY_SHELL, 'out_power')})
+check(not has(shell, '不存在或已删除') and not has(shell, '读取失败'),
+      'found 的空壳编排不得被当成不存在或读取失败', shell)
+
+# 12) 动作绑定的 flow 存在性读取 fail-closed（2026-09-20 v2，03 分册 §2.2） --------------------
+# 编排列表读取失败（非存储不可用）→ 该行 error（不得跳过检查）；存储不可用 → 原样抛出。
+onto_actions = onto()
+onto_actions['workflow'] = {'actions': [{'id': 'act_stop', 'name': '停止充放电'}],
+                            'actionAssociations': [{'objectTypeId': 'mg:StorageDevice', 'actionId': 'act_stop'}]}
+
+
+def action_state():
+    st = proj({'maxPower': dict(FIELD_CODE)})
+    st['bindings']['actionBindings'] = [
+        {'id': 'ab1', 'objectTypeId': 'StorageDevice', 'actionId': 'act_stop',
+         'implementation': {'kind': 'flow', 'flowId': FLOW_A}}]
+    return st
+
+
+_real_listing = flows.listing
+
+
+def _broken_listing(include_deleted=False):
+    raise RuntimeError('模拟编排列表不可读')
+
+
+flows.listing = _broken_listing
+try:
+    listed_fail = validate_project(action_state(), onto_actions)['errors']
+finally:
+    flows.listing = _real_listing
+check(any('读取失败' in e and FLOW_A in e for e in listed_fail),
+      '动作绑定：编排列表读取失败必须 fail-closed 报 error（含编排 id）', listed_fail)
+check(not has(listed_fail, '不存在或已删除'),
+      '动作绑定：读取失败不得与「不存在」混同', listed_fail)
+
+# 存储不可用原样抛出（由路由转 503），绝不降级为跳过检查
+from workbench.storage import StorageUnavailable  # noqa: E402
+
+
+def _unavailable_listing(include_deleted=False):
+    raise StorageUnavailable('模拟存储不可用')
+
+
+flows.listing = _unavailable_listing
+try:
+    try:
+        validate_project(action_state(), onto_actions)
+        raised = None
+    except StorageUnavailable as exc:
+        raised = exc
+finally:
+    flows.listing = _real_listing
+check(raised is not None, '动作绑定：StorageUnavailable 必须原样抛出（路由 503）', raised)
+
+# 恢复后正常通过（flowId 存在于列表中）
+listed_ok = validate_project(action_state(), onto_actions)['errors']
+check(listed_ok == [], '动作绑定：编排存在时应正常通过', listed_ok)
+
 shutil.rmtree(TMP, ignore_errors=True)
-print(f'\n全部通过（{len(PASSED)} 步）：kind=flow 取值来源校验符合契约。')
+print(f'\n全部通过（{len(PASSED)} 步）：kind=flow 取值来源校验符合契约（含依赖三态）。')
