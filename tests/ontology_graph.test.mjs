@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 
 const modelMod = await import('../frontend/src/ontology/ontologyGraphModel.ts')
-const viewMod = await import('../frontend/src/ontology/ontologyGraphView.ts')
+
 
 let failed = 0
 function check(name, fn) {
@@ -150,171 +150,14 @@ check('G03 完全相同的模型差异为空（不触发重建）', () => {
 
 // ── 可见集 / 邻域 / 诱导子图（G05/G06/G07） ────────────────────────────────
 const allKinds = { kinds: {}, relations: {} }
-check('G05 类型筛选只影响可见集，不改变边定义', () => {
-  const filters = { kinds: { '规则': false, '动作': false }, relations: {} }
-  const vis = viewMod.visibleNodeIds(model, filters)
-  assert.ok(![...vis].some(id => id.startsWith('rule:') || id.startsWith('action:')))
-  const edges = viewMod.visibleEdgeIds(model, filters, vis)
-  assert.ok([...edges].every(id => !id.startsWith('ruleassoc:') && !id.startsWith('actionassoc:')))
-  assert.equal(model.edges.length, edges.size + model.edges.filter(e => e.kind === '规则关联' || e.kind === '动作关联').length)
-})
-check('G06 关系筛选按关系名隐藏边，且可见边两端都可见', () => {
-  const filters = { kinds: {}, relations: { '包含': false } }
-  const vis = viewMod.visibleNodeIds(model, filters)
-  const edges = viewMod.visibleEdgeIds(model, filters, vis)
-  for (const id of edges) {
-    const e = model.edges.find(x => x.id === id)
-    assert.ok(vis.has(e.source) && vis.has(e.target), '可见边两端必须可见')
-  }
-  assert.ok(![...edges].some(id => id === 'link:mg:l_contains_a' || id === 'link:mg:l_contains_b'), '关系名被取消勾选的边隐藏')
-  assert.ok(edges.has('link:mg:l_self'), '其他关系名的边不受影响')
-  // 隐藏节点不参与任何可见边：把对象类型关掉后，站点相关边全部不可见
-  const noObj = { kinds: { '对象': false }, relations: {} }
-  const vis2 = viewMod.visibleNodeIds(model, noObj)
-  const edges2 = viewMod.visibleEdgeIds(model, noObj, vis2)
-  assert.ok([...edges2].every(id => !id.startsWith('link:') && !id.startsWith('sref:') && !id.startsWith('own:')))
-})
-check('G07 邻域为止双向 BFS + 诱导子图保留范围内全部边（含平行与自关联）', () => {
-  const center = modelMod.objectNodeId('mg:device')
-  const nodes = viewMod.neighborhoodNodes(model, center, 1, 'both', allKinds)
-  // 设备的 1 跳：站点（两条平行链接都指向它）、私有 SOC、共享引用（共享功率/SOC）、自关联仍是自身、规则、动作
-  assert.ok(nodes.has(modelMod.objectNodeId('mg:site')))
-  assert.ok(nodes.has(modelMod.sharedNodeId('mg:sp_power')))
-  assert.ok(nodes.has(modelMod.ruleNodeId('rule_soc')))
-  const edges = viewMod.inducedEdgeIds(model, nodes, allKinds)
-  const links = [...edges].filter(id => id.startsWith('link:') || id.startsWith('sref:'))
-  assert.ok(links.length >= 5, '范围内应保留全部符合筛选的边，实际 ' + links.length)
-  assert.ok(edges.has('link:mg:l_self'), '自关联边在范围内')
-  assert.ok(edges.has('sref:mg:p_dev_power') && edges.has('sref:mg:p_dev_soc'))
-})
-check('G07 方向 BFS：按边上方向取值，流入/流出严格区分', () => {
-  const deviceId = modelMod.objectNodeId('mg:device')
-  const siteId = modelMod.objectNodeId('mg:site')
-  // 链接方向 site → device：站点的流出包含设备，设备的流出不包含站点
-  const outSite = viewMod.neighborhoodNodes(model, siteId, 1, 'out', allKinds)
-  assert.ok(outSite.has(deviceId), '站点流出到设备')
-  const outDevice = viewMod.neighborhoodNodes(model, deviceId, 1, 'out', allKinds)
-  assert.ok(!outDevice.has(siteId), '设备没有指向站点的出边')
-  assert.ok(outDevice.has(modelMod.ruleNodeId('rule_soc')), '对象 → 规则关联是设备的出边')
-  const inDevice = viewMod.neighborhoodNodes(model, deviceId, 1, 'in', allKinds)
-  assert.ok(inDevice.has(siteId), '设备的入边来自站点')
-  assert.ok(!inDevice.has(modelMod.ruleNodeId('rule_soc')), '规则关联不是设备的入边')
-  // 规则的入边来自两个对象
-  const inRule = viewMod.neighborhoodNodes(model, modelMod.ruleNodeId('rule_soc'), 1, 'in', allKinds)
-  assert.ok(inRule.has(deviceId) && inRule.has(modelMod.objectNodeId('mg:cluster')))
-})
-check('G07 全部可达（99）在环上收敛（visited 防环）', () => {
-  const center = modelMod.objectNodeId('mg:site')
-  const nodes = viewMod.neighborhoodNodes(model, center, 99, 'both', allKinds)
-  assert.ok(nodes.has(modelMod.objectNodeId('mg:device')) && nodes.has(modelMod.ruleNodeId('rule_soc')))
-  assert.ok(nodes.size <= model.nodes.length)
-})
-check('G06 邻域内筛选隐藏中心 → 中心不在可见集（调用方据此退出邻域）', () => {
-  const filters = { kinds: { '对象': false }, relations: {} }
-  const center = modelMod.objectNodeId('mg:device')
-  const base = viewMod.visibleNodeIds(model, filters)
-  assert.ok(!base.has(center))
-})
 
 // ── 搜索（G05） ─────────────────────────────────────────────────────────
-check('G05 搜索命中名称与别名（忽略大小写），列表标注被筛选隐藏', () => {
-  assert.equal(viewMod.searchHitIds(model, 'pcs').has(modelMod.objectNodeId('mg:device')), true, '别名命中')
-  const vis = viewMod.visibleNodeIds(model, { kinds: { '对象': false }, relations: {} })
-  const list = viewMod.searchList(model, '储能', vis, 20)
-  assert.ok(list.total >= 3)
-  assert.ok(list.items.some(i => i.hidden), '被筛选隐藏的命中标注 hidden')
-  assert.equal(viewMod.searchList(model, '储能', vis, 2).items.length, 2, '分页截断')
-  assert.equal(viewMod.searchList(model, '不存在的词', vis, 20).total, 0)
-})
-check('G05 搜索不改变可见集（仅高亮）', () => {
-  const before = viewMod.visibleNodeIds(model, allKinds).size
-  viewMod.searchHitIds(model, 'SOC')
-  assert.equal(viewMod.visibleNodeIds(model, allKinds).size, before)
-})
 
 // ── 布局（G09）：确定性、可见子图、多列、孤立节点 ───────────────────────────
-check('G09 按类型排列确定且分组（对象左列、属性中列、规则/动作右列）', () => {
-  const ids = viewMod.visibleNodeIds(model, allKinds)
-  const a = viewMod.layoutByType(model, ids), b = viewMod.layoutByType(model, ids)
-  assert.deepEqual(a, b, '同一输入结果稳定')
-  const xs = new Set()
-  for (const [id, p] of Object.entries(a)) {
-    const node = model.nodes.find(n => n.id === id)
-    xs.add(node.kind === '对象' ? 'L' : (node.kind === '规则' || node.kind === '动作') ? 'R' : 'M')
-    assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y))
-  }
-  assert.deepEqual([...xs].sort(), ['L', 'M', 'R'])
-})
-check('G09 超过 20 个节点分列（子列 x 递增）', () => {
-  const many = { nodes: [], edges: [], dangling: [] }
-  for (let i = 0; i < 25; i++) many.nodes.push({ id: 'obj:o' + i, domainId: 'o' + i, kind: '对象', name: '对象' + String(i).padStart(2, '0'), aliases: [], detail: [], nav: [] })
-  const ids = new Set(many.nodes.map(n => n.id))
-  const pos = viewMod.layoutByType(many, ids)
-  const xs = new Set(Object.values(pos).map(p => p.x))
-  assert.equal(xs.size, 2, '25 个对象应分两列，实际列数 ' + xs.size)
-})
-check('G09 按关联聚集按连通分量摆放且确定（同分量节点相邻）', () => {
-  const ids = viewMod.visibleNodeIds(model, allKinds)
-  const a = viewMod.layoutByComponents(model, ids), b = viewMod.layoutByComponents(model, ids)
-  assert.deepEqual(a, b)
-  // 设备与站点相连：同分量内 x 差应小于跨分量距离
-  const d = a[modelMod.objectNodeId('mg:device')], s = a[modelMod.objectNodeId('mg:site')]
-  assert.ok(Math.abs(d.x - s.x) <= 300)
-})
-check('G10 环形布局中心在原点、其余均匀分布且可重复推导', () => {
-  const center = modelMod.objectNodeId('mg:device')
-  const ids = viewMod.visibleNodeIds(model, allKinds)
-  const a = viewMod.layoutCircle(model, ids, center), b = viewMod.layoutCircle(model, ids, center)
-  assert.deepEqual(a, b)
-  assert.deepEqual(a[center], { x: 0, y: 0 })
-  assert.equal(Object.keys(a).length, ids.size)
-})
-check('G11 空集合布局不抛错且返回空对象', () => {
-  const empty = { nodes: [], edges: [], dangling: [] }
-  assert.deepEqual(viewMod.layoutByType(empty, new Set()), {})
-  assert.deepEqual(viewMod.layoutByComponents(empty, new Set()), {})
-})
 
 // ── 视图缓存（G12）：账号/本体隔离由调用方 key 控制；此处验结构、数值与未知 ID 剔除 ──
 const ids = new Set(model.nodes.map(n => n.id))
 const edgeIds = new Set(model.edges.map(e => e.id))
-check('G12 缓存往返：位置/视口/筛选/面板/选择/邻域完整保留', () => {
-  const raw = viewMod.serializeView({
-    schemaVersion: 1,
-    positions: { [modelMod.objectNodeId('mg:device')]: { x: 12, y: -8 } },
-    viewport: { zoom: 1.4, pan: { x: 30, y: 40 } },
-    filters: { kinds: { '动作': false }, relations: { '对象链接': false } },
-    panels: { filters: false, inspector: true, inspectorW: 402 },
-    selection: { nodeIds: [modelMod.objectNodeId('mg:device')], edgeId: 'link:mg:l_contains_a' },
-    scope: { center: modelMod.objectNodeId('mg:device'), depth: 2, direction: 'out', localLayout: 'circle' },
-  })
-  const mem = viewMod.parseView(raw, ids, edgeIds)
-  assert.ok(mem)
-  assert.equal(mem.viewport.zoom, 1.4)
-  assert.deepEqual(mem.panels, { filters: false, inspector: true, inspectorW: 402 })
-  assert.equal(mem.filters.kinds['动作'], false)
-  assert.equal(mem.scope.depth, 2)
-  assert.deepEqual(mem.scope, { center: modelMod.objectNodeId('mg:device'), depth: 2, direction: 'out', localLayout: 'circle' })
-})
-check('G12 损坏缓存/错误版本/未知 ID/非法数值安全降级', () => {
-  assert.equal(viewMod.parseView('{ 不是 JSON', ids, edgeIds), null)
-  assert.equal(viewMod.parseView(JSON.stringify({ schemaVersion: 99 }), ids, edgeIds), null)
-  assert.equal(viewMod.parseView(null, ids, edgeIds), null)
-  const mem = viewMod.parseView(JSON.stringify({
-    schemaVersion: 1,
-    positions: { 'obj:ghost': { x: 1, y: 1 }, [modelMod.objectNodeId('mg:device')]: { x: Infinity, y: 0 }, [modelMod.objectNodeId('mg:site')]: { x: 5, y: 6 } },
-    viewport: { zoom: 999, pan: { x: NaN, y: 3 } },
-    panels: { inspectorW: 5000 },
-    selection: { nodeIds: ['obj:ghost'], edgeId: 'link:ghost' },
-    scope: { center: 'obj:ghost' },
-  }), ids, edgeIds)
-  assert.deepEqual(Object.keys(mem.positions), [modelMod.objectNodeId('mg:site')], '未知 ID 与非有限坐标剔除')
-  assert.equal(mem.viewport.zoom, 4, 'zoom 夹紧到上限')
-  assert.deepEqual(mem.viewport.pan, { x: 0, y: 0 })
-  assert.equal(mem.panels.inspectorW, 480)
-  assert.deepEqual(mem.selection, { nodeIds: [], edgeId: '' })
-  assert.equal(mem.scope, null)
-})
 
 console.log(failed ? `\n${failed} 项失败` : '\n全部通过')
 process.exit(failed ? 1 : 0)

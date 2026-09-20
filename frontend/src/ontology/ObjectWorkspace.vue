@@ -17,7 +17,7 @@
      只读视图；「在画布查看」入口与画布来源表单（origin='canvas'）一并移除。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
-import OntologyGraph from './OntologyGraph.vue'
+import LegacyGraphHost from './legacyGraph/LegacyGraphHost.vue'
 import PropertyManager from './PropertyManager.vue'
 import Field from '../shared/EditorField.vue'
 import AppSelect from '../shared/AppSelect.vue'
@@ -40,19 +40,21 @@ import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 // focusType/focusProperty：共享属性库「查看引用」/校验问题/旧深链跳转定位
 // （propertyFocusId 存 apiName 或 @id，此处换算为节点 @id；指向共享定义时落到首个引用属性）。
 // graphReturn/graphFocus（20260919 图谱画布优化）：图谱「打开定义」跳转后的返回上下文——
-// graphReturn=true 直接落在图谱视图（视图记忆由 OntologyGraph 按账号 + 本体恢复），
+// graphReturn=true 直接落在图谱视图（视图记忆由迁入编辑器 legacyGraph 按账号 + 本体恢复），
 // graphFocus 为目标业务稳定 ID，用于返回后在画布中定位（目标已删除则清空选择并提示）。
-const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string; focusCreate?: boolean; graphReturn?: boolean; graphFocus?: string; canvasReturn?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate'])
+const props = defineProps<{ state: any; focusType?: string; focusProperty?: string; initialTab?: string; focusDefinition?: string; focusCreate?: boolean; graphReturn?: boolean; graphFocus?: string; canvasReturn?: string; saveState?: { kind: string; text: string }; latestRelease?: string }>(), emit = defineEmits(['before-change', 'changed', 'navigate', 'switch-ontology', 'create-ontology'])
 // 具名撤销（20260918）：emit('before-change', { actionLabel, target?, mergeKey? })；App 侧兼容字符串与对象
 const guardApi = inject<FormGuardAPI>('form-guard')!
 const formSave = inject<FormSaveAPI>('form-save')!
 
 const mode = ref<'list' | 'graph'>(props.graphReturn ? 'graph' : 'list'), selected = ref(''), message = ref('')
-// 图谱返回：直接落在图谱视图（视图记忆由 OntologyGraph 恢复）；图谱跳转到定义时切回列表/详情。
+// 图谱返回：直接落在图谱视图（视图记忆由迁入编辑器恢复）；图谱跳转到定义时切回列表/详情。
 // 该 watch 必须排在其他定位 watch 之前（Vue 按创建顺序触发），保证定位发生时视图已就位。
 watch(() => props.graphReturn, (on) => { if (on) mode.value = 'graph' }, { immediate: true })
 watch(() => props.canvasReturn, (id) => { if (id) mode.value = 'list' }, { immediate: true })
 function onGraphNavigate(view: string, focus?: Record<string, any>) { emit('navigate', view, focus as any) }
+function onSwitchOntology(id: string) { emit('switch-ontology', id) }
+function onCreateOntology(name: string) { emit('create-ontology', name) }
 function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
 
 const graph = computed(() => props.state?.ontology?.['@graph'] || [])
@@ -614,7 +616,16 @@ async function removeNode(id: string, label: string, confirmText?: string) {
       <button role="tab" :aria-selected="false" @click="mode = 'list'">对象列表</button>
       <button role="tab" class="active" :aria-selected="true">本体图谱</button>
     </div>
-    <OntologyGraph :state="state" :ontology-id="state?.workspaceId || ''" :focus-domain-id="props.graphFocus || ''" @navigate="onGraphNavigate"/>
+    <LegacyGraphHost
+      :state="state"
+      :ontology-id="state?.workspaceId || ''"
+      :save-state="props.saveState"
+      :latest-release="props.latestRelease"
+      :focus-target="props.graphFocus || ''"
+      @navigate="onGraphNavigate"
+      @switch-ontology="onSwitchOntology"
+      @create-ontology="onCreateOntology"
+    />
   </div>
   <!-- 编辑态：主内容整体替换为一个完整表单（原型 ui.editor ? editorView() : pageView()） -->
   <template v-if="editor">
