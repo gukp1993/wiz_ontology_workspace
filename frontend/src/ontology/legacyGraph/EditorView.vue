@@ -27,50 +27,6 @@
 
       <div class="body">
         <div class="top-row">
-          <!-- 上下文：图谱 / 版本 -->
-          <div class="grp selectors">
-            <button class="ver-entry graph-entry" title="本体管理（选择 / 新建本体）" @click="openGraphs">
-              <span class="ver-tag">本体</span>
-              <span class="ver-name">{{ state.graphName || '未选择本体' }}</span>
-              <span class="ver-caret">▾</span>
-            </button>
-            <button v-if="hasGraph" class="ver-entry" title="发布版本与修订历史在「本体校验与发布」页维护" @click="$emit('navigate', 'o-release')">
-              <span class="ver-tag">发布</span>
-              <span class="ver-name">{{ latestRelease || '尚未发布' }}</span>
-              <span class="ver-caret">↗</span>
-            </button>
-          </div>
-
-          <!-- 导入 / 发布（无图谱隐藏；保存版本需先有版本） -->
-          <div class="grp imports" v-if="hasGraph">
-            <button class="btn" title="Excel 批量导入：使用当前工作台「导入本体」（工作概览页）" @click="gotoImport">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v7M5 6l3 3 3-3M3 11v2a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2" /></svg>
-              <span>导入Excel</span>
-            </button>
-            <button class="btn" title="导入 .coordinates.json 坐标文件，把布局应用到当前画布节点（仅视图，不改定义）" @click="coordinatesInputEl.click()">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.6" /><path d="M8 2v3M8 11v3M2 8h3M11 8h3" /></svg>
-              <span>导入坐标</span>
-            </button>
-            <button class="btn" title="导出 .jsonId 语义文件；包含旧格式无法表达的内容时将被阻止并列出损失清单" @click="exportJsonIdFlow">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 11V4M5 8l3 3 3-3M5 2h5l3 3v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" /></svg>
-              <span>导出jsonId</span>
-            </button>
-            <button class="btn" title="导出压缩包：坐标 + 离线预览 HTML（断网可查看；不含凭据）" @click="exportBundleFlow">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 11V4M5 8l3 3 3-3M3 13v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1" /></svg>
-              <span>导出图谱包</span>
-            </button>
-          </div>
-          <div class="grp publish" v-if="hasGraph">
-            <button class="btn primary" title="保存当前本体草稿（走工作台保存协调器）· 快捷键 Ctrl/⌘+S" @click="saveDraftFlow">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h8l2 2v10H2V4l2-2zM6 2v4h4V2M5 14v-4h6v4" /></svg>
-              <span>保存</span>
-            </button>
-            <button class="btn" title="进入当前工作台「本体校验与发布」流程（发布版本只读，不可覆盖）" @click="$emit('navigate', 'o-release')">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l4-4 3 3 5-6M12 5h3v3" /></svg>
-              <span>发布…</span>
-            </button>
-          </div>
-
           <div class="status">
             <span class="count">节点 <b>{{ nodeCount }}</b> · 连线 <b>{{ edgeCount }}</b></span>
             <span class="save" :class="{ unsaved: saveDotClass === 'unsaved' }"><span class="dot" :class="saveDotClass"></span>{{ saveText }}</span>
@@ -79,29 +35,9 @@
 
         <!-- 第二行：画布编辑工具（需先有版本） -->
         <div class="tool-row" v-if="hasGraph">
-          <button class="btn primary" title="新建一个节点" @click="openNewNode">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10" /></svg>
-            <span>新建节点</span>
-          </button>
-          <button class="btn" :class="{ active: linking }" title="连线模式：先点源节点，再点目标节点" @click="toggleLinking">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3 3 13M8.5 3H13v4.5" /></svg>
-            <span>连线模式</span>
-          </button>
-          <button class="btn" title="只读预览最新发布版本（未发布时给出引导）" @click="goPreview">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8s3-4 6-4 6 4 6 4-3 4-6 4-6-4-6-4z" /><circle cx="8" cy="8" r="1.8" /></svg>
-            <span>预览</span>
-          </button>
-          <button class="btn" title="多本体预览：从各本体的发布版本中多选，并列只读预览" @click="showMultiPick = true">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="4" r="1.6" /><circle cx="3.5" cy="12" r="1.6" /><circle cx="12.5" cy="8" r="1.6" /><path d="M4.8 4.8 11 7.4M4.8 11.2 11 8.6" /></svg>
-            <span>多图谱预览</span>
-          </button>
-          <button class="btn" title="整理节点布局：实体 1/3 · 属性 1/2 · 规则 2/3，效果满意再保存" @click="autoLayout">
+          <button class="btn" title="整理节点布局：按类型分组排列（效果满意再保存）· 快捷键无需记忆，随时可用「撤销整理」还原" @click="autoLayout">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v12M2 8h12M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
             <span>整理节点</span>
-          </button>
-          <button class="btn danger" :title="selSummary ? `删除选中（${selSummary}）` : '删除：请先在画布上选中节点或连线'" @click="deleteSelectedNodes">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 5h9M6.5 3h3l1 2M5 5l.5 9h5L11 5M7 7.5v4M9 7.5v4" /></svg>
-            <span>删除{{ selSummary ? '：' + selSummary : '' }}</span>
           </button>
           <!-- 类型筛选：点击显示/隐藏该类型全部节点（仅影响显示，保存/导出仍含全部；选择会记忆） -->
           <div class="type-filter">
@@ -141,7 +77,6 @@
         </div>
       </div>
 
-      <input ref="coordinatesInputEl" type="file" accept=".json,.coordinates.json" style="display: none" @change="onCoordinatesFile" />
     </header>
 
     <div class="wrap">
