@@ -1,0 +1,31 @@
+{
+  "ticket": "d3aba75dd51d493eab7b2ca5b6c23b1d",
+  "task": "本体建模与项目映射产品完整性评审",
+  "status": "decision",
+  "summary": "需求与源码层评审完成：概念骨架已具备，缺口集中在属性取值闭环、确定性集合计算、编排版本固定、说明执行语义、动作结果闭环。仅建议讨论，未实施。",
+  "decisions": [
+    "先确认配置交付工具与业务运行时的边界；不重复建设已有实体与虚拟对象、时序、编排测试。",
+    "建议固定编排修订、区分配置与执行验证状态；不增加独立聚合菜单，不擅自恢复此前暂缓的动作输入与提交条件。"
+  ],
+  "verification": [
+    "只读核对共享上下文、需求与路由、属性预览、编排执行、项目发布升级、动作配置和说明消费检查。",
+    "当前预览只支持登记/旧聚合；编排绑定读当前草稿；Python为LLM求值且公式不支持集合；动作仅配置。",
+    "未做本轮浏览器或端到端验收，未改业务代码及真实数据；其他执行者在途改动未触碰。"
+  ],
+  "next": [
+    "讨论运行边界、说明执行关系、单位/时间口径、动作执行范围，再确定需求。"
+  ],
+  "references": [
+    "workbench/project_property_reader.py",
+    "workbench/flow_executor.py",
+    "workbench/projects.py",
+    "workbench/project_validation.py",
+    "workbench/mapping_descriptions.py"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-20T01:17:35.170134+00:00",
+  "sequence": 67,
+  "filename": "000067-d34fa7e2a6ce.json",
+  "record_hash": "382faad4625f0bc619bdf5a3c3eacf90d4cb4c36f9778772d2c7f0f82cf20a9a",
+  "context_advanced": false
+}
