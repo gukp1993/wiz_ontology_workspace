@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`8998014a8590d2c1`
+上下文版本：`300a9d3d49666a63`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 三修正独立子代理验收结论（提交 806a63c 归档开发计划 §5.10） · zcode · 已验证
+
+时间：2026-09-20T05:36:05.193904+00:00；记录：`.collaboration/entries/000104-bd4846ece477.json`
+
+本会话三项反馈修复（eab7545）经独立子代理并行复验，三项全部通过：① 规则编辑表单「← 返回图谱」@(271,99)+「关闭」@(382,99)，返回后原节点仍选中且 zoom/pan 不变；② 对象/私有属性/共享属性/规则/动作五类编辑页头部坐标逐像素一致、计算样式相同，非图谱来源为单按钮「返回规则列表/动作列表」无回归；③ 1440 与 1280 下选中节点（1跳/2跳 出现）后 inspector-max.right − tool-row.right = 0、scrollWidth == clientWidth、无祖先裁剪，激活邻域与最大化切换后复测仍为 0。验收方式：子代理环境无 IAB 控制权，改用本机 Chrome headless + CDP，以节点真实屏幕坐标派发等价 MouseEvent（已核对 cytoscape 无 isTrusted 门槛、命中双重确认）；固定 bundle 测量、前后哈希一致；全程只读零写入。
+
+- 决定：接受子代理结论：三项修正独立复验通过，不再迭代；窄屏 ≤1100 单行横向滚动为既定取舍（换行会把画布挤到 0 高），登记为已知行为而非缺陷；App.vue TDZ（第 171 行 watch 引用第 181 行声明的 flowState）确属既有缺陷但与本轮三修复无因果（自 eab7545^ 起存在），按用户指示由其他 agent 修复，本轮不处理
+- 验证：① 双击 lg:rule:rule_soc → .editor-head 为表单卡首元素，点返回后 hash 回 #objects、cy.$(':selected')=[lg:rule:rule_soc]、zoom=0.693/pan={584.59,308} 与进入前一致；清本地偏好后全新画布复做结果相同；② 五页头部实测：(271,99) 101×36 与 (382,99) 57×36，计算样式 display:flex/gap:10px/margin-bottom:14px、按钮 font-size:14px/padding:6px 13px/border-radius:6px 五页一致；非图谱来源 hasBackToGraph=false；③ 1440: max-right 1403 = row-right 1403（差 0），scrollWidth/clientWidth = 1050/1050；1280: 1243/1243、890/890；clippedByAncestor=null；1跳/2跳 激活后半透明节点 15→7 且复测仍 0；最大化态与还原态同样 0 裁切；隔离实例夹具 revision_token=r-b31308b051254255bdf65d13c95d99bb / generation=4 / snapshot_seq=4 与验证前一致（零写入）；真实 ontology/ 未触碰；18765 仅 GET 探活
+- 下一步：用户在 18765 强刷（Cmd+Shift+R）后按三项验收：规则/动作编辑表单左上角返回图谱、五类编辑页头部一致、选中节点后工具栏最大化不被裁切；子代理建议的加强项（可选）：在带真实鼠标输入的浏览器里对双击跳转做一次人手点按复核，彻底排除合成事件的歧义；工作区有 Codex 在途改动（App.vue/SharedLibrary/FunctionManager/ProjectBinding/DefinitionManager + 后端 references.py，即 S4 返回来源与保存边界修正）：本轮修改已提交且未被其覆盖（EditorHead 引用完好），互不冲突；若其落盘后重新构建，建议按 §5.10 判据（同五类坐标 (271,99)/(382,99)、max-right 差值 0）重跑一次
+- 依据/文档：文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.9（实施）与 §5.10（独立验收结论）；git eab7545（三项修复）、806a63c（验收结论归档）；tests/editor_head_consistency.test.mjs（19 项）、tests/graph_toolbar_layout.test.mjs（8 项）
 
 ### 统一改版v2：延期样式与交互优化 · codex · 需求已交付
 
@@ -140,13 +151,3 @@ Delivered requirements and interactive prototype for project configuration maint
 - 下一步：用户在 18765 强刷后验收：双击节点→编辑→返回后坐标/缩放不变；规则「编辑」为内嵌表单；头部无多余空行
 - 依据/文档：frontend/src/ontology/legacyGraph/EditorView.vue（applyFocusTarget 最小干预、tool-row scoped 清零）；frontend/src/ontology/BusinessRuleLibrary.vue（内嵌表单）；frontend/src/shared/EditorField.vue；文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.8；git 050de0c
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 本体改版原型逐页改动标注 · codex · 需求已交付
-
-时间：2026-09-20T04:12:49.656725+00:00；记录：`.collaboration/entries/000092-c822114d10b8.json`
-
-在现有v1原型增加本页改动说明、保留内容、01至14编号、按钮/区域新增调整标签及弹窗说明，默认显示且可关闭；同步文档明确不搬入正式产品，未改业务代码。
-
-- 决定：仅增加评审标注，不扩大原有需求或恢复图谱已移除入口。
-- 验证：内嵌JS语法、原17项状态与新增4项标注检查通过；未做浏览器视觉复验。
-- 依据/文档：文档/需求/20260920_本体建设维护与版本改版/交互原型_v1.html
