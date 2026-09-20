@@ -31,6 +31,7 @@ TESTS = REPO / 'tests'
 # 其余 python 测试（纯逻辑 / 直调存储层）：按目录实际存在且不在 HTTP/QUICK 组的
 # test_*.py 运行时推导，防止清单与目录漂移导致漏跑或跑到不存在的文件。
 HTTP_TESTS = [
+    'test_references.py',               # 20260920：草稿悬空引用检查与保存边界
     'test_config_packages.py',          # 20260919：配置迁移导出/导入全链路（格式安全+幂等+隔离）
     'test_export_restore_http.py',      # 批次 A：导出 / 恢复链路
     'test_http_error_boundaries.py',    # 批次 B：错误分类 / R4 / R5

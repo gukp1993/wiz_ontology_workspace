@@ -18,6 +18,7 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-20 | 本体草稿保存边界新增**悬空引用阻断**（20260920 需求 11～13 / 验收意见保存边界）：`POST /api/save` 与当前 head 草稿逐条比较引用完整性（图内 domain/range、契约签名 ref、动作/规则关联、值类型、指标），**仅当本次保存新引入失效引用**时返回 422 `BROKEN_REFERENCE` 并列出具体引用；历史遗留失效引用与「未填写完整」仍按 200 + errors 保存，不锁死草稿（详见 02 §2.2） | POST /api/save | zcode |
 | 2026-09-19 | 函数编排取值放开「列表输出 → 时间序列属性」（01 §3.1）：`kind='flow'` 绑定新增可选 `result:{valueField,timestampField}`（元素对象字段稳定 id）；仅当输出为 list<object{fields…}> 时可绑时间序列属性，取值字段须为 number、时间字段须为 datetime，缺失/不存在/类型不符校验阻断；对象输出与「标量属性绑列表」仍拒绝；标量输出绑定形状不变（不写 result）。执行语义仍随编排取值执行能力一并实现，本轮仅配置与校验 | POST /api/project-validate、POST /api/project-publish、POST /api/projects（项目状态内携带） | zcode |
 | 2026-09-19 | flow-run 输入预览改为精确有界：inputs 序列化 ≤65536 字节（UTF-8）、列表 ≤100 项，截断以 previewTruncated 标记结构表示（R06）（原记录误插于表头之前，本轮回位） | 04 §3.1 | zcode |
 | 2026-09-19 | 配置迁移语义修正（07 §4.5）：导入预检增加强依赖闭包校验（项目快照引用的本体/编排必须在包内）、requiredCapabilities 白名单（非空 415/阻断）、JSON 重复键拒绝；导入写入同步编排 payload.flowId/name 为新身份（可继续保存）；项目草稿与历史发布逐快照解析引用；M07 副本归属精确匹配+预检歧义阻断+副本名进预览；敏感剥离收窄为认证头与 URL 认证段（模型连接地址覆盖、不再按 token 等键名清空业务字段）；默认模型作为被依赖配置入包并在导入时显式绑定；import-result 新增 strippedItems；pendingCredentials 按本次新项目定位；GET /api/api-credentials 响应新增 pending（03 §4.1），补填后自动清除 | 7 个 /api/config-package-*、GET /api/api-credentials | zcode |

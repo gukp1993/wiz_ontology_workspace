@@ -28,7 +28,7 @@ import OntDrawer from '../shared/OntDrawer.vue'
 import PropertyManager from './PropertyManager.vue'
 import { listShared, referencesOf, externalReferencesOf, shapeConflict, copyAsPrivate, propertyDataType, dataTypeLabel, propertyTypeLabel, makeProperty, localProperties, effectiveProperty, addReference, asShared, parsePropertyRows } from './propertyModel'
 import { useOntTable } from './ontList'
-import { sharedDeleteCheck } from './dependencyModel'
+import { externalDependencies, externalDependencyTarget, sharedDeleteCheck } from './dependencyModel'
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
 const props = defineProps<{ state: any; canvasReturn?: string; focusId?: string; editFocus?: boolean }>()
@@ -125,6 +125,15 @@ async function locate(id: string) {
 const detail = computed(() => detailId.value ? definitions.value.find((s: any) => s['@id'] === detailId.value) || null : null)
 const usageTarget = computed(() => usagesId.value ? definitions.value.find((s: any) => s['@id'] === usagesId.value) || null : null)
 const usageRows = computed(() => usageTarget.value ? referencesOf(graph.value, usageTarget.value['@id']).map((p: any) => ({ id: p['@id'], domain: p['rdfs:domain']?.['@id'] || '', name: typeName(p['rdfs:domain']?.['@id']), api: p['mg:apiName'] || String(p['@id']).replace(/^mg:/, '') })) : [])
+// R5（20260920 验收）：契约/接口/动作/规则/项目映射等外部依赖列出并给「去处理」定位入口；
+// 无入口的依赖只列名称与原因（不丢失信息，也不伪造跳转）。
+const externalDeps = computed(() => usageTarget.value ? externalDependencies(props.state, usageTarget.value['@id']) : [])
+function goExternal(dep: any) {
+  const target = externalDependencyTarget(dep)
+  if (!target) return
+  usagesId.value = ''
+  emit('navigate', target.view, target.focus)
+}
 function editFromDetail() { const id = detailId.value; detailId.value = ''; openEditor(id) }
 function openRef(r: { domain: string; id: string }) { usagesId.value = ''; emit('navigate', 'objects', { type: r.domain, property: r.id }) }
 
@@ -327,7 +336,13 @@ function distribute() {
   <button v-for="r in usageRows" :key="r.id" type="button" class="ont-ref-row" @click="openRef(r)">
     <span><strong>{{ r.name }}</strong><small class="code-like">{{ r.api }}</small></span>→
   </button>
-  <p v-if="usageTarget && externalReferencesOf(state, usageTarget['@id']).length" class="inline-error">此定义还被以下内容直接引用，删除前需先处理：{{ externalReferencesOf(state, usageTarget['@id']).join('、') }}</p>
+  <template v-if="externalDeps.length">
+    <p class="inline-error">此定义还被以下内容直接引用，删除前需先处理：</p>
+    <button v-for="(d, i) in externalDeps" :key="'ext' + i" type="button" class="ont-ref-row" :disabled="!externalDependencyTarget(d)" @click="goExternal(d)">
+      <span><strong>{{ d.name }}</strong><small>{{ d.reason }}</small></span>
+      <template v-if="externalDependencyTarget(d)">去处理 →</template><template v-else>—</template>
+    </button>
+  </template>
 </OntDrawer>
 </template>
 </template>

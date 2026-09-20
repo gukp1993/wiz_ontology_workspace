@@ -20,7 +20,7 @@ import {
 } from '../businessRuleModel'
 import { effectiveProperty, localProperties, referencesOf } from '../propertyModel'
 import { graphReferences } from '../editorModel'
-import { actionDeleteCheck, objectDeleteCheck, ruleDeleteCheck, sharedDeleteCheck } from '../dependencyModel'
+import { actionDeleteCheck, linkDeleteCheck, objectDeleteCheck, propertyDeleteCheck, ruleDeleteCheck, sharedDeleteCheck } from '../dependencyModel'
 import { prefGet, prefSet } from '../../app/auth'
 import { dataTypeToLabel, labelToDataType } from './shared/fields.js'
 
@@ -314,42 +314,45 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
   function prefixId(target, domainId) { return (KIND_PREFIX[target] || '') + domainId }
 
   /** 删除节点（含引用保护）。返回 {error} 或 {removedEdgeIds}（画布级联由编辑器处理）。 */
-  function domainDeleteNode(nodeId) {
+  function domainDeleteNode(nodeId, { silent = false } = {}) {
     const s = getState()
     const [, family, ...rest] = nodeId.split(':')
     const domainId = rest.join(':')
     const target = { obj: '对象', sp: '共享属性', pp: '私有属性', rule: '规则', action: '动作' }[family]
     const label = nodeNameOf(nodeId)
+    const emitPhase = (payload) => { if (!silent) emitBeforeChange(payload) }
+    const finish = () => { if (!silent) { selfMutating = true; emitChanged(); reload(true) } }
     if (target === '对象') {
       // 20260920 统一语义（需求 13）：与对象页 objectDeleteCheck 同一判断——属性/链接/规则/动作关联任一存在即阻断，
       // 列出业务名称与原因；不提供一键级联清理（此前会静默清理动作关联）。
       const check = objectDeleteCheck(s, domainId)
       if (check.blocked) return { error: check.message }
-      emitBeforeChange({ actionLabel: `删除对象「${label}」`, target: { kind: 'object', id: domainId } })
+      emitPhase({ actionLabel: `删除对象「${label}」`, target: { kind: 'object', id: domainId } })
       s.ontology['@graph'] = graph().filter(n => n['@id'] !== domainId)
     } else if (target === '共享属性') {
       // 20260920 统一语义：与共享属性库/对象页同一判断（对象属性引用或契约/接口依赖都阻断并列出名称）
       const check = sharedDeleteCheck(s, domainId)
       if (check.blocked) return { error: check.message }
-      emitBeforeChange({ actionLabel: `删除共享属性「${label}」`, target: { kind: 'sharedProperty', id: domainId } })
+      emitPhase({ actionLabel: `删除共享属性「${label}」`, target: { kind: 'sharedProperty', id: domainId } })
       s.ontology['@graph'] = graph().filter(n => n['@id'] !== domainId)
     } else if (target === '私有属性') {
-      emitBeforeChange({ actionLabel: `删除私有属性「${label}」`, target: { kind: 'property', id: domainId } })
+      // R1（20260920 验收）：私有属性同样受引用保护（契约签名/接口/项目映射引用时阻断）。
+      const check = propertyDeleteCheck(s, domainId)
+      if (check.blocked) return { error: check.message }
+      emitPhase({ actionLabel: `删除私有属性「${label}」`, target: { kind: 'property', id: domainId } })
       s.ontology['@graph'] = graph().filter(n => n['@id'] !== domainId)
     } else if (target === '规则') {
       const check = ruleDeleteCheck(s, domainId)
       if (check.blocked) return { error: check.message }
-      emitBeforeChange({ actionLabel: `删除规则「${label}」`, target: { kind: 'rule', id: domainId } })
+      emitPhase({ actionLabel: `删除规则「${label}」`, target: { kind: 'rule', id: domainId } })
       s.workflow.businessRules = (s.workflow.businessRules || []).filter(r => r.id !== domainId)
     } else {
       const check = actionDeleteCheck(s, domainId)
       if (check.blocked) return { error: check.message }
-      emitBeforeChange({ actionLabel: `删除动作「${label}」`, target: { kind: 'action', id: domainId } })
+      emitPhase({ actionLabel: `删除动作「${label}」`, target: { kind: 'action', id: domainId } })
       s.workflow.actions = (s.workflow.actions || []).filter(a => a.id !== domainId)
     }
-    selfMutating = true
-    emitChanged()
-    reload(true)
+    finish()
     return {}
   }
 
@@ -422,38 +425,46 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
   }
 
   /** 删除边：按边类别执行领域语义（解引用≠删定义；私有归属边=删私有属性）。 */
-  function domainDeleteEdge(edgeId) {
+  function domainDeleteEdge(edgeId, { silent = false } = {}) {
     const s = getState()
     const edge = state.draft.edges.find(e => e.id === edgeId)
     if (!edge) return { error: '连线已不存在' }
+    const emitPhase = (payload) => { if (!silent) emitBeforeChange(payload) }
+    const finish = () => { if (!silent) { selfMutating = true; emitChanged(); reload(true) } }
     if (edge.kind === '对象链接') {
       const link = graph().find(l => l['@type'] === 'owl:ObjectProperty' && l['@id'] === edge.domainId)
       if (!link) return { error: '链接定义已不存在' }
-      emitBeforeChange({ actionLabel: `删除链接「${trim(link['rdfs:label']) || edge.domainId}」`, target: { kind: 'link', id: edge.domainId } })
+      // R1：链接删除同样检查引用（契约/接口/项目映射引用该链接时阻断）
+      const check = linkDeleteCheck(s, edge.domainId)
+      if (check.blocked) return { error: check.message }
+      emitPhase({ actionLabel: `删除链接「${trim(link['rdfs:label']) || edge.domainId}」`, target: { kind: 'link', id: edge.domainId } })
       s.ontology['@graph'] = graph().filter(n => n['@id'] !== edge.domainId)
     } else if (edge.kind === '共享引用') {
       const p = graph().find(x => x['@id'] === edge.domainId)
       if (!p) return { error: '引用属性已不存在' }
-      emitBeforeChange({ actionLabel: `移除「${nodeNameOf(edge.source)}」对共享属性「${nodeNameOf(edge.target)}」的引用（属性转为私有保留）` })
-      detachShared(p)
+      // R3（20260920 验收）：共享引用边 = 「移除对象引用属性」——删除该对象属性，共享库定义与
+      // 其他对象的引用全部保留；需要保留内容请显式走对象页的「转为私有」。外部依赖仍阻断。
+      const check = propertyDeleteCheck(s, edge.domainId, { shared: true })
+      if (check.blocked) return { error: check.message }
+      emitPhase({ actionLabel: `移除「${nodeNameOf(edge.source)}」对共享属性「${nodeNameOf(edge.target)}」的引用` })
+      s.ontology['@graph'] = graph().filter(n => n['@id'] !== edge.domainId)
     } else if (edge.kind === '私有属性') {
-      return domainDeleteNode(edge.target) // 归属边不可单独断开：走删除私有属性确认
+      return domainDeleteNode(edge.target, { silent }) // 归属边不可单独断开：走删除私有属性确认
     } else if (edge.kind === '规则关联') {
       const [obj, rule] = String(edge.domainId).split('|')
-      emitBeforeChange({ actionLabel: `移除对象「${nodeNameOf(edge.source)}」的规则引用「${nodeNameOf(edge.target)}」` })
+      emitPhase({ actionLabel: `移除对象「${nodeNameOf(edge.source)}」的规则引用「${nodeNameOf(edge.target)}」` })
       commitRuleAssociations(s, ruleAssociationsOf(s).filter(a => !(fullTypeId(a.objectTypeId) === obj && trim(a.ruleId) === rule)))
     } else {
       const [obj, act] = String(edge.domainId).split('|')
-      emitBeforeChange({ actionLabel: `移除对象「${nodeNameOf(edge.source)}」的动作关联「${nodeNameOf(edge.target)}」` })
+      emitPhase({ actionLabel: `移除对象「${nodeNameOf(edge.source)}」的动作关联「${nodeNameOf(edge.target)}」` })
       commitAssociations(s, effectiveAssociations(s).filter(a => !(fullTypeId(a.objectTypeId) === obj && trim(a.actionId) === act)))
     }
-    selfMutating = true
-    emitChanged()
-    reload(true)
+    finish()
     return {}
   }
   function detachShared(p) {
-    // 与 propertyModel.detachProperty 同语义：共享引用解除后升级为私有属性，继承显示字段（零丢失）
+    // 「转为私有」语义（保留对象属性并继承共享显示字段）。20260920 验收 R3 后，
+    // 共享引用边删除不再调用本函数（那条路径是「移除引用」）；本函数仅作保留能力。
     const shared = graph().find(n => n['@id'] === p['mg:sharedProperty']?.['@id'])
     if (shared) {
       for (const k of ['mg:valueSuffix', 'mg:decimalPlaces', 'mg:formatting', 'mg:constraint', 'mg:business', 'mg:reviewNote', 'mg:sourceIds']) {
@@ -488,24 +499,60 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
     return { id: nodeId, family, domainId: rest.join(':'), label: n.name }
   }
 
+  /** 静默恢复快照（不 emit 事件、不重载）：批量失败时把领域五片换回操作前状态。
+   *  与 applyUndo 的区别：不产生新的 before-change/changed，保证「失败时内容与撤销栈均不变」。 */
+  function restoreSnapshot(snapshot) {
+    const s = getState()
+    s.ontology['@graph'] = JSON.parse(JSON.stringify(snapshot.graph))
+    s.workflow.businessRules = JSON.parse(JSON.stringify(snapshot.rules))
+    s.workflow.businessRuleAssociations = JSON.parse(JSON.stringify(snapshot.ruleAssoc))
+    s.workflow.actions = JSON.parse(JSON.stringify(snapshot.actions))
+    s.workflow.actionAssociations = JSON.parse(JSON.stringify(snapshot.actionAssoc))
+  }
+
   /**
-   * 领域批量删除：先对全部节点做删除校验（任何一项不合法即整批拒绝，不部分写入），
-   * 校验通过后一次性应用（节点先于边；边的领域删除各自带具名撤销前钩）。
+   * 领域批量删除（R2 修正）：先生成完整操作集合并全量预检（节点+边，任何一项不合法即整批拒绝）；
+   * 节点删除会连带消失的归属边自动去重；通过后以 silent 模式一次性应用，最后一次事件、一次保存；
+   * 中途任何失败恢复操作前快照，内容与撤销栈均不变（由 EditorView 的 domainCmd 判断是否入栈）。
    */
   function domainDeleteSelection(nodeIds, edgeIds) {
     for (const id of nodeIds) {
       const err = canDeleteNode(id)
       if (err) return { error: err }
     }
-    for (const id of nodeIds) {
-      const r = domainDeleteNode(id)
-      if (r.error) return { error: r.error }
-    }
+    // 去重：被删节点自身的归属边（lg:own:<id>）无需再作为独立边删除
+    const nodeSet = new Set(nodeIds)
+    const effectiveEdgeIds = []
     for (const id of edgeIds) {
-      const r = domainDeleteEdge(id)
-      if (r.error) return { error: r.error }
+      const edge = state.draft.edges.find(e => e.id === id)
+      if (!edge) return { error: '连线已不存在' }
+      if (nodeSet.has(edge.target) || nodeSet.has(edge.source)) continue
+      effectiveEdgeIds.push(id)
+    }
+    for (const id of effectiveEdgeIds) {
+      const err = canDeleteEdge(id)
+      if (err) return { error: err }
+    }
+    const snapshot = captureUndo()
+    emitBeforeChange({ actionLabel: `批量删除 ${nodeIds.length + effectiveEdgeIds.length} 项` })
+    try {
+      for (const id of nodeIds) {
+        const r = domainDeleteNode(id, { silent: true })
+        if (r.error) throw new Error(r.error)
+      }
+      for (const id of effectiveEdgeIds) {
+        const r = domainDeleteEdge(id, { silent: true })
+        if (r.error) throw new Error(r.error)
+      }
+    } catch (e) {
+      restoreSnapshot(snapshot)   // 整批回滚：内容与撤销栈不变
+      reload(true)
+      return { error: String((e && e.message) || e) }
     }
     if (nodeIds.length) dropPositions(nodeIds)
+    selfMutating = true
+    emitChanged()
+    reload(true)
     return {}
   }
   /** 删除前置校验（与 domainDeleteNode 的保护规则一致，供批量预检复用）。 */
@@ -521,6 +568,9 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
     } else if (target === '共享属性') {
       const check = sharedDeleteCheck(s, domainId)
       if (check.blocked) return check.message
+    } else if (target === '私有属性') {
+      const check = propertyDeleteCheck(s, domainId)
+      if (check.blocked) return check.message
     } else if (target === '规则') {
       const check = ruleDeleteCheck(s, domainId)
       if (check.blocked) return check.message
@@ -531,10 +581,28 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
     return ''
   }
 
+  /** 删除边前置校验（R2：批量预检与单条删除同一判断；返回错误文案或空串）。 */
+  function canDeleteEdge(edgeId) {
+    const s = getState()
+    const edge = state.draft.edges.find(e => e.id === edgeId)
+    if (!edge) return '连线已不存在'
+    if (edge.kind === '对象链接') {
+      return linkDeleteCheck(s, edge.domainId).message
+    }
+    if (edge.kind === '共享引用') {
+      return propertyDeleteCheck(s, edge.domainId, { shared: true }).message
+    }
+    if (edge.kind === '私有属性') {
+      return canDeleteNode(edge.target)
+    }
+    return '' // 规则/动作关联：仅解除关联，不删定义
+  }
+
   return {
     state, reload, checkExternal, captureUndo, applyUndo,
     setPrefs, loadPrefs, flushPrefs, persistPrefs: savePrefsDebounced, setPosition, dropPositions, allPositions,
     domainCreateNode, domainSaveNode, domainDeleteNode, domainCreateEdges, domainDeleteEdge, domainSaveEdge, domainDeleteSelection,
+    canDeleteNode, canDeleteEdge,
     get positions() { return positions },
   }
 }

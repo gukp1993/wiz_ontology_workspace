@@ -581,6 +581,14 @@ def post_save(payload):
         if payload.get('revision') != expected:
             return {'error': '此本体已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
         errors = validate(state)
+        # 20260920 需求 11～13 保存边界（接口文档 02 §2.2）：只阻断**本次新引入**的悬空引用，
+        # 历史遗留失效引用与「未填写完整」仍允许保存（不锁死草稿）。
+        from workbench import references as references_mod
+        previous = workspaces.read_draft(identifier) if head_token else None
+        newly_broken, ok = references_mod.new_broken_references(previous, state)
+        if not ok:
+            return {'error': '本次保存会使已有效引用失效，已阻止写入；请先处理列出的引用（或先撤销该删除）。',
+                    'code': 'BROKEN_REFERENCE', 'errors': newly_broken}, 422
         workspaces.write_draft(state, expected_token=head_token,
                                blank_baseline=(head_token is None))
         return {'revision': _expected_revision(identifier), 'errors': errors, 'ontology': info}, 200

@@ -16,6 +16,11 @@ export interface DependencyEntry {
   objectId?: string
   /** 对象属性（property）时的属性稳定 id */
   propertyId?: string
+  /** R5：外部依赖的来源类别与稳定 id（契约/接口/动作/规则/项目映射），供「去处理」定位 */
+  sourceKind?: 'contract' | 'interface' | 'action' | 'rule' | 'mapping' | 'definition'
+  sourceId?: string
+  /** 图内定义依赖方的定义 id（对象建模定位用） */
+  definitionId?: string
 }
 
 export interface DeleteCheck {
@@ -64,7 +69,24 @@ export function sharedPropertyUsages(state: any, sharedId: string): DependencyEn
 
 /** 契约/接口/项目映射等对某 id 的直接引用（图谱外依赖）。 */
 export function externalDependencies(state: any, id: string): DependencyEntry[] {
-  return graphReferenceEntries(state, id).map(r => ({ name: r.name, reason: r.reason, kind: 'other' as const }))
+  // R5：保留来源类别与稳定 id（契约/接口/动作/规则/映射）——共享库引用抽屉据此提供「去处理」定位。
+  return graphReferenceEntries(state, id).map(r => ({
+    name: r.name, reason: r.reason, kind: 'other' as const,
+    sourceKind: r.sourceKind, sourceId: r.sourceId, definitionId: r.definitionId,
+  }))
+}
+
+/** R5：外部依赖的定位入口（页面 view + focus 参数）；无可用入口时返回 null。 */
+export function externalDependencyTarget(dep: DependencyEntry): { view: string; focus: Record<string, any> } | null {
+  switch (dep.sourceKind) {
+    case 'contract': return { view: 'contracts', focus: { contract: dep.sourceId } }
+    case 'interface': return { view: 'interfaces', focus: { definition: dep.sourceId } }
+    case 'action': return { view: 'actions', focus: { definition: dep.sourceId } }
+    case 'rule': return { view: 'rules', focus: { definition: dep.sourceId } }
+    case 'mapping': return { view: 'binding', focus: { type: dep.objectId || dep.sourceId } }
+    case 'definition': return dep.definitionId ? { view: 'objects', focus: { definition: dep.definitionId } } : null
+    default: return null
+  }
 }
 
 export function dependencyMessage(target: string, deps: DependencyEntry[], hint: string): string {
@@ -87,6 +109,35 @@ export function sharedDeleteCheck(state: any, sharedId: string): DeleteCheck {
       ? '请先在对象建模中移除对应引用属性，或改为「转为私有」保留内容；共享定义不会自动解除引用。'
       : '请先处理上述引用。'
     return { blocked: true, deps, message: dependencyMessage(name, deps, hint) }
+  }
+  return { blocked: false, deps: [], message: '' }
+}
+
+/** 对象属性删除判定（R1）：
+ *  - 共享引用属性：语义是「移除对象引用属性」（共享定义保留），但仍须检查契约/接口/项目映射
+ *    等外部依赖（引用该属性的契约会悬空）；
+ *  - 私有属性：外部依赖同样阻断。
+ * 图谱底层命令与对象页共用本判定，避免只在某个入口防护。 */
+export function propertyDeleteCheck(state: any, propertyId: string, options: { shared?: boolean } = {}): DeleteCheck {
+  const name = propertyNameOf(state, propertyId)
+  const deps = externalDependencies(state, propertyId)
+  if (deps.length) {
+    const hint = options.shared
+      ? '请先处理上述引用；共享定义本身不受影响，可继续保留。'
+      : '契约、接口或项目映射仍引用此属性，请先调整相应引用。'
+    return { blocked: true, deps, message: dependencyMessage(name, deps, hint) }
+  }
+  return { blocked: false, deps: [], message: '' }
+}
+
+/** 链接（owl:ObjectProperty）删除判定（R1）：契约/接口/项目映射等外部依赖阻断。 */
+export function linkDeleteCheck(state: any, linkId: string): DeleteCheck {
+  const graph = state?.ontology?.['@graph'] || []
+  const node = graph.find((n: any) => n['@id'] === linkId)
+  const name = node?.['rdfs:label'] || linkId
+  const deps = externalDependencies(state, linkId)
+  if (deps.length) {
+    return { blocked: true, deps, message: dependencyMessage(name, deps, '请先调整引用该链接的契约、接口或项目映射。') }
   }
   return { blocked: false, deps: [], message: '' }
 }
@@ -200,7 +251,11 @@ export function sharedImpactOf(state: any, sharedId: string, before: any, after:
 
 /** 影响的稳定指纹：编辑内容 + 当前引用集合；任一处变化即让既有确认失效（需求 11/§5）。 */
 export function impactFingerprint(state: any, sharedId: string, after: any): string {
+  // R4：指纹同时绑定「提交内容 + 引用集合 + 当前草稿中的原定义（基线）」——
+  // 其他标签页改了原定义（提交内容与引用不变）也会让既有确认失效，必须重新核对差异。
+  const graph = state?.ontology?.['@graph'] || []
+  const before = graph.find((n: any) => n['@id'] === sharedId) || null
   const refs = sharedPropertyUsages(state, sharedId)
     .map(u => u.objectId + '#' + u.propertyId).sort().join('|')
-  return JSON.stringify({ id: sharedId, node: after, refs })
+  return JSON.stringify({ id: sharedId, before, node: after, refs })
 }

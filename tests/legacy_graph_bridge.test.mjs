@@ -142,12 +142,12 @@ check('R06 删除保护：被引用共享定义/对象（含规则引用）均�
   assert.ok(devErr.includes('暂不能删除'), devErr)  // 图引用（所属对象/链接起点）先拦；无图引用时轮到规则引用
 
 })
-check('R06 删除引用边=属性转私有保留，共享定义不动', () => {
+check('R06/20260920 删除共享引用边=移除对象引用属性（共享定义与其他引用保留）', () => {
+  // 20260920 验收 R3 更新期望：该边语义是「移除当前对象的引用属性」，不再隐式转为私有；
+  // 需要保留内容请显式走对象页的「转为私有」。
   const r = bridge.domainDeleteEdge('lg:sref:mg:p_dev_power')
   assert.ok(!r.error, r.error)
-  const p = st.ontology['@graph'].find(n => n['@id'] === 'mg:p_dev_power')
-  assert.ok(p && !p['mg:sharedProperty'], '引用解除')
-  assert.ok(p['mg:valueSuffix'] === 'kW', '继承显示字段（零丢失）')
+  assert.ok(!st.ontology['@graph'].some(n => n['@id'] === 'mg:p_dev_power'), '对象引用属性已移除')
   assert.ok(st.ontology['@graph'].some(n => n['@id'] === 'mg:sp_power'), '共享定义保留')
 })
 check('R06 删除对象链接边=删链接定义；规则关联边=解除关联不删规则', () => {
@@ -163,6 +163,71 @@ check('R06 归属边删除=删除私有属性定义（带确认语义的领域�
   const r = bridge.domainDeleteEdge('lg:own:mg:p_clu_soc')
   assert.ok(!r.error, r.error)
   assert.ok(!st.ontology['@graph'].some(n => n['@id'] === 'mg:p_clu_soc'))
+})
+
+// ── 20260920 验收修正回归（R1/R2/R3）：以真实命令结果与状态不变性为断言 ──────────
+check('R1 私有属性被契约引用时删除阻断（命令返回错误且状态不变）', () => {
+  const st2 = makeState()
+  st2.workflow.functions = [{ id: 'fn1', name: '查询SOC', guide_version: 3,
+    outputs: [{ id: 'o1', name: 'soc', ref: { kind: 'property', id: 'mg:p_clu_soc' } }] }]
+  const log2 = []
+  const b2 = makeBridge(st2, log2)
+  b2.reload(true)
+  const before = JSON.stringify(st2.ontology['@graph'])
+  const r = b2.domainDeleteNode('lg:pp:mg:p_clu_soc')
+  assert.ok(r.error, '应阻断')
+  assert.match(r.error, /簇编号|SOC/, '名称可读')
+  assert.equal(JSON.stringify(st2.ontology['@graph']), before, '状态不变')
+})
+
+check('R1 对象链接被契约引用时删除阻断', () => {
+  const st2 = makeState()
+  st2.workflow.functions = [{ id: 'fn2', name: '查询关系', guide_version: 3,
+    outputs: [{ id: 'o2', name: 'rel', ref: { kind: 'object', id: 'mg:object_device' } }],
+    inputs: [{ id: 'i2', name: 'link', ref: { kind: 'property', id: 'mg:link_a' } }] }]
+  const b2 = makeBridge(st2, [])
+  b2.reload(true)
+  const before = JSON.stringify(st2.ontology['@graph'])
+  const r = b2.domainDeleteEdge('lg:link:mg:link_a')
+  assert.ok(r.error, '应阻断')
+  assert.equal(JSON.stringify(st2.ontology['@graph']), before, '状态不变')
+})
+
+check('R2 批量删除含失败项=整批不变（节点与归属边同选）', () => {
+  const st2 = makeState()
+  st2.workflow.functions = [{ id: 'fn1', name: '查询SOC', guide_version: 3,
+    outputs: [{ id: 'o1', name: 'soc', ref: { kind: 'property', id: 'mg:p_clu_soc' } }] }]
+  const log2 = []
+  const b2 = makeBridge(st2, log2)
+  b2.reload(true)
+  const before = JSON.stringify(st2.ontology['@graph'])
+  const r = b2.domainDeleteSelection(['lg:pp:mg:p_clu_soc'], ['lg:own:mg:p_clu_soc'])
+  assert.ok(r.error, '预检应拒绝')
+  assert.equal(JSON.stringify(st2.ontology['@graph']), before, '整批不变')
+  assert.equal(log2.filter(x => x[0] === 'changed').length, 0, '未产生任何变更事件')
+})
+
+check('R2 批量删除全部合法=一次变更、一次保存、边去重', () => {
+  const st2 = makeState()
+  const log2 = []
+  const b2 = makeBridge(st2, log2)
+  b2.reload(true)
+  const r = b2.domainDeleteSelection(['lg:pp:mg:p_clu_soc'], ['lg:own:mg:p_clu_soc'])
+  assert.ok(!r.error, r.error)
+  assert.ok(!st2.ontology['@graph'].some(n => n['@id'] === 'mg:p_clu_soc'), '属性删除')
+  assert.equal(log2.filter(x => x[0] === 'changed').length, 1, '只发一次 changed（一次保存）')
+  assert.equal(log2.filter(x => x[0] === 'before').length, 1, '只发一次 before（一次撤销点）')
+})
+
+check('R3 共享引用边删除不触发 detachShared（无残留 mg:valueSuffix 继承）', () => {
+  const st2 = makeState()
+  const b2 = makeBridge(st2, [])
+  b2.reload(true)
+  const r = b2.domainDeleteEdge('lg:sref:mg:p_dev_power')
+  assert.ok(!r.error, r.error)
+  const p = st2.ontology['@graph'].find(n => n['@id'] === 'mg:p_dev_power')
+  assert.ok(!p, '对象属性被移除（而非转私有保留）')
+  assert.ok(st2.ontology['@graph'].some(n => n['@id'] === 'mg:sp_power'), '共享定义保留')
 })
 
 // ── 撤销：换回真实领域模型 ────────────────────────────────────────────────
