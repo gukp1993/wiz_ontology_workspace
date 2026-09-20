@@ -3,8 +3,10 @@
 // 本模块保持纯数据与纯函数，便于独立测试。
 // 20260918 全局设置中心：设置页不属于本体/项目两区（globalViews），
 // 进入设置不改写 lastOntologyView、不被 space watcher 重定向；#settings 归一到 #settings-models。
+// 20260920 从物料生成本体：本体区子入口（build），深链 #/ontology/build/#/build 归一；
+// 不新增平台主菜单，入口落在侧栏本体菜单末位 + 工作概览/新建本体区。
 export const pages: Record<string, string> = {
-  'o-home': '工作概览', objects: '对象建模', contracts: '计算契约', library: '共享属性', rules: '业务规则', 'o-release': '本体校验与发布',
+  'o-home': '工作概览', objects: '对象建模', contracts: '计算契约', library: '共享属性', rules: '业务规则', 'o-release': '本体校验与发布', build: '从物料生成',
   'p-home': '项目概览', connections: '数据连接', binding: '对象映射', implements: '取值规则库', 'p-release': '项目校验与发布',
   'p-upgrade': '版本引用',
   'f-home': '函数编排', 'f-editor': '编排编辑',
@@ -21,6 +23,8 @@ export const alias: Record<string, string> = {
   flows: 'f-home', flow: 'f-home', 'flow-edit': 'f-editor',
   settings: 'settings-models', // 设置中心入口默认到模型分类；llm 旧地址同样归一（下行）
   llm: 'settings-models',
+  // 从物料生成本体：带前缀的深链写法（#/ontology/build）与历史简写（#/build）都归一到 build
+  'ontology/build': 'build', '/ontology/build': 'build', '/build': 'build', 'ontology-build': 'build',
 }
 
 export const normalizeView = (v: string) => alias[v] || v
@@ -38,8 +42,9 @@ export const settingsCategories = [
   { id: 'settings-transfer', title: '配置迁移', group: '数据管理' },
 ] as const
 
-/** 本体区侧栏菜单（扁平顺序即渲染顺序）；「更多工具」不进表，由 App 单独渲染。 */
-export const menuOntology: Record<string, string> = { 'o-home': '工作概览', objects: '对象建模', library: '共享属性', rules: '业务规则', actions: '动作定义', 'o-release': '本体校验与发布' }
+/** 本体区侧栏菜单（扁平顺序即渲染顺序）；「更多工具」不进表，由 App 单独渲染。
+ *  build（从物料生成）是「新建本体」的子入口，只进本体区菜单，不新增平台主菜单。 */
+export const menuOntology: Record<string, string> = { 'o-home': '工作概览', objects: '对象建模', library: '共享属性', rules: '业务规则', actions: '动作定义', 'o-release': '本体校验与发布', build: '从物料生成' }
 /** 字符图标（旧版侧栏）。2026-09 起侧栏改用 shared/icons.ts 的 SVG 线性图标，此处仅为向后兼容保留。 */
 export const navIcon: Record<string, string> = { 'o-home': '▤', objects: '▦', rules: '§', actions: '↯', contracts: '{ }', library: '≣', 'o-release': '⚑', 'p-home': '▤', connections: '⇄', binding: '▦', implements: '{ }', 'f-home': '⌥', 'f-editor': '✎', tools: '⋯' }
 
