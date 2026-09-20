@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`353ab3666978d3dd`
+上下文版本：`55cb3ba859f9adf4`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,18 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 验收意见 R1–R5 修正与保存边界（本体建设维护 11～13） · zcode · 已实施，待验收
+
+时间：2026-09-20T05:10:53.774463+00:00；记录：`.collaboration/entries/000101-a0122fabe37f.json`
+
+按验收意见_20260920.md 修正 5 项并补保存边界（提交 dc77551）。R1 图谱私有属性/对象链接删除补引用检查；R2 批量删除改全量预检+归属边去重+silent 一次性应用+失败快照回滚（一次变更/一次保存/一次撤销点）；R3 共享引用边改「移除对象引用属性」不再转私有并更新旧测试；R4 指纹纳入草稿中的原定义（基线变化即失效）；R5 外部依赖携带 sourceKind/sourceId 并提供「去处理」定位。保存边界新增 workbench/references.py：POST /api/save 仅阻断本次新引入的悬空引用（422 BROKEN_REFERENCE，零写入且 revision 不推进），历史遗留失效与未填写完整仍可保存；02 分册 §2.2 与 README 已先行登记。测试 test_references.py 10/10、legacy_graph_bridge 追加 5 项命令级断言、dependency_guard 15/15，前后端全量回归全绿，typecheck+build 通过；隔离实例复验阻断文案+定位抽屉+确认弹窗+HTTP 422。
+
+- 决定：保存边界口径（写进接口文档）：只阻断「本次保存新引入」的悬空引用；历史遗留失效引用允许继续保存，避免锁死草稿；首次保存无基线不阻断；R3 语义分开：图谱共享引用边=移除对象引用属性；「转为私有」只保留在对象页显式操作，两条路径不再混淆；R2 原子性实现：节点与边统一预检（canDeleteNode/canDeleteEdge），被删节点的归属边自动去重，silent 应用失败恢复快照——不新增事务框架；R5 定位入口收口在 externalDependencyTarget（contract→contracts、interface/action/rule→对应库、mapping→对象映射），无入口的依赖只列名称与原因
+- 验证：tests/test_references.py 10/10：单元（零悬空/契约悬空/关联悬空/值类型悬空/新旧比较）+ HTTP（首次放行/普通保存/删除有效引用 422 且零写入 revision 不变/历史遗留可继续保存/未填写完整 200+errors）；legacy_graph_bridge 追加 5 项命令级断言全过：R1 私有属性与链接被契约引用时命令阻断且状态逐字节不变；R2 批量失败整批不变且零 changed 事件、全部合法时 changed=1 与 before=1；R3 共享引用边删除后对象属性移除且共享定义保留；dependency_guard 15/15、ontology_graph、object_workspace 7/7、ont_list_unified 4/4、ontology_home 27、save_queue 22/22、editor_head_consistency 19、graph_toolbar_layout 8、config_transfer 5/5、ontology_import 18/18；后端 quick 3/3、test_save_iteration、test_project_api_roundtrip、test_storage_contract、test_flows、test_config_packages 全过；typecheck+build 通过；隔离实例 18894：共享定义删除阻断文案含对象名+引用位置抽屉可定位；共享定义高影响编辑确认弹窗正常；真实 HTTP 复验：建立含契约引用基线 200 → 删除被引用属性 422 BROKEN_REFERENCE 并列出契约名与属性 id
+- 下一步：Codex 按验收意见 R1–R5 与保存边界复验（重点：命令级断言与 HTTP 422 零写入）；未验证项（开发计划 §8.4）：跨标签页「确认弹窗打开期间他处改原定义」完整 UI 复验（指纹逻辑已单元锁定）；多进程并发下同场景；图谱 canvas 点击级删除仍未做浏览器实测
+- 依据/文档：文档/需求/20260920_本体建设维护与版本改版/验收意见_20260920.md；文档/需求/20260920_本体建设维护与版本改版/开发计划.md §8；workbench/references.py；tests/test_references.py；文档/接口文档/02-本体区接口.md §2.2
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### 本体与项目统一维护体验改版需求与标注原型 · codex · 需求已交付
 
@@ -140,14 +152,3 @@ Delivered requirements and interactive prototype for project configuration maint
 - 下一步：用户评审原型及需求建议；批准后再交执行工具实施。
 - 依据/文档：文档/需求/20260920_本体建设维护与版本改版/交互原型_v1.html；文档/需求/20260920_本体建设维护与版本改版/需求说明.md；文档/需求/20260920_本体建设维护与版本改版/开发计划.md；文档/需求/20260920_本体建设维护与版本改版/执行指令.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 图谱 UI 优化 + 详情编辑跳转编辑页 + 移除打开定义（提交 c070c60） · zcode · 已实施，待验收
-
-时间：2026-09-20T03:31:26.745680+00:00；记录：`.collaboration/entries/000089-799217e39f45.json`
-
-按用户三项要求实施：① UI 优化——头部两行压成一行（空状态行删除、状态区并入工具行右对齐 sticky），头部 179→67px、画布 584→641px；② 详情「编辑」改为跳转到该节点的编辑页面（携 edit:true + canvas/canvasNode，App editFocusFlag 透传，目标页直接打开编辑表单，保存或返回图谱回画布并定位原节点），五类节点全部实测；③ 删除「打开定义」按钮与 openInspDefinition 函数（0 残留）。
-
-- 决定：编辑跳转以仅前端可选参数 edit:true 传递（不改接口契约）；目标页收到后直接进编辑表单，非图谱来源的既有行为不变；统一回图谱契约：目标页编辑表单头部在 canvasReturn 时显示「← 返回图谱」+「关闭」，保存成功后自动回图谱并定位原节点；PropertyManager 新增 canvasReturn/back-to-graph；「打开定义」按用户要求删除；连线关系名/描述仍可在详情内联编辑，完整链接定义经对象编辑跳转（对象→链接页签）维护；私有属性编辑沿用 PropertyManager 表单（非图谱来源行为不变）；共享属性走共享属性库表单
-- 验证：浏览器（隔离实例 18846）五类逐一实测：对象「维护对象定义」、私有属性「维护 · 簇编号」、共享属性（#library）、规则「编辑规则」带值、动作「编辑动作 · 停止充放电」——均显示「← 返回图谱」，0 控制台错误；规则闭环实证：改名为「储能SOC计算规则V2」保存后自动回图谱，画布节点名更新、选中定位、/api/state 读回已落库；UI：头部 67px（原 179）、画布 641px（原 584）、状态右对齐；build 通过；ontology_graph 12/12、legacy_graph_bridge 12/12、object_workspace 7/7、ontology_home 27 全过
-- 下一步：用户在 18765 强刷后查看：详情编辑跳转（五类）、头部更紧凑、打开定义已移除；如需连线详情也提供「编辑链接」跳转（对象→链接页签）或调整头部其它元素，请明确指示
-- 依据/文档：frontend/src/ontology/legacyGraph/EditorView.vue（openEditInWorkspace/详情按钮）；frontend/src/App.vue（editFocusFlag）；ObjectWorkspace.vue/PropertyManager.vue/SharedLibrary.vue/BusinessRuleLibrary.vue/ActionLibrary.vue（editFocus/回图谱）；文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.6；git c070c60
