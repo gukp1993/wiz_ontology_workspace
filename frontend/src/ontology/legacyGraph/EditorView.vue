@@ -1668,16 +1668,25 @@ watch(() => bridgeSignature(props.state), () => {
 })
 watch(() => props.ontologyId, () => onOntologyChanged())
 // 定义页返回定位（C03 补接）：按 lg: 身份选中节点或边；不存在才提示
+// 返回画布定位（2026-09-20 修正）：只做「选中 + 必要时轻微居中」，绝不放缩与改坐标——
+// 用户反馈双击进编辑页返回后坐标/视图变了；根因是这里曾强制 zoom 到 ≥1 并重新居中。
 function applyFocusTarget() {
   const t = props.focusTarget
   if (!t || !cy.value) return
   const el = cy.value.getElementById(t)
-  if (!el.length) { toast('目标定义已不存在，已清除画布选择。', true); return }
+  if (!el.length) { toast('目标定义已不存在，已清除画布选择。'); return }
   cy.value.$(':selected').unselect()
   el.select()
-  // 连线编辑在源端，返回画布只高亮定位；节点则刷新右侧详情
   if (!el.isEdge()) showNodeInspector(el)
-  try { cy.value.animate({ center: { eles: el }, zoom: Math.min(1.6, Math.max(cy.value.zoom(), 1)), duration: 260 }) } catch { /* 定位失败保持视口 */ }
+  // 仅在目标不在当前视口内时才平移使其可见（保持缩放不变）；已在视口内则完全不动视图
+  try {
+    const rp = el.renderedPosition()
+    const w = cy.value.width(), h = cy.value.height()
+    const pad = 60
+    if (rp.x < pad || rp.y < pad || rp.x > w - pad || rp.y > h - pad) {
+      cy.value.animate({ center: { eles: el }, duration: 220 }) // 不传 zoom：保持用户当前缩放
+    }
+  } catch { /* 定位失败保持视口 */ }
 }
 watch(() => props.focusTarget, (t) => { if (t) applyFocusTarget() })
 
@@ -1713,19 +1722,15 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 0;
 }
-.top-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 .tool-row {
+  /* 2026-09-20 用户指出此处有一条多余空行+分隔线：这是头部两行时代的残留
+     （margin-top:7px + padding-top:6px + border-top），单行布局后必须清零。 */
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 7px;
-  padding-top: 6px;
-  border-top: 1px solid #edf1f0;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 .type-filter { display: flex; align-items: center; gap: 5px; margin-left: auto; }
 .type-filter .chip {

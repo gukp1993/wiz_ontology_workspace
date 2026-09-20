@@ -3,14 +3,15 @@
      搜索匹配名称+业务定义；引用情况筛选（全部/有引用/无引用）；名称 zh-CN 排序 + 分页（useOntTable）——
      搜索/筛选/排序/分页只是视图，不触发保存、不产生撤销记录。名称承担查看，不重复放「查看」按钮；
      不显示更多菜单，不新增删除/复制（与一期业务能力一致）。
-     编辑仍是四字段 BusinessRuleDialog（校验/saving、form-save 一次落盘、失败保留表单不假成功），
-     编辑期间注册 T00 表单守卫；详情/引用对象为只读抽屉，Esc/遮罩/关闭均可退；一期无删除、复制、分类、状态、依赖与执行。 -->
+     编辑为内嵌四字段表单（2026-09-20：由弹窗改为与动作/对象/属性页一致的内嵌布局；
+     form-save 一次落盘、失败保留表单不假成功），编辑期间注册 T00 表单守卫；
+     详情/引用对象为只读抽屉，Esc/遮罩/关闭均可退；一期无删除、复制、分类、状态、依赖与执行。 -->
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
-import BusinessRuleDialog from './BusinessRuleDialog.vue'
+import Field from '../shared/EditorField.vue'
 import { useOntTable } from './ontList'
 import { objectsOfRule, RULE_FIELDS, rulesOf } from './businessRuleModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
@@ -23,10 +24,28 @@ const formSave = inject<FormSaveAPI>('form-save')!
 
 const message = ref(''), saving = ref(false)
 // dialog: null | {kind:'detail', id} | {kind:'edit', isNew} | {kind:'owners', id}
-const dialog = ref<{ kind: 'detail' | 'edit' | 'owners'; id: string; isNew?: boolean } | null>(null)
+const dialog = ref<{ kind: 'detail' | 'owners'; id: string } | null>(null)
+// 编辑改为内嵌表单（2026-09-20 用户要求，与动作/对象/属性页风格一致）
+const mode = ref<'list' | 'edit'>('list')
+const editId = ref('')
+const isNewRule = ref(false)
 const draft = ref<any>(null)
 let baseline = ''
 const fieldErrors = ref<Record<string, string>>({})
+
+// 内嵌表单的字段展示元信息（与动作/对象页 Field 风格一致）
+const FIELD_LABEL: Record<string, string> = Object.fromEntries(RULE_FIELDS.map(([k, label]) => [k, label]))
+const FIELD_HELP: Record<string, string> = {
+  description: '这条规则解决什么业务问题、适用范围。',
+  content: '规则内容：计算公式、口径、参数等，逐条填写。',
+  output: '规则计算结果的含义与量纲。',
+}
+const FIELD_EXAMPLE: Record<string, string> = {
+  name: '例如：储能SOC计算规则',
+  description: '例如：按统一统计范围计算储能设备剩余电量占比。',
+  content: '例如：soc = 剩余电量 / 额定容量 × 100。',
+  output: '例如：SOC 百分比，0–100。',
+}
 
 const graph = computed(() => props.state?.ontology?.['@graph'] || [])
 const typeName = (id: string) => { const n: any = graph.value.find(x => x['@id'] === id || x['@id'] === 'mg:' + id.replace(/^mg:/, '')); return n?.['rdfs:label'] || id }
@@ -54,7 +73,10 @@ const ownersRule = computed(() => dialog.value?.kind === 'owners' ? currentRule.
 const ownersNames = computed(() => dialog.value?.id ? dedupeTypes(objectsOfRule(props.state, dialog.value.id)) : [])
 const editTargetName = computed(() => draft.value?.name || '')
 
-watch(rows, v => { if (dialog.value && !v.some((r: any) => r.id === dialog.value!.id)) dialog.value = null }, { immediate: true })
+watch(rows, v => {
+  if (dialog.value && !v.some((r: any) => r.id === dialog.value!.id)) dialog.value = null
+  if (mode.value === 'edit' && editId.value && !v.some((r: any) => r.id === editId.value) && !isNewRule.value) mode.value = 'list'
+}, { immediate: true })
 // 图谱「编辑」跳转（editFocus）：直接进编辑弹窗；否则按既有行为开只读详情抽屉。
 watch(() => props.focusId, id => {
   if (!id || !rows.value.some((r: any) => r.id === id)) return
@@ -62,9 +84,9 @@ watch(() => props.focusId, id => {
   if (props.editFocus) openEdit(id); else openDetail(id)
 }, { immediate: true })
 
-const dirty = computed(() => dialog.value?.kind === 'edit' && JSON.stringify(draft.value) !== baseline)
-const guard = { isDirty: () => dirty.value, discard: () => closeDialog() }
-watch(() => dialog.value?.kind === 'edit', open => { open ? guardApi.register(guard) : guardApi.unregister(guard) })
+const dirty = computed(() => mode.value === 'edit' && JSON.stringify(draft.value) !== baseline)
+const guard = { isDirty: () => dirty.value, discard: () => closeEditor() }
+watch(mode, m => { m === 'edit' ? guardApi.register(guard) : guardApi.unregister(guard) })
 onBeforeUnmount(() => guardApi.unregister(guard))
 
 function openDetail(id: string) { dialog.value = { kind: 'detail', id }; message.value = '' }
@@ -77,7 +99,24 @@ function openEdit(id = '') {
     : Object.fromEntries(RULE_FIELDS.map(([k]) => [k, '']))
   baseline = JSON.stringify(draft.value)
   fieldErrors.value = {}
-  dialog.value = { kind: 'edit', id: id || 'rule_' + crypto.randomUUID().replaceAll('-', ''), isNew: !id }
+  isNewRule.value = !id
+  editId.value = id || 'rule_' + crypto.randomUUID().replaceAll('-', '')
+  mode.value = 'edit'
+  dialog.value = null
+  message.value = ''
+}
+function closeEditor() { mode.value = 'list'; draft.value = null }
+function onField(key: string, value: string) { if (draft.value) draft.value[key] = value }
+async function cancelEdit() {
+  if (dirty.value && !(await appConfirm({ message: '放弃尚未保存的修改？' }))) return
+  closeEditor()
+}
+// 保存后回到列表并定位该行
+function locate(id: string) {
+  if (!id) return
+  let idx = list.filtered.value.findIndex((r: any) => r.id === id)
+  if (idx < 0) { list.q.value = ''; refFilter.value = '全部'; idx = list.filtered.value.findIndex((r: any) => r.id === id) }
+  if (idx >= 0) list.page.value = Math.floor(idx / 20) + 1
 }
 // 详情抽屉「编辑」：换入编辑弹窗即关抽屉（同一 dialog 状态机）。
 function editFromDrawer() { if (detailRule.value) openEdit(detailRule.value.id) }
@@ -88,12 +127,6 @@ function backToOrigin() {
   dialog.value = null
   emit('navigate', 'objects', { type, tab: 'rules' })
 }
-async function closeDialog() {
-  if (dialog.value?.kind === 'edit' && dirty.value && !(await appConfirm({ message: '放弃尚未保存的修改？' }))) return
-  dialog.value = null
-  draft.value = null
-}
-function onField(key: string, value: string) { if (draft.value) draft.value[key] = value }
 function validate(): boolean {
   const errors: Record<string, string> = {}
   for (const [key, label] of RULE_FIELDS) if (!String(draft.value[key] || '').trim()) errors[key] = `请填写${label}`
@@ -104,24 +137,26 @@ async function saveEdit() {
   if (saving.value || !draft.value) return
   if (!validate()) return
   saving.value = true
-  const target = dialog.value!
+  const targetId = editId.value
   const name = draft.value.name.trim()
   const payload = Object.fromEntries(RULE_FIELDS.map(([k]) => [k, draft.value[k].trim()]))
   const list0 = props.state.workflow.businessRules = Array.isArray(props.state.workflow.businessRules) ? props.state.workflow.businessRules : []
-  const existed = list0.some((x: any) => x === Object(x) && x.id === target.id)
+  const existed = list0.some((x: any) => x === Object(x) && x.id === targetId)
   const r = await formSave.submitForm('ontology', () => {
-    const hit = list0.find((x: any) => x === Object(x) && x.id === target.id)
+    const hit = list0.find((x: any) => x === Object(x) && x.id === targetId)
     if (hit) Object.assign(hit, payload)
-    else list0.push({ id: target.id, ...payload })
+    else list0.push({ id: targetId, ...payload })
     void name
-  }, { actionLabel: (existed ? '修改规则「' : '新建规则「') + name + '」', target: { kind: 'rule', id: target.id } })
+  }, { actionLabel: (existed ? '修改规则「' : '新建规则「') + name + '」', target: { kind: 'rule', id: targetId } })
   saving.value = false
   if (!r.ok) { message.value = r.message; return }
-  dialog.value = null
+  const savedId = targetId
+  mode.value = 'list'
   draft.value = null
   message.value = '规则已保存到本体草稿。'
   // 来自图谱的「编辑」跳转：保存成功直接回画布并定位原节点（图谱编辑闭环，2026-09-20）
   if (props.canvasReturn) { backToGraph(); return }
+  locate(savedId)
 }
 function goObject(objectTypeId: string) {
   dialog.value = null
@@ -129,7 +164,7 @@ function goObject(objectTypeId: string) {
 }
 </script>
 <template>
-<section class="card ont-block">
+<section v-if="mode === 'list'" class="card ont-block">
   <div class="ont-lib-head">
     <div>
       <h2>业务规则</h2>
@@ -195,7 +230,26 @@ function goObject(objectTypeId: string) {
   <p class="ont-hint">引用关系在对象建模的「规则」页签中维护；这里只读反查。</p>
 </OntDrawer>
 
-<BusinessRuleDialog v-if="dialog?.kind === 'edit'" mode="edit" :rule="draft" :is-new="dialog.isNew" :saving="saving" :errors="fieldErrors" @close="closeDialog" @field="onField" @save="saveEdit"/>
+
+<!-- 编辑/新建：内嵌完整表单（2026-09-20 用户要求，与动作/对象/属性页一致，不再用弹窗） -->
+<section v-else class="card detail-card">
+  <div class="detail-heading">
+    <div><span class="eyebrow">{{ isNewRule ? '新建规则' : '编辑规则' }}</span><h2>{{ draft?.name || '未命名规则' }}</h2></div>
+    <span class="status-pill">四字段业务规则</span>
+  </div>
+  <div class="form-grid">
+    <Field v-for="[key] in RULE_FIELDS" :key="key" :label="FIELD_LABEL[key]" class="full"
+      :type="key === 'name' ? 'text' : 'textarea'" :rows="key === 'content' ? 8 : 4"
+      :model-value="draft?.[key] || ''" :error="fieldErrors[key] || ''"
+      :help="FIELD_HELP[key] || ''" :example="FIELD_EXAMPLE[key] || ''"
+      @update:model-value="onField(key, $event)"/>
+  </div>
+  <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
+  <div class="detail-footer">
+    <div class="tools"><button type="button" class="primary" :disabled="saving" @click="saveEdit">{{ saving ? '保存中…' : '保存定义' }}</button><button type="button" @click="cancelEdit">取消</button></div>
+    <span>保存直接写入本体草稿；已发布版本需重新发布后更新。</span>
+  </div>
+</section>
 </template>
 
 <style scoped>
