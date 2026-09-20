@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`86c1efa655e782be`
+上下文版本：`b934e12ec459d13e`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 执行 20260920_规则动作字段精简与Excel模板同步 执行指令 · zcode · 已实施，待验收
+
+时间：2026-09-20T09:17:31.560193+00:00；记录：`.collaboration/entries/000128-fd06303c7ef5.json`
+
+规则/动作字段精简与 Excel 模板同步全部实施并提交（b690a1a）：规则 name/description 必填、content 选填、不再提供新 output 输入；动作 effect 文案改「预期效果」且选填（存储键不变）；历史 output 读取/编辑/保存/发布/配置导出导入零丢失，有值时只读展示「历史补充说明（原输出结果）」。接口文档先行（02 §4.9/§4.10 + README 变更记录），后端 workflow.py 单条保存只校验该记录，前端三字段表单与对象页、图谱关联详情统一口径，Excel 新表头（规则三列、动作预期效果）并保留旧「输出结果」「业务效果」别名，新旧效果都非空且不同阻断该批。新模板 ontology-import-rule-action-v1.xlsx（与需求原件逐字节相同）替换三个下载入口，旧模板留作回归输入。验收中另修两个真实缺口：无缓存值公式单元格（openpyxl t=z+f）原被当空单元格跳过导致公式校验不触发；图谱节点详情缺历史 output 行。
+
+- 决定：单条保存只校验该记录的名称/业务定义；不因其他历史不完整定义阻断无关草稿保存（发布仍检查全部定义）。；历史 output 不进编辑草稿、不参与必填，仅按「键存在才写入」透传——legacyBridge 曾无条件写 trim(data.output)，表单省略该键时会清空历史值，已修并用断言锁定。；新旧效果列并存是合法逐行合并场景，不计入「表头重复」；都非空且不同才阻断该批，绝不择一丢弃。；无缓存值的公式单元格按公式处理（hasFormula 即算有内容），业务表与额外 Sheet 检查同一口径，已登记 02 §4.10。；图谱/预览的 fieldEntries 末尾追加非空 LEGACY_FIELDS 条目（带 legacy 标记），与规则库、对象页历史区口径一致；NodeEditModal 保留自己的只读块不重复渲染。
+- 验证：python3 tests/run.py all → 39/39（quick 3、http 10、unit 28）。；ontology_import 27/27（含新增无缓存值公式阻断 4 断言）；legacy_graph_bridge 全过（含新增历史行 4 断言）；business_rule_model、action_model、ont_list_unified 全过；typecheck 0；npm run build 通过。；新模板结构复核：与需求原件 SHA-256 相同，表头准确、零业务行、冻结首行、H 列隐藏、属性下拉与 IF 联动、浅灰 #F2F4F7 / 11pt / 行高 26。；隔离实例 18895（/tmp/wiz_ra，账号 tester）：R01–R11 逐项浏览器通过——两字段保存与读回、缺定义报「请填写业务定义」、三处历史补充说明一致、旧 output 经改名+发布 v1.0.0+配置包导出导入回环保留、空 effect 动作关联、新旧模板导入、冲突与公式行精确拦截且零写入、时间序列与残留观测值拦截、随机后缀重命名、三入口下载新模板。
+- 下一步：Codex 独立验收：建议按 R01–R11 复验，重点核对无缓存值公式口径与图谱历史行这两处验收期修复。；未验证项见开发计划 §7.5：Excel/WPS 原生下拉点击、1000 行上限截断、历史动作显式转 v2 演练；主工作台 18765 未重启、dist 未部署。；隔离实例 18895 与 /tmp/wiz_ra 保留供复验，如需清理请明确指示。
+- 依据/文档：提交 b690a1a；文档/需求/20260920_规则动作字段精简与Excel模板同步/开发计划.md §7；文档/接口文档/02-本体区接口.md §4.9/§4.10；文档/接口文档/README.md 变更记录；frontend/src/ontology/{businessRuleModel,excelImport,importPlan}.ts、legacyGraph/shared/fields.js；workbench/workflow.py；frontend/public/templates/ontology-import-rule-action-v1.xlsx
 
 ### 统一worktree目录位置 · codex · 已确认决定
 
@@ -142,14 +153,3 @@ W3 阶段：A 三项最小修复完成（B1 前端补 applicable_objects 三入�
 - 下一步：等 B（project_validation/project_mapping/影响匹配）与 D（key 签名修正等）回收；随后金样预期差异生成与回放。；W4：npm run build（cs统一一次）、隔离实例浏览器验收（F）、§11.4 逐项 F01–F10、按工作包提交。
 - 依据/文档：文档/接口文档/02-本体区接口.md §2.2、03-项目区接口.md §2.1-§2.4/§3.3、README 变更记录；workbench/{references,projects,project_routes,flows,catalogs,secrets,server}.py；tests/{test_publish_guards,test_references,ui_protection_independent,connection_manager,source_config_retention}.py|mjs
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 角色F 独立QA：复核L发布守卫与C目录/凭据语义（只新增测试） · zcode · 已实施，待验收
-
-时间：2026-09-20T07:07:44.269945+00:00；记录：`.collaboration/entries/000116-25597eede82e.json`
-
-新增两个独立测试文件（动态端口+独立临时根+假账号），未改任何生产文件与他人测试。tests/test_publish_guards_adversarial.py 135项断言全过：4路并发同requestId同内容（Barrier真并发，3轮全200）只多一个版本v1、wb_requests一行、各响应version/revision完全一致、无5xx与裸约束异常；带旧revision重试回放优先CAS；同key异内容409零写入；dict键序不同仍回放，数组顺序不同则409不回放（观察项）；catalogs/_draft漂移不影响回放；保存边界422+state逐字节零写入，覆盖object_bindings/implementations/inlineSql/sources四种引用形态，同批移除放行；注入窗口改编排head→409 DEPENDENCY_CHANGED、releases不增、revision不推进、无回执，恢复同key重试成功；CAS与422不写回执；跨账号及同账号他项目均不串号。tests/test_catalog_independent.py 硬断言47项全过+6项规格观察：fingerprint仅改name/id不变、host/port/database/username/tls/caPath/dbIndex逐个变化；store_if_current正向可写、改地址/换凭据/删连接/代际过期四种注入全False且payload+generation逐字节不变；损坏payload抛CatalogCacheUnreadable带connection_ids、strict=False跳过、GET不5xx；secrets.save幽灵项目拒绝且不建资产、不可读回、代际0。
-
-- 决定：只新增 tests/test_publish_guards_adversarial.py 与 tests/test_catalog_independent.py；未修改 workbench/ 生产代码，未改 L 的 test_publish_guards.py 与 C 的 test_connection_catalog.py。；幂等指纹实测为 canonical（sort_keys）：dict 键序不同仍回放；数组顺序敏感，同 key 数组逆序→409 REVISION_CONFLICT。属冻结口径固有结果，登记为观察项与客户端 key 轮换风险，不判缺陷。；冻结契约未落地项以「规格观察」分区记录（默认不阻断，WIZ_QA_STRICT=1 时按失败计），避免把未接线记为通过。
-- 验证：python3 tests/test_publish_guards_adversarial.py → 通过135项/不符0，退出码0，约8s；A1并发复跑3轮稳定（[200,200,200,200]，version/revision集合唯一）。；python3 tests/test_catalog_independent.py → 硬断言47项通过/不符0/规格观察6项，退出码0；WIZ_QA_STRICT=1 退出码1（规格观察按失败计）。；python3 tests/run.py --test <两文件> 均通过；两测试均断言 DATA_ROOT 与 engine.resolve_url() 落在各自临时根内，可并行；未访问真实 ontology/18765/MySQL/Redis/外网。
-- 下一步：建议将 test_publish_guards_adversarial.py 归入 HTTP 组登记，但其动态端口与独立临时根可与 L 的 18841 并行，不需要串行。；P0 待修：损坏目录未阻断校验/发布（errors=[] 且实际发布出 v1）——需 B 落地 degraded_catalogs 参数并移除 project_routes 的 except TypeError 回退。；P0 待修：storage 级目录读取失败时 POST /api/project-validate 正确 503，但 GET /api/project-state 返回 500 INTERNAL_ERROR（server.do_GET 未登记 CatalogCacheUnreadable）。；P1 建议：编排 unreadable 的校验文案与 missing 区分；数组顺序敏感的 key 轮换约定补入接口文档。；未覆盖：多进程/多实例目录落库窗口竞争、浏览器点击级闭环、真实 MySQL/Redis 探测。
-- 依据/文档：tests/test_publish_guards_adversarial.py（新增，135项断言）；tests/test_catalog_independent.py（新增，硬断言47项+规格观察6项）；workbench/project_routes.py:169-190（degraded_catalogs 的 except TypeError 回退）；workbench/server.py:331-334 与 do_GET 异常分支（GET 未映射 CatalogCacheUnreadable→503）；文档/接口文档/03-项目区接口.md:189-190、219-228（冻结契约）；开发计划.md §11.2（G1）
