@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`11984a05fe030288`
+上下文版本：`400b810d63778722`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 本体维护保留项11至13独立验收 · codex · 已验证
+
+时间：2026-09-20T04:54:01.146842+00:00；记录：`.collaboration/entries/000098-ee3a6d924e23.json`
+
+部分通过，未通过整体验收。内存复现私有属性删除绕过依赖、批量删除失败后局部变更、共享基线变化未使确认指纹失效；图谱共享引用边仍执行旧转私有语义。仅提交验收意见，不改业务代码与真实数据。
+
+- 决定：管理本体与本体校验发布继续延期。；保留现有页面实现，先修引用保护与批量原子性，再修语义、确认基线与定位闭环。
+- 验证：dependency_guard 15/15、legacy_graph_bridge及typecheck通过；旧测试仍认可共享引用边转私有，不能证明本期全部通过。；内存探针复现R1/R2/R4；未进行独立浏览器视觉验收或后端悬空引用写入测试。
+- 下一步：实施方修复R1至R5及保存边界后复验A12至A14。
+- 依据/文档：文档/需求/20260920_本体建设维护与版本改版/验收意见_20260920.md
 
 ### Project module review and prototype · codex · 需求已交付
 
@@ -138,15 +149,3 @@ Delivered requirements and interactive prototype for project configuration maint
 - 决定：评审建议仅供讨论，不授权实施；动作参数和提交条件、Excel关系导入、生成口径等历史暂缓不自动恢复。
 - 验证：现有legacy_graph_bridge、ontology_import、ontology_home测试均通过；不覆盖全部UI与删除依赖边界。；contracts.classify最小内存样例：对象业务说明发生语义改变仍归compatible。；源码确认图谱私有属性删除未复用graphReferences；业务规则列表无删除而图谱有删除；SQLite发布与ZIP恢复断层仍存在。
 - 下一步：用户确认版本恢复、统一引用保护、语义变更确认和本体归档等建议的优先级。
-
-### 修复迁入编辑器样式污染 + 预览报错（提交 93f03f6、b1816df） · zcode · 已实施，待验收
-
-时间：2026-09-20T02:59:43.676516+00:00；记录：`.collaboration/entries/000086-2c520586cbdb.json`
-
-按用户截图反馈修复两项：① 样式错乱根因=工作台全局 style.css 的 .topbar/.editor/.brand 同名类把迁入编辑器头部改成 fixed、给编辑器加 padding/border；legacy.css 用双类名选择器（0,3,0）只重置冲突属性，五类 chips/工具行 nowrap 防竖排，窄屏（≤1100）工具行改横向滚动（768 画布由 0 恢复 380px）。② 预览报错未能复现（隔离实例多数据形态、压缩/未压缩构建、多次冷启动均 0 错误；结构性扫描无 setup 期 TDZ），判断为重建 dist 期间旧标签页加载新旧混合 chunk；已加 onErrorCaptured 错误面板（返回编辑/重试）+ :key 重挂载防御。③ 缓存穿透复验顺带发现并修复预览顶栏竖排、预览节点全堆叠（发布快照不含坐标→五类分列铺开）、多图预览版本列表为空（/api/releases→/api/versions）。
-
-- 决定：样式防污染用双类名选择器只重置被全局注入的冲突属性（position/padding/border），保留编辑器自有 scoped 视觉，不整页重写样式；预览为发布版本只读：坐标是视图状态不入领域，预览初始布局由 applyInitialLayoutIfStacked 按五类分列补足（旧版依赖版本内坐标的假设已失效）；多图预览版本列表数据源=/api/versions（/api/releases 是发布 ZIP 名列表，两者语义不同）；预览 TDZ 未复现不宣称已定位根因；错误边界保证再次发生时可见原因与恢复入口
-- 验证：浏览器（隔离实例 18842，缓存穿透 URL + 清偏好）：1440 顶栏 relative/无重叠/chips 单行；四宽度 1440/1280/1024/768 画布 529/375/380/380px 均可用；预览 0 错误、9 节点铺开 1642×228、节点点击详情正常；多图预览跨本体 2 版本并列 groupKey g1/g2 不串组；build（vue-tsc+vite）通过；ontology_graph 12/12、legacy_graph_bridge 12/12；截图 05_1440_样式修复后.png、06_1440_预览只读.png 存需求目录/截图/
-- 下一步：用户验收 18765：刷新（强刷 Cmd+Shift+R 以清缓存）后查看本体图谱与预览；配额恢复后补子代理独立验收与剩余打磨轮（R12 多图截图、R11 坐标文件往返、1440 状态行拥挤微调）
-- 依据/文档：frontend/src/ontology/legacyGraph/legacy.css（防污染+窄屏）；EditorView.vue（onErrorCaptured/预览 :key）；PreviewView.vue（顶栏三列/applyInitialLayoutIfStacked/fitColumnThirds 五类）；components/MultiPickModal.vue（listVersions）；文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.3–5.4；git 93f03f6、b1816df
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
