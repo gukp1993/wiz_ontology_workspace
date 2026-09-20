@@ -251,6 +251,23 @@ const relations = computed(() => {
 })
 
 // ---- 画布构建 ----
+// 发布快照不含坐标（坐标是视图状态、不入领域）：节点全堆叠时按五类分列铺开，
+// 保证预览有可读的初始视图（旧预览依赖版本内坐标，此处等价补足）。
+function applyInitialLayoutIfStacked() {
+  if (!cy.value || !cy.value.nodes().length) return
+  const ps = cy.value.nodes().map((n) => n.position())
+  const stacked = ps.every((p) => Math.abs(p.x - ps[0].x) < 6 && Math.abs(p.y - ps[0].y) < 6)
+  if (!stacked) return
+  const ORDER = SEMANTIC_TYPES
+  const colGap = 160, rowGap = 92
+  const cols = ORDER.map((t) => cy.value.nodes(`[type = "${t}"]`))
+  let x = 0
+  cols.forEach((col) => {
+    if (!col.length) return
+    col.forEach((n, i) => { n.position({ x, y: (i - (col.length - 1) / 2) * rowGap }) })
+    x += Math.max(220, ...col.map((n) => n.width())) + colGap
+  })
+}
 function initCy() {
   let savedPos = null
   try { savedPos = JSON.parse(prefGet(STORE_KEY) || 'null') } catch (e) {}
@@ -288,6 +305,7 @@ function initCy() {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(persistPositions, 300)
   })
+  applyInitialLayoutIfStacked()
   applyFilter()
 }
 
@@ -435,12 +453,12 @@ function fitColumnThirds() {
       const xs = c.map((n) => n.position('x'))
       cols[t] = (Math.min(...xs) + Math.max(...xs)) / 2
     })
-    if (missing || cols['实体'] == null || cols['属性'] == null || cols['规则'] == null) { cy.value.fit(undefined, 60); return }
-    const span = cols['规则'] - cols['实体']
+    if (missing || cols['对象'] == null || cols['共享属性'] == null || cols['规则'] == null) { cy.value.fit(undefined, 60); return }
+    const span = cols['规则'] - cols['对象']
     if (!(span > 0)) { cy.value.fit(undefined, 60); return }
     const bb = cy.value.elements().boundingBox()
     const cw = cy.value.width(), ch = cy.value.height()
-    const mid = (cols['实体'] + cols['规则']) / 2
+    const mid = (cols['对象'] + cols['规则']) / 2
     const zoom = Math.min(2 * cw / (3 * span), ch / bb.h)
     const panx = cw / 2 - mid * zoom
     const pany = ch / 2 - ((bb.y1 + bb.y2) / 2) * zoom
@@ -511,8 +529,8 @@ onBeforeUnmount(() => {
 .app { height: 100%; display: grid; grid-template-rows: 64px minmax(0, 1fr); }
 .topbar {
   display: grid;
-  grid-template-columns: 370px minmax(320px, 620px) 1fr;
-  gap: 18px;
+  grid-template-columns: minmax(200px, 370px) minmax(180px, 1fr) auto;
+  gap: 12px;
   align-items: center;
   padding: 9px 14px;
   background: #fff;
@@ -539,7 +557,12 @@ onBeforeUnmount(() => {
   border-radius: 5px; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1;
 }
 .search-clear:hover { background: #e7ecea; }
-.actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; }
+.actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; flex-wrap: nowrap; white-space: nowrap; }
+.ro-tag { white-space: nowrap; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 2px 7px; flex: 0 0 auto; }
+@media (max-width: 1024px) {
+  .topbar { grid-template-columns: minmax(150px, 1fr) minmax(140px, 0.8fr) auto; gap: 8px; }
+  .brand p { display: none; }
+}
 .action-divider { width: 1px; height: 22px; background: var(--line); margin: 0 2px; flex: 0 0 auto; }
 .segmented { display: flex; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: #f3f6f5; }
 .segmented button {

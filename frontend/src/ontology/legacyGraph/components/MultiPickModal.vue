@@ -42,7 +42,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { listOntologies, listReleases } from '../../api'
+import { listOntologies, listVersions } from '../../api'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -64,8 +64,11 @@ async function load() {
       list.map(async (g) => {
         let versions = []
         try {
-          const rel = await listReleases(g.id)
-          versions = (rel?.items || []).map((r) => ({ key: g.id + '@' + r.version, name: r.version }))
+          // 已发布版本列表：/api/versions → { items:[{version, changeType, ...}] }（版本名去重）
+          const rel = await listVersions(g.id)
+          const items = Array.isArray(rel) ? rel : (rel?.items || [])
+          const names = [...new Set(items.map((r) => (typeof r === 'string' ? r : r.version)).filter(Boolean))]
+          versions = names.map((v) => ({ key: g.id + '@' + v, name: v }))
         } catch (e) { /* 单个本体失败不阻塞 */ }
         return { id: g.id, name: g.name, versions }
       }),
