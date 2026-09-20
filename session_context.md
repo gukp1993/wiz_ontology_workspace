@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`0991f15be5f275f9`
+上下文版本：`8382f3ce9f1b5391`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,15 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 讨论规则MCP定位下函数编排的价值 · codex · 已确认决定
+
+时间：2026-09-20T02:08:55.152813+00:00；记录：`.collaboration/entries/000076-1bce4aa8dcea.json`
+
+建议保留已有函数编排作为复杂取值规则的可选结构化表达和辅助验证，不再默认作为MCP执行引擎或所有映射的必经步骤；当前没有删除或调整授权。
+
+- 决定：编排步骤、依赖、输入输出和公式仍可供大模型理解；MCP不执行不代表消费方已有流程执行能力。；简单字段/公式/清晰说明无需强制建编排；稳定多步流程可复用编排定义，避免重复维护说明与图。；建议暂缓扩展调度/生产运行等通用编排平台能力；保留测试用于验证，但不绑定MCP消费前提。
+- 下一步：用户确定是否收敛编排定位后再设计产品调整，不删除现有代码或数据。
 
 ### 澄清智能问数MCP只提供规则不连接数据 · codex · 已确认决定
 
@@ -133,15 +142,3 @@
 - 验证：build（vue-tsc+vite）通过；tests/ontology_graph.test.mjs 12/12（模型断言保留）+ tests/legacy_graph_bridge.test.mjs 12/12（新增领域断言）；既有前端回归全过：object_workspace 7/ontology_home 27/global_interaction 7/save_queue 22/undo_history 7；修改内容对照表（逐文件适配+旧功能→当前入口+C01–C05 口径+已知限制）见 文档/需求/20260919_图谱编辑器源码整体复用/修改内容清单.md；开发计划 §5.1 已回填
 - 下一步：子代理验收与打磨循环补齐：R01–R18 隔离浏览器逐项走查、四档宽度截图、500/1200 性能对比、失败与 409/账号切换实测（§5.1 如实登记未测项）；用户验收 18765：本体→对象建模→本体图谱（新编辑器）；重点核对新建/连线/删除/撤销走当前保存链路
 - 依据/文档：frontend/src/ontology/legacyGraph/（全部迁入文件+legacyBridge.js+offlineBundle.js+LegacyGraphHost.vue）；frontend/src/ontology/ObjectWorkspace.vue；frontend/src/App.vue；OntologyGraph.vue 已删除；文档/需求/20260919_图谱编辑器源码整体复用/修改内容清单.md；开发计划.md §5.1；git 573a586
-
-### 函数编排持续打磨（开发+子代理验收交替，≥50轮交互） · zcode · 已实施，待验收
-
-时间：2026-09-19T21:55:00.055434+00:00；记录：`.collaboration/entries/000064-b579e2ce0a15.json`
-
-按用户要求对函数编排做持续打磨：三路代码审查+两轮独立验收代理交替，命名轮 R01–R20，子代理有效交互 7 个（另 2 个大范围代理停滞失败后拆小重发），审查发现 45 条、修复 38 条（含画布白屏 P1、测试视图可选输入阻断 P1、后端校验漏洞 3 条 P2、LLM 异常路径 3 条 P2），不采纳 1 条（SSR F 黑名单，localhost 单机工具且会破坏本地模型场景，理由记日志）。共 11 个提交 38806d5→a5401a2。18765 已重启。
-
-- 决定：列表配置状态区分「N 个问题/ N 项提示」（error/warning 分计）并按更新时间降序；空编排给 FLOW_EMPTY 提示不再假「检查通过」；列表 check 携带 llm_meta（每账号一次）；后端加固：链测试 422 门拦截流程级错误（成环不再退化 400）；重复节点 ID、Redis 缺命令、args 未声明名、HTTP 凭据与自填 Authorization 冲突均校验阻断；密钥库故障如实报错不伪装；画布 P1：悬挂输出绑定致 cy.add 抛错整块白屏——坏边按节点存在性过滤；拓扑签名剔 classes（勾选/运行态不再全量重建）；TypeEditor 按目标类型清理残留键；LLM 四条异常路径（非 dict JSON/HTTPException/超大响应/引号内括号提取）+endpoint 控制字符拒绝
-- 验证：最终回归：run.py all 33/33、flow_model 46 项、flow_test_workspace 36 项全过；test_flows 85→94、flow_test_workspace 21→36 增量用例；build（vue-tsc）通过；两轮验收代理分别对 6 提交与 4 提交独立复验全过（含隔离实例 API 实证 NODE_ID_DUPLICATE/REDIS_COMMAND_MISSING/成环 422/endpoint 控制字符 400）；浏览器实测（隔离实例 18903，已清理）：列表四态文案、重命名弹窗脏守卫、画布加删节点同步、SQL 模板呈现、单节点测试错误路径、LLM 弹窗示例占位、HTTP/SQL 编排真实执行与失败传播；18765 与真实 ontology/ 零写入；18765 restart 200；临时实例/目录/种子脚本全部清理；在途他人文件（legacyGraph/tmp）未触碰
-- 下一步：用户验收 18765：编排列表/编辑器/测试视图/LLM 配置页；未尽事项见打磨日志（flow 取值预览属执行能力未做、SSR F 黑名单留多租户评估、mapping_forms 既有基线失败属他人）
-- 依据/文档：文档/需求/20260919_函数编排持续打磨/打磨日志.md；frontend/src/flow/（全部组件）；workbench/flows.py、flow_executor.py、flow_routes.py、flow_http.py、llm_client.py、llm_providers.py；git 38806d5..a5401a2（11 提交）
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
