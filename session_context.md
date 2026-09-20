@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`8a59d3fa935dec28`
+上下文版本：`81a874dab7a9ff69`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,39 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 执行 20260920_本体与项目统一维护体验改版 执行指令（v2 功能保护，多Agent并行）——实施完成交接 · zcode · 已实施，待验收
+
+时间：2026-09-20T07:47:40.655262+00:00；记录：`.collaboration/entries/000120-b48bbedf7bad.json`
+
+v2 功能保护七个工作包全部完成并提交：L 集成（d2cc6b9）、C 目录凭据（53f46f9）、A 本体三项复验修正（cc1b833）、E 映射保留+两处 P0（9d57276）、D 前端基线（8e2f7c1）、B 领域校验（4a1dcb5）。测试：run.py all 39/39、金样重生成回放 97/507、前端 node 全套通过、F 独立 QA 三套（135+47+60 项）全过、npm run build 通过；隔离实例浏览器验收 5 项通过（UI 发布 v2 与幂等回放、删被引用连接阻断、损坏目录发布阻断等）。开发计划 §11.2 冻结记录、§11.3 进度、§11.4 F01–F10 逐项结论与未验证项已终稿。
+
+- 决定：幂等指纹只含内容（不含 revision，回放优先于 CAS）；保存边界 422 REFERENCE_IN_USE 覆盖四类引用形态、同批移除放行；依赖重验快照=编排 head+目录指纹代际。；F 独立 QA 两个 P0 已修：损坏目录阻断校验与发布（路由兜底+B 形参双路径）、目录存储失败 GET/POST 同 503。；F 两个 P2 观察项：数组顺序视为内容差异（已登记 03 §2.3）；动作绑定 unreadable 文案仍沿用「不存在」（行为正确 fail-closed，记为待跟进）。；B 的 P1-5 后半（编排自身 check_flow 阻断）因会打挂对抗夹具而回滚，列为待办；金样按 B 预期条目重生成并回放通过。；既有失败 mapping_forms.test.mjs（四提交复现、范围外，P02 延期）不复写；现行编排绑定路径由 flow_editor_bind 覆盖。
+- 验证：后端：python3 tests/run.py all → 39/39（quick 3/3、http 10/10、unit 28/28）；金样 97 样例 507 断言；test_publish_guards 14 步；test_references 21 步；test_project_flow_source 38 步；test_upgrade_impact 7 项。；前端：22 个 node 测试文件全部通过；typecheck 0；npm run build 通过。；F 独立 QA：对抗性 135 项、目录语义 47 项、UI 保护 60 项全过；P0 修复后加回归步骤 m/n 锁定。；浏览器验收（隔离 18871，验收后实例与数据已清理）：概览「1 项待处理」；删被内联 SQL 引用连接阻断且提示精确；校验阻断→发布禁用；修正后 UI 发布 v2 且同 requestId 回放；真实重载与服务端一致。
+- 下一步：Codex 复验 F01–F10 证据，并决定 P1-5/B-4 两个待办是否本期补齐。；待办（非本期阻塞）：编排自身 check_flow 阻断启用+F 夹具同步；动作绑定 unreadable 文案统一；App.vue TDZ 由他人修复。
+- 依据/文档：文档/接口文档/02 §2.2、03 §2.1–§2.4/§3.3、01 §5.1、05 §1.2、README 变更记录；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2–§11.4；提交：d2cc6b9、53f46f9、cc1b833、9d57276、8e2f7c1、4a1dcb5
+
+### 角色B领域校验（重派）：依赖三态/目录降级形参/属性键失效/影响匹配纯函数 · zcode · 已实施，待验收
+
+时间：2026-09-20T07:39:53.878228+00:00；记录：`.collaboration/entries/000119-facb07ab5040.json`
+
+P0 三项已落盘。① kind=flow 改消费 flows.dependency_state：unreadable→error 阻断（文案含「读取失败（reason）」与 flowId），missing 沿用「不存在或已删除」，软删除按 missing，found 用其 state；_check_action_bindings 的 flows.listing 改 fail-closed（StorageUnavailable 原样抛给路由 503，其他异常逐行报错，不再跳过存在性检查）。② validate_project 新增第三形参 degraded_catalogs=None（None 时逐字节不变）；传入时逐条「数据连接 {名称}：目录缓存读取失败（缓存内容损坏）…」error + connection/invalid items，与 project_routes 兜底文案结构一致，路由 signature 探测会自动切到本实现。③ 属性键在引用版本中不存在→error「引用的版本中不存在此属性」，原配置不动。P1-4 field/related 有目录但字段不存在→error（无目录不报）。P1-5「编排自身 check_flow error 阻断」试做后回滚（会误伤 F 的对抗性夹具，其编排缺 name），软删除部分已保留；是否启用交协调者。P1-6 新增 workbench/project_impact.py 纯函数（稳定 id 精确匹配、sharedPropertyId/valueTypeId 继承、未绑定不误报），未改 projects.py。新增 tests/test_upgrade_impact.py 7 项全过。
+
+- 决定：degraded_catalogs 默认 None 保证兼容入口 projects.validate_project 两参调用与金样逐字节不变；文案与 items 与 project_routes._validate_with_degraded 完全一致。；属性键不存在的 error 加在属性循环最前，items.issues 顺序稳定（新 error 在前），便于金样回放。；field/related 字段目录核对仅在该表字段目录可读（catalog_fields 非 None）时报 error；目录缺失保持现状。；P1-5 编排自身 check_flow error 阻断属性绑定回滚：本轮 F 的对抗夹具编排缺 name 即 check_flow error，会使其可发布夹具失去可发布性；优先保证 P0 与既有 135 项对抗断言不回退。；project_impact.binding_impacts 兼容 JSON-LD 与 JSON schema 两形态，只做纯匹配，不改变 projects.upgrade_check 输出结构。
+- 验证：tests/run.py --test test_project_flow_source.py → 通过（38 步）：unreadable→error 含 flowId 且不含「不存在」、found 正常、软删除→不存在、动作绑定 listing 失败→error、StorageUnavailable→原样抛出、恢复后通过。；tests/run.py --test test_property_sources.py → 全部通过（f1 属性键不存在 block、f2 字段目录核对、f3 degraded_catalogs 生效且 None 逐字节一致）。；tests/run.py --test test_upgrade_impact.py → 7 项全过（相似 apiName 不误报、共享/值类型继承命中、未绑定不产生影响、链接相似名不误报、契约定位、schema 形态兼容）。；tests/run.py --test test_publish_guards_adversarial.py → 通过 135 项/不符 0（回滚 check_flow 阻断后无回退）。；tests/run.py unit → 28/29；唯一失败 test_validation_split.py 为金样预期失配（未改金样，变动清单见报告 C 节：8 个样例、约 95 error 槽位/43 item 槽位）。
+- 下一步：协调者按报告 C 节预期变动重新生成金样（tests/make_validation_golden.py）并回放 test_validation_split.py。；接线 project_impact.binding_impacts 到 projects.upgrade_check，替换现行子串/endswith 匹配，返回结构不变。；决定 P1-5 是否启用「编排自身 check_flow error 阻断属性绑定」；若启用需同步调整 tests/test_publish_guards_adversarial.py 夹具（补 name/绑定）。；project_routes._validate_with_degraded 的 signature 探测现已切到新实现，兜底分支可在集成阶段清理。
+- 依据/文档：workbench/project_validation.py（validate_project 第三形参、_append_degraded_catalog_issues、flow 三态、field 目录核对、属性键 error、动作绑定 fail-closed）；workbench/project_impact.py（新增纯函数模块）、tests/test_upgrade_impact.py（新增）；tests/test_project_flow_source.py（38 步）、tests/test_property_sources.py（+3 组用例）；文档/接口文档/03-项目区接口.md §2.2（依赖读取失败语义）；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2（G1 冻结）
+
+### 从物料自动构建本体开发计划与执行指令v1 · codex · 需求已交付
+
+时间：2026-09-20T07:36:57.831434+00:00；记录：`.collaboration/entries/000118-be92f9805b6d.json`
+
+按用户要求补齐开发计划和可独立交给其他harness的执行指令，同步需求状态与原型文档导航；未实施业务代码。
+
+- 决定：四件套齐全，现有需求范围与原型主流程不变。；P0-P7分阶段覆盖真实解析/多轮LLM/候选评审/合并再生成/原子新建；T01-T25验证矩阵映射G01-G16。；保留全局2 MB请求上限，建议JSON分片上传；后台owner显式绑定、安全LLM日志、任务和新本体交付同事务。；未定OCR/外部服务/技术栈扩展与规模承诺不自动扩大；工程默认与降级必须明示。
+- 验证：四份文件相对链接、P0-P7阶段、T01-T25测试矩阵及现有测试路径检查通过。；原型只增加计划与指令链接，JS语法通过；git diff --check通过。未运行正式业务测试或构建。
+- 下一步：执行工具获用户实施指令后，按必读顺序和P0协议核对开始实施，结果追加开发计划§11。
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
 
 ### 执行 20260920_本体与项目统一维护体验改版 执行指令（v2 功能保护，多Agent并行） · zcode · 实施中
 
@@ -114,36 +147,3 @@ W3 阶段：A 三项最小修复完成（B1 前端补 applicable_objects 三入�
 - 验证：范围：只读；改动文件 0（git status 仅他人未跟踪报告文件）；未跑 http 组、未访问真实数据/外网。；S1 三类全量遍历基本成立（functions/actions/interfaces、签名槽位、properties/implementations、steps/property_bindings/历史 inputs）；S2 稳定键成立（改名放行、改目标阻断）；S3 旧 rules id 集成立；S4 returnTo 链路成立（App 分发 + 目标页返回入口 + openUsages 抽屉恢复）。；矩阵要点：确认指纹=编辑内容+原定义+引用集合（dependencyModel.ts:241-261）、取消零写（PropertyManager.vue:130）、409/失败后旧确认失效（:211-216）；转私有保留对象属性 ID 与内容（propertyModel.ts:39 实跑 @id 不变）；规则/动作移除关联不删定义；五类删除均阻断式无强制删除；图谱批量预检+快照回滚（legacyBridge.js:515-556）；后端 POST /api/save 只拦新引入悬空引用（model_routes.py:575-594）。；两项偏差复现：① applicable_objects 引用对象时前端 graphReferenceEntries=[]、objectDeleteCheck.blocked=false，后端 new_broken_references 阻断；② rdfs:domain 省前缀 o1 时前端命中引用，后端 ([] , True) 放行。
 - 下一步：建议最小改动（未实施）：① editorModel.ts:44 或 dependencyModel 同步 applicable_objects（或明确后端更严为有意设计并登记接口文档）；② references.py 的 domain/range 判定加 mg: 前缀容错。；浏览器点击级闭环（确认弹窗取消/失效、批量删除、图谱删除）本轮未做，需隔离实例复核。；HEAD 已推进到 a72f4c3（仅新增 docs 一文件），代码与基线 82923e3 相同。
 - 依据/文档：workbench/references.py:110-311；workbench/model_routes.py:575-594；frontend/src/ontology/dependencyModel.ts:100-261；editorModel.ts:22-91；frontend/src/ontology/PropertyManager.vue:89-218；frontend/src/ontology/legacyGraph/legacyBridge.js:317-600；tests/test_references.py；tests/dependency_guard.test.mjs
-
-### 第二轮验收 S1–S4 修正（多 agent 并行） · zcode · 已实施，待验收
-
-时间：2026-09-20T05:57:20.471047+00:00；记录：`.collaboration/entries/000106-25585c164560.json`
-
-按验收意见第二轮复验修正 S1–S4（提交 d99367f）。S1 保存边界由仅契约签名扩为与前端对齐的三类全量遍历（含接口 properties/implementations、签名槽位 base、steps/property_bindings/历史 inputs），实测接口引用属性被删现 422 零写入；S2 比较键改稳定身份（来源 id+槽位 id+目标 id），既有失效改名放行、同文案不同目标仍阻断；S3 旧规则 id 集纠正，指标 rule_ref 有效旧引用不再误报；S4 新增 returnTo 来源上下文贯穿 navigate→App→六个目标页，共享库两类依赖行均带返回，回库打开原定义引用位置抽屉继续操作，规则/动作库补外部依赖「去处理」。接口文档 02 §2.2 与 README 先行登记。测试：test_references 18 步、run.py all 34/34、validation_golden 97 样例零误报、dependency_guard 21/21、前端回归全绿、typecheck+build 通过。按用户指示跳过自测验收阶段（未做浏览器点击级闭环）。
-
-- 决定：保存边界检查范围以「前端会拦的后端也拦」为口径收口在 references.py，并在 02 §2.2 明确写出两项不在范围（接口实现完整性、项目映射 bindings）；悬空引用比较键只用稳定身份（来源记录 id + 引用字段/槽位 id + 目标 id）；业务名称仅用于展示文案；S4 返回上下文不新增页面/菜单：navigate focus 携带 returnTo，App 统一分发与清理，目标页可选 prop 渲染返回入口；共享库用 openUsages 标志恢复引用位置抽屉（editFocus 优先不破坏图谱编辑跳转）；规则/动作库去处理入口就地扩展（规则库在既有引用对象抽屉内、动作库在阻断提示下方），不自动替用户删除
-- 验证：test_references.py 18 步全过：含 S1 原始复现（接口 properties 引用属性 → 删除 → 422 + 零写入 + revision 不变）与接口 implementations 同类覆盖、S2（改名放行 + 同文案不同目标阻断）、S3 三情形、动作/接口签名槽位与 base 引用 6 条精确断言；tests/run.py http 8/8、all 34/34；validation_golden 97 样例经新检查零误报；grep 确认生产调用方仅 model_routes.post_save；dependency_guard 21/21（新增 S4 源码级断言：五目标页返回带 openUsages、共享库 edit 优先、无入口依赖 disabled、三个库去处理主体无删除调用）；ont_list_unified 4/4、object_workspace 7/7、ontology_home 27、global_interaction 7/7、save_queue 22/22、editor_head_consistency 19、graph_toolbar_layout 8、business_rule_model、action_model 全过；typecheck+build 通过
-- 下一步：Codex 复验 S1–S4（重点：S1 接口引用 HTTP 复现、S2 改名/同文案、S3 旧规则、S4 返回闭环）；未验证项（开发计划 §9.4）：浏览器点击级闭环按用户指示跳过本轮自测验收；_canon 仅容错 mg: 前缀；steps/property_bindings/历史 inputs 无稳定槽位 id；接口实现完整性与项目映射 bindings 不在保存边界内
-- 依据/文档：文档/需求/20260920_本体建设维护与版本改版/验收意见_20260920.md；文档/需求/20260920_本体建设维护与版本改版/开发计划.md §9；workbench/references.py；tests/test_references.py；文档/接口文档/02-本体区接口.md §2.2
-
-### v2详细开发计划与多Agent执行指令 · codex · 需求已交付
-
-时间：2026-09-20T05:46:50.673446+00:00；记录：`.collaboration/entries/000105-0d3408a421ac.json`
-
-已补齐开发计划和可独立交给其他harness的执行指令，含L协调者+A至F角色、单写者文件归属、G0/G1闸门、分波次并行、逐项任务和26项必测矩阵。只交付文档，未实施业务代码。
-
-- 决定：范围仍为v2功能保护，所有新增样式/交互及其他历史延期项不恢复。；统一基线、接口、幂等和失效中间态先冻结；project_validation、App和项目写入热点分别单owner。；修正项目发布幂等现状措辞：请求receipt设施不等于项目发布已接入，实施先核验，必要时补齐。；用户要求并行规划，使用两个只读agent核对后端和前端/测试；复审补入App内formSave归D、客户端幂等key、损坏目录和实现失效边界。
-- 验证：三份Markdown相对链接、计划列出现有测试路径、T01至T26/F01至F10覆盖检查通过。；两个只读agent复审完成；未运行正式业务测试或构建，不将计划记作实施。
-- 下一步：执行harness按指令先核对最新基线与他人未提交修改，冻结契约后按文件owner并行，实施证据追加开发计划§11。
-- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md；文档/需求/20260920_本体与项目统一维护体验改版/执行指令.md；文档/需求/20260920_本体与项目统一维护体验改版/需求说明.md
-
-### 三修正独立子代理验收结论（提交 806a63c 归档开发计划 §5.10） · zcode · 已验证
-
-时间：2026-09-20T05:36:05.193904+00:00；记录：`.collaboration/entries/000104-bd4846ece477.json`
-
-本会话三项反馈修复（eab7545）经独立子代理并行复验，三项全部通过：① 规则编辑表单「← 返回图谱」@(271,99)+「关闭」@(382,99)，返回后原节点仍选中且 zoom/pan 不变；② 对象/私有属性/共享属性/规则/动作五类编辑页头部坐标逐像素一致、计算样式相同，非图谱来源为单按钮「返回规则列表/动作列表」无回归；③ 1440 与 1280 下选中节点（1跳/2跳 出现）后 inspector-max.right − tool-row.right = 0、scrollWidth == clientWidth、无祖先裁剪，激活邻域与最大化切换后复测仍为 0。验收方式：子代理环境无 IAB 控制权，改用本机 Chrome headless + CDP，以节点真实屏幕坐标派发等价 MouseEvent（已核对 cytoscape 无 isTrusted 门槛、命中双重确认）；固定 bundle 测量、前后哈希一致；全程只读零写入。
-
-- 决定：接受子代理结论：三项修正独立复验通过，不再迭代；窄屏 ≤1100 单行横向滚动为既定取舍（换行会把画布挤到 0 高），登记为已知行为而非缺陷；App.vue TDZ（第 171 行 watch 引用第 181 行声明的 flowState）确属既有缺陷但与本轮三修复无因果（自 eab7545^ 起存在），按用户指示由其他 agent 修复，本轮不处理
-- 验证：① 双击 lg:rule:rule_soc → .editor-head 为表单卡首元素，点返回后 hash 回 #objects、cy.$(':selected')=[lg:rule:rule_soc]、zoom=0.693/pan={584.59,308} 与进入前一致；清本地偏好后全新画布复做结果相同；② 五页头部实测：(271,99) 101×36 与 (382,99) 57×36，计算样式 display:flex/gap:10px/margin-bottom:14px、按钮 font-size:14px/padding:6px 13px/border-radius:6px 五页一致；非图谱来源 hasBackToGraph=false；③ 1440: max-right 1403 = row-right 1403（差 0），scrollWidth/clientWidth = 1050/1050；1280: 1243/1243、890/890；clippedByAncestor=null；1跳/2跳 激活后半透明节点 15→7 且复测仍 0；最大化态与还原态同样 0 裁切；隔离实例夹具 revision_token=r-b31308b051254255bdf65d13c95d99bb / generation=4 / snapshot_seq=4 与验证前一致（零写入）；真实 ontology/ 未触碰；18765 仅 GET 探活
-- 下一步：用户在 18765 强刷（Cmd+Shift+R）后按三项验收：规则/动作编辑表单左上角返回图谱、五类编辑页头部一致、选中节点后工具栏最大化不被裁切；子代理建议的加强项（可选）：在带真实鼠标输入的浏览器里对双击跳转做一次人手点按复核，彻底排除合成事件的歧义；工作区有 Codex 在途改动（App.vue/SharedLibrary/FunctionManager/ProjectBinding/DefinitionManager + 后端 references.py，即 S4 返回来源与保存边界修正）：本轮修改已提交且未被其覆盖（EditorHead 引用完好），互不冲突；若其落盘后重新构建，建议按 §5.10 判据（同五类坐标 (271,99)/(382,99)、max-right 差值 0）重跑一次
-- 依据/文档：文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.9（实施）与 §5.10（独立验收结论）；git eab7545（三项修复）、806a63c（验收结论归档）；tests/editor_head_consistency.test.mjs（19 项）、tests/graph_toolbar_layout.test.mjs（8 项）
