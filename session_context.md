@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`86a86a4767fff0f1`
+上下文版本：`62131d4b0a64c028`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### acceptance-fixes：合并验收五项修复（R01/R02/R03/A01/A02） · zcode · 已实施，待验收
+
+时间：2026-09-20T14:17:44.240128+00:00；记录：`.collaboration/entries/000131-fba222697401.json`
+
+五项验收问题全部修复并自测通过，提交 codex/acceptance-fixes，等 Codex 独立验收；未合并 main、未重启主工作台、未改真实数据。R01 App.vue watch 移到 flowState 声明后并新增真实客户端 mount 回归(3/3)；R02 复用 flows.check_flow 把被引用编排自身结构错误纳入项目校验阻断（属性来源与动作绑定两条路径，上下文按真实协议传；夹具修正为合法编排）；R03 目录 payload 与依赖令牌改同一次读取（消除窗口，反例先复现 200 再修成 409）；A01 记录级文本校验（必填必为文本、content/effect 合法选填文本、非文本受控报错、正式发布路由 422 零版本、前端不再 trim 崩溃）；A02 图谱保存复用同一校验（失败零写入零事件）。A02 由子代理实施、协调者汇总。
+
+- 决定：R02 只把编排「自身结构/配置」错误纳入项目阻断；环境性错误（账号未配置模型、项目侧无凭据上下文）按跳过处理，避免误拒合法编排；编排显式声明 providerId 而已删除仍检出。；R02 不修改 flows.check_flow 既有语义，只在项目校验侧复用它并缓存（同一编排多处引用只查一次）。；R03 以「校验 payload 与记录代际同一次读取」达成基线一致，不靠长持锁；目录令牌由 _catalog_meta 派生，baseline.catalogs 同步为同一读取。；A01 统一为「缺失/null/空串/空白按未填；非文本受控报错且定位字段」，不做 str()/String() 掩盖、不自动清洗；后端与前端 recordFields/businessRuleModel/actionModel 同口径。；A01 前端编辑遇非法旧值保留原值并给字段级原因，改写后即可保存。
+- 验证：后端 python3 tests/run.py all → 39/39；定向：test_publish_guards 16 步（新增 o/p：payload 读取后目录更新→409 零写入；读取前更新→按新基线校验并发布）、test_project_flow_source 44 步、test_publish_guards_adversarial 135/135（夹具改合法并加自检）、test_business_rules 57 项、test_action_library 77 项、test_catalog_independent 51 硬断言、test_validation_split 97 样例/507 断言，以及 test_action_http/test_references/test_property_sources/test_upgrade_impact/test_storage；前端 npm run typecheck 0；npm run build 通过（仅既有 chunk 体积警告）；tests/*.test.mjs 37 个中 36 个通过。；反例先行：R01 新用例修复前 0/3 报 Cannot access 'flowState' before initialization；R03 反例修复前实测 200 并新增 v4；A01 修复前正式 post_publish 接受对象 content/数组 effect 返回 200。；隔离实例 18921（.runtime/acceptance-data、专属 venv、假账号 acceptfix）浏览器复验：注册进入无初始化异常；规则空必填阻断/合法保存并读回/注入非法 content 编辑不崩溃且给字段原因；动作只填名称被阻断；图谱编辑清空业务定义被阻断且保留输入；空壳编排绑定属性→校验 error「编排输出「功率」尚未绑定来源节点输出」→发布 422，改合法编排→零 error→发布 v1；同 requestId 重试 idempotentReplay:true 且不新增版本。；既有失败（范围外、非本次引入）：tests/mapping_forms.test.mjs 在实施前基线上同样失败（git stash 对照），属已登记延期项 P02；test_catalog_independent 仍打印 2 项规格观察，不在本批范围。
+- 下一步：Codex 独立验收 codex/acceptance-fixes 最新提交（建议按 R01→A02 复验，重点核对 R03 两条窗口用例与 R02 的合法编排对照）。；验收通过后停在「待用户授权集成」；不得据此自行合并 main。；隔离实例 18921 与 .runtime/acceptance-data 保留供复验，如需清理请明确指示。；未测项：真实 MySQL/Redis 探测、Excel/WPS 原生下拉与 1000 行截断、跨进程并发压测、主工作台 18765（本批不重启/不部署 dist）。
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/验收修复执行指令.md；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §12.4；文档/接口文档/02-本体区接口.md §4.9、03-项目区接口.md §2.2、README.md 变更记录；workbench/project_validation.py、workbench/project_routes.py、workbench/workflow.py、frontend/src/App.vue、frontend/src/ontology/recordFields.ts、frontend/src/ontology/legacyGraph/legacyBridge.js；tests/app_client_mount.test.mjs（新增）
 
 ### acceptance-fixes环境与修复指令 · codex · 需求已交付
 
@@ -140,14 +151,3 @@ v2 功能保护七个工作包全部完成并提交：L 集成（d2cc6b9）、C 
 - 验证：后端：python3 tests/run.py all → 39/39（quick 3/3、http 10/10、unit 28/28）；金样 97 样例 507 断言；test_publish_guards 14 步；test_references 21 步；test_project_flow_source 38 步；test_upgrade_impact 7 项。；前端：22 个 node 测试文件全部通过；typecheck 0；npm run build 通过。；F 独立 QA：对抗性 135 项、目录语义 47 项、UI 保护 60 项全过；P0 修复后加回归步骤 m/n 锁定。；浏览器验收（隔离 18871，验收后实例与数据已清理）：概览「1 项待处理」；删被内联 SQL 引用连接阻断且提示精确；校验阻断→发布禁用；修正后 UI 发布 v2 且同 requestId 回放；真实重载与服务端一致。
 - 下一步：Codex 复验 F01–F10 证据，并决定 P1-5/B-4 两个待办是否本期补齐。；待办（非本期阻塞）：编排自身 check_flow 阻断启用+F 夹具同步；动作绑定 unreadable 文案统一；App.vue TDZ 由他人修复。
 - 依据/文档：文档/接口文档/02 §2.2、03 §2.1–§2.4/§3.3、01 §5.1、05 §1.2、README 变更记录；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2–§11.4；提交：d2cc6b9、53f46f9、cc1b833、9d57276、8e2f7c1、4a1dcb5
-
-### 角色B领域校验（重派）：依赖三态/目录降级形参/属性键失效/影响匹配纯函数 · zcode · 已实施，待验收
-
-时间：2026-09-20T07:39:53.878228+00:00；记录：`.collaboration/entries/000119-facb07ab5040.json`
-
-P0 三项已落盘。① kind=flow 改消费 flows.dependency_state：unreadable→error 阻断（文案含「读取失败（reason）」与 flowId），missing 沿用「不存在或已删除」，软删除按 missing，found 用其 state；_check_action_bindings 的 flows.listing 改 fail-closed（StorageUnavailable 原样抛给路由 503，其他异常逐行报错，不再跳过存在性检查）。② validate_project 新增第三形参 degraded_catalogs=None（None 时逐字节不变）；传入时逐条「数据连接 {名称}：目录缓存读取失败（缓存内容损坏）…」error + connection/invalid items，与 project_routes 兜底文案结构一致，路由 signature 探测会自动切到本实现。③ 属性键在引用版本中不存在→error「引用的版本中不存在此属性」，原配置不动。P1-4 field/related 有目录但字段不存在→error（无目录不报）。P1-5「编排自身 check_flow error 阻断」试做后回滚（会误伤 F 的对抗性夹具，其编排缺 name），软删除部分已保留；是否启用交协调者。P1-6 新增 workbench/project_impact.py 纯函数（稳定 id 精确匹配、sharedPropertyId/valueTypeId 继承、未绑定不误报），未改 projects.py。新增 tests/test_upgrade_impact.py 7 项全过。
-
-- 决定：degraded_catalogs 默认 None 保证兼容入口 projects.validate_project 两参调用与金样逐字节不变；文案与 items 与 project_routes._validate_with_degraded 完全一致。；属性键不存在的 error 加在属性循环最前，items.issues 顺序稳定（新 error 在前），便于金样回放。；field/related 字段目录核对仅在该表字段目录可读（catalog_fields 非 None）时报 error；目录缺失保持现状。；P1-5 编排自身 check_flow error 阻断属性绑定回滚：本轮 F 的对抗夹具编排缺 name 即 check_flow error，会使其可发布夹具失去可发布性；优先保证 P0 与既有 135 项对抗断言不回退。；project_impact.binding_impacts 兼容 JSON-LD 与 JSON schema 两形态，只做纯匹配，不改变 projects.upgrade_check 输出结构。
-- 验证：tests/run.py --test test_project_flow_source.py → 通过（38 步）：unreadable→error 含 flowId 且不含「不存在」、found 正常、软删除→不存在、动作绑定 listing 失败→error、StorageUnavailable→原样抛出、恢复后通过。；tests/run.py --test test_property_sources.py → 全部通过（f1 属性键不存在 block、f2 字段目录核对、f3 degraded_catalogs 生效且 None 逐字节一致）。；tests/run.py --test test_upgrade_impact.py → 7 项全过（相似 apiName 不误报、共享/值类型继承命中、未绑定不产生影响、链接相似名不误报、契约定位、schema 形态兼容）。；tests/run.py --test test_publish_guards_adversarial.py → 通过 135 项/不符 0（回滚 check_flow 阻断后无回退）。；tests/run.py unit → 28/29；唯一失败 test_validation_split.py 为金样预期失配（未改金样，变动清单见报告 C 节：8 个样例、约 95 error 槽位/43 item 槽位）。
-- 下一步：协调者按报告 C 节预期变动重新生成金样（tests/make_validation_golden.py）并回放 test_validation_split.py。；接线 project_impact.binding_impacts 到 projects.upgrade_check，替换现行子串/endswith 匹配，返回结构不变。；决定 P1-5 是否启用「编排自身 check_flow error 阻断属性绑定」；若启用需同步调整 tests/test_publish_guards_adversarial.py 夹具（补 name/绑定）。；project_routes._validate_with_degraded 的 signature 探测现已切到新实现，兜底分支可在集成阶段清理。
-- 依据/文档：workbench/project_validation.py（validate_project 第三形参、_append_degraded_catalog_issues、flow 三态、field 目录核对、属性键 error、动作绑定 fail-closed）；workbench/project_impact.py（新增纯函数模块）、tests/test_upgrade_impact.py（新增）；tests/test_project_flow_source.py（38 步）、tests/test_property_sources.py（+3 组用例）；文档/接口文档/03-项目区接口.md §2.2（依赖读取失败语义）；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2（G1 冻结）
