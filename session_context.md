@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`42dc2d108355d77f`
+上下文版本：`c0fb3890debc3425`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,17 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### 第二轮验收 S1–S4 修正（多 agent 并行） · zcode · 已实施，待验收
+
+时间：2026-09-20T05:57:20.471047+00:00；记录：`.collaboration/entries/000106-25585c164560.json`
+
+按验收意见第二轮复验修正 S1–S4（提交 d99367f）。S1 保存边界由仅契约签名扩为与前端对齐的三类全量遍历（含接口 properties/implementations、签名槽位 base、steps/property_bindings/历史 inputs），实测接口引用属性被删现 422 零写入；S2 比较键改稳定身份（来源 id+槽位 id+目标 id），既有失效改名放行、同文案不同目标仍阻断；S3 旧规则 id 集纠正，指标 rule_ref 有效旧引用不再误报；S4 新增 returnTo 来源上下文贯穿 navigate→App→六个目标页，共享库两类依赖行均带返回，回库打开原定义引用位置抽屉继续操作，规则/动作库补外部依赖「去处理」。接口文档 02 §2.2 与 README 先行登记。测试：test_references 18 步、run.py all 34/34、validation_golden 97 样例零误报、dependency_guard 21/21、前端回归全绿、typecheck+build 通过。按用户指示跳过自测验收阶段（未做浏览器点击级闭环）。
+
+- 决定：保存边界检查范围以「前端会拦的后端也拦」为口径收口在 references.py，并在 02 §2.2 明确写出两项不在范围（接口实现完整性、项目映射 bindings）；悬空引用比较键只用稳定身份（来源记录 id + 引用字段/槽位 id + 目标 id）；业务名称仅用于展示文案；S4 返回上下文不新增页面/菜单：navigate focus 携带 returnTo，App 统一分发与清理，目标页可选 prop 渲染返回入口；共享库用 openUsages 标志恢复引用位置抽屉（editFocus 优先不破坏图谱编辑跳转）；规则/动作库去处理入口就地扩展（规则库在既有引用对象抽屉内、动作库在阻断提示下方），不自动替用户删除
+- 验证：test_references.py 18 步全过：含 S1 原始复现（接口 properties 引用属性 → 删除 → 422 + 零写入 + revision 不变）与接口 implementations 同类覆盖、S2（改名放行 + 同文案不同目标阻断）、S3 三情形、动作/接口签名槽位与 base 引用 6 条精确断言；tests/run.py http 8/8、all 34/34；validation_golden 97 样例经新检查零误报；grep 确认生产调用方仅 model_routes.post_save；dependency_guard 21/21（新增 S4 源码级断言：五目标页返回带 openUsages、共享库 edit 优先、无入口依赖 disabled、三个库去处理主体无删除调用）；ont_list_unified 4/4、object_workspace 7/7、ontology_home 27、global_interaction 7/7、save_queue 22/22、editor_head_consistency 19、graph_toolbar_layout 8、business_rule_model、action_model 全过；typecheck+build 通过
+- 下一步：Codex 复验 S1–S4（重点：S1 接口引用 HTTP 复现、S2 改名/同文案、S3 旧规则、S4 返回闭环）；未验证项（开发计划 §9.4）：浏览器点击级闭环按用户指示跳过本轮自测验收；_canon 仅容错 mg: 前缀；steps/property_bindings/历史 inputs 无稳定槽位 id；接口实现完整性与项目映射 bindings 不在保存边界内
+- 依据/文档：文档/需求/20260920_本体建设维护与版本改版/验收意见_20260920.md；文档/需求/20260920_本体建设维护与版本改版/开发计划.md §9；workbench/references.py；tests/test_references.py；文档/接口文档/02-本体区接口.md §2.2
 
 ### v2详细开发计划与多Agent执行指令 · codex · 需求已交付
 
@@ -140,13 +151,3 @@ Delivered requirements and interactive prototype for project configuration maint
 
 - 验证：三份文件范围和相对链接检查通过。
 - 依据/文档：文档/需求/20260920_本体建设维护与版本改版/需求说明.md；文档/需求/20260920_本体建设维护与版本改版/开发计划.md；文档/需求/20260920_本体建设维护与版本改版/执行指令.md
-
-### 延期管理本体与本体校验发布改版 · codex · 已确认决定
-
-时间：2026-09-20T04:19:40.934706+00:00；记录：`.collaboration/entries/000094-014f6e1eb669.json`
-
-用户明确两个模块需求先延期。四件套已同步范围：管理本体、版本查看比较恢复检查点及发布确认/分类改造、派生概览变化全部延期；原型标延期并阻止其模拟写操作，保留方案回看。未改正式功能。
-
-- 决定：延期不删除或回退现有工作台功能，不操作真实数据；恢复需用户明确指示。；保留共享属性保存影响确认、规则安全删除、操作语义和引用保护一致性待评审；不以此改发布或资产管理，未新增实施授权。
-- 验证：JS语法、延期及保留路径状态检查、文件链接检查通过；未做浏览器视觉复验。
-- 依据/文档：文档/需求/20260920_本体建设维护与版本改版/需求说明.md；文档/需求/20260920_本体建设维护与版本改版/开发计划.md；文档/需求/20260920_本体建设维护与版本改版/执行指令.md；文档/需求/20260920_本体建设维护与版本改版/交互原型_v1.html
