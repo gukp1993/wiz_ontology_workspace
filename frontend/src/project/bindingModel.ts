@@ -440,8 +440,9 @@ export async function refreshCatalogOf(projectState:any,connectionId:string,muta
   if(!conn)return {ok:false,message:'未找到该连接的配置，请先在“数据连接”页保存连接'}
   try{
     const d=await catalogRefresh(projectState.projectId,connectionId)
-    if(d.ok){mutate(()=>{projectState.bindings.catalogs=projectState.bindings.catalogs||{};projectState.bindings.catalogs[connectionId]={database:d.database,tables:d.tables,refreshedAt:d.refreshedAt}});return {ok:true,message:d.message||'已读取表结构目录'}}
-    return {ok:false,message:d.message||'目录读取失败'}
+    // stale：探测期间连接配置/凭据已变化，服务端未落缓存（丢弃≠报成功）——不注入本地目录
+    if(d.ok&&!d.stale){mutate(()=>{projectState.bindings.catalogs=projectState.bindings.catalogs||{};projectState.bindings.catalogs[connectionId]={database:d.database,tables:d.tables,refreshedAt:d.refreshedAt}});return {ok:true,message:d.message||'已读取表结构目录'}}
+    return {ok:false,message:d.message||(d.stale?'探测期间连接配置或凭据已变化，本次结果未保存；请重新刷新':'目录读取失败')}
   }catch(e){return {ok:false,message:'无法访问工作台服务：'+(e as Error).message}}
 }
 

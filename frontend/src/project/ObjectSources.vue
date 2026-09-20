@@ -38,11 +38,15 @@ const titleInfo=computed(()=>{
   return merged['rdfs:label']||marker['@id'].slice(3)
 })
 function sourceSummaryText(s:any){
+  // 未知 kind（非 db/redis）：当前协议不认识其结构，只原样保留、不提供编辑入口（零丢失，E03）。
+  if(s.kind!=='db'&&s.kind!=='redis')return (s.name||s.id||'未命名来源')+' · 当前版本未识别的来源结构，已原样保留'
   if(s.kind==='redis')return (s.name||'未命名 Redis 来源')+' · '+(s.connection?connName(s.connection):'未选连接')
   return (s.name||s.table||'未命名数据库来源')+' · '+(s.connection?connName(s.connection):'未选连接')+' · '+(s.table||'未选表')
     +' · '+(props.b.table||'实例表')+'.'+(s.matchLeft||'字段')+' ＝ '+(s.table||'本表')+'.'+(s.matchRight||'字段')
     +(s.cardinality==='many'?' · 零或多条':' · 零或一条')
 }
+// 只有当前协议认识的来源形态可进编辑表单；未知形态若被打开将以错误形态回写，故只保留「移除」入口。
+function sourceEditable(s:any):boolean{return s.kind==='db'||s.kind==='redis'}
 // ---------- 登记身份（无表对象）：读 b.identity，缺省 database ----------
 const identityMode=computed(()=>bindingIdentityOf(props.b))
 const savedInstances=computed(()=>registeredInstancesOf(props.b))
@@ -87,6 +91,8 @@ function openIdentity(){
   editing.value='identity'
 }
 function openSource(s?:any){
+  // 未知形态不进编辑表单：避免以其不理解的形态回写覆盖原结构（零丢失）。
+  if(s&&!sourceEditable(s)){removeMessage.value='该来源的结构当前版本无法识别，为保留原内容不提供编辑；如确需更换，请移除后重新登记。';return}
   const base:any=s?JSON.parse(JSON.stringify(s)):{id:newSourceId(),name:'',kind:'db',connection:'',table:'',matchLeft:'',matchRight:'',cardinality:'one'}
   sourceDraft.value=base
   sourceBaseline=JSON.stringify(base)
@@ -129,7 +135,7 @@ const draftIdentityCatalog=computed(()=>tableCatalog(props.projectState,identity
 function identityConnChanged(v:string){identityDraft.value.connection=v;identityDraft.value.table='';identityDraft.value.primary_key='';tableChangeNote.value='';refreshMessage.value=''}
 function identityTableChanged(v:string){identityDraft.value.table=v;identityDraft.value.primary_key=''
   tableChangeNote.value=(props.b.table&&props.b.table!==v)||(props.b.connection&&props.b.connection!==identityDraft.value.connection)
-    ?'已切换身份表：保存后已登记补充来源的匹配字段将被清空，需要重新配置。':''}
+    ?'已切换身份表：已登记补充来源的匹配配置会原样保留（不会自动清空，也不会按同名字段自动重绑）；如字段与新表不匹配，保存后由项目校验报告失效并阻断发布。':''}
 // --- 补充来源草稿：连接 → 表 → 匹配字段 ---
 const draftSourceCatalog=computed(()=>sourceDraft.value&&sourceDraft.value.kind==='db'?tableCatalog(props.projectState,sourceDraft.value.connection,sourceDraft.value.table):null)
 function sourceConnChanged(v:string){if(sourceDraft.value.connection===v)return;message.value='';sourceDraft.value.connection=v;sourceDraft.value.table='';sourceDraft.value.matchRight='';refreshMessage.value=''}
@@ -181,11 +187,11 @@ async function saveIdentity(){
   if(!d.primary_key){message.value='请选择实例主键。';return}
   message.value='';saving.value=true
   const r=await submit(()=>{
-    const identityChanged=props.b.connection!==d.connection||props.b.table!==d.table
+    // 换连接／换表只改身份三键（用户明确选择的目标），已登记补充来源与属性／链接／说明一律原样保留：
+    // 失效字段不在此静默清空、不按同名字段自动重绑，交服务端校验报告并阻断发布（P03/F04，20260920 v2）。
     props.b.connection=d.connection;props.b.table=d.table;props.b.primary_key=d.primary_key
     // 切回数据库来源：移除 identity 块；identity.kind 非 registered 的未知值不动（零丢失）
     if(bindingIdentityOf(props.b)==='registered')clearRegisteredIdentity(props.b)
-    if(identityChanged)for(const s of props.b.sources||[])if(s.kind==='db')s.matchLeft=''
   })
   saving.value=false
   if(r.ok)closeEditor()
@@ -251,7 +257,7 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <p v-if="identityMode==='registered'" class="inline-warning">当前按项目登记识别实例：补充来源依赖数据库身份表，仅在切回「数据库表／视图」后生效（配置已保留）。</p>
 <div v-for="s in sources" :key="s.id" class="os-source-row">
 <div class="os-readonly">{{sourceSummaryText(s)}}</div>
-<div class="tools"><button @click="openSource(s)">修改</button><button @click="removeSource(s)">移除</button></div>
+<div class="tools"><button v-if="sourceEditable(s)" @click="openSource(s)">修改</button><button @click="removeSource(s)">移除</button></div>
 </div>
 <p v-if="!sources.length" class="field-help">暂无补充来源（允许为零项）：对象只有实例来源即可完成识别；需要时可登记数据库补充表。</p>
 <div v-if="identityMode==='database'" class="tools"><button @click="openSource()">＋ 登记数据库补充来源</button></div>
@@ -283,7 +289,7 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <p v-if="switchNote" class="inline-warning" role="status">{{switchNote}}</p>
 <template v-if="identityDraft.mode==='database'">
 <div class="row">
-<label>数据连接 *<AppSelect :model-value="identityDraft.connection" aria-label="实例来源数据连接" searchable :options="[{value:'',label:'请选择连接'},...mysqlOptions]" @update:model-value="identityConnChanged"/><small class="field-help">从当前项目已配置的 MySQL 连接中选择；换连接会清空已选表与主键。</small></label>
+<label>数据连接 *<AppSelect :model-value="identityDraft.connection" aria-label="实例来源数据连接" searchable :options="[{value:'',label:'请选择连接'},...mysqlOptions]" @update:model-value="identityConnChanged"/><small class="field-help">从当前项目已配置的 MySQL 连接中选择；换连接后需重新选择表与主键（已登记补充来源的匹配配置保留，不自动改写）。</small></label>
 <label>来源表／视图 *<AppSelect :key="identityDraft.connection" :model-value="identityDraft.table" aria-label="来源表或视图" searchable :disabled="!identityDraft.connection" :options="[{value:'',label:'请选择表／视图'},...tableOptions(projectState,identityDraft.connection)]" @update:model-value="identityTableChanged"/><small v-if="!identityDraft.connection" class="field-help">先选择数据连接。</small></label>
 </div>
 <div class="row">

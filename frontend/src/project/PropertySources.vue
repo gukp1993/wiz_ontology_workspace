@@ -102,29 +102,52 @@ function typeNameOf(id:string){const t=graph.value.find((n:any)=>n['@id']==='mg:
 function viewOf(api:string):any{return propertyView(props.b,api)}
 // ---------- 函数编排：列表（摘要/存在性校验）与详情缓存（输出/输入声明） ----------
 // 编排是独立第三工作区：这里只读引用 flowId，不复制编排内容进项目状态。
+// 详情缓存（20260920 v2 / F06）：按 flowId 保存「state + revision」，复核时重新取数并按 revision 判新旧
+// （不按 flowId 永久复用）；读取失败与 404 不存在分开，读取失败不清空原引用、不下失效结论。
 const flowsList=ref<any[]>([]),flowsLoading=ref(false),flowsError=ref('')
-const flowStates=ref<Record<string,any>>({})
+type FlowStateEntry={status:'loaded';state:any;revision:string}|{status:'missing'}|{status:'failed';message:string}
+const flowStates=ref<Record<string,FlowStateEntry>>({})
 const flowStateLoading=ref('')
+const flowStatePending:Record<string,Promise<void>>={}
+function flowEntryOf(flowId:string):FlowStateEntry|null{return flowStates.value[flowId]||null}
+async function fetchFlowState(flowId:string):Promise<void>{
+  flowStateLoading.value=flowId
+  try{
+    const r=await loadFlowStateRaw(flowId)
+    flowStates.value={...flowStates.value,[flowId]:r?.state&&typeof r.state==='object'
+      ?{status:'loaded',state:r.state,revision:String(r?.revision||'')}
+      :{status:'failed',message:'编排详情响应缺少内容，请稍后重试'}}
+  }catch(e:any){
+    // 404＝编排不存在/已删除（既有失效语义）；其余（网络/超时/5xx）＝读取失败，必须区分展示
+    flowStates.value={...flowStates.value,[flowId]:Number(e?.status)===404
+      ?{status:'missing'}
+      :{status:'failed',message:String(e?.message||e||'读取失败')}}
+  }finally{if(flowStateLoading.value===flowId)flowStateLoading.value=''}
+}
+/** 读取编排详情：每次检查都重新取数并按 revision 复核（缓存不按 flowId 永久复用，F06/T17）；
+ *  同一 flowId 的并发请求合并；读取失败/不存在分别记为 failed/missing，都不清空原绑定、不写项目状态。 */
+async function ensureFlowState(flowId:string):Promise<void>{
+  if(!flowId)return
+  const inflight=flowStatePending[flowId]
+  if(inflight)return inflight
+  const task=fetchFlowState(flowId).finally(()=>{delete flowStatePending[flowId]})
+  flowStatePending[flowId]=task
+  return task
+}
 async function loadFlows(){
   flowsLoading.value=true;flowsError.value=''
   try{const r=await listFlows();flowsList.value=r?.items||[]}
   catch(e:any){flowsError.value=String(e?.message||e||'编排列表加载失败')}
   finally{flowsLoading.value=false}
-  // 已配置属性引用的编排：补齐详情缓存（列表态摘要与校验需要输出/输入声明）
+  // 已配置属性引用的编排：复核详情（重新进入检查时不复用旧结论，签名变化才算失效）
   for(const p of properties.value){const v=viewOf(key(p));if(v?.kind==='flow')ensureFlowState(String(v.flow||''))}
-}
-async function ensureFlowState(flowId:string){
-  if(!flowId||flowStates.value[flowId])return
-  flowStateLoading.value=flowId
-  try{const r=await loadFlowStateRaw(flowId);flowStates.value={...flowStates.value,[flowId]:r?.state||null}}
-  catch{flowStates.value={...flowStates.value,[flowId]:null}}
-  finally{if(flowStateLoading.value===flowId)flowStateLoading.value=''}
 }
 loadFlows()
 const flowOptions=computed(()=>flowsList.value.filter((f:any)=>f.status!=='deleted').map((f:any)=>({value:f.id,label:(f.name||f.id)+(f.errorCount?'（配置检查 '+f.errorCount+' 项未通过）':'')})))
+function flowStateOf(flowId:string):any{const e=flowEntryOf(String(flowId||''));return e&&e.status==='loaded'?e.state:null}
 function flowNameOf(flowId:string){const m=flowsList.value.find((f:any)=>f.id===flowId);return m?.name||flowId||'未选择编排'}
-function flowOutputName(flowId:string,outputId:string){const st=flowStates.value[flowId];const o=(st?.outputs||[]).find((x:any)=>String(x?.id)===String(outputId));return o?(o.label||o.name||o.id):''}
-function flowElementName(flowId:string,fieldId:string){const st=flowStates.value[flowId]
+function flowOutputName(flowId:string,outputId:string){const st=flowStateOf(flowId);const o=(st?.outputs||[]).find((x:any)=>String(x?.id)===String(outputId));return o?(o.label||o.name||o.id):''}
+function flowElementName(flowId:string,fieldId:string){const st=flowStateOf(flowId)
   for(const o of (st?.outputs||[])){const el=o?.type?.elementType;if(String(o?.type?.type||'')!=='list'||String(el?.type||'')!=='object')continue
     const f=(el.fields||[]).find((x:any)=>String(x?.id)===String(fieldId));if(f)return f.label||f.name||f.id}
   return fieldId}
@@ -212,8 +235,15 @@ function extraIssuesOf(api:string,v:any,shape:'scalar'|'timeSeries'):string[]{
     if(flowsList.value.length&&!flowsList.value.some((f:any)=>f.id===flowId&&f.status!=='deleted')){
       out.push('引用的函数编排不存在或已删除');return out
     }
-    const st=flowStates.value[flowId]
-    if(!st)return out
+    const entry=flowEntryOf(flowId)
+    if(!entry)return out   // 详情未读取：只做存在性校验，签名校验交服务端（权威）
+    if(entry.status==='failed'){
+      // 读取失败 ≠ 不存在：不下失效结论、不清空原绑定，也不按「通过」处理。
+      out.push('编排定义读取失败（'+entry.message+'），本次未能核对输入输出声明；原绑定保持不动，请稍后重试读取')
+      return out
+    }
+    if(entry.status==='missing'){out.push('引用的函数编排不存在或已删除');return out}
+    const st=entry.state
     const declaredOuts=(st.outputs||[]).filter((o:any)=>o&&typeof o==='object')
     const selOut=declaredOuts.find((o:any)=>String(o.id)===String(v.output||''))
     if(!String(v.output||''))out.push('请选择编排输出')
@@ -360,6 +390,9 @@ function metaPending(api:string,v:any):boolean{
 function statusOf(api:string,p:any,v:any):{text:string;cls:string;title:string}{
   if(v&&v.kind==='unknown')return {text:'未知结构',cls:'pill-unknown',title:'当前版本未识别的来源结构，已原样保留'}
   if(!v)return {text:'待配置',cls:'pill-pending',title:''}
+  // 编排详情读取失败 ≠ 签名失效：不下「配置有误」结论，标注待复核并保留原绑定（F06/T17）
+  if(v.kind==='flow'){const e=flowEntryOf(String(v.flow||''))
+    if(e&&e.status==='failed')return {text:'编排待读取',cls:'pill-pending',title:'编排定义读取失败（'+e.message+'）：本次未能核对输入输出声明，原绑定保留；请稍后重试读取或重新检查'}}
   if(issuesOf(api,p,v).length)return {text:'配置有误',cls:'pill-error',title:'保存前校验未通过，进入「修改」查看具体问题'}
   const item=(props.report?.items||[]).find((i:any)=>i.kind==='propertySource'&&i.id===props.b.object_type+'.'+api)
   if(item&&item.status==='invalid')return {text:'配置有误',cls:'pill-error',title:'项目级校验未通过，进入「修改」查看具体问题'}
@@ -414,6 +447,7 @@ function openEditor(api:string){
     // 其余 kind 原样进草稿：flow 走函数编排表单；旧 computed 配置只读展示（见模板分支）。
     draft.value=d
   }
+  // 打开表单即按 revision 复核编排详情（缓存不按 flowId 永久复用；失败不影响草稿内容）
   if(draft.value?.kind==='flow'&&draft.value.flow)ensureFlowState(String(draft.value.flow))
   baseline.value=normalizeDraft(draft.value)
   configuring.value=true
@@ -664,7 +698,8 @@ function flowConstantOk(t:string,value:any):boolean{
   if(t==='datetime')return String(value).trim()!==''
   return true  // text：0、false、明确的空字符串都是有效值
 }
-const selectedFlow=computed(()=>{const d:any=draft.value;return d?.kind==='flow'?flowStates.value[String(d.flow||'')]:null})
+const selectedFlow=computed(()=>{const d:any=draft.value;return d?.kind==='flow'?flowStateOf(String(d.flow||'')):null})
+const flowStateIssue=computed(()=>{const d:any=draft.value;if(!d||d.kind!=='flow'||!d.flow)return null;return flowEntryOf(String(d.flow))})
 const flowInputs=computed(()=>Array.isArray(selectedFlow.value?.inputs)?selectedFlow.value.inputs.filter((i:any)=>i&&typeof i==='object'):[])
 // 列表输出 → 时间序列属性（2026-09-19）：元素为已声明字段的对象时，按稳定 id 映射取值/时间字段
 function flowOutputBindable(t:any):boolean{
@@ -704,7 +739,7 @@ async function selectFlow(id:string){
   d.flow=id;d.output='';d.result={valueField:'',timestampField:''};d.inputs={}
   if(id)await ensureFlowState(id)
   // 单输出且可绑定时自动选用（标量输出；或时间序列属性下的单个系列列表输出）
-  const outs=(flowStates.value[id]?.outputs||[]).filter((o:any)=>o&&typeof o==='object')
+  const outs=(flowStateOf(id)?.outputs||[]).filter((o:any)=>o&&typeof o==='object')
   if(outs.length===1&&flowOutputBindable(outs[0].type))d.output=String(outs[0].id||'')
 }
 function flowBindingOf(inputId:string){const d:any=draft.value;return d?.inputs?.[inputId]}
@@ -857,8 +892,17 @@ function resetSaveState(){saving.value=false}
 async function saveDraft(){
   const d:any=draft.value
   if(!d||d.kind==='unknown'||saving.value)return
+  // 保存前按 revision 复核编排详情：本页缓存的旧签名不能作为「校验通过」的依据（服务端仍权威）。
+  if(d.kind==='flow'&&d.flow)await ensureFlowState(String(d.flow))
   if(d.kind!=='none'){
-    const issues=[...new Set([...formSectionIssues(1),...formSectionIssues(2),...formSectionIssues(3),...issuesOf(selectedApi.value,selectedProp.value,d),...ghostFields.value])]
+    let issues=[...new Set([...formSectionIssues(1),...formSectionIssues(2),...formSectionIssues(3),...issuesOf(selectedApi.value,selectedProp.value,d),...ghostFields.value])]
+    // 编排读取失败 ≠ 配置无效（G1 只要求 fail-closed 阻断发布）：用户本次未改配置、只改说明时，
+    // 不能因编排服务短暂不可用而阻断说明保存——过滤掉该条读取失败提示，其余问题照常阻断。
+    const cfgUnchanged=normalizeDraft(d)===baseline.value
+    const flowEntry=d.kind==='flow'&&d.flow?flowEntryOf(String(d.flow)):null
+    if(cfgUnchanged&&flowEntry&&flowEntry.status==='failed'){
+      issues=issues.filter(t=>!String(t).includes('编排定义读取失败'))
+    }
     if(issues.length){editError.value='保存前请先处理：'+issues.join('；');return}
   }
   editError.value=''
@@ -981,7 +1025,7 @@ if(psPendingOf(props.b.object_type)){
 </template>
 <template v-else-if="draft.kind==='flow'">
 <div class="row">
-<label>函数编排 *<AppSelect :model-value="draft.flow||''" aria-label="函数编排" searchable :options="[{value:'',label:flowsLoading?'加载中…':(flowOptions.length?'请选择函数编排':'还没有函数编排')},...flowOptions]" @update:model-value="selectFlow($event)"/><small class="field-help">编排在「函数编排」工作区维护；选中后下方按该编排的输出与输入联动展开。切换编排会清空已选的输出与输入绑定。</small></label>
+<label>函数编排 *<AppSelect :model-value="draft.flow||''" aria-label="函数编排" searchable :options="[{value:'',label:flowsLoading?'加载中…':(flowsError?'编排列表加载失败，可重试':(flowOptions.length?'请选择函数编排':'还没有函数编排'))},...flowOptions]" @update:model-value="selectFlow($event)"/><small class="field-help">编排在「函数编排」工作区维护；选中后下方按该编排的输出与输入联动展开。切换编排会清空已选的输出与输入绑定。</small></label>
 </div>
 <div class="tools"><button @click="goFlows">前往函数编排 →</button></div>
 <p v-if="flowsError" class="inline-warning">编排列表加载失败：{{flowsError}} <button type="button" class="ps-inline-link" @click="loadFlows">重试</button></p>
@@ -1011,7 +1055,9 @@ if(psPendingOf(props.b.object_type)){
 </template>
 <p v-else class="field-help">该编排没有声明输入，无需绑定。</p>
 </template>
-<p v-else class="inline-warning">编排定义读取失败或编排已被删除，请重新选择。</p>
+<p v-else-if="flowStateIssue?.status==='failed'" class="inline-error" role="alert">编排定义读取失败（{{flowStateIssue.message}}）：本次未能核对输入输出声明，原绑定保持不动。<button type="button" class="ps-inline-link" @click="ensureFlowState(String(draft.flow))">重试读取</button></p>
+<p v-else-if="flowStateIssue?.status==='missing'" class="inline-warning">引用的编排不存在或已删除，请重新选择（原绑定保留，不会静默清空）。</p>
+<p v-else class="field-help">正在读取编排定义…</p>
 </template>
 </template>
 <!-- ===== 登记信息（registered）===== -->
