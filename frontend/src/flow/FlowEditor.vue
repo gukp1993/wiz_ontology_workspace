@@ -17,7 +17,7 @@ import NodeConfig from './NodeConfig.vue'
 import BoundaryConfig from './BoundaryConfig.vue'
 import BindingEditor from './BindingEditor.vue'
 import FlowTestWorkspace from './FlowTestWorkspace.vue'
-import { INPUT_NODE, NODE_KIND_LABELS, OUTPUT_NODE, SECTION_LABELS, clone, configSignature, defaultPosition, nodeRemovalImpact, processingNodes, uid } from './flowModel'
+import { INPUT_NODE, NODE_KIND_LABELS, OUTPUT_NODE, SECTION_LABELS, TYPE_LABELS, clone, configSignature, defaultPosition, fieldOf, nodeRemovalImpact, processingNodes, typeSummary, typesCompatible, uid } from './flowModel'
 import { checkFlow } from './api'
 import * as llm from '../tools/llm'
 import { getJson } from '../app/http'
@@ -89,8 +89,8 @@ watch(() => props.state, () => {
 })
 const modebarText = computed(() => {
   if (mode.value === 'bind') return bindSource.value
-    ? `建立绑定 · 来源已选：「${(props.state.nodes.find((n: any) => n.id === bindSource.value) || {}).name || bindSource.value}」，请点击目标节点`
-    : '建立绑定 · 先点击来源处理节点，再点击目标节点'
+    ? `建立绑定 · 来源已选：「${nameOf(bindSource.value)}」，请点击目标节点（处理节点，或「编排输出」）`
+    : '建立绑定 · 先点来源（处理节点或「编排输入」），再点目标（处理节点或「编排输出」）'
   return '查看模式 · 点击节点查看配置；测试在「测试调试」视图中进行，不占用画布勾选'
 })
 
@@ -230,43 +230,144 @@ async function closeDialog(force = false, onClosed?: () => void) {
   }
   expandDialog.value = null
   renameOpen.value = false
+  outDialog.value = null
   dialogDirty.value = false
   onClosed?.()
   lastFocused?.focus?.()
   lastFocused = null
 }
-function anyModalOpen() { return !!expandDialog.value || renameOpen.value }
+function anyModalOpen() { return !!expandDialog.value || renameOpen.value || !!outDialog.value }
 const dockOpen = ref(false)
 
 // ── 绑定（唯一 binding 真相；取消零改动；删除有确认） ────────────────────────────
-const linkDialog = ref<{ sourceId: string; targetId: string; inputs: any[]; chosenInputId: string; shadow: any } | null>(null)
+// 边界语义：编排输入（INPUT_NODE）可作来源 —— 目标输入预选「编排入口参数」；
+// 编排输出（OUTPUT_NODE）可作目标 —— 弹「绑定到编排输出」选输出声明与来源输出端口。
+const linkDialog = ref<{ sourceId: string; targetId: string; inputs: any[]; chosenInputId: string; shadow: any; fromInput?: boolean } | null>(null)
+const outDialog = ref<{ sourceId: string; chosenOutputId: string; chosenPortId: string; issue: string } | null>(null)
 function onCanvasBind(nodeId: string) {
-  if (!bindSource.value) { bindSource.value = nodeId; return }
+  if (!bindSource.value) {
+    if (nodeId === OUTPUT_NODE && !(props.state.nodes || []).length) return warn('编排还没有处理节点：先「＋ 添加节点」')
+    if (nodeId === OUTPUT_NODE) return warn('「编排输出」只能作为目标：请先点击来源节点，再点击「编排输出」')
+    bindSource.value = nodeId
+    return
+  }
   if (bindSource.value === nodeId) { bindSource.value = ''; return }
   const sourceId = bindSource.value
   bindSource.value = ''
+  if (sourceId === OUTPUT_NODE) return warn('「编排输出」只能作为目标节点，不能作为来源')
+  if (nodeId === INPUT_NODE) return warn('「编排输入」只能作为来源节点，不能作为目标')
+  if (nodeId === OUTPUT_NODE) return openOutputBind(sourceId)
   const target = props.state.nodes.find((n: any) => n.id === nodeId)
-  const source = props.state.nodes.find((n: any) => n.id === sourceId)
+  // 来源是「编排输入」边界节点时不要求出现在处理节点列表里
+  const source = sourceId === INPUT_NODE ? true : props.state.nodes.find((n: any) => n.id === sourceId)
   if (!target || !source) return
   if (!target.inputs.length) return warn(`「${target.name}」尚未声明输入参数，请先在详情「输入」页签添加`)
   const firstUnbound = target.inputs.find((i: any) => !i.source)
+  const chosen = (firstUnbound || target.inputs[0]).id
+  let shadow = null
+  if (sourceId === INPUT_NODE) {
+    const entries = (props.state.inputs || []).filter((i: any) => i && typeof i === 'object')
+    if (!entries.length) return warn('编排尚未声明入口参数：请先点击画布上的「编排输入」节点添加')
+    shadow = { ...target.inputs.find((i: any) => i.id === chosen), source: { kind: 'flowInput', inputId: entries[0].id } }
+  }
   openDialog()
-  linkDialog.value = { sourceId, targetId: nodeId, inputs: target.inputs, chosenInputId: (firstUnbound || target.inputs[0]).id, shadow: null }
+  linkDialog.value = { sourceId, targetId: nodeId, inputs: target.inputs, chosenInputId: chosen, shadow, fromInput: sourceId === INPUT_NODE }
+}
+function openOutputBind(sourceId: string) {
+  const source = props.state.nodes.find((n: any) => n.id === sourceId)
+  if (!source) return
+  if (!(source.outputs || []).length) return warn(`「${source.name}」尚未声明输出参数，请先在详情「输出」页签添加`)
+  const decls = (props.state.outputs || []).filter((o: any) => o && typeof o === 'object')
+  if (!decls.length) return warn('编排尚未声明输出：请先点击画布上的「编排输出」节点添加输出参数')
+  const usedPorts = new Set(decls.filter((o: any) => o.binding && o.binding.kind === 'node').map((o: any) => `${o.binding.nodeId}/${o.binding.outputId}`))
+  const free = (source.outputs || []).find((p: any) => !usedPorts.has(`${source.id}/${p.id}`)) || source.outputs[0]
+  openDialog()
+  outDialog.value = { sourceId, chosenOutputId: decls[0].id, chosenPortId: free.id, issue: '' }
+}
+const outDialogType = computed(() => {
+  if (!outDialog.value) return ''
+  const poll = props.state.inputs // 仅触发响应性重算（state 变化后重算选项）
+  void poll
+  const decl = (props.state.outputs || []).find((o: any) => o.id === outDialog.value!.chosenOutputId)
+  return decl ? typeSummary(decl.type) : ''
+})
+function outPreview() {
+  if (!outDialog.value) return null
+  const node = props.state.nodes.find((n: any) => n.id === outDialog.value!.sourceId)
+  const port = (node?.outputs || []).find((p: any) => p.id === outDialog.value!.chosenPortId)
+  if (!node || !port) return { node: null, port: null, decl: null }
+  const decl = (props.state.outputs || []).find((o: any) => o.id === outDialog.value!.chosenOutputId)
+  return { node, port, decl }
+}
+function recomputeOutIssue() {
+  if (!outDialog.value) return
+  const { port, decl } = outPreview() || {}
+  if (!port || !decl) { outDialog.value.issue = '输出声明或来源输出无效'; return }
+  const verdict = typesCompatible(decl.type, port.type)
+  outDialog.value.issue = verdict.ok ? '' : `类型不相容：${verdict.reason}`
+}
+function applyOutDialog() {
+  if (!outDialog.value) return closeDialog()
+  recomputeOutIssue()
+  if (outDialog.value.issue) return
+  const { node, port, decl } = outPreview() || {}
+  if (!node || !port || !decl) return closeDialog()
+  emit('before-change')
+  decl.binding = { kind: 'node', nodeId: node.id, outputId: port.id }
+  emit('changed')
+  nextTick(() => canvasRef.value?.sync())
+  closeDialog()
 }
 const linkShadowOwner = computed(() => {
   if (!linkDialog.value) return null
   const input = linkDialog.value.inputs.find((i: any) => i.id === linkDialog.value!.chosenInputId)
   if (!input) return null
   if (!linkDialog.value.shadow || linkDialog.value.shadow.id !== input.id) {
-    linkDialog.value.shadow = { ...input, source: clone(input.source) }
+    // 从「编排输入」发起：目标输入预置为该入口参数的引用（用户仍可在弹窗内改来源）
+    const preset = linkDialog.value.fromInput
+      ? { kind: 'flowInput', inputId: (props.state.inputs || []).find((i: any) => i && typeof i === 'object')?.id || '' }
+      : null
+    linkDialog.value.shadow = { ...input, source: preset && preset.inputId ? preset : clone(input.source) }
   }
   return { nodeId: linkDialog.value.targetId, input: linkDialog.value.shadow }
+})
+/** 弹窗内即时可读问题（不阻断选择）：来源/目标类型不相容、来源为空等，确认时以它为准。 */
+const linkIssue = computed(() => {
+  if (!linkDialog.value) return ''
+  const input = linkDialog.value.inputs.find((i: any) => i.id === linkDialog.value!.chosenInputId)
+  const shadow = linkDialog.value.shadow
+  if (!input || !shadow) return ''
+  const src = shadow.source
+  if (!src) return '尚未选择来源：确认不会写入任何绑定'
+  if (src.kind === 'node' || src.kind === 'nodeField') {
+    const node = props.state.nodes.find((n: any) => n.id === src.nodeId)
+    if (!node) return '来源节点不存在'
+    const port = (node.outputs || []).find((p: any) => p.id === src.outputId)
+    if (!port) return '请选择来源节点的输出端口'
+    const declared = src.kind === 'nodeField' && Array.isArray(src.fieldPath) ? fieldOf(port.type, src.fieldPath) : port.type
+    if (!declared) return '字段引用路径无效，请重新选择'
+    const verdict = typesCompatible(input.type, declared)
+    return verdict.ok ? '' : `类型不相容：${verdict.reason}`
+  }
+  if (src.kind === 'flowInput') {
+    const decl = (props.state.inputs || []).find((i: any) => i.id === src.inputId)
+    if (!decl) return '入口参数不存在（可能已被删除）'
+    const verdict = typesCompatible(input.type, decl.type)
+    return verdict.ok ? '' : `类型不相容：${verdict.reason}`
+  }
+  if (src.kind === 'fixed') {
+    if (src.valueType && src.valueType !== input.type?.type) return `固定值类型（${TYPE_LABELS[src.valueType] || src.valueType}）与目标输入类型不一致`
+    return ''
+  }
+  return ''
 })
 function applyLinkDialog() {
   if (!linkDialog.value || !linkShadowOwner.value) return closeLinkDialog()
   const shadow = linkDialog.value.shadow
   const src = shadow.source
-  if (src && (src.kind === 'node' || src.kind === 'nodeField') && !src.outputId) return closeLinkDialog()
+  if (!src) { warn('尚未选择来源，未写入绑定'); return closeLinkDialog() }
+  if ((src.kind === 'node' || src.kind === 'nodeField') && !src.outputId) { warn('请选择来源节点的输出端口'); return closeLinkDialog() }
+  if (linkIssue.value) { warn(linkIssue.value); return } // 类型不相容等：不静默写入，保留弹窗让用户改
   const real = linkDialog.value.inputs.find((i: any) => i.id === shadow.id)
   if (!real) return closeLinkDialog()
   emit('before-change')
@@ -475,10 +576,30 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
     <section class="flow-modal" role="dialog" aria-modal="true" aria-label="建立参数绑定">
       <h2>建立参数绑定</h2>
       <p class="field-help">「{{nameOf(linkDialog.sourceId)}}」→「{{nameOf(linkDialog.targetId)}}」。确认才写入目标输入绑定并派生连线；取消不做任何修改。</p>
+      <p v-if="linkDialog.fromInput" class="field-help">来源是「编排输入」：下方来源类型已预选「编排入口参数」，选择具体入口参数后确认。</p>
       <label>目标输入
         <AppSelect v-model="linkDialog.chosenInputId" :options="linkDialog.inputs.map((i:any)=>({value:i.id,label:`${i.label||i.name||'未命名'}（${i.name}）${i.source?' · 已有来源':''}`}))" aria-label="目标输入"/>
       </label>
       <BindingEditor v-if="linkShadowOwner" :state="state" :owner="linkShadowOwner" dialog @apply="applyLinkDialog" @close="closeLinkDialog"/>
+      <p v-if="linkIssue" class="inline-warning" role="status">{{linkIssue}}</p>
+    </section>
+  </div>
+
+  <div v-if="outDialog" class="modal-backdrop" @click.self="closeDialog()">
+    <section class="flow-modal" role="dialog" aria-modal="true" aria-label="绑定到编排输出">
+      <h2>绑定到编排输出</h2>
+      <p class="field-help">把「{{nameOf(outDialog.sourceId)}}」的输出接到「编排输出」的声明：选择输出声明与来源输出端口，确认后派生连线并保存。</p>
+      <label>编排输出声明
+        <AppSelect v-model="outDialog.chosenOutputId" :options="(state.outputs||[]).filter((o:any)=>o&&typeof o==='object').map((o:any)=>({value:o.id,label:`${o.label||o.name||o.id} · ${typeSummary(o.type)}${o.binding?' · 已绑定':''}`}))" aria-label="编排输出声明" @update:model-value="outDialog!.chosenOutputId=$event as string; recomputeOutIssue()"/>
+      </label>
+      <label>来源输出端口
+        <AppSelect v-model="outDialog.chosenPortId" :options="((state.nodes||[]).find((n:any)=>n.id===outDialog!.sourceId)?.outputs||[]).map((p:any)=>({value:p.id,label:`${p.label||p.name||p.id} · ${typeSummary(p.type)}`}))" aria-label="来源输出端口" @update:model-value="outDialog!.chosenPortId=$event as string; recomputeOutIssue()"/>
+      </label>
+      <p v-if="outDialog.issue" class="inline-error" role="alert">{{outDialog.issue}}</p>
+      <div class="dialogtools">
+        <button type="button" @click="closeDialog()">取消</button>
+        <button type="button" class="primary" :disabled="!!outDialog.issue" @click="applyOutDialog">确认绑定</button>
+      </div>
     </section>
   </div>
 

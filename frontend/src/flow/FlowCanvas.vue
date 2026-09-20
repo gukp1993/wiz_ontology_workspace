@@ -190,8 +190,8 @@ onMounted(() => {
     if (event.target.isEdge()) { if (props.mode === 'inspect') emit('select', ''); return }
     const id = event.target.id()
     if (props.mode === 'bind') {
-      if (id === INPUT_NODE || id === OUTPUT_NODE) return notify('建立绑定先选处理节点：请点击来源处理节点')
       if (!event.target.isNode()) return
+      // 边界节点也交给父组件判定语义（编排输入可作来源、编排输出可作目标）
       emit('bind', id)
       return
     }
