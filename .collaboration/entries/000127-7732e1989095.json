@@ -1,0 +1,24 @@
+{
+  "ticket": "84a891ccda5f49f48eb52d2e9bc0db5f",
+  "task": "统一worktree目录位置",
+  "status": "decision",
+  "summary": "AGENTS规定新开发和集成worktree统一位于主仓库worktree/<任务名>/，不与主仓库平级；替换原仓库外规则，.gitignore新增/worktree/。现有工作树未迁移。",
+  "decisions": [
+    "从子工作树操作仍定位主仓库worktree目录，不再嵌套。",
+    "新计划和指令遵循新路径；旧环境实际登记保持，用户要求迁移后再处理。"
+  ],
+  "verification": [
+    "git diff --check通过；git check-ignore确认worktree/example/probe.txt被忽略。"
+  ],
+  "next": [],
+  "references": [
+    "AGENTS.md",
+    ".gitignore"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-20T08:55:41.168258+00:00",
+  "sequence": 127,
+  "filename": "000127-7732e1989095.json",
+  "record_hash": "a5da7e72c3e8135df35ea14944dcc4f92711c8e44c43b9c4ff5a7a001d618063",
+  "context_advanced": false
+}

@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`5bbdb1f341ad3d1a`
+上下文版本：`86c1efa655e782be`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 统一worktree目录位置 · codex · 已确认决定
+
+时间：2026-09-20T08:55:41.168258+00:00；记录：`.collaboration/entries/000127-7732e1989095.json`
+
+AGENTS规定新开发和集成worktree统一位于主仓库worktree/<任务名>/，不与主仓库平级；替换原仓库外规则，.gitignore新增/worktree/。现有工作树未迁移。
+
+- 决定：从子工作树操作仍定位主仓库worktree目录，不再嵌套。；新计划和指令遵循新路径；旧环境实际登记保持，用户要求迁移后再处理。
+- 验证：git diff --check通过；git check-ignore确认worktree/example/probe.txt被忽略。
+- 依据/文档：AGENTS.md；.gitignore
 
 ### 固化细粒度任务拆分与多agent并行原则 · codex · 已确认决定
 
@@ -143,15 +153,3 @@ W3 阶段：A 三项最小修复完成（B1 前端补 applicable_objects 三入�
 - 验证：python3 tests/test_publish_guards_adversarial.py → 通过135项/不符0，退出码0，约8s；A1并发复跑3轮稳定（[200,200,200,200]，version/revision集合唯一）。；python3 tests/test_catalog_independent.py → 硬断言47项通过/不符0/规格观察6项，退出码0；WIZ_QA_STRICT=1 退出码1（规格观察按失败计）。；python3 tests/run.py --test <两文件> 均通过；两测试均断言 DATA_ROOT 与 engine.resolve_url() 落在各自临时根内，可并行；未访问真实 ontology/18765/MySQL/Redis/外网。
 - 下一步：建议将 test_publish_guards_adversarial.py 归入 HTTP 组登记，但其动态端口与独立临时根可与 L 的 18841 并行，不需要串行。；P0 待修：损坏目录未阻断校验/发布（errors=[] 且实际发布出 v1）——需 B 落地 degraded_catalogs 参数并移除 project_routes 的 except TypeError 回退。；P0 待修：storage 级目录读取失败时 POST /api/project-validate 正确 503，但 GET /api/project-state 返回 500 INTERNAL_ERROR（server.do_GET 未登记 CatalogCacheUnreadable）。；P1 建议：编排 unreadable 的校验文案与 missing 区分；数组顺序敏感的 key 轮换约定补入接口文档。；未覆盖：多进程/多实例目录落库窗口竞争、浏览器点击级闭环、真实 MySQL/Redis 探测。
 - 依据/文档：tests/test_publish_guards_adversarial.py（新增，135项断言）；tests/test_catalog_independent.py（新增，硬断言47项+规格观察6项）；workbench/project_routes.py:169-190（degraded_catalogs 的 except TypeError 回退）；workbench/server.py:331-334 与 do_GET 异常分支（GET 未映射 CatalogCacheUnreadable→503）；文档/接口文档/03-项目区接口.md:189-190、219-228（冻结契约）；开发计划.md §11.2（G1）
-
-### 从物料自动构建本体需求与原型v1 · codex · 需求已交付
-
-时间：2026-09-20T07:04:55.447768+00:00；记录：`.collaboration/entries/000115-bbd9b7893015.json`
-
-交付工作台内从物料生成新本体的需求说明与交互原型v1，供用户评审；无正式代码或真实数据修改。
-
-- 决定：本轮严格只交付需求说明.md和交互原型_v1.html；开发计划、执行指令等用户确认后再生成。；沿用已确认范围：混合前后端/DDL/Word/PDF/Excel/MD，多轮澄清，证据充分默认拟纳入、弱证据暂缓，仅生成新本体。；新提议交互覆盖任务、物料、范围、生成、证据评审、新建保存；技术栈/OCR/规模上限等明确待评审。；适配当前本体自有协议及最新规则动作字段精简方向，不恢复动作参数、项目映射或MCP口径生成。
-- 验证：原型JS语法通过；Node VM最小DOM的19项交互检查通过，涵盖失效、依赖、冲突与失败保留。；相对链接、两文件交付、HTML解析及无网络调用检查通过。未做浏览器视觉验收，未运行正式应用构建或业务测试。
-- 下一步：用户评审原型和需求范围，确认后再生成开发计划与执行指令。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/需求说明.md；文档/需求/20260920_从物料自动构建本体/交互原型_v1.html
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。

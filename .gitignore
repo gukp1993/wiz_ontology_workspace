@@ -16,3 +16,6 @@ wb-root.key
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
+
+# Task and integration worktrees live beneath the main repository.
+/worktree/
