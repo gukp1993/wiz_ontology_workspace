@@ -1,0 +1,24 @@
+{
+  "ticket": "68a0df4c86b14163b39341f773904f87",
+  "task": "acceptance-fixes环境与修复指令",
+  "status": "ready",
+  "summary": "已创建codex/acceptance-fixes工作树，交付五项合并验收修复指令和细粒度任务计划。仅环境与文档，未开发/安装/启动。",
+  "decisions": [
+    "本批仅R01-R03/A01-A02；待实施工具执行后提交交独立验收，不合并main。",
+    "端口18921已检查与登记，数据根为本树.runtime/acceptance-data，Python环境.runtime/venv尚未创建。"
+  ],
+  "verification": [
+    "工作树基于b0fb7c0，git diff --check通过；新目录不携带main脏文件。"
+  ],
+  "next": [],
+  "references": [
+    "文档/需求/20260920_本体与项目统一维护体验改版/验收修复执行指令.md",
+    "文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-20T10:06:44.184869+00:00",
+  "sequence": 130,
+  "filename": "000130-8a1927255453.json",
+  "record_hash": "0683f9f0e7c1e429fd19095e8bdf7120837ce49a296211ce079fdd85a35ecf6e",
+  "context_advanced": false
+}
