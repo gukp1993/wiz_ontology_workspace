@@ -79,15 +79,15 @@
     <div class="wrap">
       <div ref="canvasEl" class="canvas"></div>
       <aside v-if="inspOpen" class="inspector">
-        <div class="panel-head"><span class="eyebrow">INSPECTOR</span><h2>{{ insp?.kind === 'edge' ? '连线编辑' : '节点详情' }}</h2></div>
+        <div class="panel-head"><span class="eyebrow">INSPECTOR</span><h2>节点详情</h2></div>
 
         <!-- 未选中：常驻空提示 -->
         <div v-if="!insp" class="empty">
-          <div><strong>选中节点或连线查看详情</strong>单击节点看详情字段与直接关系，双击编辑；单击连线编辑关系。选中节点按 <b>F</b> 放大聚焦、<b>Shift+F</b> 缩小。</div>
+          <div><strong>选中节点查看详情</strong>单击节点看详情字段与直接关系，双击或点「编辑」跳转到对应定义页编辑。<br/>连线不在此编辑：单击连线跳转到它的来源定义（对象链接→链接页签，属性引用→属性页签，规则/动作关联→对应页签）。选中节点按 <b>F</b> 放大聚焦、<b>Shift+F</b> 缩小。</div>
         </div>
 
-        <!-- 节点详情 -->
-        <template v-else-if="insp.kind === 'node'">
+        <!-- 节点详情（唯一的详情形态；连线编辑一律跳转源端，不再有面板） -->
+        <template v-else>
           <div class="details">
             <div class="detail-hero">
               <div class="detail-kicker">
@@ -122,27 +122,6 @@
           </div>
         </template>
 
-        <!-- 连线编辑（适配：仅对象链接可改关系名；引用/归属边按领域语义删除；补打开定义） -->
-        <template v-else>
-          <div class="edge-hero">
-            <strong>{{ insp.sourceName }} <span class="rel-color">{{ insp.relation }}</span> → {{ insp.targetName }}</strong>
-            <span class="edge-kind">{{ insp.edgeKind }}</span>
-          </div>
-          <div class="fields">
-            <div class="field">
-              <label>关系名（图上标签{{ inspEdgeEditable ? '' : '，引用类由系统定义' }}）</label>
-              <input v-model="insp.relation" type="text" :disabled="!inspEdgeEditable" />
-            </div>
-            <div class="field">
-              <label>描述</label>
-              <textarea v-model="insp.description" :disabled="!inspEdgeEditable"></textarea>
-            </div>
-          </div>
-          <div class="actions">
-            <button v-if="inspEdgeEditable" class="btn primary" @click="saveInspector">保存</button>
-            <button class="btn danger" @click="delInspector">删除</button>
-          </div>
-        </template>
       </aside>
     </div>
 
@@ -266,14 +245,6 @@
       @create="createEdges"
       @close="showNewEdge = false"
     />
-    <NodeEditModal
-      :show="showNodeEdit"
-      :node="editNode"
-      :existing-names="nodeNames"
-      @save="saveNode"
-      @delete="deleteNode"
-      @close="showNodeEdit = false"
-    />
     <GraphModal
       :show="showGraphs"
       :current-id="ontologyId"
@@ -307,7 +278,6 @@ import { fieldEntries } from './shared/fields'
 import { nodeW, nodeH } from './shared/layout'
 import NewNodeModal from './components/NewNodeModal.vue'
 import NewEdgeModal from './components/NewEdgeModal.vue'
-import NodeEditModal from './components/NodeEditModal.vue'
 import GraphModal from './components/GraphModal.vue'
 import MultiPickModal from './components/MultiPickModal.vue'
 import PreviewView from './PreviewView.vue'
@@ -345,8 +315,6 @@ let initializing = false
 const showNewNode = ref(false)
 const showNewEdge = ref(false)
 const edgeDraft = ref({ srcId: '', tgtId: '', srcName: '', tgtName: '' })
-const showNodeEdit = ref(false)
-const editNode = ref({ id: '', type: '实体', name: '', data: {} })
 const showGraphs = ref(false)
 // 多图谱预览：选择弹窗（列各本体的发布版本；数据由弹窗自行加载当前账号可见本体）
 const showMultiPick = ref(false)
@@ -1020,12 +988,16 @@ function bindCyEvents() {
       handleLinkTap(evt.target)
       return
     }
-    // 节点/连线：单击显示右侧 inspector（节点看详情，连线可编辑）
-    if (evt.target.isEdge()) showInspector(evt.target)
+    // 节点：单击显示右侧详情；连线：单击直接跳转到来源定义编辑（图上不编辑连线）
+    if (evt.target.isEdge()) openEdgeInWorkspace(evt.target)
     else if (evt.target.isNode()) showNodeInspector(evt.target)
   })
+  // 双击节点（2026-09-20 用户要求）：与详情「编辑」一致，跳转到该节点的编辑页面；
+  // 不再弹出画布内编辑弹窗（图上内容都来自对象建模，编辑统一在源端）。
   cy.value.on('dbltap', 'node', (evt) => {
-    if (!linking.value) openNodeEdit(evt.target)
+    if (linking.value) return
+    const n = state.draft.nodes.find((x) => x.id === evt.target.id())
+    if (n) openEditInWorkspace(n)
   })
   cy.value.on('grab', 'node', () => {
     // grab = 按下开始（拖前），每次都覆盖：多选拖拽取同一时刻快照；也避免中断拖拽残留脏状态
@@ -1214,7 +1186,7 @@ function isTyping(t) {
 }
 function closeAllModals() {
   let any = false
-  for (const v of [showNewNode, showNewEdge, showNodeEdit, showGraphs, showMultiPick, showShortcuts]) {
+  for (const v of [showNewNode, showNewEdge, showGraphs, showMultiPick, showShortcuts]) {
     if (v.value) { v.value = false; any = true }
   }
   if (viewMode.value !== 'editor') { viewMode.value = 'editor'; any = true }
@@ -1242,34 +1214,6 @@ function createNode({ type, name }) {
   cy.value.getElementById(r.id).select()
   showNewNode.value = false
   toast('已创建节点：' + name)
-}
-function openNodeEdit(el) {
-  editNode.value = { id: el.id(), type: el.data('type'), name: el.data('name'), data: el.data('data') || {} }
-  showNodeEdit.value = true
-}
-function saveNode({ name, data }) {
-  const r = domainCmd(() => bridge.domainSaveNode(editNode.value.id, { name, data }))
-  if (r.error) { toast(r.error, true); return }
-  const el = cy.value.getElementById(editNode.value.id)
-  refreshFromBridge()
-  showNodeEdit.value = false
-  // 右侧面板正显示该节点时同步刷新（名字/字段可能已改）
-  if (insp.value?.kind === 'node' && insp.value.id === el.id()) showNodeInspector(el)
-  toast('已保存节点修改')
-}
-async function deleteNode() {
-  const el = cy.value.getElementById(editNode.value.id)
-  const nEdges = el.connectedEdges().length
-  const msg = nEdges
-    ? `删除节点「${editNode.value.name}」将连带删除 ${nEdges} 条连线；引用保护与级联规则由当前建模约束执行。确认删除？`
-    : `确认删除节点「${editNode.value.name}」？`
-  if (await confirmDialog(msg)) {
-    const r = domainCmd(() => bridge.domainDeleteNode(editNode.value.id))
-    if (r.error) { toast(r.error, true); return }
-    refreshFromBridge()
-    showNodeEdit.value = false
-    toast('已删除')
-  }
 }
 
 // ---------- 连线 ----------
@@ -1466,19 +1410,6 @@ function createEdges({ relation, description }) {
 function toggleInspector() {
   inspOpen.value = !inspOpen.value
 }
-function showInspector(el) {
-  insp.value = {
-    kind: 'edge',
-    id: el.id(),
-    edgeKind: el.data('kind') || '对象链接',
-    domainId: el.data('domainId') || '',
-    sourceName: el.source().data('name'),
-    targetName: el.target().data('name'),
-    relation: el.data('relation'),
-    description: el.data('description'),
-  }
-}
-const inspEdgeEditable = computed(() => insp.value?.kind === 'edge' && insp.value.edgeKind === '对象链接')
 // 编辑跳转（2026-09-20 用户要求，取代原「打开定义」）：详情「编辑」把该节点交给
 // 工作台既有编辑表单页（对象/属性/共享属性/规则/动作），携 edit:true 让目标页直接打开编辑表单；
 // 同时携画布返回上下文（canvas/canvasNode=lg 节点 ID），保存或取消后经「← 返回图谱」回到画布并定位。
@@ -1491,6 +1422,35 @@ function openEditInWorkspace(n) {
   else if (n.type === '规则') emit('navigate', 'rules', { definition: n.domainId, ...common })
   else emit('navigate', 'actions', { definition: n.domainId, ...common })
 }
+
+// 连线编辑跳转（2026-09-20 用户要求）：图谱上的内容都来自对象建模，连线的编辑一律到源端——
+// ① 对象链接 → 起点对象的「链接」页签并打开该链接表单；
+// ② 共享引用 / 私有属性归属 → 所属对象的「属性」页签并打开该属性表单（引用在对象属性上维护）；
+// ③ 规则关联 / 动作关联 → 对象的「规则」/「动作」页签并定位该关联。
+// 防重：双击会连发两次 tap，同一连线 500ms 内只跳转一次。
+let lastEdgeJump = { id: '', at: 0 }
+function openEdgeInWorkspace(el) {
+  const edgeId = el && el.id ? el.id() : ''
+  if (!edgeId) return
+  const now = Date.now()
+  if (lastEdgeJump.id === edgeId && now - lastEdgeJump.at < 500) return
+  const edge = state.draft.edges.find((e) => e.id === edgeId)
+  if (!edge) return
+  const src = state.draft.nodes.find((n) => n.id === edge.source)
+  const tgt = state.draft.nodes.find((n) => n.id === edge.target)
+  if (!src) { toast('连线起点已不存在', true); return }
+  lastEdgeJump = { id: edgeId, at: now }
+  const common = { canvas: true, canvasNode: edge.id }
+  if (edge.kind === '对象链接') {
+    emit('navigate', 'objects', { type: src.domainId, tab: 'links', definition: edge.domainId, edit: true, ...common })
+  } else if (edge.kind === '共享引用' || edge.kind === '私有属性') {
+    emit('navigate', 'objects', { type: src.domainId, tab: 'props', property: edge.domainId, edit: true, ...common })
+  } else if (edge.kind === '规则关联') {
+    emit('navigate', 'objects', { type: src.domainId, tab: 'rules', definition: tgt?.domainId || '', ...common })
+  } else {
+    emit('navigate', 'objects', { type: src.domainId, tab: 'actions', definition: tgt?.domainId || '', ...common })
+  }
+}
 function showNodeInspector(el) {
   insp.value = {
     kind: 'node',
@@ -1502,36 +1462,13 @@ function showNodeInspector(el) {
 }
 function clearInspector() {
   insp.value = null
-  showNodeEdit.value = false
-  editNode.value = { id: '', type: '实体', name: '', data: {} }
 }
-// 节点面板「编辑」→ 跳转到该节点的编辑页面（2026-09-20 用户要求；双击仍为画布内快速编辑）
+// 节点面板「编辑」→ 跳转到该节点的编辑页面（2026-09-20 用户要求；双击同效，见 dbltap 处理）
 function editInspNode() {
   if (insp.value?.kind !== 'node') return
   const n = state.draft.nodes.find((x) => x.id === insp.value.id)
   if (!n) { toast('节点已不存在', true); return }
   openEditInWorkspace(n)
-}
-function saveInspector() {
-  if (insp.value?.kind !== 'edge') return
-  const r = domainCmd(() => bridge.domainSaveEdge(insp.value.id, { relation: insp.value.relation, description: insp.value.description }))
-  if (r.error) { toast(r.error, true); return }
-  refreshFromBridge()
-  toast('已保存连线修改')
-}
-async function delInspector() {
-  if (insp.value?.kind !== 'edge') return
-  const el = cy.value.getElementById(insp.value.id)
-  const tip = el.data('kind') === '共享引用' ? '删除这条引用连线？对象属性将转为私有保留，共享定义不受影响。'
-    : el.data('kind') === '私有属性' ? '该连线是私有属性的归属关系，删除将一并删除该私有属性定义。确认？'
-    : '删除这条连线？'
-  if (await confirmDialog(tip)) {
-    const r = domainCmd(() => bridge.domainDeleteEdge(insp.value.id))
-    if (r.error) { toast(r.error, true); return }
-    refreshFromBridge()
-    clearInspector()
-    toast('已删除')
-  }
 }
 async function deleteSelection(els) {
   const nodes = els.filter((e) => e.isNode())
@@ -1738,8 +1675,8 @@ function applyFocusTarget() {
   if (!el.length) { toast('目标定义已不存在，已清除画布选择。', true); return }
   cy.value.$(':selected').unselect()
   el.select()
-  if (el.isEdge()) showInspector(el)
-  else showNodeInspector(el)
+  // 连线编辑在源端，返回画布只高亮定位；节点则刷新右侧详情
+  if (!el.isEdge()) showNodeInspector(el)
   try { cy.value.animate({ center: { eles: el }, zoom: Math.min(1.6, Math.max(cy.value.zoom(), 1)), duration: 260 }) } catch { /* 定位失败保持视口 */ }
 }
 watch(() => props.focusTarget, (t) => { if (t) applyFocusTarget() })

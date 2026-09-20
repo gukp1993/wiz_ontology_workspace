@@ -426,6 +426,9 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
   }
   else if (projectSpaceViews.includes(v)) { void restoreStoredProject() } // 函数编排等项目空间页面不依赖项目：侧栏列表 + 上次项目后台恢复（刷新后项目上下文不丢）
   if (v === 'f-editor' && !flowState.value) return notify('请先在编排列表中选择或新建编排', true)
+  // 2026-09-20 修复：每次带 focus 的跳转前清空旧的定位参数——否则「图谱规则关联跳转」这类
+  // 只带 type 不带 property 的跳转会命中上一次残留的 propertyFocusId，重新打开旧属性表单。
+  if (focus) { propertyFocusId.value = ''; definitionFocusId.value = '' }
   if (focus?.type) { propertyFocusType.value = focus.type; bindingFocusType.value = focus.type }
   if (focus?.property) propertyFocusId.value = focus.property
   if (focus?.impl) implFocus.value = focus.impl

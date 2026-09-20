@@ -55,7 +55,13 @@ watch(() => props.canvasReturn, (id) => { if (id) mode.value = 'list' }, { immed
 function onGraphNavigate(view: string, focus?: Record<string, any>) { emit('navigate', view, focus as any) }
 function onSwitchOntology(id: string) { emit('switch-ontology', id) }
 function onCreateOntology(name: string) { emit('create-ontology', name) }
-function backToGraph() { emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any) }
+function backToGraph() {
+  // 2026-09-20 修复：返回图谱必须先关闭编辑态，否则同组件接收 graph:true 时仍渲染表单
+  //（表现为停在表单且返回上下文被清成「← 返回对象」）。
+  editor.value = null
+  mode.value = 'graph'
+  emit('navigate', 'objects', { graph: true, graphFocus: props.canvasReturn || '' } as any)
+}
 
 const graph = computed(() => props.state?.ontology?.['@graph'] || [])
 const objects = computed(() => graph.value.filter((n: any) => n['@type'] === 'owl:Class'))
@@ -167,6 +173,7 @@ async function saveObject() {
   editorSaving.value = false
   if (!r.ok) { editorError.value = r.message; return }
   editor.value = null
+  if (props.canvasReturn) { backToGraph(); return } // 来自图谱：保存后回画布并定位
   selected.value = e.id
   detailTab.value = e.isNew ? 'props' : e.returnTab
   locate(e.id); restoreListScroll()
@@ -224,6 +231,7 @@ async function saveLink() {
   editorSaving.value = false
   if (!r.ok) { editorError.value = r.message; return }
   editor.value = null
+  if (props.canvasReturn) { backToGraph(); return } // 来自图谱：保存后回画布并定位
   detailTab.value = e.returnTab
   locate(e.id); restoreListScroll()
 }
