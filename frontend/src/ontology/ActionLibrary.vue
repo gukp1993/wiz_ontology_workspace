@@ -10,6 +10,7 @@ import { appConfirm } from '../shared/appConfirm'
 import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
 import Field from '../shared/EditorField.vue'
+import EditorHead from '../shared/EditorHead.vue'
 import { actionsOf, isActionV2, objectsOfAction } from './actionModel'
 import { useOntTable } from './ontList'
 import { actionDeleteCheck } from './dependencyModel'
@@ -180,7 +181,9 @@ async function remove(id: string) {
 }
 </script>
 <template>
-<section class="card ont-block">
+<!-- 列表态：页头 + 标准表格。页头只在列表态渲染（2026-09-20 用户反馈「动作返回图谱与其他节点样式不统一」）：
+     此前页头在编辑态也显示，返回图谱按钮留在页头右上角，而对象/属性/规则编辑表单的返回控件在表单卡内左上角。 -->
+<section v-if="mode === 'list'" class="card ont-block">
   <div class="ont-lib-head">
     <div>
       <h2>动作定义</h2>
@@ -191,9 +194,8 @@ async function remove(id: string) {
       <button type="button" class="primary" @click="openNew">＋ 新建动作</button>
     </div>
   </div>
-  <template v-if="mode === 'list'">
-    <p v-if="message" :class="message.startsWith('已') ? 'inline-success' : 'inline-error'" role="alert">{{ message }}</p>
-    <OntologyList
+  <p v-if="message" :class="message.startsWith('已') ? 'inline-success' : 'inline-error'" role="alert">{{ message }}</p>
+  <OntologyList
       :search="actionsTable.q.value" @update:search="actionsTable.q.value = $event"
       :total="actionsTable.filtered.value.length" :page="actionsTable.page.value" :page-count="actionsTable.pageCount.value"
       :sort-desc="actionsTable.dir.value < 0"
@@ -201,83 +203,86 @@ async function remove(id: string) {
       :columns="[{ label: '名称', width: '32%', sort: true }, { label: '业务效果', width: '33%' }, { label: '关联对象', width: '18%' }, { label: '操作', width: '17%' }]"
       :empty-title="hasFilter ? '没有匹配的动作' : '还没有动作定义'"
       :empty-hint="hasFilter ? '调整关键词或筛选条件再试试。' : '使用右上角「＋ 新建动作」创建第一项。'"
-      @sort="actionsTable.toggleSort()" @page="actionsTable.page.value += $event" @clear="clearFilters">
-      <template #filter>
-        <div class="ont-filters" role="group" aria-label="按引用情况筛选">
-          <button v-for="f in refFilterOptions" :key="f.value" type="button" :class="{ active: refFilter === f.value }" :aria-pressed="refFilter === f.value" @click="setRefFilter(f.value)">{{ f.label }}</button>
-        </div>
-      </template>
-      <tr v-for="r in actionsTable.paged.value" :key="r.id" :data-row="r.id">
-        <td>
-          <button type="button" class="ont-name" @click="openDetail(r.id)">{{ r.name }}</button>
-          <span v-if="r.desc" class="ont-sub" :title="r.desc">{{ r.desc }}</span>
-          <span v-if="r.legacy" class="ont-sub">历史格式 · 只读</span>
-        </td>
-        <td><span class="ont-clip" :title="r.effect">{{ r.effect || '—' }}</span></td>
-        <td>
-          <button type="button" class="ont-badge" :title="'查看「' + r.name + '」的关联对象'" @click="openRefs(r.id)">{{ r.refs.length ? r.refs.length + ' 个对象' : '暂未关联' }}</button>
-        </td>
-        <td class="ont-ops">
-          <button type="button" class="row-link" @click="editAction(r.id)">编辑</button>
-          <button type="button" class="row-link danger" @click="remove(r.id)">删除</button>
-        </td>
-      </tr>
-    </OntologyList>
-    <p class="ont-context">动作描述不会执行任何指令；本期不定义输入参数、提交条件或执行表单。项目实现请在项目映射的「对象映射 → 动作绑定」中配置。</p>
-  </template>
-  <section v-else class="card detail-card" :key="'edit-' + editId">
-    <div class="detail-heading"><div><span class="eyebrow">{{ editingExisting ? '编辑动作' : '新建动作' }}</span><h2>{{ draft.name || '未命名动作' }}</h2></div><span class="status-pill">仅三项业务字段</span></div>
-    <div class="form-grid">
-      <Field label="动作名称" class="full" :model-value="draft.name" required example="例如：停止充放电" @update:model-value="draft.name = $event"/>
-      <Field label="业务定义" type="textarea" class="full" :model-value="draft.description" required example="请求目标对象停止当前充电或放电。" help="这个动作有什么用途。" @update:model-value="draft.description = $event"/>
-      <Field label="业务效果" type="textarea" class="full" :model-value="draft.effect" rows="4" example="请求停止充放电，目标功率为 0，以设备反馈确认完成。" help="执行后期望发生什么；用业务语言描述，不会执行指令。" @update:model-value="draft.effect = $event"/>
-    </div>
-    <p class="field-help">不需要先选择作用对象（在对象建模中关联），也不维护参数清单——修改名称、调整归属等操作所需信息由项目实现配置。</p>
-    <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
-    <div class="detail-footer"><div class="tools"><button type="button" class="primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存定义' }}</button><button type="button" @click="closeEditor">取消</button></div>
-      <span>保存直接写入本体草稿；已发布版本需重新发布后更新。</span></div>
-  </section>
-
-  <!-- 只读详情抽屉（§7）：名称点击打开；footer 按格式分流编辑/转换入口 -->
-  <OntDrawer v-if="detail" :title="detail.name || '未命名动作'" :subtitle="detailIsLegacy ? '历史动作 · 只读' : '动作定义'" @close="detailId = ''">
-    <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ detail.description || '尚未填写。' }}</p></div>
-    <div class="ont-field"><span class="ont-field-label">业务效果</span><p>{{ detail.effect || '尚未填写。' }}</p></div>
-    <div class="ont-field">
-      <span class="ont-field-label">关联对象</span>
-      <p class="ont-hint">只读反向引用；同一份动作定义可被多个对象共用，点击定位到对象的动作页签。</p>
-      <template v-if="detailRefs.length">
-        <button v-for="t in detailRefs" :key="t" type="button" class="ont-ref-row" @click="goObject(t)">
-          <span><strong>{{ typeName(t) }}</strong><small>查看此对象支持的动作</small></span>→
-        </button>
-      </template>
-      <p v-else class="ont-hint">暂未关联对象。到「对象建模 → 动作」页签添加。</p>
-    </div>
-    <details v-if="!isActionV2(detail)" class="technical-section"><summary>历史字段（只读保留）</summary>
-      <p v-if="detail.object_type || detail.object_types">适用对象：{{ (Array.isArray(detail.object_types) ? detail.object_types : [detail.object_type]).filter(Boolean).map(typeName).join('、') }}</p>
-      <p v-if="detail.criteria">提交条件：{{ detail.criteria }}</p>
-      <p v-if="detail.permission">权限与审批要求：{{ detail.permission }}</p>
-      <p v-if="detail.acceptance">验收案例：{{ detail.acceptance }}</p>
-      <div v-for="(p, i) in detail.inputs || []" :key="i" class="param-line">输入参数 {{ Number(i) + 1 }}：{{ p.name || '未命名' }} · {{ p.type }}{{ p.required ? ' · 必填' : '' }}{{ p.description ? ' · ' + p.description : '' }}</div>
-      <p class="muted">历史字段不会在读写时丢失；转为新格式需显式确认替代。</p></details>
-    <p class="ont-hint">动作描述不会执行任何指令；本期不定义输入参数、提交条件或执行表单。项目实现请在项目映射的「对象映射 → 动作绑定」中配置。</p>
-    <template #footer>
-      <button v-if="focusOrigin?.type" type="button" @click="backToOrigin">返回来源对象</button>
-      <button type="button" class="primary" @click="editFromDetail">{{ detailIsLegacy ? '转为新格式编辑' : '编辑' }}</button>
+    @sort="actionsTable.toggleSort()" @page="actionsTable.page.value += $event" @clear="clearFilters">
+    <template #filter>
+      <div class="ont-filters" role="group" aria-label="按引用情况筛选">
+        <button v-for="f in refFilterOptions" :key="f.value" type="button" :class="{ active: refFilter === f.value }" :aria-pressed="refFilter === f.value" @click="setRefFilter(f.value)">{{ f.label }}</button>
+      </div>
     </template>
-  </OntDrawer>
+    <tr v-for="r in actionsTable.paged.value" :key="r.id" :data-row="r.id">
+      <td>
+        <button type="button" class="ont-name" @click="openDetail(r.id)">{{ r.name }}</button>
+        <span v-if="r.desc" class="ont-sub" :title="r.desc">{{ r.desc }}</span>
+        <span v-if="r.legacy" class="ont-sub">历史格式 · 只读</span>
+      </td>
+      <td><span class="ont-clip" :title="r.effect">{{ r.effect || '—' }}</span></td>
+      <td>
+        <button type="button" class="ont-badge" :title="'查看「' + r.name + '」的关联对象'" @click="openRefs(r.id)">{{ r.refs.length ? r.refs.length + ' 个对象' : '暂未关联' }}</button>
+      </td>
+      <td class="ont-ops">
+        <button type="button" class="row-link" @click="editAction(r.id)">编辑</button>
+        <button type="button" class="row-link danger" @click="remove(r.id)">删除</button>
+      </td>
+    </tr>
+  </OntologyList>
+  <p class="ont-context">动作描述不会执行任何指令；本期不定义输入参数、提交条件或执行表单。项目实现请在项目映射的「对象映射 → 动作绑定」中配置。</p>
+</section>
 
-  <!-- 关联对象抽屉：行内「N 个对象 / 暂未关联」打开；点击对象定位到对象动作页签 -->
-  <OntDrawer v-if="refTarget" :title="(refTarget.name || '未命名动作') + ' · 关联对象'" subtitle="关联对象" @close="refsId = ''">
-    <template v-if="refTargetRefs.length">
-      <p class="ont-hint">关联在「对象建模 → 动作」页签维护，此处只读；点击对象可定位到对应页签。</p>
-      <button v-for="t in refTargetRefs" :key="t" type="button" class="ont-ref-row" @click="goObject(t)">
-        <span><strong>{{ typeName(t) }}</strong><small>{{ refTarget.name || '此动作' }}</small></span>→
+<!-- 编辑/新建态：独立表单卡（与其他编辑表单同构）。头部返回控件走共享 EditorHead：
+     从图谱跳入时在表单卡左上角给出「← 返回图谱」，与对象/属性/规则编辑表单一致。 -->
+<section v-else class="card detail-card action-form" :key="'edit-' + editId">
+  <EditorHead :canvas-return="canvasReturn" back-label="← 返回动作列表" @back-to-graph="backToGraph" @close="closeEditor"/>
+  <div class="detail-heading"><div><span class="eyebrow">{{ editingExisting ? '编辑动作' : '新建动作' }}</span><h2>{{ draft.name || '未命名动作' }}</h2></div><span class="status-pill">仅三项业务字段</span></div>
+  <div class="form-grid">
+    <Field label="动作名称" class="full" :model-value="draft.name" required example="停止充放电" @update:model-value="draft.name = $event"/>
+    <Field label="业务定义" type="textarea" class="full" :model-value="draft.description" required example="请求目标对象停止当前充电或放电。" help="这个动作有什么用途。" @update:model-value="draft.description = $event"/>
+    <Field label="业务效果" type="textarea" class="full" :model-value="draft.effect" rows="4" example="请求停止充放电，目标功率为 0，以设备反馈确认完成。" help="执行后期望发生什么；用业务语言描述，不会执行指令。" @update:model-value="draft.effect = $event"/>
+  </div>
+  <p class="field-help">不需要先选择作用对象（在对象建模中关联），也不维护参数清单——修改名称、调整归属等操作所需信息由项目实现配置。</p>
+  <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
+  <div class="detail-footer"><div class="tools"><button type="button" class="primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存定义' }}</button><button type="button" @click="closeEditor">取消</button></div>
+    <span>保存直接写入本体草稿；已发布版本需重新发布后更新。</span></div>
+</section>
+
+<!-- 只读详情抽屉（§7）：名称点击打开；footer 按格式分流编辑/转换入口 -->
+<OntDrawer v-if="detail" :title="detail.name || '未命名动作'" :subtitle="detailIsLegacy ? '历史动作 · 只读' : '动作定义'" @close="detailId = ''">
+  <div class="ont-field"><span class="ont-field-label">业务定义</span><p>{{ detail.description || '尚未填写。' }}</p></div>
+  <div class="ont-field"><span class="ont-field-label">业务效果</span><p>{{ detail.effect || '尚未填写。' }}</p></div>
+  <div class="ont-field">
+    <span class="ont-field-label">关联对象</span>
+    <p class="ont-hint">只读反向引用；同一份动作定义可被多个对象共用，点击定位到对象的动作页签。</p>
+    <template v-if="detailRefs.length">
+      <button v-for="t in detailRefs" :key="t" type="button" class="ont-ref-row" @click="goObject(t)">
+        <span><strong>{{ typeName(t) }}</strong><small>查看此对象支持的动作</small></span>→
       </button>
     </template>
     <p v-else class="ont-hint">暂未关联对象。到「对象建模 → 动作」页签添加。</p>
-    <template #footer><button type="button" @click="refsId = ''">关闭</button></template>
-  </OntDrawer>
-</section>
+  </div>
+  <details v-if="!isActionV2(detail)" class="technical-section"><summary>历史字段（只读保留）</summary>
+    <p v-if="detail.object_type || detail.object_types">适用对象：{{ (Array.isArray(detail.object_types) ? detail.object_types : [detail.object_type]).filter(Boolean).map(typeName).join('、') }}</p>
+    <p v-if="detail.criteria">提交条件：{{ detail.criteria }}</p>
+    <p v-if="detail.permission">权限与审批要求：{{ detail.permission }}</p>
+    <p v-if="detail.acceptance">验收案例：{{ detail.acceptance }}</p>
+    <div v-for="(p, i) in detail.inputs || []" :key="i" class="param-line">输入参数 {{ Number(i) + 1 }}：{{ p.name || '未命名' }} · {{ p.type }}{{ p.required ? ' · 必填' : '' }}{{ p.description ? ' · ' + p.description : '' }}</div>
+    <p class="muted">历史字段不会在读写时丢失；转为新格式需显式确认替代。</p></details>
+  <p class="ont-hint">动作描述不会执行任何指令；本期不定义输入参数、提交条件或执行表单。项目实现请在项目映射的「对象映射 → 动作绑定」中配置。</p>
+  <template #footer>
+    <button v-if="focusOrigin?.type" type="button" @click="backToOrigin">返回来源对象</button>
+    <button type="button" class="primary" @click="editFromDetail">{{ detailIsLegacy ? '转为新格式编辑' : '编辑' }}</button>
+  </template>
+</OntDrawer>
+
+<!-- 关联对象抽屉：行内「N 个对象 / 暂未关联」打开；点击对象定位到对象动作页签 -->
+<OntDrawer v-if="refTarget" :title="(refTarget.name || '未命名动作') + ' · 关联对象'" subtitle="关联对象" @close="refsId = ''">
+  <template v-if="refTargetRefs.length">
+    <p class="ont-hint">关联在「对象建模 → 动作」页签维护，此处只读；点击对象可定位到对应页签。</p>
+    <button v-for="t in refTargetRefs" :key="t" type="button" class="ont-ref-row" @click="goObject(t)">
+      <span><strong>{{ typeName(t) }}</strong><small>{{ refTarget.name || '此动作' }}</small></span>→
+    </button>
+  </template>
+  <p v-else class="ont-hint">暂未关联对象。到「对象建模 → 动作」页签添加。</p>
+  <template #footer><button type="button" @click="refsId = ''">关闭</button></template>
+</OntDrawer>
 </template>
 <style scoped>
 .ont-filters{display:flex;gap:6px;flex-wrap:wrap}

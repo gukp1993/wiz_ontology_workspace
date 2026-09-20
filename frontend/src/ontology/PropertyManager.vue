@@ -21,6 +21,7 @@
 <script setup lang="ts">
 import { ref, computed, inject, onBeforeUnmount } from 'vue'
 import Field from '../shared/EditorField.vue'
+import EditorHead from '../shared/EditorHead.vue'
 import PropertyFormatting from './PropertyFormatting.vue'
 import { dataTypeOptionsFor } from './editorModel'
 import { makeProperty, effectiveProperty, localProperties, detachProperty, asShared, propertyDataType, setPropertyDataType, referencesOf } from './propertyModel'
@@ -219,10 +220,8 @@ async function doSave() {
 
 <template>
 <section class="card detail-card prop-form">
-  <div class="prop-form-head">
-    <button v-if="props.canvasReturn" type="button" @click="emit('back-to-graph')">← 返回图谱</button>
-    <button type="button" @click="emit('close')">{{ props.canvasReturn ? '关闭' : '← ' + (kind === 'property' ? '返回对象' : '返回共享属性库') }}</button>
-  </div>
+  <!-- 头部返回控件走共享 EditorHead（2026-09-20 全局统一）：与其他编辑表单同一位置、同一写法 -->
+  <EditorHead :canvas-return="props.canvasReturn" :back-label="'← ' + (kind === 'property' ? '返回对象' : '返回共享属性库')" @back-to-graph="emit('back-to-graph')" @close="emit('close')"/>
   <div class="detail-heading">
     <div><p class="prop-form-context">{{ kind === 'shared' || editingShared ? '共享属性库' : contextName }}</p><h2>{{ title }}</h2></div>
   </div>
@@ -246,7 +245,7 @@ async function doSave() {
 
   <fieldset class="prop-fields" :disabled="readonly">
     <div class="form-grid">
-      <Field label="属性名称" class="full" :model-value="draft?.['rdfs:label'] || ''" required example="例如：额定功率" :disabled="readonly" @update:model-value="setLabel"/>
+      <Field label="属性名称" class="full" :model-value="draft?.['rdfs:label'] || ''" required example="额定功率" :disabled="readonly" @update:model-value="setLabel"/>
       <Field label="业务定义" type="textarea" class="full" :model-value="draft?.['rdfs:comment'] || ''" required example="用一句话说明这个属性描述什么。" help="说明含义和口径；具体表字段放在项目映射，公式放在计算定义。" :disabled="readonly" @update:model-value="setComment"/>
       <Field label="数据类型" type="select" :model-value="selectedType" :options="typeOptions" required :disabled="readonly" @update:model-value="setRange"/>
       <Field v-if="selectedType === 'timeSeries'" label="观测值类型" type="select" :model-value="rangeId" :options="observationOptions" required help="选择每个时刻记录的值是什么类型；时标由时间序列提供，来源在项目映射中配置。" :disabled="readonly" @update:model-value="setObservation"/>
@@ -304,7 +303,6 @@ async function doSave() {
 </template>
 
 <style scoped>
-.prop-form-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
 .prop-form-context{margin:0 0 3px;font-size:14px;font-weight:600;color:var(--ink-2)}
 .prop-error{margin:0 0 12px}
 .prop-fields{border:0;padding:0;margin:0;min-width:0}

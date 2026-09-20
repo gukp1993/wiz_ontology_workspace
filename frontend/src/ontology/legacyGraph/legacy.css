@@ -91,46 +91,22 @@
 .legacy-editor-root.legacy-editor-root .modal .row:last-child { border-bottom: 0; }
 .legacy-editor-root.legacy-editor-root .modal .list { max-height: 46vh; overflow-y: auto; }
 
-/* 类型筛选 chips：五类后每枚更宽，防止被 flex 压成竖排文字 */
+/* 类型筛选 chips：五类后每枚更宽，防止被 flex 压成竖排文字。
+   工具行/视图组的换行与宽度策略全部收口在 EditorView.vue 的 scoped 样式里
+   （2026-09-20：此前 scoped 与 legacy.css 各写一份 nowrap/wrap，同优先级互相打架，
+   已是第二次同类问题——工具栏布局只保留一处定义）。 */
 .legacy-editor-root .type-filter { flex-wrap: wrap; row-gap: 5px; }
 .legacy-editor-root .type-filter .chip { white-space: nowrap; flex: 0 0 auto; }
-.legacy-editor-root .tool-row { flex-wrap: wrap; row-gap: 6px; }
 
-/* ---- 窄屏工具栏（2026-09-20）：≤1100 时不再换行，改横向滚动，
-   避免五类筛选 chips + 全部按钮把画布挤到 0 高（768 实测 canvas=0）。 ---- */
+/* ---- 窄屏与头部留白（2026-09-20） ---- */
 @media (max-width: 1100px) {
   .legacy-editor-root .topbar { padding: 6px 10px; }
   .legacy-editor-root .top-row { flex-wrap: wrap; }
-  .legacy-editor-root .tool-row {
-    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
-    scrollbar-width: thin; padding-bottom: 4px;
-  }
-  .legacy-editor-root .tool-row > * { flex: 0 0 auto; }
-  .legacy-editor-root .type-filter { flex-wrap: nowrap; margin-left: 0; }
-  .legacy-editor-root .search-box { margin-left: 4px; }
   .legacy-editor-root .shortcut-hint { display: none; }
 }
 
-
-/* ---- 头部排版优化（2026-09-20，用户要求"UI 界面优化"） ----
-   旧两行头部（空状态行 + 工具行）压成一行：品牌区更紧凑、工具行单行可横向滚动、
-   状态区右对齐；顶部留白收紧，把高度让给画布。 */
+/* 头部压缩后画布自动加高；撤销条/提示保持原样 */
 .legacy-editor-root .topbar { padding: 6px 12px; }
 .legacy-editor-root .brand { padding-right: 12px; margin-right: 10px; min-width: 92px; }
 .legacy-editor-root .brand h1 { font-size: 13px; }
-.legacy-editor-root .tool-row {
-  display: flex; align-items: center; gap: 6px;
-  margin-top: 0; padding-top: 0; border-top: 0;
-  flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
-  scrollbar-width: thin;
-}
-.legacy-editor-root .tool-row > * { flex: 0 0 auto; }
-.legacy-editor-root .tool-row .status {
-  margin-left: auto; padding-left: 10px; border-left: 1px solid var(--line);
-  display: flex; align-items: center; gap: 12px; white-space: nowrap;
-  position: sticky; right: 0; background: #fff; padding-right: 2px;
-}
-.legacy-editor-root .tool-row .search-box { margin-left: 6px; }
-.legacy-editor-root .tool-row .type-filter { margin-left: 4px; }
-/* 画布因头部变矮自动加高；撤销条/提示保持原样 */
 .legacy-editor-root .layout-undo { bottom: 18px; }

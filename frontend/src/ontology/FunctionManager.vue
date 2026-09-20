@@ -100,7 +100,7 @@ function convertLegacy(){const f=legacyItem.value;if(!f)return;emit('before-chan
 <div class="detail-heading"><div><h2>{{isNew?'新建计算契约':'维护 · '+(draft.name||'未命名契约')}}</h2></div><span class="status-pill">{{draft.outputs.length||0}} 个输出</span></div>
 <p v-if="notice" class="fill-hint">{{notice}}</p>
 <p v-if="formError" class="inline-error fm-error" role="alert">{{formError}}</p>
-<Field label="这个能力叫什么？" v-model="draft.name" required example="例如：查询储能簇 SOC 采样记录"/>
+<Field label="这个能力叫什么？" v-model="draft.name" required example="查询储能簇 SOC 采样记录"/>
 <Field label="它做什么？" type="textarea" v-model="draft.description" required example="返回指定储能簇在指定时间范围内的 SOC 采样记录。" help="描述业务目的；数据库、Redis 和执行规则由项目实现维护。"/>
 <section class="sample-panel">
 <div class="panelhead"><h3>使用时需要提供什么？</h3><label class="check-option"><input type="checkbox" :checked="draft.no_inputs" @change="setNoInputs(($event.target as HTMLInputElement).checked)"><span>不需要提供任何内容</span></label></div>

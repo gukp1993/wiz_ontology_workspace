@@ -13,6 +13,7 @@ import { appConfirm } from '../shared/appConfirm'
 import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
 import Field from '../shared/EditorField.vue'
+import EditorHead from '../shared/EditorHead.vue'
 import { useOntTable } from './ontList'
 import { objectsOfRule, RULE_FIELDS, rulesOf } from './businessRuleModel'
 import { ruleDeleteCheck } from './dependencyModel'
@@ -256,8 +257,11 @@ async function removeRule(id: string) {
 
 
 <!-- 编辑/新建：内嵌完整表单（2026-09-20 用户要求，与动作/对象/属性页一致，不再用弹窗）。
-     显式条件而非 v-else：中间插入了抽屉组件，v-else 会错误链到抽屉上导致列表态也渲染表单。 -->
+     显式条件而非 v-else：中间插入了抽屉组件，v-else 会错误链到抽屉上导致列表态也渲染表单。
+     头部返回控件走共享 EditorHead（2026-09-20 用户反馈「规则缺少返回图谱」）：
+     从图谱跳入时在此给出「← 返回图谱」，与对象/属性/动作编辑表单同一位置同一写法。 -->
 <section v-if="mode === 'edit'" class="card detail-card">
+  <EditorHead :canvas-return="canvasReturn" back-label="← 返回规则列表" @back-to-graph="backToGraph" @close="cancelEdit"/>
   <div class="detail-heading">
     <div><span class="eyebrow">{{ isNewRule ? '新建规则' : '编辑规则' }}</span><h2>{{ draft?.name || '未命名规则' }}</h2></div>
     <span class="status-pill">四字段业务规则</span>

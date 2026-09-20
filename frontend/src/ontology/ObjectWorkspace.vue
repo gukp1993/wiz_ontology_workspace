@@ -20,6 +20,7 @@ import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } fr
 import LegacyGraphHost from './legacyGraph/LegacyGraphHost.vue'
 import PropertyManager from './PropertyManager.vue'
 import Field from '../shared/EditorField.vue'
+import EditorHead from '../shared/EditorHead.vue'
 import AppSelect from '../shared/AppSelect.vue'
 import RulePicker from './RulePicker.vue'
 import PickerDialog, { type PickerRow } from './PickerDialog.vue'
@@ -662,14 +663,11 @@ async function removeNode(id: string, label: string, confirmText?: string) {
   <template v-if="editor">
     <PropertyManager v-if="editor.kind === 'property'" :key="editor.propertyId || 'new'" :state="state" kind="property" :target-type-id="editor.targetTypeId" :property-id="editor.propertyId" :canvas-return="canvasReturn" @back-to-graph="backToGraph" @close="closeEditor" @saved="onPropertySaved"/>
     <section v-else-if="editor.kind === 'object'" class="card detail-card ow-editor">
-      <div class="ow-editor-head">
-        <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
-        <button type="button" @click="closeEditor">{{ canvasReturn ? '关闭' : '← 返回对象' }}</button>
-      </div>
+      <EditorHead :canvas-return="canvasReturn" back-label="← 返回对象" @back-to-graph="backToGraph" @close="closeEditor"/>
       <div class="detail-heading"><div><span class="eyebrow">对象类型</span><h2>{{ editor.isNew ? '新建对象类型' : '维护对象定义' }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
-        <Field label="对象名称" class="full" :model-value="objectDraft?.label || ''" required example="例如：储能簇" @update:model-value="objectDraft && (objectDraft.label = $event)"/>
+        <Field label="对象名称" class="full" :model-value="objectDraft?.label || ''" required example="储能簇" @update:model-value="objectDraft && (objectDraft.label = $event)"/>
         <Field label="业务定义" type="textarea" class="full" :model-value="objectDraft?.comment || ''" required example="说明它是什么，用什么业务边界区分。" help="只需名称和业务定义即可保存；属性与链接在对象内补充。" @update:model-value="objectDraft && (objectDraft.comment = $event)"/>
       </div>
       <div class="detail-footer">
@@ -678,21 +676,18 @@ async function removeNode(id: string, label: string, confirmText?: string) {
       </div>
     </section>
     <section v-else-if="editor.kind === 'link'" class="card detail-card ow-editor">
-      <div class="ow-editor-head">
-        <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
-        <button type="button" @click="closeEditor">{{ canvasReturn ? '关闭' : '← 返回对象' }}</button>
-      </div>
+      <EditorHead :canvas-return="canvasReturn" back-label="← 返回对象" @back-to-graph="backToGraph" @close="closeEditor"/>
       <div class="detail-heading"><div><span class="eyebrow">业务链接</span><h2>{{ editor.isNew ? '定义业务链接' : '维护 · ' + (linkDraft?.label || '未命名链接') }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
         <label>起点对象 *<AppSelect :model-value="linkDraft?.from || ''" aria-label="起点对象" :options="linkTargetOptions" @update:model-value="linkDraft && (linkDraft.from = $event)"/></label>
         <label>终点对象 *<AppSelect :model-value="linkDraft?.to || ''" aria-label="终点对象" :options="linkTargetOptions" @update:model-value="linkDraft && (linkDraft.to = $event)"/></label>
-        <Field label="正向名称" :model-value="linkDraft?.label || ''" required example="例如：所属设备" help="从起点读到终点的业务含义。" @update:model-value="linkDraft && (linkDraft.label = $event)"/>
+        <Field label="正向名称" :model-value="linkDraft?.label || ''" required example="所属设备" help="从起点读到终点的业务含义。" @update:model-value="linkDraft && (linkDraft.label = $event)"/>
         <Field label="数量关系" type="select" :model-value="linkDraft?.cardinality || 'many-to-one'" :options="cardinalityOptions" required @update:model-value="linkDraft && (linkDraft.cardinality = $event)"/>
       </div>
       <details class="technical-section">
         <summary>反向阅读名称（选填）</summary>
-        <Field label="反向名称" :model-value="linkDraft?.reverseLabel || ''" example="例如：包含储能簇" help="同一条链接的反向表达，不重复建立另一条链接。" @update:model-value="linkDraft && (linkDraft.reverseLabel = $event)"/>
+        <Field label="反向名称" :model-value="linkDraft?.reverseLabel || ''" example="包含储能簇" help="同一条链接的反向表达，不重复建立另一条链接。" @update:model-value="linkDraft && (linkDraft.reverseLabel = $event)"/>
       </details>
       <details class="technical-section">
         <summary>更多信息（选填）</summary>
@@ -985,7 +980,6 @@ async function removeNode(id: string, label: string, confirmText?: string) {
 .ow-toolbar .ow-mode-tabs{display:flex;gap:6px;margin-bottom:0}
 .ow-toolbar .ow-mode-tabs button{flex:none}
 .ow-toolbar .primary{margin-left:auto}
-.ow-editor-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
 .ow-editor :deep(.form-grid .editor-field.full){grid-column:1/-1}
 .ow-row-tools{white-space:nowrap;text-align:right}
 .ow-row-tools .row-link + .row-link{margin-left:12px}

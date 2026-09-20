@@ -48,29 +48,34 @@
             <span v-if="searchQ && searchHits > 0" class="search-count" :title="searchHits > 1 ? '点击定位到首个命中节点，Tab 循环' : '点击定位到命中节点'" @click="focusSearchAt(0)">{{ searchHits }} 个匹配</span>
             <button v-if="searchQ" class="search-clear" title="清除搜索" @click="clearSearch">×</button>
           </div>
-          <!-- 回到全图视图：常驻显示，F 放大聚焦后可随时一键退出 -->
-          <div class="status">
-            <span class="count">节点 <b>{{ nodeCount }}</b> · 连线 <b>{{ edgeCount }}</b></span>
-            <span class="save" :class="{ unsaved: saveDotClass === 'unsaved' }"><span class="dot" :class="saveDotClass"></span>{{ saveText }}</span>
+          <!-- 视图操作簇（2026-09-20 用户反馈「选中节点后工具栏样式有问题」）：
+               状态 + 全图/详情/1跳/2跳/最大化 合成一组整体靠右；工具行放不下时这一组整体换行，
+               不再被挤出视口右端裁切（此前选中节点出现 1跳/2跳 后「最大化」会被切掉）。 -->
+          <div class="tool-right">
+            <!-- 回到全图视图：常驻显示，F 放大聚焦后可随时一键退出 -->
+            <div class="status">
+              <span class="count">节点 <b>{{ nodeCount }}</b> · 连线 <b>{{ edgeCount }}</b></span>
+              <span class="save" :class="{ unsaved: saveDotClass === 'unsaved' }"><span class="dot" :class="saveDotClass"></span>{{ saveText }}</span>
+            </div>
+            <button class="btn inspector-fit-all" title="回到全图视图（清除聚焦定位，退出放大）" @click="fitAllGraph">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></svg>
+              <span>全图</span>
+            </button>
+            <!-- 详情面板开关：默认隐藏，点击在最右侧展开/收起 -->
+            <button class="btn inspector-toggle" :class="{ active: inspOpen }" title="打开/收起右侧详情面板" @click="toggleInspector">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="1.5"></rect><path d="M2 6h12M7 6v7.5"></path></svg>
+              <span>详情</span>
+            </button>
+            <!-- 邻域高亮（右侧）：选中单个节点后按跳数聚焦，其余节点半透明 -->
+            <template v-if="singleNodeSelected">
+              <button class="btn" :class="{ active: hopMode === 1 }" title="1 跳邻域：只高亮该节点 1 跳内可达的节点，其余半透明（再点取消）" @click="setHop(hopMode === 1 ? 0 : 1)">1跳</button>
+              <button class="btn" :class="{ active: hopMode === 2 }" title="2 跳邻域：高亮 2 跳内可达节点（当前工作台补接）" @click="setHop(hopMode === 2 ? 0 : 2)">2跳</button>
+            </template>
+            <button class="btn inspector-max" :class="{ active: maximized }" :title="maximized ? '退出最大化' : '最大化画布'" @click="maximized = !maximized">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></svg>
+              <span>{{ maximized ? '还原' : '最大化' }}</span>
+            </button>
           </div>
-          <button class="btn inspector-fit-all" title="回到全图视图（清除聚焦定位，退出放大）" @click="fitAllGraph">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></svg>
-            <span>全图</span>
-          </button>
-          <!-- 详情面板开关：默认隐藏，点击在最右侧展开/收起 -->
-          <button class="btn inspector-toggle" :class="{ active: inspOpen }" title="打开/收起右侧详情面板" @click="toggleInspector">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="11" rx="1.5"></rect><path d="M2 6h12M7 6v7.5"></path></svg>
-            <span>详情</span>
-          </button>
-          <!-- 邻域高亮（右侧）：选中单个节点后按跳数聚焦，其余节点半透明 -->
-          <template v-if="singleNodeSelected">
-            <button class="btn" :class="{ active: hopMode === 1 }" title="1 跳邻域：只高亮该节点 1 跳内可达的节点，其余半透明（再点取消）" @click="setHop(hopMode === 1 ? 0 : 1)">1跳</button>
-            <button class="btn" :class="{ active: hopMode === 2 }" title="2 跳邻域：高亮 2 跳内可达节点（当前工作台补接）" @click="setHop(hopMode === 2 ? 0 : 2)">2跳</button>
-          </template>
-          <button class="btn inspector-max" :class="{ active: maximized }" :title="maximized ? '退出最大化' : '最大化画布'" @click="maximized = !maximized">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></svg>
-            <span>{{ maximized ? '还原' : '最大化' }}</span>
-          </button>
         </div>
       </div>
 
@@ -1731,10 +1736,30 @@ onBeforeUnmount(() => {
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
+  /* 工具行放不下时整组换行：宁可多占一行，也不把右端按钮挤出视口裁切（.tool-right 见下） */
+  flex-wrap: wrap;
 }
-.type-filter { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+/* 视图操作簇：与前面的「整理节点/类型筛选/搜索」分开成组，空间足够时右侧一行，
+   不够时整体落到第二行并保持右对齐（簇内不再各自换行，保持一排按钮的整齐） */
+.tool-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  flex-wrap: nowrap;
+}
+/* 窄屏（≤1100）：换行会让工具行长高、把画布挤到 0 高（768 实测），
+   改回单行横向滚动；视图操作簇仍作为整体排在最右。 */
+@media (max-width: 1100px) {
+  .tool-row { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; padding-bottom: 4px; }
+  .tool-row > * { flex: 0 0 auto; }
+  .type-filter { flex-wrap: nowrap; }
+  .tool-right { margin-left: 8px; }
+}
+.type-filter { display: flex; align-items: center; gap: 5px; }
 .type-filter .chip {
-  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px;
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
   border: 1px solid var(--line); border-radius: 16px; background: #fff; color: var(--ink);
   font-family: inherit; font-size: 12px; cursor: pointer;
   transition: background .12s, border-color .12s, opacity .12s;
@@ -1761,8 +1786,9 @@ onBeforeUnmount(() => {
   border-radius: 4px; cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1;
 }
 .search-clear:hover { background: #e7ecea; }
-.inspector-toggle { margin-left: 8px; }
-.inspector-fit-all { margin-left: 8px; }
+/* 视图按钮间距统一交给 .tool-right 的 gap，不再各自加 margin-left（避免换行后间距不齐） */
+.inspector-toggle { margin-left: 0; }
+.inspector-fit-all { margin-left: 0; }
 .ver-entry {
   display: inline-flex; align-items: center; gap: 7px; height: 35px; padding: 0 11px;
   border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink);
@@ -1794,10 +1820,10 @@ onBeforeUnmount(() => {
 .grp { display: flex; align-items: center; gap: 6px; padding-left: 10px; border-left: 1px solid var(--line); }
 .grp.selectors { border-left: none; padding-left: 0; }
 .btn svg { width: 15px; height: 15px; flex: 0 0 auto; }
+/* 状态并入 .tool-right 组内：不再需要左侧竖线分隔（间距由组内 gap 统一给） */
 .status {
-  margin-left: auto; font-size: 12px; color: var(--muted);
+  font-size: 12px; color: var(--muted);
   display: flex; align-items: center; gap: 14px; white-space: nowrap;
-  padding-left: 10px; border-left: 1px solid var(--line);
 }
 .status .count b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .status .save { display: flex; align-items: center; gap: 6px; }
