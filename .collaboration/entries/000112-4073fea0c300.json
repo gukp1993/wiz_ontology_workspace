@@ -1,0 +1,30 @@
+{
+  "ticket": "f4f1aae80a514bf3ac14ac6716d011f4",
+  "task": "角色F：E/C/L 前端产物独立复核（P03/P04/P05）",
+  "status": "verified",
+  "summary": "新增 tests/ui_protection_independent.test.mjs（真实 SFC 编译 + 真实模板 SSR + 受控 stub，58 项断言全过）：P03 换连接/换表保存后除身份三键外项目绑定逐字段不变（sources[].matchLeft/matchRight/table、属性、relations、说明、未知字段、未知 kind 来源对象）；未知 kind 只保留「移除」、无「修改」入口；P05 编排详情复核必重新取数（r-1→r-2 界面不再使用旧声明）、500→failed（「编排待读取」，引用保留、文案不含「不存在」）、404→missing、重试成功后恢复；refreshCatalogOf stale 返回 ok:false 且不写 catalogs；ConnectionManager 删除连接在 ok:false/reject/进行中都不提示成功且行保留。E 既有测试 object_sources/source_config_retention 全过（未修改）。仅新增本测试文件，未改生产代码，未跑 build、未访问真实数据/18765/外网。",
+  "decisions": [],
+  "verification": [
+    "node --import ./tests/ts_hooks.mjs tests/ui_protection_independent.test.mjs → 全部通过（58 项）",
+    "node --import ./tests/ts_hooks.mjs tests/object_sources.test.mjs → 通过；source_config_retention.test.mjs → 全部通过",
+    "node --import ./tests/ts_hooks.mjs tests/connection_manager.test.mjs → 通过（C 自测，仅运行未修改）",
+    "隔离根临时目录 + WIZ_WORKBENCH_PORT=18997；未访问真实数据/18765/外网"
+  ],
+  "next": [
+    "缺陷①（低危·UI 提示）：ConnectionManager.referencesOf 未识别 inlineSql 属性来源连接（只查 kind=database/redis 与实现 connection），UI 判无引用并提示「已删除连接」，而服务端 projects.referenced_connection_ids 覆盖 inlineSql，project-save 会 422 REFERENCE_IN_USE 拒绝（数据仍受保护，但用户看到的是保存失败）。",
+    "缺陷②（中低·过严）：PropertySources.saveDraft 在编排读取失败时经 issuesOf 直接阻止保存，包括只改项目说明未改结构的情形；G1 只要求读取失败 fail-closed 阻断发布，未要求阻断草稿保存。",
+    "两项均未改生产代码，交 L 决定是否最小修复并补用例；最终验收仍归 Codex。"
+  ],
+  "references": [
+    "tests/ui_protection_independent.test.mjs",
+    "frontend/src/project/{ObjectSources,PropertySources,ConnectionManager}.vue；bindingModel.ts",
+    "workbench/projects.py:54 referenced_connection_ids / :157 save_boundary_issues",
+    "文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2 G1"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-20T06:59:31.974362+00:00",
+  "sequence": 112,
+  "filename": "000112-4073fea0c300.json",
+  "record_hash": "c96a1ef2fe02ea3c83c9d9c763f848b0d9a9b0d9c26c8f1255dcfd835f753e2f",
+  "context_advanced": false
+}

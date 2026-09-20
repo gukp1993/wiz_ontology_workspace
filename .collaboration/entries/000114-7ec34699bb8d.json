@@ -1,0 +1,34 @@
+{
+  "ticket": "c711ecbd778f44d8ba7d900586b3d195",
+  "task": "角色A W3：本体保护三项最小修复（B1 applicable_objects 一致 / B2 domain-range 前缀容错 / B3 槽位序号回退误报）",
+  "status": "implemented",
+  "summary": "按开发计划 §11.2 三项低危缺陷最小修复并实测。B1：editorModel.graphReferenceEntries 同步 applicable_objects，对象删除检查与图谱保留命令现预告阻断，与后端 new_broken_references 同口径（dependencyModel/legacyBridge 生产码经核查无需改）。B2：references.py 新增 _canon_graph_ref，domain/range 接受 mg: 前缀与裸名（裸名按 mg: 核对，节点 id 为裸名的历史数据精确命中不误报，xsd:/http: 行为不变）。B3：无稳定 id 的签名槽位与 mg:constraint.fields 无名称槽位改用「同槽位内同一目标引用的出现序号」做身份——删除前置槽位不再误报历史悬空，新增同目标槽位/删除目标仍阻断。仅改自己独占文件：editorModel.ts、references.py、test_references.py、dependency_guard.test.mjs、legacy_graph_bridge.test.mjs。未 git add/commit，未改接口文档。",
+  "decisions": [
+    "B1 选「前端同步」而非登记差异：后端 applicable_objects 拦截源于编辑器统一删除判定，非有意更严；前端补判后删除即预告阻断。",
+    "B2 与前端 matches 同口径：精确命中优先、其次补 mg:；裸名仍不命中时按 mg: 身份核对，不放松也不臆造其他前缀身份。",
+    "B3 槽位身份 = 引用类别+目标 id+同目标出现序号（有稳定 id 仍优先用 id）；比较键仍只由稳定 ID 组成，新增悬空必产生新键，保护不放松。",
+    "生产改动限定 2 个文件、共十余行；未新增样式/布局/菜单/弹窗/抽屉；未触碰他人 owner 文件、金样、真实数据。"
+  ],
+  "verification": [
+    "python3 tests/run.py --test test_references.py → 全部 21 步通过（原 18 步 + 单元⑩B2/⑪B1/⑫B3；HTTP①～⑧ 原样通过）。",
+    "node --import ./tests/ts_hooks.mjs tests/dependency_guard.test.mjs → 22/22 项通过（新增 B1 前端预告阻断断言）。",
+    "node --import ./tests/ts_hooks.mjs tests/legacy_graph_bridge.test.mjs → 全部通过（新增 B1 图谱 domainDeleteNode 阻断+状态不变）；object_workspace 7/7；ont_list_unified 4/4。",
+    "python3 tests/run.py --test test_validation_split.py → 金样 97 样例 / 507 项断言全部通过，errors/warnings/items 逐字节等价（未改金样）。",
+    "cd frontend && npm run typecheck → exit=0（按要求未跑 npm run build）。"
+  ],
+  "next": [
+    "建议协调者（接口文档 owner）在 02 §2.2 补登记 B2 裸名/mg: 容错与 B3 槽位身份口径两句。",
+    "浏览器点击级复验、HTTP 组、build、提交按指令留给协调者。"
+  ],
+  "references": [
+    "文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2（B1/B2/B3）",
+    "文档/接口文档/02-本体区接口.md §2.2",
+    "workbench/references.py / frontend/src/ontology/editorModel.ts"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-20T07:02:30.679046+00:00",
+  "sequence": 114,
+  "filename": "000114-7ec34699bb8d.json",
+  "record_hash": "263e89b3e87fa2f662f3730dd929820c695627c75bac05a9ab542eb449d3f90e",
+  "context_advanced": true
+}

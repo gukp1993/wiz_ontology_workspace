@@ -1,0 +1,33 @@
+{
+  "ticket": "de0ea670c7d94f97aaddf1d9a805a48c",
+  "task": "执行 20260920_本体与项目统一维护体验改版 执行指令（v2 功能保护，多Agent并行）",
+  "status": "in_progress",
+  "summary": "W3 阶段：A 三项最小修复完成（B1 前端补 applicable_objects 三入口一致、B2 references 补裸名前缀容错、B3 槽位身份改目标出现序号不放松保护；test_references 21 步、dependency_guard 22/22、金样 97/507 全过）；F 前端保护独立复核 60 项通过并发现两缺陷，协调者已修：① ConnectionManager 引用检测补 inlineSql（原漏报导致先见「保存失败」）、② PropertySources 编排读取失败且配置未改时不再阻断「只改说明」的保存；C/E 产物经 F 独立复核通过；L 补 stale 前端分支与目录/凭据条件写接线、保存后清理已删连接派生数据；12 步发布守卫测试（a–l）全过。B（领域校验）与 D（前端基线）仍在实施，D 的幂等 key 签名含 revision 的修正待其应用。",
+  "decisions": [
+    "F 发现①处理：UI 引用检测必须覆盖 inlineSql/inline.connection，与服务端保存边界同形态，避免用户先见持久化失败。",
+    "F 发现②处理：编排读取失败仅阻断发布（G1 契约），配置未改、只改说明的草稿保存不被阻断（过滤该条提示）。",
+    "A 的 B1 采用「同步前端」而非登记差异：三入口（图谱/对象页/批量）统一预告阻断。",
+    "A 的 B3 槽位身份=引用类别+目标 id+同目标出现序号（不用所在序号）；新增同目标槽位仍产生新键。"
+  ],
+  "verification": [
+    "test_references 21 步（含新增单元⑩B2/⑪B1/⑫B3）、dependency_guard 22/22、legacy_graph_bridge、object_workspace 7/7、ont_list_unified 4/4、金样 97/507 全过。",
+    "F 复核 ui_protection_independent.test.mjs 60 项全过（换表逐字段保留、未知 kind 只读、flow failed/missing 区分、stale 不覆盖、删除先落盘）。",
+    "我修后复跑：connection_manager.test.mjs、ui_protection_independent、source_config_retention 全过；typecheck exit=0；test_publish_guards 12 步、quick 3/3、unit 27/27、test_project_api_roundtrip 13 步、test_save_iteration、test_references、test_mapping_descriptions、test_flows、test_storage_contract 全过。",
+    "接口文档 02 §2.2 已登记 B2 前缀容错与 B3 槽位身份口径（文档先行的同 commit 差异）。"
+  ],
+  "next": [
+    "等 B（project_validation/project_mapping/影响匹配）与 D（key 签名修正等）回收；随后金样预期差异生成与回放。",
+    "W4：npm run build（cs统一一次）、隔离实例浏览器验收（F）、§11.4 逐项 F01–F10、按工作包提交。"
+  ],
+  "references": [
+    "文档/接口文档/02-本体区接口.md §2.2、03-项目区接口.md §2.1-§2.4/§3.3、README 变更记录",
+    "workbench/{references,projects,project_routes,flows,catalogs,secrets,server}.py",
+    "tests/{test_publish_guards,test_references,ui_protection_independent,connection_manager,source_config_retention}.py|mjs"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-20T07:07:50.953248+00:00",
+  "sequence": 117,
+  "filename": "000117-35aec319ef1d.json",
+  "record_hash": "907a6103c175c37e9a493cf4c1121b7c52420bfbe182bb55febe75039bb41222",
+  "context_advanced": true
+}

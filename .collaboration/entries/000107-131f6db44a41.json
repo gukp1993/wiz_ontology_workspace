@@ -1,0 +1,31 @@
+{
+  "ticket": "a423b7c04d9e4a99a83afb243ffdca2f",
+  "task": "角色A 本体保护验收（只读审计）：O01/O02 行为矩阵 + S1-S4 复验",
+  "status": "verified",
+  "summary": "只读审计：复验 S1-S4 通过（test_references 18 步、dependency_guard 21/21、legacy_graph_bridge 全过、object_workspace 7/7、ont_list_unified 4/4）；O01/O02 行为矩阵逐项取证，多数已满足。发现两处前后端一致性偏差（均低危 fail-closed、无真实数据写入）：① applicable_objects 后端拦、前端不预告；② 无 mg: 前缀的 domain/range 前端拦、后端放行。未改任何代码/测试，未做浏览器点击闭环。最终验收仍归 Codex。",
+  "decisions": [],
+  "verification": [
+    "范围：只读；改动文件 0（git status 仅他人未跟踪报告文件）；未跑 http 组、未访问真实数据/外网。",
+    "S1 三类全量遍历基本成立（functions/actions/interfaces、签名槽位、properties/implementations、steps/property_bindings/历史 inputs）；S2 稳定键成立（改名放行、改目标阻断）；S3 旧 rules id 集成立；S4 returnTo 链路成立（App 分发 + 目标页返回入口 + openUsages 抽屉恢复）。",
+    "矩阵要点：确认指纹=编辑内容+原定义+引用集合（dependencyModel.ts:241-261）、取消零写（PropertyManager.vue:130）、409/失败后旧确认失效（:211-216）；转私有保留对象属性 ID 与内容（propertyModel.ts:39 实跑 @id 不变）；规则/动作移除关联不删定义；五类删除均阻断式无强制删除；图谱批量预检+快照回滚（legacyBridge.js:515-556）；后端 POST /api/save 只拦新引入悬空引用（model_routes.py:575-594）。",
+    "两项偏差复现：① applicable_objects 引用对象时前端 graphReferenceEntries=[]、objectDeleteCheck.blocked=false，后端 new_broken_references 阻断；② rdfs:domain 省前缀 o1 时前端命中引用，后端 ([] , True) 放行。"
+  ],
+  "next": [
+    "建议最小改动（未实施）：① editorModel.ts:44 或 dependencyModel 同步 applicable_objects（或明确后端更严为有意设计并登记接口文档）；② references.py 的 domain/range 判定加 mg: 前缀容错。",
+    "浏览器点击级闭环（确认弹窗取消/失效、批量删除、图谱删除）本轮未做，需隔离实例复核。",
+    "HEAD 已推进到 a72f4c3（仅新增 docs 一文件），代码与基线 82923e3 相同。"
+  ],
+  "references": [
+    "workbench/references.py:110-311；workbench/model_routes.py:575-594",
+    "frontend/src/ontology/dependencyModel.ts:100-261；editorModel.ts:22-91",
+    "frontend/src/ontology/PropertyManager.vue:89-218",
+    "frontend/src/ontology/legacyGraph/legacyBridge.js:317-600",
+    "tests/test_references.py；tests/dependency_guard.test.mjs"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-20T06:16:09.594589+00:00",
+  "sequence": 107,
+  "filename": "000107-131f6db44a41.json",
+  "record_hash": "ecff29004cc3cd9f06b69fcbde5b514be47ce2251e4684e863f2ed23976d2c49",
+  "context_advanced": false
+}
