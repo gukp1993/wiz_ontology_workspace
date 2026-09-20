@@ -12,6 +12,7 @@ import copy
 from workbench import auth
 from workbench import storage
 from workbench.storage import assets as store
+from workbench.storage import configuration as config_store
 from workbench.storage.engine import read_connection, write_tx, utcnow
 
 KIND = 'project'
@@ -22,6 +23,204 @@ FILE_ORDER = (('project', 'project.yaml'), ('connections', 'connections.yaml'),
 
 class ProjectNotFound(ValueError):
     pass
+
+
+class DependencyChanged(Exception):
+    """发布提交窗口内依赖（编排修订/目录缓存）发生变化：拒绝发布，零写入。
+
+    2026-09-20 v2 冻结协议（03 分册 §2.3）：校验通过后、提交落库前复核依赖快照，
+    不一致即拒绝；路由层转为 409 + reason='DEPENDENCY_CHANGED'，客户端重新检查后再发布。
+    """
+
+
+class IdempotencyConflict(Exception):
+    """同一 requestId 被不同内容的请求复用：409，不产生新版本（03 分册 §2.3）。"""
+
+
+class ReferenceInUse(Exception):
+    """本次保存删除的连接仍被同一份项目状态引用：422 REFERENCE_IN_USE（03 分册 §2.1）。
+
+    `references` 为结构化引用位置（kind/id/name），连接与其全部引用在同一份状态中
+    一并移除 = 显式删除，放行；仅当「服务端已存但有引用、本次提交删除」时拒绝。
+    """
+
+    def __init__(self, message, references=None):
+        super().__init__(message)
+        self.references = references or []
+
+
+# --- 项目状态内的引用扫描（L 接线用；与 project_validation 的引用形态对齐） ------------
+
+def referenced_connection_ids(state):
+    """状态中引用了哪些数据连接（稳定 id；不按名称匹配）。
+
+    覆盖形态（与校验器一致）：对象实例来源、补充来源（sources/related_sources）、
+    属性来源 database/redis 直连与 inlineSql（新旧两种 mode）、queryRule/契约实现。
+    """
+    ids = set()
+
+    def add(value):
+        text = str(value or '').strip()
+        if text:
+            ids.add(text)
+
+    for b in state.get('bindings', {}).get('object_bindings') or []:
+        if not isinstance(b, dict):
+            continue
+        add(b.get('connection'))
+        for source in (b.get('sources') or []):
+            if isinstance(source, dict):
+                add(source.get('connection'))
+        for source in (b.get('related_sources') or []):
+            if isinstance(source, dict):
+                add(b.get('connection'))  # 旧格式来源固定使用绑定自身连接
+        for value in (b.get('properties') or {}).values():
+            if not isinstance(value, dict):
+                continue
+            add(value.get('connection'))
+            inline = value.get('inlineSql') or value.get('inline')
+            if isinstance(inline, dict):
+                add(inline.get('connection'))
+    for impl in state.get('implementations') or []:
+        if isinstance(impl, dict):
+            add(impl.get('connection'))
+    return ids
+
+
+def referenced_flow_ids(state):
+    """状态中引用了哪些函数编排（属性 kind=flow + 动作绑定 kind=flow）。"""
+    ids = set()
+    for b in state.get('bindings', {}).get('object_bindings') or []:
+        if not isinstance(b, dict):
+            continue
+        for value in (b.get('properties') or {}).values():
+            if isinstance(value, dict) and value.get('kind') == 'flow':
+                fid = str(value.get('flow') or '').strip()
+                if fid:
+                    ids.add(fid)
+    for row in state.get('bindings', {}).get('actionBindings') or []:
+        if not isinstance(row, dict):
+            continue
+        impl = row.get('implementation')
+        if isinstance(impl, dict) and impl.get('kind') == 'flow':
+            fid = str(impl.get('flowId') or '').strip()
+            if fid:
+                ids.add(fid)
+    return ids
+
+
+def connection_references(state, connection_ids):
+    """连接的引用位置明细（保存边界 422 的 `references` 结构）。
+
+    返回 {connectionId: [{'kind', 'id', 'name'}]}；只统计状态中确实存在的引用，
+    供「删被引用连接」的拒绝响应与前端定位使用（kind 与 items 定位口径一致）。
+    """
+    wanted = {str(c) for c in connection_ids}
+    found = {cid: [] for cid in wanted}
+
+    def hit(cid, kind, ref_id, name):
+        cid = str(cid or '').strip()
+        if cid in wanted:
+            found[cid].append({'kind': kind, 'id': str(ref_id or ''), 'name': str(name or '')})
+            return True
+        return False
+
+    bindings = state.get('bindings', {}) or {}
+    for b in bindings.get('object_bindings') or []:
+        if not isinstance(b, dict):
+            continue
+        otype = str(b.get('object_type') or b.get('objectType') or '')
+        if hit(b.get('connection'), 'objectBinding', otype, f'对象实例来源 · {otype}'):
+            pass
+        for source in (b.get('sources') or []):
+            if isinstance(source, dict):
+                hit(source.get('connection'), 'objectSource', source.get('id'),
+                    f"{otype} · 来源 {source.get('name') or source.get('id') or ''}")
+        for source in (b.get('related_sources') or []):
+            if isinstance(source, dict):
+                hit(b.get('connection'), 'objectSource', source.get('id'),
+                    f"{otype} · 历史来源 {source.get('name') or source.get('id') or ''}")
+        for prop, value in (b.get('properties') or {}).items():
+            if not isinstance(value, dict):
+                continue
+            hit(value.get('connection'), 'propertySource', f'{otype}.{prop}', f'{otype}.{prop} 属性来源')
+            inline = value.get('inlineSql') or value.get('inline')
+            if isinstance(inline, dict):
+                hit(inline.get('connection'), 'propertySource', f'{otype}.{prop}', f'{otype}.{prop} 内联 SQL')
+    for impl in state.get('implementations') or []:
+        if isinstance(impl, dict):
+            hit(impl.get('connection'), 'implementation', impl.get('id'),
+                f"实现 {impl.get('name') or impl.get('id') or ''}")
+    return {cid: refs for cid, refs in found.items() if refs}
+
+
+def save_boundary_issues(stored, submitted):
+    """保存边界（03 分册 §2.1）：本次提交删除了仍被同一份状态引用的连接 → 拒绝。
+
+    「连接与其全部引用同批移除」= 显式删除，放行；只删连接、引用仍在 → 拒绝并列出引用位置。
+    """
+    def ids_of(state):
+        return {str(c.get('id')) for c in (state.get('connections') or {}).get('connections') or []
+                if isinstance(c, dict) and c.get('id')}
+
+    removed = ids_of(stored) - ids_of(submitted)
+    if not removed:
+        return []
+    refs = connection_references(submitted, removed)
+    issues = []
+    for cid, entries in refs.items():
+        for entry in entries:
+            issues.append({'connectionId': cid, **entry})
+    return issues
+
+
+def idempotent_replay(state, owner_key, request_key, request_hash):
+    """发布幂等前置回放（03 分册 §2.3）：同 key 同内容返回既有回执；同 key 异内容拒绝。
+
+    回放优先于 CAS：首答丢失后客户端可能带着**旧 revision** 重试，此时草稿已被那次
+    成功发布推进——按 requestId 回放同一结果，而不是报冲突。无回执返回 None。
+    """
+    storage.ensure_ready()
+    with read_connection() as conn:
+        receipt = config_store.get_request_receipt(conn, 'project-publish', owner_key, request_key)
+    if receipt is None:
+        return None
+    if receipt['request_hash'] != request_hash:
+        raise IdempotencyConflict('requestId 已被不同的发布请求使用，请刷新后重试')
+    return receipt['response']
+
+
+def dependency_probe(conn, state):
+    """依赖快照（L02/L03 冻结协议）：被引用编排的 head 令牌 + 目录缓存指纹与代际。
+
+    `conn` 由调用方提供：校验基线用只读连接；发布重验在写事务内用同一连接读取，
+    因此复核与提交在同一事务边界内（SQLite BEGIN IMMEDIATE 串行化写入者）。
+    """
+    owner = auth.require_user_id()
+    project_id = clean_id(state.get('projectId'))
+    out = {'flows': {}, 'catalogs': {}}
+    import sqlalchemy as _sa
+    for fid in sorted(referenced_flow_ids(state)):
+        row = conn.execute(
+            _sa.text('SELECT h.revision_token FROM wb_asset_heads h '
+                  'JOIN wb_assets a ON a.asset_uid = h.asset_uid '
+                  'WHERE a.kind = :k AND a.external_id = :e AND a.owner_user_id = :o '
+                  'AND a.deleted_at IS NULL'),
+            {'k': 'flow', 'e': fid, 'o': owner}).first()
+        if row is None:  # 编排不存在 / 非本账号 → 空令牌（与缺失同判，发布重验会捕获）
+            out['flows'][fid] = ''
+            continue
+        token = row[0]
+        out['flows'][fid] = token.decode() if isinstance(token, (bytes, bytearray)) else str(token or '')
+    asset = store.get_asset(conn, KIND, project_id, owner)
+    if asset is not None:
+        rows = conn.execute(
+            _sa.text('SELECT connection_id, config_fingerprint, generation FROM wb_catalog_cache '
+                     'WHERE project_uid = :p'),
+            {'p': asset['asset_uid']}).all()
+        for connection_id, fingerprint, generation in rows:
+            out['catalogs'][connection_id] = f'{str(fingerprint or "")}:{int(generation or 0)}'
+    return out
 
 
 def clean_id(identifier):
@@ -219,8 +418,17 @@ def save_draft(state, expected_token=None):
     return {'revision': result['revision'], 'seq': result['seq']}
 
 
-def publish_draft(state, expected_token, note=''):
-    """发布与草稿保存同一事务：CAS head → 草稿快照 → 发布快照 → 发布记录 → 引用。"""
+def publish_draft(state, expected_token, note='', idempotency=None, expected_deps=None, deps_probe=None):
+    """发布与草稿保存同一事务：CAS head → 草稿快照 → 发布快照 → 发布记录 → 引用。
+
+    2026-09-20 v2 冻结协议（03 分册 §2.3）：
+    - `idempotency`（可选）：{'owner_key', 'request_key', 'request_hash'} —— 幂等回执
+      与发布写入**同一事务**；同 key 同 hash 回放既有结果（不写任何东西、不推进
+      revision），同 key 异 hash 抛 IdempotencyConflict（409）。
+    - `expected_deps` + `deps_probe`（可选）：提交前在写事务内复核依赖快照
+      （编排 head 令牌 + 目录缓存内容指纹）；不一致抛 DependencyChanged（零写入）。
+      SQLite 下端到端由 BEGIN IMMEDIATE 串行化写入者保证窗口内无其他提交。
+    """
     identifier = clean_id(state.get('projectId'))
     owner = auth.require_user_id()
     storage.ensure_ready()
@@ -231,6 +439,16 @@ def publish_draft(state, expected_token, note=''):
         asset = store.get_asset(conn, KIND, identifier, owner)
         if asset is None:
             raise ProjectNotFound('项目不存在')
+        if idempotency:
+            receipt = config_store.get_request_receipt(conn, 'project-publish',
+                                                       idempotency['owner_key'], idempotency['request_key'])
+            if receipt is not None:
+                if receipt['request_hash'] != idempotency['request_hash']:
+                    raise IdempotencyConflict('requestId 已被不同的发布请求使用，请刷新后重试')
+                outcome['replay'] = receipt['response']
+                return outcome
+        if expected_deps is not None and deps_probe is not None and deps_probe(conn) != expected_deps:
+            raise DependencyChanged('发布提交前检测到依赖发生变化（编排或目录已更新），请重新检查后再发布')
         save = save_fn(conn, kind=KIND, external_id=identifier,
                        payload=_payload_of(state), payload_format=store.PAYLOAD_FORMAT_PROJECT,
                        expected_token=expected_token, name=str(state.get('name') or identifier),
@@ -250,10 +468,23 @@ def publish_draft(state, expected_token, note=''):
                     'note': note or '项目配置快照；配置校验通过不等于已执行验证或上线'}
         store.append_release(conn, asset['asset_uid'], version, release_snapshot['snapshot_id'],
                              manifest, source_draft_id=save['snapshotId'], now=now)
+        if idempotency:
+            # 回执与发布写入同一事务：不存在「已发布未记回执」的崩溃窗口
+            config_store.put_request_receipt(
+                conn, 'project-publish', idempotency['owner_key'], idempotency['request_key'],
+                idempotency['request_hash'],
+                {'version': version, 'revision': save['revision'],
+                 'ontologyId': manifest['ontologyId'], 'ontologyVersion': manifest['ontologyVersion']},
+                now=now)
         outcome.update({'version': version, 'revision': save['revision']})
         return outcome
 
     store.run_in_write_tx(body)
+    if 'replay' in outcome:
+        prior = outcome['replay']
+        return {'version': prior.get('version', ''), 'revision': prior.get('revision', ''),
+                'ontologyId': prior.get('ontologyId', ''), 'ontologyVersion': prior.get('ontologyVersion', ''),
+                'replay': True}
     return {'version': outcome['version'], 'revision': outcome['revision']}
 
 

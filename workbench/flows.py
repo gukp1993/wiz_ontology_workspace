@@ -115,6 +115,33 @@ def read_draft(identifier):
     return state
 
 
+def dependency_state(identifier):
+    """项目侧读取编排依赖的三态快照（2026-09-20 v2 冻结协议，见 03 分册 §2.2）。
+
+    返回 {'status': 'found'|'missing'|'unreadable', 'token': str, 'state': dict|None}：
+    - found：编排存在，`token` 为 head 不透明修订（依赖基线/发布前重验用）；
+    - missing：编排确实不存在（标识非法按不存在处理，与既有校验文案一致）；
+    - unreadable：存储/快照读取失败——调用方必须 fail-closed（校验报错并阻断发布），
+      不得按「不存在」处理，也不得跳过该依赖检查。
+    """
+    try:
+        identifier = clean_id(identifier)
+    except ValueError:
+        return {'status': 'missing', 'token': '', 'state': None, 'reason': '标识无效'}
+    try:
+        state = read_draft(identifier)
+        token = current_token(identifier) if state is not None else ''
+    except auth.AuthRequired:
+        raise
+    except storage.StorageUnavailable:
+        return {'status': 'unreadable', 'token': '', 'state': None, 'reason': '存储不可用'}
+    except Exception as exc:  # 快照损坏等读取失败：绝不与「不存在」混同
+        return {'status': 'unreadable', 'token': '', 'state': None, 'reason': type(exc).__name__}
+    if state is None:
+        return {'status': 'missing', 'token': '', 'state': None}
+    return {'status': 'found', 'token': token or '', 'state': state}
+
+
 def save_draft(state, expected_token=None):
     """整快照写入 + CAS 换 head。
 

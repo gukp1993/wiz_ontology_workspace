@@ -32,6 +32,8 @@ TESTS = REPO / 'tests'
 # test_*.py 运行时推导，防止清单与目录漂移导致漏跑或跑到不存在的文件。
 HTTP_TESTS = [
     'test_references.py',               # 20260920：草稿悬空引用检查与保存边界
+    'test_publish_guards.py',           # 20260920 v2：发布幂等/依赖重验/保存边界/升级基线（端口 18841）
+    'test_mapping_descriptions.py',     # 20260919：说明块保存/校验（端口 18801，固定端口须串行）
     'test_config_packages.py',          # 20260919：配置迁移导出/导入全链路（格式安全+幂等+隔离）
     'test_export_restore_http.py',      # 批次 A：导出 / 恢复链路
     'test_http_error_boundaries.py',    # 批次 B：错误分类 / R4 / R5

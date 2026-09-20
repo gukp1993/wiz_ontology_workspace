@@ -18,6 +18,12 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-20 | **v2 功能保护冻结（本体与项目统一维护体验改版 v2，G1 契约先行）**：
+① `/api/project-validate` 响应新增 `baseline`（本次检查实际读取的项目修订/本体引用/被引用编排修订/目录指纹与代际），并冻结依赖读取失败语义（编排读取失败→error 阻断发布；目录缓存损坏→error；存储不可用→503，均不得降级为「零问题」）；
+② `/api/project-publish` 接入 `requestId` 幂等（复用 `wb_requests`，同 key 同内容回放 `idempotentReplay`、同 key 异内容 409，回执与发布同事务），并冻结发布依赖重验（校验后依赖被改→拒绝发布，`409` + `reason:"DEPENDENCY_CHANGED"`）；
+③ `/api/project-save` 保存边界保护：删除仍被引用的连接 → 422 `REFERENCE_IN_USE`（附 references 定位，连接与其引用同批移除放行），变更引用的本体版本时目标必须存在且已发布 → 否则 404；
+④ `/api/project-upgrade-check` 请求 `revision` 冻结为比较基线：确认升级时服务端核对草稿修订与目标版本，不匹配 409 且原引用不变；
+⑤ `/api/catalog-refresh` 迟到结果保护升级为「指纹（排除显示名）+ 凭据安全代际 + 代际条件更新」，结果被丢弃时响应带 `"stale": true`（客户端不得按成功提示），删除连接服务端复核依赖（读取失败 fail-closed） | project-save / project-validate / project-publish / project-upgrade-check / catalog-refresh / project-state | zcode |
 | 2026-09-20 | 保存边界悬空引用检查范围补全与比较口径修正（20260920 需求 11～13 第二轮复验 S1～S3）：
 ① 检查范围补齐接口定义 `interfaces[].properties` / `implementations`，以及 functions/actions/interfaces 三类的字段级引用（适用对象类型、输出属性、链接/计算/接口引用、顶层 `function_ref`、步骤与属性绑定、参数、`properties`/`implementations` 清单）、签名槽位 `inputs/outputs[].ref`（含 `kind=base` 带 id 情形）、图内取值函数与嵌套值类型——与前端 `graphReferenceEntries` 对齐；
 ② 比较键改为「来源稳定 id + 引用字段/槽位身份 + 目标 id」，业务名称只进展示文案：既有失效引用仅改名称可继续保存，同名同文案但身份不同的新失效引用仍阻断；

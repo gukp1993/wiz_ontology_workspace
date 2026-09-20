@@ -54,7 +54,19 @@ def get_project_state(query):
     project_id = query.get('project', [''])[0]
     state, saved = projects.load(project_id)
     # 表结构目录是服务端派生数据：加载时注入缓存内容，随草稿/快照剥离。
-    state['bindings']['catalogs'] = {**state['bindings'].get('catalogs', {}), **catalog_store.load_all(state['projectId'])}
+    # 2026-09-20 v2：单条缓存损坏只跳过该连接（不静默冒充「无目录」，由校验路径
+    # 报「目录缓存读取失败」）；存储层不可用按 503 冒泡（不降级为空）。
+    meta_loader = getattr(catalog_store, 'load_all_meta', None)
+    if meta_loader is not None:
+        # 存储层整体读取失败（CatalogCacheUnreadable）冒泡 → Handler 转 503，不冒充「无目录」
+        meta = meta_loader(state['projectId'])
+        readable = {cid: entry.get('payload') for cid, entry in (meta or {}).items()
+                    if isinstance(entry, dict) and entry.get('payload') is not None
+                    and not entry.get('unreadable')}
+        state['bindings']['catalogs'] = {**state['bindings'].get('catalogs', {}), **readable}
+    else:
+        state['bindings']['catalogs'] = {**state['bindings'].get('catalogs', {}),
+                                         **catalog_store.load_all(state['projectId'])}
     payload = {'state': state, 'revision': projects.current_token(state['projectId']), 'saved': saved,
                'project': {'id': state['projectId'], 'name': state['name'], 'ontologyId': state['ontologyId'], 'ontologyVersion': state['ontologyVersion']}}
     if state.get('ontologyId') and state.get('ontologyVersion'):
@@ -122,13 +134,74 @@ def post_create_project(payload):
     return created, 201
 
 
+def _catalog_meta(project_id):
+    """目录缓存三态（读取失败按 G1 语义上报，不冒充「无目录」）。
+
+    返回 (meta, degraded_ids)：
+    - `meta`：{connectionId: {payload, fingerprint, generation, unreadable}}（可空字典）；
+    - `degraded_ids`：损坏条目的连接 id（校验路径出 error 阻断发布，GET 路径跳过注入）；
+    存储层整体读取失败抛 `CatalogCacheUnreadable(connection_ids=[])` —— 由 Handler 转 503，
+    绝不降级为「零问题」。
+    """
+    loader = getattr(catalog_store, 'load_all_meta', None)
+    if loader is None:  # helper 未落地时保持既有读取路径（不伪造成失败）
+        return {}, []
+    meta = loader(project_id)
+    degraded = sorted(cid for cid, entry in (meta or {}).items()
+                      if isinstance(entry, dict) and entry.get('unreadable'))
+    return meta, degraded
+
+
+def _validate_with_degraded(project_state, ontology_state, degraded_catalogs):
+    """调用项目校验，并保证「目录缓存损坏的连接」阻断（03 分册 §2.2）。
+
+    校验器（B 角色）落地 `degraded_catalogs` 形参后由其出 error；未落地时在路由层兜底
+    追加同样的 error + items——**绝不静默跳过**：跳过会让用户在目录读取失败时把配置发布出去
+    （F 独立 QA 复现：损坏 payload 后 validate errors=[]、publish 200 产出 v1）。
+    """
+    import inspect
+    try:
+        accepts = 'degraded_catalogs' in inspect.signature(projects.validate_project).parameters
+    except (TypeError, ValueError):
+        accepts = False
+    if accepts:
+        return projects.validate_project(project_state, ontology_state,
+                                        degraded_catalogs=degraded_catalogs)
+    report = projects.validate_project(project_state, ontology_state)
+    if degraded_catalogs:
+        names = {str(c.get('id')): str(c.get('name') or c.get('id') or '')
+                 for c in (project_state.get('connections') or {}).get('connections') or []
+                 if isinstance(c, dict)}
+        for cid in degraded_catalogs:
+            label = names.get(str(cid)) or str(cid)
+            text = (f'数据连接 {label}：目录缓存读取失败（缓存内容损坏），'
+                    f'无法核对表与字段；请重新刷新该连接的目录后再发布。')
+            if text not in report['errors']:
+                report['errors'].append(text)
+            report['items'].append({'kind': 'connection', 'id': str(cid),
+                                    'name': f'数据连接 · {label}',
+                                    'status': 'invalid', 'issues': [text]})
+    return report
+
+
 def post_project_write(payload, path):
-    """/api/project-save|project-validate|project-publish|project-upgrade-check 公共前置。"""
+    """/api/project-save|project-validate|project-publish|project-upgrade-check 公共前置。
+
+    2026-09-20 v2 冻结（03 分册 §2.1/§2.2/§2.3/§2.4）：
+    - 校验响应附依赖基线 `baseline`；目录/编排依赖读取失败不降级为「零问题」；
+    - 保存边界：删仍被引用的连接 → 422 REFERENCE_IN_USE；变更引用版本须存在且已发布；
+    - 发布：校验后提交前复核依赖（快照不一致 → 409 + reason=DEPENDENCY_CHANGED，零写入）；
+      `requestId` 幂等（同 key 同内容回放、异内容 409，回执与发布同一事务）。
+    """
     from workbench import mapping_descriptions
     project_state = projects._normalize(payload['state'])
     projects.clean_id(project_state.get('projectId'))
-    # 目录以服务端文件存储为准：避免不同客户端的过期副本影响校验与修订哈希。
-    project_state['bindings']['catalogs'] = catalog_store.load_all(project_state['projectId'])
+    # 目录以服务端缓存为准：避免不同客户端的过期副本影响校验与修订哈希。
+    # 损坏条目只跳过该连接（校验路径另行出 error）；存储层失败冒泡 → 503（不降级为空）。
+    meta, degraded_catalogs = _catalog_meta(project_state['projectId'])
+    project_state['bindings']['catalogs'] = {
+        cid: entry['payload'] for cid, entry in (meta or {}).items()
+        if isinstance(entry, dict) and entry.get('payload') is not None and not entry.get('unreadable')}
     has_reference = bool(project_state.get('ontologyId') and project_state.get('ontologyVersion'))
     if path == '/api/project-validate':
         if not has_reference:
@@ -138,18 +211,63 @@ def post_project_write(payload, path):
         # 校验请求省略说明块时按当前已存草稿合并（仅用于校验，不写库）
         saved, _ = projects.load(project_state['projectId'])
         mapping_descriptions.merge_omitted(project_state, saved)
-        return projects.validate_project(project_state, ontology_state), 200
+        deps = _dependency_snapshot(project_state)
+        report = _validate_with_degraded(project_state, ontology_state, degraded_catalogs)
+        report['baseline'] = _baseline_payload(project_state, deps, meta)
+        return report, 200
     if path == '/api/project-upgrade-check':
         if not has_reference:
             return {'error': '该项目尚未绑定本体版本，无需升级；请先在项目信息中完成绑定。'}, 422
+        # 比较基线（§2.4）：携带 revision 时必须是当前草稿令牌；旧客户端缺字段不阻断读取
+        revision = payload.get('revision')
+        if revision not in (None, ''):
+            current = projects.current_token(project_state['projectId'])
+            if revision != current:
+                return {'error': '项目草稿已有新版本，请刷新后重新比较',
+                        'code': 'REVISION_CONFLICT', 'currentRevision': current}, 409
         ontology_state = referenced_ontology(project_state)
         target = versions.read_state(workspaces.clean_id(project_state.get('ontologyId')), str(payload.get('targetVersion', '')))
         return projects.upgrade_check(project_state, ontology_state, target), 200
     with LOCK:
         existing, _ = projects.load(project_state['projectId'])
         expected = projects.current_token(project_state['projectId'])
+        # 发布幂等回放优先于 CAS（03 分册 §2.3）：首答丢失后客户端可能带旧 revision 重试，
+        # 而草稿已被那次成功发布推进——同 key 同内容应回放同一结果，不报冲突。
+        request_id = str(payload.get('requestId') or '')
+        if path == '/api/project-publish' and request_id:
+            from workbench import auth as _auth
+            _owner = _auth.require_user_id()
+            idem = {'owner_key': f'{_owner}/{project_state["projectId"]}',
+                    'request_key': request_id[:128],
+                    'request_hash': projects.revision(project_state)}
+            try:
+                prior = projects.idempotent_replay(project_state, idem['owner_key'],
+                                                   idem['request_key'], idem['request_hash'])
+            except projects.IdempotencyConflict as exc:
+                return {'error': str(exc), 'code': 'REVISION_CONFLICT',
+                        'currentRevision': expected}, 409
+            if prior is not None:
+                return {'revision': prior.get('revision', ''), 'version': prior.get('version', ''),
+                        'idempotentReplay': True}, 200
+        else:
+            idem = None
         if payload.get('revision') != expected:
             return {'error': '此项目已有新版本，请刷新后重试', 'code': 'REVISION_CONFLICT', 'currentRevision': expected}, 409
+        # 保存边界（§2.1）：本次提交删除了仍被引用的连接 → 拒绝（连接与其引用同批移除放行）
+        def _connection_ids(state):
+            return {str(c.get('id')) for c in (state.get('connections') or {}).get('connections') or []
+                    if isinstance(c, dict) and c.get('id')}
+        removed_connections = _connection_ids(existing) - _connection_ids(project_state)
+        boundary = projects.save_boundary_issues(existing, project_state)
+        if boundary:
+            names = '、'.join(sorted({r.get('name') or r.get('id') or '' for r in boundary}))
+            return {'error': '本次保存删除了仍被引用的数据连接：' + names + '。请先移除对应来源或一并移除其引用。',
+                    'code': 'REFERENCE_IN_USE', 'references': boundary}, 422
+        # 引用版本变更（§2.1）：目标必须是已发布版本（未发布/不存在 → 404）
+        old_ref = (existing.get('ontologyId') or '', str(existing.get('ontologyVersion') or ''))
+        new_ref = (project_state.get('ontologyId') or '', str(project_state.get('ontologyVersion') or ''))
+        if new_ref != old_ref and new_ref[0] and new_ref[1]:
+            referenced_ontology(project_state)
         # 说明块兼容（接口文档 01 §3.4）：旧客户端省略整块 → 在同一 CAS/写锁边界内沿用
         # 已存说明；携带完整块按完整块提交（显式清空按删键表达）。规范化顺带清除纯空白项。
         mapping_descriptions.merge_omitted(project_state, existing)
@@ -164,17 +282,68 @@ def post_project_write(payload, path):
         if path == '/api/project-publish':
             if not has_reference:
                 return {'error': '该项目尚未绑定本体版本，无法发布：请先在项目信息中完成绑定。'}, 422
-            report = projects.validate_project(project_state, referenced_ontology(project_state))
+            # 依赖快照取在校验之前：提交前复核此快照（校验后任何依赖变化 → 拒绝）
+            deps = _dependency_snapshot(project_state)
+            report = _validate_with_degraded(project_state, referenced_ontology(project_state),
+                                             degraded_catalogs)
             if report['errors']:
                 return {'error': '项目配置校验未通过：' + '；'.join(report['errors']), 'report': report}, 422
-        if path == '/api/project-publish':
-            # 原子发布：草稿快照 + CAS head + 发布快照 + 发布记录 + 引用一个事务
-            result = projects.publish_draft(project_state, expected)
-            return {'revision': result['revision'], 'version': result['version']}, 200
+            # 原子发布：草稿快照 + CAS head + 发布快照 + 发布记录 + 引用（+幂等回执）一个事务
+            # （前置回放已在上方处理；此处 idem 供事务内竞态兜底）
+            try:
+                result = projects.publish_draft(project_state, expected, idempotency=idem,
+                                                expected_deps=deps,
+                                                deps_probe=lambda conn: projects.dependency_probe(conn, project_state))
+            except projects.DependencyChanged as exc:
+                return {'error': str(exc), 'code': 'REVISION_CONFLICT', 'reason': 'DEPENDENCY_CHANGED',
+                        'currentRevision': projects.current_token(project_state['projectId'])}, 409
+            except projects.IdempotencyConflict as exc:
+                return {'error': str(exc), 'code': 'REVISION_CONFLICT',
+                        'currentRevision': projects.current_token(project_state['projectId'])}, 409
+            response = {'revision': result['revision'], 'version': result['version']}
+            if result.get('replay'):
+                response['idempotentReplay'] = True
+            return response, 200
         result = projects.save_draft(project_state, expected_token=expected)
         if result.get('error'):
             return {'error': result['error']}, 500
+        # 本次显式删除的连接：保存成功后清理派生数据（目录缓存 + 凭据）。
+        # 仅当「已保存草稿中确实不再引用」才清理（helper 内部在同一写事务内复核）；
+        # 清理失败不影响保存与下次刷新（派生数据可重建，凭据可重填）。
+        if removed_connections:
+            for cid in sorted(removed_connections):
+                try:
+                    catalog_store.clear_if_unreferenced(project_state['projectId'], cid)
+                except Exception:
+                    pass
+                try:
+                    secrets_store.clear_if_unreferenced(project_state['projectId'], cid)
+                except Exception:
+                    pass
         return {'revision': result['revision']}, 200
+
+
+def _dependency_snapshot(project_state):
+    """只读依赖快照（校验与发布重验使用同一函数，口径一致）。"""
+    from workbench.storage.engine import read_connection
+    with read_connection() as conn:
+        return projects.dependency_probe(conn, project_state)
+
+
+def _baseline_payload(project_state, deps, meta):
+    """校验响应的 baseline（03 分册 §2.2）：本次检查实际读取的依赖基线。"""
+    catalogs = []
+    for connection_id, entry in sorted((meta or {}).items()):
+        fingerprint = str(entry.get('fingerprint') or '')
+        catalogs.append({'connectionId': connection_id, 'fingerprint': fingerprint,
+                         'generation': int(entry.get('generation') or 0),
+                         'unreadable': bool(entry.get('unreadable'))})
+    return {'projectId': project_state.get('projectId', ''),
+            'revision': projects.current_token(project_state.get('projectId')) or '',
+            'ontologyId': project_state.get('ontologyId', ''),
+            'ontologyVersion': str(project_state.get('ontologyVersion') or ''),
+            'flows': [{'id': fid, 'revision': token} for fid, token in sorted((deps or {}).get('flows', {}).items())],
+            'catalogs': catalogs}
 
 
 def post_connection_probe(payload, path):
@@ -196,7 +365,9 @@ def post_connection_probe(payload, path):
 def post_catalog_refresh(payload):
     # 从已保存连接 + 受保护凭据读取表结构并落到服务端目录缓存；大库目录
     # 可达数 MB，绝不随项目草稿请求传输，也不进入草稿/快照文件。
-    # 迟到结果保护：以探测前的连接配置指纹为准，探测后配置已变则丢弃结果。
+    # 迟到结果保护（2026-09-20 v2 冻结，03 分册 §3.3）：探测前记录「技术配置指纹
+    # （排除显示名）+ 凭据安全代际」，探测后在同一短事务内以它们为条件复核并写入；
+    # 期间连接被改/被删/凭据被换 → 结果丢弃（丢弃≠报成功）。
     try:
         project_id = projects.clean_id(payload.get('projectId'))
         connection_id = str(payload.get('connectionId') or '')
@@ -212,19 +383,44 @@ def post_catalog_refresh(payload):
         config = dbdrivers.normalize_config(conn)
         fingerprint = catalog_store.config_fingerprint(config)
         secret = secrets_store.read(project_id, connection_id)
+        secret_revision = _secret_generation(project_id, connection_id)
     except (ValueError, projects.ProjectNotFound) as exc:
         code = 404 if isinstance(exc, projects.ProjectNotFound) else 400
         return {'error': str(exc)}, code
     result = dbdrivers.catalog(config, secret)
     if result.get('ok'):
-        # 外部探测完成后再核对配置指纹：不匹配 = 探测期间连接被改过 → 丢弃
-        state2, _ = projects.load(project_id)
-        conn2 = next((c for c in state2['connections'].get('connections', [])
-                      if c.get('id') == connection_id), None)
-        fingerprint2 = catalog_store.config_fingerprint(dbdrivers.normalize_config(conn2)) if conn2 else ''
-        if fingerprint2 == fingerprint:
-            catalog_store.store(project_id, connection_id, result, config_fingerprint_value=fingerprint)
+        # 条件写（C 角色 helper）：指纹 + 凭据代际在写事务内复核；不满足 → 丢弃结果。
+        cond_store = getattr(catalog_store, 'store_if_current', None)
+        if cond_store is not None:
+            try:
+                stored = cond_store(project_id, connection_id, result,
+                                    expected_fingerprint=fingerprint,
+                                    expected_secret_revision=secret_revision)
+            except Exception:
+                stored = False
+            if not stored:
+                result['stale'] = True
+                result['message'] = (str(result.get('message') or '').strip() +
+                                     '（探测期间连接配置或凭据已变化，本次结果未写入缓存；请重新刷新）').strip()
+        else:  # helper 未落地时的保守回退：复核指纹（不做凭据代际，缺一条件不影响旧行为）
+            state2, _ = projects.load(project_id)
+            conn2 = next((c for c in state2['connections'].get('connections', [])
+                          if c.get('id') == connection_id), None)
+            fingerprint2 = catalog_store.config_fingerprint(dbdrivers.normalize_config(conn2)) if conn2 else ''
+            if fingerprint2 == fingerprint:
+                catalog_store.store(project_id, connection_id, result, config_fingerprint_value=fingerprint)
     return result, 200
+
+
+def _secret_generation(project_id, connection_id):
+    """凭据安全代际（只读整数；helper 未落地时返回 0，不影响旧行为）。"""
+    reader = getattr(secrets_store, 'revision', None)
+    if reader is None:
+        return 0
+    try:
+        return int(reader(project_id, connection_id) or 0)
+    except Exception:
+        return 0
 
 
 def post_connection_secret(payload):

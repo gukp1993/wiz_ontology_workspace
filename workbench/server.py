@@ -33,6 +33,7 @@ from workbench import model_routes, project_routes, projects, versions, workspac
 from workbench import config_package_routes, flow_routes, storage
 from workbench.config_packages import ImportConflict, TokenError
 from workbench.config_package_format import PackageFormatError
+from workbench.storage.configuration import CatalogCacheUnreadable as _catalog_unreadable
 from workbench.paths import CODE_ROOT
 
 STATIC = CODE_ROOT / 'frontend/dist'
@@ -237,6 +238,10 @@ class Handler(SimpleHTTPRequestHandler):
         except storage.StorageUnavailable as exc:
             # 库不可用/锁超时/schema 缺失：明确可重试的基础设施错误，绝不回退文件
             return self._error(503, 'STORAGE_UNAVAILABLE', str(exc), close=True)
+        except _catalog_unreadable as exc:
+            # 目录缓存读取失败（与 do_POST 同口径）：GET 也必须是 503（可重试的基础设施错误），
+            # 不能落到 500 让前端按程序错误处理。
+            return self._error(503, 'STORAGE_UNAVAILABLE', str(exc), close=True)
         except ValueError as exc:
             # 业务层显式输入校验（既有约定：raise ValueError(<中文消息>) = 客户端错误）
             return self._error(400, 'INVALID_ARGUMENT', str(exc))
@@ -326,6 +331,10 @@ class Handler(SimpleHTTPRequestHandler):
             return self._error(409, 'REVISION_CONFLICT', str(exc),
                                extra={'currentRevision': exc.current_revision})
         except storage.StorageUnavailable as exc:
+            return self._error(503, 'STORAGE_UNAVAILABLE', str(exc), close=True)
+        except _catalog_unreadable as exc:
+            # 目录缓存读取失败（2026-09-20 v2 冻结，03 §3.3）：绝不降级为「无目录/零问题」。
+            # 路由层正常已按连接 id 处理损坏条目；到达此处按存储不可用 fail-closed。
             return self._error(503, 'STORAGE_UNAVAILABLE', str(exc), close=True)
         except ValueError as exc:
             # 业务层显式输入校验（既有约定：raise ValueError(<中文消息>) = 客户端错误）
