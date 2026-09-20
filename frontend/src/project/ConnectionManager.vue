@@ -28,21 +28,25 @@ const addressOf=(c:any)=>isLegacy(c)?String(c.path||''):String(c.host||'')+':'+c
 const message=ref(''),messageTone=ref('')
 function notify(text:string,tone:string=''){message.value=text;messageTone.value=tone}
 // 引用检查：对象绑定的实例来源／补充来源／关联来源（旧 related_sources 继承实例来源连接）、
-// 属性来源里的数据库直选表与 Redis 直连（{kind:'database'|'redis',connection:id}），以及计算实现的连接引用
+// 属性来源里的数据库直选表、Redis 直连与内联 SQL（inlineSql/inline.connection，2026-09-20 补齐——
+// 服务端保存边界同样覆盖该形态，UI 不能漏报导致用户先看到「保存失败」），以及计算实现的连接引用。
 function referencesOf(id:string):string[]{
- const out:string[]=[]
+ const out:string[]=[];const seen=new Set<string>()
+ const add=(text:string)=>{if(text&&!seen.has(text)){seen.add(text);out.push(text)}}
  for(const b of props.projectState.bindings?.object_bindings||[]){
-  if(b.connection===id)out.push('对象「'+b.object_type+'」的实例来源')
-  for(const s of b.sources||[])if(s.connection===id)out.push('对象「'+b.object_type+'」的补充来源'+(s.name?'「'+s.name+'」':''))
-  for(const r of b.related_sources||[])if(r.connection===id)out.push('对象「'+b.object_type+'」的关联来源'+(r.name?'「'+r.name+'」':''))
+  if(b.connection===id)add('对象「'+b.object_type+'」的实例来源')
+  for(const s of b.sources||[])if(s.connection===id)add('对象「'+b.object_type+'」的补充来源'+(s.name?'「'+s.name+'」':''))
+  for(const r of b.related_sources||[])if(r.connection===id)add('对象「'+b.object_type+'」的关联来源'+(r.name?'「'+r.name+'」':''))
   for(const [api,v] of Object.entries(b.properties||{})){
    const src=v as any
    if(!src||typeof src!=='object')continue
-   if(src.kind==='database'&&src.connection===id)out.push('对象「'+b.object_type+'」的属性「'+api+'」的数据库取值来源')
-   if(src.kind==='redis'&&src.connection===id)out.push('对象「'+b.object_type+'」的属性「'+api+'」的 Redis 直连来源')
+   if(src.kind==='database'&&src.connection===id)add('对象「'+b.object_type+'」的属性「'+api+'」的数据库取值来源')
+   if(src.kind==='redis'&&src.connection===id)add('对象「'+b.object_type+'」的属性「'+api+'」的 Redis 直连来源')
+   const inline=src.inlineSql||src.inline
+   if(src.kind==='computed'&&inline&&typeof inline==='object'&&inline.connection===id)add('对象「'+b.object_type+'」的属性「'+api+'」的内联 SQL 数据来源')
   }
  }
- for(const i of props.projectState.implementations||[])if(i.connection===id)out.push('计算实现（契约 '+i.contractId+'）')
+ for(const i of props.projectState.implementations||[])if(i.connection===id)add('计算实现「'+(i.name||i.id||i.contractId||'')+'」的数据来源')
  return out
 }
 // --- 编辑器表单 ---------------------------------------------------------------------
@@ -82,13 +86,17 @@ function setEngine(v:string){
 }
 function setTls(v:string){draft.value.tls=v;if(v!=='verify')draft.value.caPath='';resetTest()}
 // 表单 → 连接对象：端口／DB 索引转数字，caPath 仅 verify 时保留，密码永不进入
+// 编辑态必须带连接 id（C06）：服务端 useSaved 从 vault 取已保存凭据，缺 id 会按空密码探测
 function buildConfig(){
  const eng=draft.value.engine==='redis'?'redis':'mysql'
  const out:any={engine:eng,name:String(draft.value.name||'').trim(),host:String(draft.value.host||'').trim(),port:Number(draft.value.port)||(eng==='redis'?6379:3306),username:String(draft.value.username||'').trim(),tls:draft.value.tls||'none'}
+ if(editingId.value)out.id=editingId.value
  if(eng==='mysql')out.database=String(draft.value.database||'').trim();else out.dbIndex=Number(draft.value.dbIndex)||0
  if(draft.value.tls==='verify')out.caPath=String(draft.value.caPath||'').trim()
  return out
 }
+// 列表删除：必须等 form-save 确认持久化后才提示成功（C06），进行中禁止重复提交
+const deleteBusy=ref(false)
 // --- 测试状态机：generation 防旧响应覆盖；技术配置变化即失效（仅名称变化不重置） -------
 const testState=ref<{status:'idle'|'testing'|'ok'|'fail';message:string;category:string;latencyMs?:number;note?:string}>({status:'idle',message:'',category:''})
 let testGeneration=0
@@ -171,14 +179,25 @@ async function locate(id:string){
 }
 async function deleteConnection(c:any){
  if(!c)return
+ if(deleteBusy.value){notify('正在删除上一连接，请稍候再试。','error');return}
  const refs=referencesOf(c.id)
  if(refs.length){notify('连接仍被以下位置引用，不能删除：'+refs.join('；'),'error');return}
  if(!(await appConfirm({ message: '删除连接「'+(c.name||c.id)+'」？删除的是本工作台里的连接配置与已缓存的表结构目录，对象数据来源将不能再用此连接；不会删除或修改外部数据库中的任何数据。', danger: true, confirmLabel: '删除连接' })))return
- mutate(()=>{
-  const list=props.projectState.connections.connections
-  list.splice(list.indexOf(c),1)
-  if(props.projectState.bindings?.catalogs)delete props.projectState.bindings.catalogs[c.id]
- })
+ // C06：经 form-save 提交成功（已持久化）后才提示成功并清理行；失败保留行并显示真实错误
+ deleteBusy.value=true
+ notify('')
+ let persistError=''
+ try{
+  const r=await formSave.submitForm('project',()=>{
+   const list=props.projectState.connections?.connections||[]
+   const idx=list.indexOf(c)
+   if(idx>=0)list.splice(idx,1)
+   if(props.projectState.bindings?.catalogs)delete props.projectState.bindings.catalogs[c.id]
+  })
+  if(!r.ok){persistError=r.message}
+ }catch(e){persistError='无法访问工作台服务：'+(e as Error).message}
+ finally{deleteBusy.value=false}
+ if(persistError){notify('删除失败：'+persistError+'；连接已保留，请重试。','error');return}
  delete quickResults.value[c.id]
  if(focusId.value===c.id)focusId.value=''
  notify('已删除连接「'+(c.name||c.id)+'」','success')
@@ -228,6 +247,8 @@ async function refreshCatalog(c:any){
  catalogBusy.value=c.id
  try{
   const d=await catalogRefresh(props.projectState.projectId,c.id)
+  // stale：探测期间连接配置/凭据已变化，服务端未落缓存——不得提示成功（丢弃≠报成功）
+  if(d.stale){notify(d.message||'探测期间连接配置或凭据已变化，本次结果未保存；请重新刷新','error');return}
   if(!d.ok){notify('目录未刷新（'+(d.message||'请求失败')+'）；已保留旧选择','error');return}
   mutate(()=>{props.projectState.bindings.catalogs=props.projectState.bindings.catalogs||{};props.projectState.bindings.catalogs[c.id]={database:d.database,tables:d.tables,refreshedAt:d.refreshedAt}})
   notify('「'+(c.name||c.id)+'」'+d.message+'（'+new Date(d.refreshedAt).toLocaleString()+'）','success')

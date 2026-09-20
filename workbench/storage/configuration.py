@@ -2,7 +2,11 @@
 
 凭据三层命名空间（namespace）：connection=项目数据连接密码；api=项目 API 凭据；
 model=LLM 提供方 API Key。同一 (namespace, owner_key, resource_id) 唯一。
-明文密钥只在 secret_store 加解密边界出现；本模块所有返回值不含明文。
+明文密钥只在 secret_store 加解密边界出现；本模块所有返回值不含明文；
+凭据代际只经 secret_generation 暴露整型（0 = 无凭据），密钥与密文永不返回。
+
+目录缓存读取（2026-09-20 v2 冻结）：load_catalog_meta 一次读全（payload + 指纹 + 代际 +
+损坏标记）；损坏 payload 抛 CatalogCacheUnreadable，绝不静默跳过当作「无目录」。
 
 2026-09-18 账号体系：用户级设置走 wb_user_settings（复合主键 (user_id, setting_key)），
 get_user_setting/put_user_setting 必填 user_id；旧 wb_settings 保留工作台全局语义不动。
@@ -77,42 +81,135 @@ def list_credentials(conn, namespace, owner_key):
 
 # --- 目录缓存 --------------------------------------------------------------------
 
-def store_catalog(conn, project_uid, connection_id, payload, config_fingerprint, now=None):
+class CatalogCacheUnreadable(Exception):
+    """目录缓存读取失败（fail-closed）：绝不把失败包装成「无目录」。
+
+    `connection_ids` 非空 = 这些连接的 payload 损坏（单条损坏，其他连接仍可正常读取）；
+    空列表 = 存储层整体读取失败（调用方转 503，不得降级为 200 + 空结果）。
+
+    2026-09-20 v2 冻结（F05，接口文档 03 §3.3）：调用方必须先按连接 id 区分
+    「无缓存」（无该行）与「读取失败」，再决定注入/报错。
+    """
+
+    def __init__(self, message='', connection_ids=None):
+        self.connection_ids = [str(item) for item in (connection_ids or [])]
+        super().__init__(message or '目录缓存读取失败')
+
+
+def _catalog_text(value):
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode('utf-8', 'replace')
+    return str(value or '')
+
+
+def _parse_catalog_payload(raw):
+    """(payload|None, unreadable)；JSON 损坏或结构不完整都按损坏上报，绝不静默跳过。"""
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None, True
+    if not isinstance(data, dict) or not isinstance(data.get('tables'), list):
+        return None, True
+    return data, False
+
+
+def load_catalog_meta(conn, project_uid):
+    """按连接返回目录缓存元数据（含指纹、代际与损坏标记）；不新增表。
+
+    {connectionId: {'payload': dict|None, 'fingerprint': str, 'generation': int,
+                    'unreadable': bool}}——损坏条目 payload=None、unreadable=True。
+    存储层错误原样向上抛（由调用方转 CatalogCacheUnreadable）。
+    """
+    rows = conn.execute(sto.text('SELECT connection_id, config_fingerprint, generation, payload_json '
+                                 'FROM wb_catalog_cache WHERE project_uid = :p '
+                                 'ORDER BY connection_id'), {'p': project_uid}).all()
+    out = {}
+    for connection_id, fingerprint, generation, raw in rows:
+        payload, unreadable = _parse_catalog_payload(raw)
+        out[_catalog_text(connection_id)] = {
+            'payload': payload,
+            'fingerprint': _catalog_text(fingerprint),
+            'generation': int(generation or 0),
+            'unreadable': unreadable,
+        }
+    return out
+
+
+def store_catalog(conn, project_uid, connection_id, payload, config_fingerprint, now=None,
+                  expected_generation=None):
+    """写入目录缓存。
+
+    expected_generation=None（迁移/旧调用）：无条件 upsert，返回 True。
+    给定整数：条件写入——仅当当前代际等于 expected_generation（无该行按 0 计）时
+    才写并 generation+1，返回 True；条件不满足不写、返回 False（迟到结果丢弃）。
+    条件判断与写入在同一语句/事务内完成（调用方负责 BEGIN IMMEDIATE 写事务）。
+    """
     now = now or sto.utcnow()
+    raw = json.dumps(payload, ensure_ascii=False)
     row = conn.execute(sto.text('SELECT generation FROM wb_catalog_cache WHERE project_uid = :p '
                                 'AND connection_id = :c'), {'p': project_uid, 'c': connection_id}).first()
-    if row:
-        conn.execute(sto.text('UPDATE wb_catalog_cache SET payload_json = :j, config_fingerprint = :f, '
-                              'generation = generation + 1, refreshed_at = :now '
-                              'WHERE project_uid = :p AND connection_id = :c'),
-                     {'j': json.dumps(payload, ensure_ascii=False), 'f': config_fingerprint,
-                      'now': now, 'p': project_uid, 'c': connection_id})
-    else:
+    if expected_generation is None:
+        if row:
+            conn.execute(sto.text('UPDATE wb_catalog_cache SET payload_json = :j, config_fingerprint = :f, '
+                                  'generation = generation + 1, refreshed_at = :now '
+                                  'WHERE project_uid = :p AND connection_id = :c'),
+                         {'j': raw, 'f': config_fingerprint, 'now': now,
+                          'p': project_uid, 'c': connection_id})
+        else:
+            conn.execute(sto.text('INSERT INTO wb_catalog_cache (project_uid, connection_id, '
+                                  'config_fingerprint, generation, payload_json, refreshed_at) '
+                                  'VALUES (:p, :c, :f, 1, :j, :now)'),
+                         {'p': project_uid, 'c': connection_id, 'f': config_fingerprint,
+                          'j': raw, 'now': now})
+        return True
+    expected = int(expected_generation)
+    if row is None:
+        if expected != 0:
+            return False
         conn.execute(sto.text('INSERT INTO wb_catalog_cache (project_uid, connection_id, '
                               'config_fingerprint, generation, payload_json, refreshed_at) '
                               'VALUES (:p, :c, :f, 1, :j, :now)'),
                      {'p': project_uid, 'c': connection_id, 'f': config_fingerprint,
-                      'j': json.dumps(payload, ensure_ascii=False), 'now': now})
+                      'j': raw, 'now': now})
+        return True
+    if int(row[0] or 0) != expected:
+        return False
+    result = conn.execute(
+        sto.text('UPDATE wb_catalog_cache SET payload_json = :j, config_fingerprint = :f, '
+                 'generation = generation + 1, refreshed_at = :now '
+                 'WHERE project_uid = :p AND connection_id = :c AND generation = :g'),
+        {'j': raw, 'f': config_fingerprint, 'now': now,
+         'p': project_uid, 'c': connection_id, 'g': expected})
+    return result.rowcount == 1
 
 
 def read_catalog(conn, project_uid, connection_id):
+    """单条目录；不存在返回 None；payload 损坏抛 CatalogCacheUnreadable（绝不当作无缓存）。"""
     row = conn.execute(sto.text('SELECT payload_json FROM wb_catalog_cache WHERE project_uid = :p '
                                 'AND connection_id = :c'), {'p': project_uid, 'c': connection_id}).first()
-    return json.loads(row[0]) if row else None
+    if row is None:
+        return None
+    data, unreadable = _parse_catalog_payload(row[0])
+    if unreadable:
+        raise CatalogCacheUnreadable('目录缓存内容损坏，无法安全读取：' + str(connection_id),
+                                     connection_ids=[connection_id])
+    return data
 
 
 def load_catalogs(conn, project_uid):
-    rows = conn.execute(sto.text('SELECT connection_id, payload_json FROM wb_catalog_cache '
-                                 'WHERE project_uid = :p'), {'p': project_uid}).all()
-    out = {}
-    for connection_id, raw in rows:
-        try:
-            data = json.loads(raw)
-        except ValueError:
-            continue
-        if isinstance(data, dict) and 'tables' in data:
-            out[connection_id] = data
-    return out
+    """(可读目录 dict, 损坏连接 id 列表)——损坏绝不静默 continue（2026-09-20 C02）。"""
+    meta = load_catalog_meta(conn, project_uid)
+    data = {cid: entry['payload'] for cid, entry in meta.items() if not entry['unreadable']}
+    bad = sorted(cid for cid, entry in meta.items() if entry['unreadable'])
+    return data, bad
+
+
+def secret_generation(conn, project_uid, connection_id, namespace=NAMESPACE_CONNECTION):
+    """凭据安全代际（只读整型）：0 = 无凭据；绝不返回密钥或密文（2026-09-20 冻结）。"""
+    row = conn.execute(sto.text('SELECT secret_revision FROM wb_credentials WHERE namespace = :ns '
+                                'AND owner_key = :o AND resource_id = :r'),
+                       {'ns': namespace, 'o': project_uid, 'r': connection_id}).first()
+    return int(row[0] or 0) if row else 0
 
 
 def clear_catalog(conn, project_uid, connection_id):

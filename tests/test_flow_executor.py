@@ -188,6 +188,14 @@ from pathlib import Path as _P
 sys.path.insert(0, str(_P(__file__).resolve().parent))
 import auth_client as _auth_client
 _auth_client.bind_fixture_user()
+# 2026-09-20（C05/C01）：secrets.save 不再创建幽灵项目资产——连接凭据要求项目资产
+# 已存在。本测试固定使用项目 id 'p1'，先在同一隔离根登记该项目资产（内容为空草稿）。
+from workbench import auth as _auth  # noqa: E402
+from workbench.storage import assets as _assets  # noqa: E402
+from workbench.storage.engine import write_tx as _write_tx  # noqa: E402
+with _write_tx() as _tx:
+    _tx.run(lambda conn: _assets.ensure_asset(conn, 'project', 'p1', 'p1', None,
+                                              owner_user_id=_auth.require_user_id()))
 secrets_store.save('p1', 'c1', 'pass-123')
 
 result = flow_executor.run({'flowId': 'x', 'name': 'f', 'nodes': [sql_node], 'inputs': [], 'outputs': [],
