@@ -1,0 +1,20 @@
+{
+  "ticket": "78d1ac569eb1421192d9b5447d8b47e6",
+  "task": "本体与项目完整性评审文档归档",
+  "status": "ready",
+  "summary": "将已讨论的产品完整性评审输出为Markdown，保留现状、问题表、储能场景、优先级、暂缓项和待确认选择，不生成开发计划或改业务代码。",
+  "decisions": [],
+  "verification": [
+    "文档内源码与需求相对链接校验通过；未重新执行运行验收。"
+  ],
+  "next": [],
+  "references": [
+    "文档/交付物/20260920_本体建模与项目映射完整性评审/产品需求与功能完整性评审.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-20T01:38:36.849137+00:00",
+  "sequence": 70,
+  "filename": "000070-d17015a36c7f.json",
+  "record_hash": "a769cece0e4340d6b6a2969b0881ead062f2b3c15aff0113d0ec28fce27a6db9",
+  "context_advanced": false
+}
