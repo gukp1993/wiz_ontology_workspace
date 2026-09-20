@@ -1,0 +1,35 @@
+{
+  "ticket": "8a0a35c5e95c49f88843c3032c202d09",
+  "task": "本体建设维护改版：保留项 11～13 实施（P0–P4）",
+  "status": "implemented",
+  "summary": "按执行指令当前范围只实施保留项 11～13，延期项（管理本体01～04/校验发布05～10/概览14）未开发接口与占位。新增 ontology/dependencyModel.ts 统一依赖检查（共享/规则/动作/对象四类判定+高影响影响模型，结构化输出名称+原因+定位 id）；共享库删除改阻断式（原自动私有化）、规则库补安全删除、动作库与对象页与图谱 legacyBridge 四分支统一判断（对象删除保持阻断式不再静默清动作关联）；PropertyManager 增加共享高影响保存确认（前后值+受影响对象清单+必须勾选+内容/引用指纹失效+取消保留输入）；顺带修复规则库编辑表单 v-else 错链抽屉导致列表态渲染空表单的既有缺陷。新增 tests/dependency_guard.test.mjs 15/15；前端与后端回归全绿；build 通过；隔离实例浏览器验收 A12/A13/A14/A01（截图 11/12）。提交 b550979。",
+  "decisions": [
+    "统一依赖判断收口在 dependencyModel.ts 纯函数：四类删除判定返回结构化依赖（name/reason/定位稳定 id），各页面与图谱底层命令只消费不另写规则",
+    "共享库删除从「自动私有化再删」改为阻断式：想保留内容须显式走对象属性的「转为私有」，避免删除时静默改写引用属性语义",
+    "对象删除保持阻断式并覆盖动作关联（图谱原实现会静默清理动作关联，本轮对齐对象页）",
+    "共享影响确认只在数据类型/观测值类型/业务定义变化时触发；确认绑定「编辑内容+引用集合」指纹，保存失败或409后失效，不缓存永久布尔",
+    "补 V3 契约签名引用（inputs/outputs[].ref 指向属性/对象/值类型）：此前被接口引用的共享定义未计入依赖，属真实缺口"
+  ],
+  "verification": [
+    "tests/dependency_guard.test.mjs 15/15：共享/规则/动作/对象四类阻断与放行、契约引用阻断、前后值与引用对象、仅名称不触发、指纹随内容与引用变化、各入口源码级一致性、规则库无强制删除、共享库不再自动私有化、转私有保留对象属性 ID",
+    "浏览器（隔离 18893，临时根）：A12 改类型+定义→弹窗显示 double→string 与「储能设备→soc、储能系统→soc」；未勾选被阻止；返回编辑输入保留；勾选确认后已保存且 /api/state 落库（两个引用属性稳定 ID 保留）；A13 共享/规则/动作阻断文案均含对象名并自动打开定位抽屉，无引用规则删除成功；A14 移除引用后共享定义与另一对象引用保留（仅 mg:p_s1 剩余）；A01 弹窗 1440/1024/768 可达（含勾选框与确认按钮）",
+    "回归：ont_list_unified 4/4、object_workspace 7/7、ontology_home 27、save_queue 22/22、ontology_graph、legacy_graph_bridge、business_rule_model、action_model、ontology_import 18/18、config_transfer 5/5、global_* 7/7；后端 quick 3/3；typecheck+build 通过；真实数据零写入"
+  ],
+  "next": [
+    "用户评审 11～13 的实际交互（共享影响确认弹窗、规则库删除、各入口阻断文案与定位）",
+    "图谱 canvas 内删除未做点击级浏览器实测（按钮已按用户要求移除，未恢复）；768 弹窗仅 DOM 可达性探测无截图",
+    "延期范围（管理本体/版本比较恢复/发布确认）保持不实施，恢复须用户明确指示并先同步三份文档"
+  ],
+  "references": [
+    "文档/需求/20260920_本体建设维护与版本改版/开发计划.md §7",
+    "frontend/src/ontology/dependencyModel.ts",
+    "tests/dependency_guard.test.mjs",
+    "文档/需求/20260920_本体建设维护与版本改版/截图/"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-20T04:42:00.509706+00:00",
+  "sequence": 96,
+  "filename": "000096-dfcb36d405ef.json",
+  "record_hash": "faf0e8db60b98817e3f418b8587dddf4bcefd432d3e02b887cfd566d6b389b46",
+  "context_advanced": false
+}
