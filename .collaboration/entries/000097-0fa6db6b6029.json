@@ -1,0 +1,28 @@
+{
+  "ticket": "a6a4ed7868af4d46af51c1d536aa6de6",
+  "task": "Project module review and prototype",
+  "status": "ready",
+  "summary": "Delivered requirements and interactive prototype for project configuration maintenance; no business code or real data changes.",
+  "decisions": [
+    "Only two artifacts requested: requirements and prototype; no development plan or execution instructions.",
+    "Keep current menus and flow editor; improve status freshness, source change impacts, binding context, diagnostics and reference upgrades.",
+    "Ontology deferred modules and rule-definition generation remain deferred; flow dependency freezing requires product confirmation."
+  ],
+  "verification": [
+    "Prototype JavaScript syntax and 13 Node VM interaction checks passed; no browser visual acceptance.",
+    "reference_changes.test.mjs passed; mapping_descriptions isolated test passed all 13 steps."
+  ],
+  "next": [
+    "User reviews proposed scope and prototype before implementation planning."
+  ],
+  "references": [
+    "文档/需求/20260920_项目模块配置维护改版/需求说明.md",
+    "文档/需求/20260920_项目模块配置维护改版/交互原型_v1.html"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-20T04:45:05.561513+00:00",
+  "sequence": 97,
+  "filename": "000097-0fa6db6b6029.json",
+  "record_hash": "c23f3ae3080f64a4a450e8d61df53f53d570ca56d7b94fee1c7ef5e8e9debe2a",
+  "context_advanced": true
+}

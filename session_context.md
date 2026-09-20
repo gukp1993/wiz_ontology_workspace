@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`5d7a15d0a13683d7`
+上下文版本：`11984a05fe030288`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -19,6 +19,18 @@
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
 ## 最近交接（新 → 旧）
+
+### Project module review and prototype · codex · 需求已交付
+
+时间：2026-09-20T04:45:05.561513+00:00；记录：`.collaboration/entries/000097-0fa6db6b6029.json`
+
+Delivered requirements and interactive prototype for project configuration maintenance; no business code or real data changes.
+
+- 决定：Only two artifacts requested: requirements and prototype; no development plan or execution instructions.；Keep current menus and flow editor; improve status freshness, source change impacts, binding context, diagnostics and reference upgrades.；Ontology deferred modules and rule-definition generation remain deferred; flow dependency freezing requires product confirmation.
+- 验证：Prototype JavaScript syntax and 13 Node VM interaction checks passed; no browser visual acceptance.；reference_changes.test.mjs passed; mapping_descriptions isolated test passed all 13 steps.
+- 下一步：User reviews proposed scope and prototype before implementation planning.
+- 依据/文档：文档/需求/20260920_项目模块配置维护改版/需求说明.md；文档/需求/20260920_项目模块配置维护改版/交互原型_v1.html
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### 本体建设维护改版：保留项 11～13 实施（P0–P4） · zcode · 已实施，待验收
 
@@ -138,12 +150,3 @@
 - 下一步：用户验收 18765：刷新（强刷 Cmd+Shift+R 以清缓存）后查看本体图谱与预览；配额恢复后补子代理独立验收与剩余打磨轮（R12 多图截图、R11 坐标文件往返、1440 状态行拥挤微调）
 - 依据/文档：frontend/src/ontology/legacyGraph/legacy.css（防污染+窄屏）；EditorView.vue（onErrorCaptured/预览 :key）；PreviewView.vue（顶栏三列/applyInitialLayoutIfStacked/fitColumnThirds 五类）；components/MultiPickModal.vue（listVersions）；文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.3–5.4；git 93f03f6、b1816df
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 核对本体版本回退能力 · codex · 已验证
-
-时间：2026-09-20T02:53:30.986970+00:00；记录：`.collaboration/entries/000085-30f769526637.json`
-
-源码核对：本体已发布版本列表无恢复按钮；历史快照恢复读取release-zip附件，当前SQLite发布仅写release snapshot和release记录，不生成该ZIP。因此当前新发布版本未接通本体草稿恢复入口；未操作真实数据，未做浏览器验收。
-
-- 验证：核对OntologyRelease.vue历史快照入口、model_routes.restore_snapshot/get_releases和versions.publish；release-zip写入仅发现迁移流程。
-- 下一步：如后续用户要求，设计从已发布版本恢复为新草稿，再按需发布新版本；不覆盖历史发布。
