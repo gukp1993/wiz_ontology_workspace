@@ -64,3 +64,49 @@
 .legacy-editor-root .modal .err { color: var(--danger); font-size: 12px; margin: 8px 0 0; display: none; }
 .legacy-editor-root .modal .err.show { display: block; }
 .legacy-editor-root .modal .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* ---- 防工作台全局样式污染（2026-09-20 用户反馈修复） ----
+   工作台 style.css 对 .topbar / .editor / .brand / .empty 等同名类有全局声明，会把迁入编辑器
+   的头部改成 fixed（压住页面标题与页签）、给编辑器加 padding/border。此处用「双类名」选择器
+   （0,3,0 确定优先级）只重置被注入的冲突属性；编辑器自有视觉仍由各组件 scoped 样式决定。 */
+.legacy-editor-root.legacy-editor-root .topbar {
+  position: relative; top: auto; left: auto; right: auto; bottom: auto;
+  height: auto; min-height: 0; width: auto; flex: 0 0 auto;
+}
+.legacy-editor-root.legacy-editor-root .editor {
+  padding: 0; border: 0; max-height: none;
+}
+.legacy-editor-root.legacy-editor-root .brand {
+  padding: 0 14px 0 0; margin: 0 12px 0 0; letter-spacing: 0; font-size: 12px;
+}
+.legacy-editor-root.legacy-editor-root .brand h1 {
+  font-size: 12px; margin: 0; letter-spacing: 0; font-weight: 700;
+}
+.legacy-editor-root.legacy-editor-root .inspector .empty {
+  padding: 25px; text-align: center;
+}
+.legacy-editor-root.legacy-editor-root .modal .row {
+  gap: 10px; align-items: center; padding: 10px 2px; border-bottom: 1px solid var(--line);
+}
+.legacy-editor-root.legacy-editor-root .modal .row:last-child { border-bottom: 0; }
+.legacy-editor-root.legacy-editor-root .modal .list { max-height: 46vh; overflow-y: auto; }
+
+/* 类型筛选 chips：五类后每枚更宽，防止被 flex 压成竖排文字 */
+.legacy-editor-root .type-filter { flex-wrap: wrap; row-gap: 5px; }
+.legacy-editor-root .type-filter .chip { white-space: nowrap; flex: 0 0 auto; }
+.legacy-editor-root .tool-row { flex-wrap: wrap; row-gap: 6px; }
+
+/* ---- 窄屏工具栏（2026-09-20）：≤1100 时不再换行，改横向滚动，
+   避免五类筛选 chips + 全部按钮把画布挤到 0 高（768 实测 canvas=0）。 ---- */
+@media (max-width: 1100px) {
+  .legacy-editor-root .topbar { padding: 6px 10px; }
+  .legacy-editor-root .top-row { flex-wrap: wrap; }
+  .legacy-editor-root .tool-row {
+    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: thin; padding-bottom: 4px;
+  }
+  .legacy-editor-root .tool-row > * { flex: 0 0 auto; }
+  .legacy-editor-root .type-filter { flex-wrap: nowrap; margin-left: 0; }
+  .legacy-editor-root .search-box { margin-left: 4px; }
+  .legacy-editor-root .shortcut-hint { display: none; }
+}

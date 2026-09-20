@@ -1,0 +1,31 @@
+{
+  "ticket": "0ad3f2fd89b24f6fbd4ace3d92789fc7",
+  "task": "迁入编辑器 6 轮打磨修复（白屏/布局/保存/撤销/视口）+ 浏览器逐项复验 + 提交 df16d77",
+  "status": "implemented",
+  "summary": "用户首测报点击本体图谱白屏（TDZ），以修复—复验循环完成 6 轮实质修复：R1 白屏 TDZ（ALL_TYPES 上移）；R2 画布高度 0（补迁旧全局样式 legacy.css，弹窗遮罩 display:none）；R3 领域变更未进保存协调器（LegacyGraphHost 补绑 before-change/changed）；R4 撤销栈不含领域操作（domainCmd 包装 8 处领域命令）；R5 坐标导入被旧 state.graphId 拦截；R6 0 尺寸画布写退化视口。浏览器逐项复验 R03–R17 并对 C01–C05 复验；500 节点/1200 边实测首屏 923ms、搜索热态 50ms/次、整理 1985ms。",
+  "decisions": [
+    "旧仓库全局 style.css 按编辑器依赖提取为 legacy.css 并限定 .legacy-editor-root 容器内，不污染工作台全局样式（需求 P1）",
+    "领域命令统一经 domainCmd() 包装：执行前记录领域快照入撤销栈，失败不入栈不污染 redo；Ctrl+Z 经桥 applyUndo 换回真实领域模型并落库",
+    "视口持久化防护：容器尺寸≤0 不写；恢复时过滤 minZoom/pan=0 退化值；无有效记忆回退首次适应可见节点（与旧编辑器同 minZoom=0.1 行为）",
+    "子代理独立验收因账号配额（2026-09-21 11:19 重置）未执行，改由实施者按同一清单自查并逐项浏览器复验，配额限制如实登记"
+  ],
+  "verification": [
+    "浏览器（隔离实例 18840，用户 legacytester）：编辑器挂载 0 控制台错误、画布 484×961；新建动作落库 POST /api/save；批量连线 1 条落库 + 非法组合（共享属性为源）零写入拦截；删除被引用对象被拒；撤销/重做 9→10→9→10 且落库一致；C01 热路径改链接终点后 edge.target() 真实重连；C03 图谱→对象定义→返回选中保留；C05 选择模式下按钮全部响应；画布操作 0 次 /api 调用",
+    "测试与构建：ontology_graph 12/12、legacy_graph_bridge 12/12、npm run build 通过；四档宽度截图 4 张在需求目录/截图/",
+    "R17 性能（500 节点/1200 边，macOS arm64+IAB 1440×900）：首屏 923ms、搜索首次 1002ms/热态 50ms、整理 1985ms；与旧编辑器同代码路径无退化"
+  ],
+  "next": [
+    "用户验收 18765：本体→对象建模→本体图谱；本轮修复已 restart",
+    "配额恢复后补做子代理独立验收（R12 预览截图、R11 文件级往返、1440 工具栏五类 chips 拥挤优化）"
+  ],
+  "references": [
+    "frontend/src/ontology/legacyGraph/legacy.css（新增）；EditorView.vue；legacyBridge.js；LegacyGraphHost.vue",
+    "frontend/src/ontology/ObjectWorkspace.vue；文档/需求/20260919_图谱编辑器源码整体复用/开发计划.md §5.2；修改内容清单.md；git df16d77"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-20T01:26:57.295800+00:00",
+  "sequence": 69,
+  "filename": "000069-46b998c990a1.json",
+  "record_hash": "64d2627f5b99ac77d44b6796d789ee63e37d79de8fa3272c58f0da2aa4866673",
+  "context_advanced": true
+}

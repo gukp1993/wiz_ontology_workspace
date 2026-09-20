@@ -7,8 +7,16 @@
      · C01：applyGraphState 边端点变化用 el.move；C04：键盘单监听消费即截断；C05：无自定义指针捕获 -->
 <template>
   <div ref="rootEl" class="legacy-editor-root" :class="{ max: maximized }">
-  <PreviewView v-if="viewMode === 'preview'" :ontology-id="ontologyId" :version="previewVersion" @back="viewMode = 'editor'"/>
-  <MultiPreviewView v-else-if="viewMode === 'multi'" :items="multiItems" @back="viewMode = 'editor'" @repick="showMultiPick = true"/>
+  <PreviewView v-if="viewMode === 'preview'" :key="'pv-' + previewKey" :ontology-id="ontologyId" :version="previewVersion" @back="viewMode = 'editor'"/>
+  <MultiPreviewView v-else-if="viewMode === 'multi'" :key="'mpv-' + previewKey" :items="multiItems" @back="viewMode = 'editor'" @repick="showMultiPick = true"/>
+  <div v-if="previewError" class="preview-error" role="alert">
+    <strong>预览加载失败</strong>
+    <p>{{ previewError }}</p>
+    <div class="pe-actions">
+      <button class="btn" @click="previewError = ''">返回编辑</button>
+      <button class="btn primary" @click="previewError = ''; previewKey++; goPreview()">重试</button>
+    </div>
+  </div>
   <div v-else class="editor">
     <header class="topbar">
       <div class="brand">
@@ -356,7 +364,7 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount, inject } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount, inject, onErrorCaptured } from 'vue'
 import cytoscape from 'cytoscape'
 import './legacy.css'
 import { createLegacyBridge, bridgeSignature } from './legacyBridge'
@@ -453,8 +461,16 @@ const coordinatesInputEl = ref(null)
 const rootEl = ref(null)
 const viewMode = ref('editor') // 'editor' | 'preview' | 'multi'
 const previewVersion = ref('')
+const previewKey = ref(0)      // 每次进入预览重新挂载（失败重试不留残骸）
+const previewError = ref('')   // 预览/多图子视图渲染或加载失败时的可见错误（不是白屏死路）
 const multiItems = ref([])
 const maximized = ref(false)
+// 子视图（预览/多图）出现未捕获错误时：退回编辑器并给出原因，避免整页卡死
+onErrorCaptured((err) => {
+  previewError.value = String((err && err.message) || err)
+  viewMode.value = 'editor'
+  return false
+})
 
 const hasGraph = computed(() => !!props.ontologyId)
 const nodeNames = computed(() => (cy.value ? cy.value.nodes().map((n) => n.data('name')) : []))
@@ -1665,6 +1681,8 @@ function goPreview() {
     return
   }
   previewVersion.value = props.latestRelease
+  previewError.value = ''
+  previewKey.value += 1
   viewMode.value = 'preview'
 }
 
@@ -1808,6 +1826,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.preview-error { padding: 40px 32px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 10px; margin: 24px; }
+.preview-error strong { font-size: 15px; }
+.preview-error p { margin: 10px 0 18px; color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pe-actions { display: flex; gap: 8px; }
 .legacy-editor-root { height: 100%; min-height: 0; }
 .legacy-editor-root.max { position: fixed; inset: 0; z-index: 90; background: var(--canvas); }
 .brand-sub { font-size: 11px; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
