@@ -10,11 +10,13 @@
 // 引导数据自取（只读）：GET /api/version-state、POST /api/project-validate。
 import {computed,inject,onBeforeUnmount,ref,watch} from 'vue'
 import AppSelect from '../shared/AppSelect.vue'
-import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
+import AppError from '../shared/AppError.vue'
+import type{FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 import {decodeState} from '../ontology/modelFormat'
 import {effectiveProperty} from '../ontology/propertyModel'
 import { listVersions, versionStateRaw } from '../ontology/api'
 import { projectPost, createProject as apiCreateProject } from './api'
+import { outstandingIssueCount, projectContentSignature } from './checkBaseline'
 const props=defineProps<{defaultOntologyId:string;ontologyOptions:{value:string;label:string}[];projects:any[];projectState:any;projectDirty:boolean;migrationTodos:any[];createSignal?:number}>()
 // 兼容声明：App 仍绑定 select/reference/upgrade/open-* 等旧事件（侧栏与 p-upgrade 已承接其职责），
 // 此处声明以防监听器落到根 DOM；本页实际只发出 created 与 navigate。
@@ -51,31 +53,42 @@ const connList=computed<any[]>(()=>props.projectState?.connections?.connections|
 const enabledCount=computed(()=>props.projectState?.bindings?.object_bindings?.length||0)
 const hasReference=computed(()=>!!(props.projectState?.ontologyId&&props.projectState?.ontologyVersion))
 const refGraph=ref<any[]>([]),guideReady=ref(false)
-let guideToken=0
+// P01/D02：读取失败必须是可见失败态，不能当成「已就绪的空图」——否则「继续配置」推荐与
+// 属性清单会把「读不到」显示成「没有需要配置的属性」。沿用既有 AppError 错误区，不新增布局。
+const refGraphError=ref('')
+let graphToken=0,stepToken=0
 const bare=(id:any)=>String(id||'').replace(/^mg:/,'')
 async function loadRefGraph(){
-  const st=props.projectState,token=++guideToken
-  refGraph.value=[];guideReady.value=false
+  const st=props.projectState,token=++graphToken
+  refGraph.value=[];guideReady.value=false;refGraphError.value=''
   if(!st?.ontologyId||!st.ontologyVersion){guideReady.value=true;return}
   try{
     const decoded=decodeState((await versionStateRaw(st.ontologyId,st.ontologyVersion)).state)
-    if(token===guideToken){refGraph.value=decoded.ontology?.['@graph']||[];guideReady.value=true}
-  }catch{if(token===guideToken)guideReady.value=true}
+    if(token===graphToken){refGraph.value=decoded.ontology?.['@graph']||[];guideReady.value=true}
+  }catch(e){if(token===graphToken){refGraphError.value=(e as Error).message||'读取引用版本失败';guideReady.value=false}}
 }
 const step3=ref<{done:boolean;pending:number|null;error:string}>({done:false,pending:null,error:''})
 async function loadStep3(){
-  const st=props.projectState,token=guideToken
+  const st=props.projectState,token=++stepToken
   step3.value={done:false,pending:null,error:''}
   if(!st)return
   try{
     const d=await projectPost('project-validate',{state:st}) // catalogs 剥除在 project/api 统一实现
-    if(token===guideToken)step3.value={done:true,pending:(d.errors||[]).length,error:''}
-  }catch(e){if(token===guideToken)step3.value={done:true,pending:null,error:(e as Error).message}}
+    // 待处理计数 = 阻断错误 + 逐项清单里的未配置项：未配置 ≠ 无问题（详情页同样按 items 展示）
+    if(token===stepToken)step3.value={done:true,pending:outstandingIssueCount(d),error:''}
+  }catch(e){if(token===stepToken)step3.value={done:true,pending:null,error:(e as Error).message}}
 }
-watch(()=>[props.projectState?.projectId,props.projectState?.ontologyId,props.projectState?.ontologyVersion],()=>{loadRefGraph();loadStep3()},{immediate:true})
+function refreshGuide(){loadRefGraph();loadStep3()}
+// 概览结论按「项目内容签名」失效：对象/属性/链接/说明/参数/引用变更都会改变签名，
+// 旧结论立即回到「检查中…」并重取；仅依赖 projectId/版本号会漏掉配置变化（原缺陷）。
+// 引用定义图只在引用本体/版本/项目变化时重取（目录/说明等变更不影响定义图）。
+const projectSignature=computed(()=>projectContentSignature(props.projectState))
+watch(projectSignature,()=>{void loadStep3()},{immediate:true})
+watch(()=>[props.projectState?.projectId,props.projectState?.ontologyId,props.projectState?.ontologyVersion],()=>{void loadRefGraph()},{immediate:true})
+onBeforeUnmount(()=>{graphToken++;stepToken++}) // 卸载后旧响应不得回写
 const step3Text=computed(()=>{
   if(!step3.value.done)return '检查中…'
-  if(step3.value.error)return '待检查（'+step3.value.error+'）'
+  if(step3.value.error)return '检查未完成：'+step3.value.error+'（结果未知，请重试）'
   if(step3.value.pending===null)return '待检查'
   return step3.value.pending?step3.value.pending+' 项待处理':'无待处理问题（未执行业务数据验证）'
 })
@@ -175,6 +188,8 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
     <div class="guide-step step-extra"><span class="muted">属性与链接的派生取值在计算实现中配置。</span><button class="row-link" @click="emit('navigate','implements')">全部计算实现 →</button></div>
   </div>
 </section>
+
+<AppError v-if="refGraphError" compact title="引用本体版本读取失败" :reason="refGraphError" hint="这表示读取失败，不代表该项目配置没有问题：配置推荐与属性清单在读到之前不显示。已保存的项目草稿不受影响，可重试读取。" retry-label="重试读取" @retry="refreshGuide"/>
 
 <section v-if="recommendation" class="card recommend-card">
   <div class="panelhead"><div><h3>继续配置：{{recommendation.otLabel}}</h3><p class="muted">{{recommendation.table?('从表 '+recommendation.table+' 映射 '+recommendation.propLabel+' 的取值。'):('为 '+recommendation.otLabel+' 补充属性 '+recommendation.propLabel+' 的取值来源。')}}</p></div>

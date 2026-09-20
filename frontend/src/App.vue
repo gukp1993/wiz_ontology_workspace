@@ -33,7 +33,7 @@ import ConfigurationTransfer from './settings/ConfigurationTransfer.vue'
 import { decodeState, requestBody, type WorkbenchState } from './ontology/modelFormat'
 import { shortcutAction } from './app/shortcuts'
 import { READ_TIMEOUT_MS, SaveRequestError, isOriginRejected, localAccessUrl } from './app/http'
-import { createSaver } from './app/saveCoordinator'
+import { createSaver, type SaveStatus } from './app/saveCoordinator'
 import type { FormGuardInstance, FormGuardAPI, FormSaveAPI, FormSaveAction } from './app/formGuard'
 import { pages, normalizeView, projectViews, projectSpaceViews, flowViews, menuOntology, menuProjectOf, initialView, initialSpace, isGlobalView, settingsCategories } from './app/navigation'
 import { navIcons } from './shared/icons'
@@ -43,6 +43,7 @@ import * as oapi from './ontology/api'
 import * as papi from './project/api'
 import * as fapi from './flow/api'
 import { stripCatalogs } from './project/api'
+import { projectContentSignature, baselineEquals } from './project/checkBaseline'
 import { configSignature } from './flow/flowModel'
 
 const clone = (x: any) => JSON.parse(JSON.stringify(x))
@@ -220,11 +221,15 @@ watch(modalOpen, open => {
     card?.querySelector<HTMLElement>('button, input')?.focus()
   })
 })
-const formGuardApi: FormGuardAPI = {
+// D05/P06：发布前必须确认「保存确实完成」。既有 FormGuardAPI 之外只加一个只读查询，
+// 类型两端局部声明（不改 app/formGuard.ts），仍然只经 provide/inject，不新增全局状态库。
+type FormGuardWithSaveProbe = FormGuardAPI & { projectSaveStatus: () => SaveStatus }
+const formGuardApi: FormGuardWithSaveProbe = {
   register(guard) { if (!formGuards.value.includes(guard)) formGuards.value = [...formGuards.value, guard] },
   unregister(guard) { formGuards.value = formGuards.value.filter(g => g !== guard) },
   hasDirty: () => dirtyGuards().length > 0,
   editing: () => formEditing.value,
+  projectSaveStatus: () => projectSaver.status.value, // saved|dirty|saving|error|conflict：非 saved 一律不得继续发布
 }
 provide('form-guard', formGuardApi)
 // 表单提交：flush 基线→快照→mutate→commitNow→按 status 判定；失败回滚 working 并清除后台重试隐患。
@@ -244,7 +249,7 @@ const formSaveApi: FormSaveAPI = {
     const snapshot = clone(saver.working.value)
     try {
       mutate()
-      if (area === 'project') { projectEditGeneration.value++; projectReport.value = null; projectSaveErrors.value = [] }
+      if (area === 'project') { projectEditGeneration.value++; invalidateProjectReport(); projectSaveErrors.value = [] }
       else { editGeneration.value++; validationReport.value = null; ontologySaveErrors.value = [] }
       await saver.commitNow()
       if (saver.status.value === 'saved') {
@@ -508,7 +513,7 @@ function showGraph(id: string) { navigate('objects', { type: id }) }
 
 // --- 变更入口：组件 emit('changed') → touch() 自动保存（900ms 合并）；撤销/重做 → commitNow() 立即产生新修订 ---
 function changed() { editGeneration.value++; ontologySaveErrors.value = []; validationReport.value = null; ontologySaver.touch(); if (message.value) { message.value = '内容已修改，之前的操作结果已过期；请重新校验。'; error.value = false } }
-function projectChanged() { projectEditGeneration.value++; projectSaveErrors.value = []; projectReport.value = null; projectValidateError.value = ''; projectSaver.touch() }
+function projectChanged() { projectEditGeneration.value++; projectSaveErrors.value = []; invalidateProjectReport(); projectValidateError.value = ''; projectSaver.touch() }
 function flowChanged() { flowEditGeneration.value++; flowSaveErrors.value = []; flowSaver.touch() }
 // counts() 读取普通数组不具响应性：依赖 editGeneration（每次 changed 递增）触发重算，沿用既有约定。
 // 编排页面位于项目空间：按当前视图（而非 space）路由到对应撤销栈与 Saver。
@@ -661,6 +666,25 @@ const projectOptions = computed(() => {
   return items
 })
 const projectValidateError = ref('')   // G2：配置校验请求自身失败（不是业务问题，也不是校验通过）
+// P01/D01/D03（2026-09-20 v2）：报告对应「哪份项目内容」+ 检查请求代际。
+// 只有「本次响应 = 当前代际 + 当前项目 + 当前内容签名」才允许落地为 projectReport；
+// 内容签名用本地纯函数（checkBaseline.ts），不新建永不更新的计数、不引入轮询或订阅。
+const projectReportSig = ref('')
+const projectCheckBaseline = ref<any>(null)   // 服务端返回的依赖基线（flows/catalogs），随报告保存
+let projectCheckSeq = 0
+const projectReportStale = computed(() => !!projectReport.value && projectReportSig.value !== projectContentSignature(projectState.value))
+/** 检查结果唯一写入口：同时记录它对应的项目内容签名与服务端基线。 */
+function acceptProjectReport(report: any, signature: string) {
+  projectReport.value = report
+  projectReportSig.value = signature
+  projectCheckBaseline.value = report?.baseline || null
+}
+/** 报告失效（DEPENDENCY_CHANGED 或本地可判断的依赖变化）：清空报告，回到「需重新检查」。 */
+function invalidateProjectReport() {
+  projectReport.value = null
+  projectReportSig.value = ''
+  projectCheckBaseline.value = null
+}
 const projectListState = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
 const projectOriginBlocked = ref(false)
 const projectListError = ref('')
@@ -723,7 +747,7 @@ async function loadProject(id: string, force = false): Promise<boolean> {
         if (seq !== projectLoadSeq) return false
         refState.value = nextRef
       } else { migrationTodos.value = []; refState.value = null }
-      projectUndoArea.reset(); projectReport.value = null; projectLoadError.value = ''
+      projectUndoArea.reset(); invalidateProjectReport(); projectValidateError.value = ''; projectLoadError.value = ''
       return true
     } catch (e) {
       if (seq === projectLoadSeq) { projectId.value = previous; projectLoadError.value = (e as Error).message; projectOriginBlocked.value = isOriginRejected(e); notify((e as Error).message, true) }
@@ -760,17 +784,19 @@ async function createProjectDone(id: string) {
 }
 async function applyProjectReference(ref: { ontology: string; version: string }) {
   if (!projectState.value) return
-  pushProjectUndo(); projectState.value.ontologyId = ref.ontology; projectState.value.ontologyVersion = ref.version; projectEditGeneration.value++
+  pushProjectUndo(); projectState.value.ontologyId = ref.ontology; projectState.value.ontologyVersion = ref.version; projectEditGeneration.value++; invalidateProjectReport()
   await projectSaver.commitNow()
   const pid = projectState.value.projectId; await loadProject(pid, true); await navigate('binding'); notify('已绑定本体版本，可开始对象绑定')
 }
 async function upgradeProject(target: string) {
   if (!projectState.value) return
-  pushProjectUndo(); projectState.value.ontologyVersion = target; projectEditGeneration.value++; projectReport.value = null
+  pushProjectUndo(); projectState.value.ontologyVersion = target; projectEditGeneration.value++; invalidateProjectReport()
   refState.value = await loadRefState(projectState.value.ontologyId, target)
   await projectSaver.commitNow()
 }
 // 引用页等待真实保存结果；复用表单事务，失败恢复原引用而不是提前显示成功。
+// D06：409（项目草稿已有新版本／服务端复核比较基线不匹配）标记为 conflict，供引用页
+// 清掉旧比较结果并要求重新比较；其他失败保持原引用并允许重试。
 async function saveProjectReference(target: { ontology: string; version: string }) {
   if (!projectState.value) throw new Error('请先选择项目')
   const nextRef = decodeState((await oapi.versionStateRaw(target.ontology, target.version)).state)
@@ -778,21 +804,41 @@ async function saveProjectReference(target: { ontology: string; version: string 
     projectState.value.ontologyId = target.ontology
     projectState.value.ontologyVersion = target.version
   })
-  if (!result.ok) throw new Error(result.message)
+  if (!result.ok) {
+    const err: any = new Error(result.message)
+    // 保存失败/冲突：状态栏已给出处理入口（重试/放弃重载），引用页不显示成功、原引用不变
+    err.conflict = projectSaver.status.value === 'conflict'
+    throw err
+  }
   refState.value = nextRef
   migrationTodos.value = []
 }
 async function validateProject(showNav = true) {
   if (busy.value || !projectState.value) return
   busy.value = true; projectValidateError.value = ''
+  const seq = ++projectCheckSeq
+  const generation = projectEditGeneration.value
+  const pid = String(projectState.value.projectId || '')
+  // 请求体在 postJson 内同步编码，这里同步取样即与本次请求内容一致（编辑只改对象不换引用）
+  const signature = projectContentSignature(projectState.value)
   try {
     const d = await projectApi('project-validate')
-    projectReport.value = d
+    // D03：回答落地前校验「请求代际 + 项目 ID + 内容签名」；检查中编辑、切项目或旧响应乱序完成
+    // 一律丢弃，不写入 projectReport，也不显示通过。
+    const nowSignature = projectContentSignature(projectState.value)
+    if (seq !== projectCheckSeq || generation !== projectEditGeneration.value || String(projectState.value?.projectId || '') !== pid || nowSignature !== signature) {
+      // 当前屏幕上若还挂着不对应现状的旧报告，一并清掉，避免继续显示「通过」
+      if (projectReport.value && projectReportSig.value !== nowSignature) invalidateProjectReport()
+      notify('检查期间项目配置或项目选择已变化，本次检查结果已丢弃；请重新检查。')
+      return
+    }
+    acceptProjectReport(d, signature)
     if (showNav && view.value !== 'p-release') await navigate('p-release')
     notify(d.errors.length ? `项目校验发现 ${d.errors.length} 个问题` : (d.warnings.length ? '配置校验通过（未执行验证），另有 ' + d.warnings.length + ' 条提示' : '配置校验通过（未执行验证）'), !!d.errors.length)
   } catch (e) {
+    if (seq !== projectCheckSeq) return // 旧请求的失败不得覆盖更新请求的结果
     // G2：校验请求失败 ≠ 业务问题，也不保留「本次校验通过」假象；错误在校验页持续可见（不重复弹全局红条）
-    projectReport.value = null
+    invalidateProjectReport()
     projectValidateError.value = (e as Error).message || '未能完成校验'
     if (view.value !== 'p-release') await navigate('p-release')
   } finally { busy.value = false }
@@ -1021,10 +1067,10 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <OntologyRelease v-if="view==='o-release'" :state="state" @before-change="pushUndo" @changed="changed" @published="onOntologyPublished" @navigate="navigate"/>
 <ProjectHome v-if="view==='p-home'" :create-signal="projectCreateSignal" :default-ontology-id="hasOntology?ontologyId:''" :ontology-options="ontologyOptions" :projects="projects" :project-state="projectState" :project-dirty="projectDirty" :migration-todos="migrationTodos" @select="id=>loadProject(id)" @created="createProjectDone" @reference="applyProjectReference" @upgrade="upgradeProject" @open-implementations="navigate('implements')" @open-connections="navigate('connections')" @open-binding="t=>t?openBindings(t):navigate('binding')" @navigate="navigate" @before-change="pushProjectUndo" @changed="projectChanged"/>
 <ConnectionManager v-if="view==='connections'&&projectState" :project-state="projectState" @before-change="pushProjectUndo" @changed="projectChanged"/>
-<ProjectVersion v-if="view==='p-upgrade'&&projectState" :project-state="projectState" :ontology-options="ontologyOptions" :apply-reference="saveProjectReference" @navigate="navigate"/>
+<ProjectVersion v-if="view==='p-upgrade'&&projectState" :project-state="projectState" :revision="projectRevision" :ontology-options="ontologyOptions" :apply-reference="saveProjectReference" @navigate="navigate"/>
 <ProjectBinding v-if="view==='binding'&&projectState" :project-state="projectState" :ref-state="refState" :focus-type="bindingFocusType" :report="projectReport" :return-to="definitionReturn" @navigate="navigate" @open-ontology="openReferencedOntology" @before-change="pushProjectUndo" @changed="projectChanged"/>
 <QueryRuleManager v-if="view==='implements'&&projectState" :project-state="projectState" :ref-state="refState" :focus-impl="implFocus" @before-change="pushProjectUndo" @changed="projectChanged"/>
-<ProjectValidation :ref-state="refState" v-if="view==='p-release'&&projectState" :report="projectReport" :validate-error="projectValidateError" :busy="busy" :project-state="projectState" @open-ontology="openReferencedOntology" @refresh="validateProject(false)" @navigate="navigate" @published="onProjectPublished"/>
+<ProjectValidation :ref-state="refState" v-if="view==='p-release'&&projectState" :report="projectReport" :report-stale="projectReportStale" :validate-error="projectValidateError" :busy="busy" :project-state="projectState" @open-ontology="openReferencedOntology" @refresh="validateProject(false)" @stale="invalidateProjectReport" @navigate="navigate" @published="onProjectPublished"/>
 <FlowList v-if="view==='f-home'" @open="openFlow" @created="onFlowCreated" @deleted="onFlowDeleted"/>
 <FlowEditor v-if="view==='f-editor'&&flowState" :state="flowState" :project-connections="projectConnections" :project-id="projectId" :project-name="projectState?.name || ''" :projects="projects" @switch-project="id => loadProject(id)" :revision="flowSaver.revision.value" :save-check="flowCheck" :save-check-sig="flowCheckSig" :restore-tab="flowInspectorTab" :restore-node="flowFocusNode" :providers-refresh="flowProvidersRefresh" @navigate="navigate" @back="navigate('f-home')" @before-change="pushFlowUndo" @changed="flowChanged"/>
 <ToolsPage v-if="view==='tools'" @navigate="navigate"/>

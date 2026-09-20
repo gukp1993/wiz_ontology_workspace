@@ -2,11 +2,14 @@
 // 选择版本自动比较，明确确认后通过 App 的表单事务保存；只修改项目草稿。
 // applyReference 必须等服务端保存成功才 resolve，失败 reject 并恢复原引用。
 // 同本体走升级预检；首次/跨本体绑定明确说明比较边界，不虚构差异。
+// P07/D06（2026-09-20 v2）：比较键 = 项目 + 项目内容签名 + 目标版本；比较请求携带草稿 revision 作为比较基线。
+// 项目配置在本页停留期间变化（其他页面/客户端）→ 旧比较结果不再可确认，必须先重新比较。
 import {computed,onMounted,ref,watch} from 'vue'
 import AppSelect from '../shared/AppSelect.vue'
 import { listVersions } from '../ontology/api'
-import { projectPost } from './api'
-const props=defineProps<{projectState:any;ontologyOptions:{value:string;label:string}[];applyReference:(target:{ontology:string;version:string})=>Promise<void>}>()
+import { upgradeCheck } from './api'
+import { projectContentSignature } from './checkBaseline'
+const props=defineProps<{projectState:any;ontologyOptions:{value:string;label:string}[];applyReference:(target:{ontology:string;version:string})=>Promise<void>;revision?:string}>()
 const emit=defineEmits(['navigate'])
 const changeTypePill:Record<string,string>={breaking:'破坏性',compatible:'兼容候选',initial:'初始版本',pending:'待确认'}
 const areaLabels:Record<string,string>={objectBinding:'对象映射',propertyMapping:'属性来源',linkMapping:'链接映射',implementation:'计算实现',propertySource:'属性计算来源',ontology:'本体定义'}
@@ -49,44 +52,63 @@ watch(()=>props.ontologyOptions,()=>{void loadAllVersions().then(()=>{if(!select
 
 // ─── 比较：真实 /api/project-upgrade-check；结果与所选绑定，选择变化即失效 ───
 const report=ref<any>(null),comparedKey=ref(''),busy=ref(false),message=ref('')
-const lastApplied=ref(''),applying=ref(false)
+const lastApplied=ref(''),applying=ref(false),recompareNotice=ref('')
 let compareGeneration=0
 // 切换成功标记：当前引用确实等于最近一次确认切换的目标时才显示（失败/未生效不显示成功）
 const applied=computed(()=>!!lastApplied.value&&lastApplied.value===(String(props.projectState?.ontologyId||'')+'@'+String(props.projectState?.ontologyVersion||'')))
-function clearCompare(){compareGeneration++;busy.value=false;report.value=null;comparedKey.value=''}
+function clearCompare(){compareGeneration++;busy.value=false;report.value=null;comparedKey.value='';recompareNotice.value=''}
 watch([selectedOntology,selectedVersion],()=>{clearCompare();message.value='';lastApplied.value='';void runCompare()})
 const selectionKey=computed(()=>selectedOntology.value+'@'+selectedVersion.value)
 const canCompare=computed(()=>!!selectedOntology.value&&!!selectedVersion.value&&selectionKey.value!==current.value.ontology+'@'+current.value.version)
+// 比较键（D06）：项目 + 项目内容签名 + 目标本体版本。项目配置（对象/属性/链接/说明/参数/引用）
+// 变化后键变化 → 旧比较结果不再可用于确认，必须先重新比较。
+const compareKey=computed(()=>[String(props.projectState?.projectId||''),projectContentSignature(props.projectState),selectionKey.value].join('|'))
+const comparisonStale=computed(()=>!!report.value&&comparedKey.value!==compareKey.value)
 async function runCompare(){
   if(applying.value||!canCompare.value)return
+  // recompareNotice 由「确认前复核」写入：手动重比（重新比较按钮）也保留提示语义，故此处不清除
   busy.value=true;message.value=''
-  const key=selectionKey.value,generation=++compareGeneration
+  const key=selectionKey.value,baseline=compareKey.value,generation=++compareGeneration
   try{
     if(!hasReference.value){
-      report.value={kind:'first'};comparedKey.value=key;return
+      if(generation!==compareGeneration)return
+      report.value={kind:'first'};comparedKey.value=baseline;return
     }
     if(selectedOntology.value!==current.value.ontology){
-      report.value={kind:'cross'};comparedKey.value=key;return
+      if(generation!==compareGeneration)return
+      report.value={kind:'cross'};comparedKey.value=baseline;return
     }
     try{
-      const data=await projectPost('project-upgrade-check',{state:props.projectState,targetVersion:selectedVersion.value})
-      if(generation!==compareGeneration||key!==selectionKey.value)return
+      // revision = 本次比较基于的项目草稿修订（服务端据此固化比较基线；确认时复核，不匹配 409）
+      const data=await upgradeCheck(props.projectState,props.revision||'',selectedVersion.value)
+      if(generation!==compareGeneration||key!==selectionKey.value||baseline!==compareKey.value)return
       report.value={kind:'diff',data}
-      comparedKey.value=key
+      comparedKey.value=baseline
     }catch(e:any){
-      if(generation===compareGeneration)message.value='比较失败：'+(e.data?.error||e.message)+'。请点击“重新比较”重试。'
+      if(generation===compareGeneration&&key===selectionKey.value)message.value='比较失败：'+(e.data?.error||e.message)+'。请点击“重新比较”重试。'
     }
   }finally{if(generation===compareGeneration)busy.value=false}
 }
-const confirmed=computed(()=>!!report.value&&comparedKey.value===selectionKey.value)
+// 可确认 = 有结果 + 未在比较 + 结果对应当前项目内容与目标版本
+const confirmed=computed(()=>!!report.value&&!busy.value&&!comparisonStale.value&&comparedKey.value===compareKey.value)
+// 确认前复核：未确认或比较结果已过期时先重新比较，绝不沿用旧比较结果保存引用
 async function confirmApply(){
-  if(!confirmed.value||busy.value||applying.value)return
+  if(busy.value||applying.value)return
+  if(comparisonStale.value||!confirmed.value){
+    recompareNotice.value='项目配置在比较之后发生了变化，之前的比较结果不再可用；已重新比较，请核对后再确认。'
+    await runCompare()
+    return
+  }
   applying.value=true;message.value=''
   const key=selectionKey.value
   try{
     await props.applyReference({ontology:selectedOntology.value,version:selectedVersion.value})
     lastApplied.value=key;clearCompare()
-  }catch(e:any){message.value='切换未完成：'+e.message+'。原引用保留，可重试。'}
+  }catch(e:any){
+    // 409（项目草稿已有新版本／服务端复核不通过）：旧比较结果确定不可用，清掉并要求重新比较；原引用不变
+    if((e as any)?.conflict){clearCompare();message.value='切换未完成：'+e.message}
+    else message.value='切换未完成：'+e.message+'。原引用保留，可重试。'
+  }
   finally{applying.value=false}
 }
 watch(()=>[props.projectState?.projectId,props.projectState?.ontologyId,props.projectState?.ontologyVersion],()=>{if(!applying.value){clearCompare();lastApplied.value='';pickDefaultOntology()}})
@@ -112,6 +134,8 @@ watch(()=>[props.projectState?.projectId,props.projectState?.ontologyId,props.pr
     <label>目标版本<AppSelect v-model="selectedVersion" aria-label="选择目标版本" :options="versionOptions" :disabled="!selectedOntology||applying" placeholder="先选择本体"/></label>
   </div>
   <p class="field-help">选择目标版本后自动比较；点击“确认切换”才保存项目引用。</p>
+  <p v-if="recompareNotice" class="inline-warning" role="status">{{recompareNotice}}</p>
+  <p v-else-if="comparisonStale" class="inline-warning" role="status">项目配置在比较之后发生了变化，旧比较结果不再可用于确认；请点“重新比较”。</p>
   <div class="tools compare-foot">
     <button class="primary" :disabled="busy||applying||!confirmed" @click="confirmApply">{{applying?'正在保存引用…':busy?'正在比较版本…':`确认切换到 ${selectedVersion||'目标版本'}`}}</button>
     <button v-if="canCompare" :disabled="busy||applying" @click="runCompare">重新比较</button>

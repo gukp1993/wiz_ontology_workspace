@@ -22,15 +22,20 @@ import ReferenceNotice from './ReferenceNotice.vue'
 import AppError from '../shared/AppError.vue'
 import { isOutcomeUnknown } from '../app/http'
 import type {FormGuardAPI} from '../app/formGuard'
+import type {SaveStatus} from '../app/saveCoordinator'
 import {decodeState} from '../ontology/modelFormat'
 import {effectiveProperty} from '../ontology/propertyModel'
 import { listProjectReleases, loadProjectStateRaw, projectPost } from './api'
 import { versionStateRaw } from '../ontology/api'
+import { publishPayloadSignature, requestKeyFor, type PendingPublishRequest } from './checkBaseline'
 // validateError（G2）：校验请求自身失败（网络/超时/服务问题）——不是业务问题，也不是校验通过
-const props=defineProps<{report:any;busy:boolean;projectState:any;refState?:any;validateError?:string}>()
-const emit=defineEmits(['refresh','navigate','published','open-ontology'])
+// reportStale（P01/P06）：App 判定当前报告已不对应现有项目配置（依赖或内容变化后）——此时不得发布。
+const props=defineProps<{report:any;busy:boolean;projectState:any;refState?:any;validateError?:string;reportStale?:boolean}>()
+const emit=defineEmits(['refresh','navigate','published','open-ontology','stale'])
 const commitNow=inject<(()=>Promise<void>)|undefined>('commit-now',undefined)
-const guardApi=inject<FormGuardAPI|undefined>('form-guard',undefined)
+// 保存状态探针（D05）：App 在既有 form-guard 注入上多暴露一个只读方法；
+// 缺少该方法的旧宿主按 undefined 处理（不阻断发布，但 commitNow 之后仍会再次核对）。
+const guardApi=inject<(FormGuardAPI&{projectSaveStatus?:()=>SaveStatus})|undefined>('form-guard',undefined)
 const statusPill:Record<string,string>={unconfigured:'未配置',invalid:'配置有误',valid:'校验通过'}
 const statusClass:Record<string,string>={unconfigured:'',invalid:'pill-error',valid:'pill-ok'}
 const kindLabels:Record<string,string>={connection:'数据连接',objectBinding:'对象映射',objectSource:'对象来源',propertySource:'属性来源',linkMapping:'链接映射',implementation:'计算实现',reference:'本体引用'}
@@ -71,7 +76,8 @@ const displayNames=computed(()=>{
 })
 function friendly(text:any){let out=String(text||'');for(const [id,name] of displayNames.value)out=out.split(id).join(name);return out}
 const hasErrors=computed(()=>!!(props.report?.errors?.length))
-const checkReady=computed(()=>!!props.report&&!props.busy)
+// 检查就绪 = 有报告 + 未在检查 + 报告仍对应当前项目配置（过期/切换项目后不得据它发布）
+const checkReady=computed(()=>!!props.report&&!props.busy&&!props.reportStale)
 
 // --- 已发布项目版本（自取；发布成功后刷新）---
 const published=ref<any[]>([]),publishedError=ref('')
@@ -120,28 +126,48 @@ const scopeRows=computed(()=>{
 const publishBusy=ref(false),publishError=ref(''),publishReport=ref<any>(null),lastPublish=ref('')
 // G2：写操作结果未知（超时/网络中断）时不显示成功、也不断言未写入；用现有「已发布版本」读取能力核对
 const publishUnknown=ref(false),publishCheckNote=ref(''),publishBaseline=ref<string[]>([])
-// 幂等 requestId：结果未知的发布重试复用同 key（服务端保证不重复出版本）；结果确定后换新 key
-const pendingRequestId=ref('')
+// 幂等 requestId（2026-09-20 v2 冻结）：key 与「即将提交的内容指纹（项目内容 + revision）」绑定——
+// 结果未知的重试复用同 key（同内容只产生一个版本）；用户改动内容后指纹变化，必须换新 key
+// （同 key 异内容服务端会 409）。成功/422/服务端确认未写入后清空 → 下一次发布换新 key。
+const pendingPublish=ref<PendingPublishRequest|null>(null)
 function newRequestId(){return (crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2))}
 async function doPublish(){
   if(publishBusy.value)return
   publishBusy.value=true;publishError.value='';publishReport.value=null;publishUnknown.value=false;publishCheckNote.value=''
   publishBaseline.value=published.value.map((v:any)=>String(v.version||''))
-  if(!pendingRequestId.value)pendingRequestId.value=newRequestId()
   try{
+    if(props.reportStale){publishError.value='当前检查结果对应的项目配置已变化（或依赖被改动），不能作为发布依据；请先点「刷新校验」重新检查。';return}
     if(guardApi?.hasDirty()){publishError.value='还有打开的编辑表单未保存；请先在对应页面保存或放弃本次修改，再发布。';return}
     if(commitNow)await commitNow() // ① 未落盘修改先持久化
+    // ② 保存必须真的成功：conflict/error/dirty/saving 一律不得继续发布（不能只把按钮禁用）
+    const saveStatus=guardApi?.projectSaveStatus?.()
+    if(saveStatus&&saveStatus!=='saved'){
+      publishError.value=saveStatus==='conflict'
+        ? '项目草稿存在版本冲突，尚未保存；请先在顶栏处理冲突（放弃本地并重新加载／以当前内容重试），再发布。'
+        : '项目草稿尚未保存成功（当前状态：'+saveStatus+'）；请先在顶栏处理保存失败或等待保存完成，再发布。'
+      return
+    }
     const pid=String(props.projectState?.projectId||'');if(!pid)throw Error('未选择项目')
-    const d=await loadProjectStateRaw(pid) // ② 服务端最新草稿与 revision（catalogs 由 projectPost 统一剥除）
+    const d=await loadProjectStateRaw(pid) // ③ 服务端最新草稿与 revision（catalogs 由 projectPost 统一剥除）
+    // 幂等 key 与本次真正提交的**内容**绑定（不含 revision：成功发布后 revision 会推进，
+    // 响应丢失的重试必须沿用同 key）；内容变化才换新 key（同 key 异内容服务端 409）
+    pendingPublish.value=requestKeyFor(pendingPublish.value,publishPayloadSignature(d.state),newRequestId)
     try{
-      const pd=await projectPost('project-publish',{state:d.state,revision:d.revision,requestId:pendingRequestId.value}) // ③
+      const pd=await projectPost('project-publish',{state:d.state,revision:d.revision,requestId:pendingPublish.value.id}) // ④
       lastPublish.value=pd.version||''
-      pendingRequestId.value='' // 结果确定：下一次发布用新 requestId
+      pendingPublish.value=null // 结果确定：下一次发布用新 requestId
     }catch(err:any){
-      if(err.status===422){ // 422：服务端发布前校验未通过，确定未发布 → 换新 requestId
-        pendingRequestId.value=''
+      if(err.status===422){ // 422：服务端发布前校验未通过，确定未发布 → 服务端已拒绝本次内容，换新 key
+        pendingPublish.value=null
         publishError.value=err.data?.error||err.message||'项目配置校验未通过，不能发布'
         publishReport.value=err.data?.report||null
+        return
+      }
+      if(err.status===409&&err.data?.reason==='DEPENDENCY_CHANGED'){
+        // 依赖（编排修订/目录指纹/凭据代际）在检查后被改动：结果确定未发布 → 清 key、旧报告作废
+        pendingPublish.value=null
+        invalidateReport()
+        publishError.value=(err.data?.error||err.message||'依赖已变化，本次发布被拒绝')+' 请重新检查后再发布。'
         return
       }
       throw err
@@ -150,9 +176,13 @@ async function doPublish(){
     await loadPublished()
   }catch(e:any){
     publishUnknown.value=isOutcomeUnknown(e)
+    // 结果未知的重试：同内容沿用同 key（见上），此处不换 key
     publishError.value=publishUnknown.value?'未收到发布结果，暂不能确认是否成功。':((e as Error).message||'发布失败')
   }finally{publishBusy.value=false}
 }
+// 报告作废：服务端已判定依赖变化（DEPENDENCY_CHANGED）时本地也必须回到「需重新检查」，
+// 不能继续把旧报告当通过依据。只通知 App 清报告（不发新请求），由用户点「刷新校验」重新检查。
+function invalidateReport(){emit('stale')}
 // 核对是否已产生新版本：只读取已发布清单，不覆盖本地草稿、不自动重发
 async function verifyPublished(){
   if(publishBusy.value)return
@@ -164,7 +194,7 @@ async function verifyPublished(){
     ? '服务端已有新版本 '+added.join('、')+'：本次发布很可能已经成功，请勿重复发布。'
     : (publishedError.value?'暂时无法读取已发布版本：'+publishedError.value:'服务端未发现新版本：本次发布很可能没有写入，可修正后重新发布。')
   if(added.length)publishUnknown.value=false
-  else pendingRequestId.value='' // 核对确认未写入：下一次发布换新 requestId
+  else pendingPublish.value=null // 核对确认未写入：下一次发布换新 requestId
 }
 </script>
 <template><div class="project-home">
@@ -176,6 +206,7 @@ async function verifyPublished(){
 <div class="tools"><span v-if="report" class="status-pill" :class="report.errors.length?'pill-error':'pill-ok'">{{report.errors.length?report.errors.length+' 个问题':'校验通过'}}</span><button :disabled="busy" @click="emit('refresh')">{{busy?'校验中…':'刷新校验'}}</button></div></div>
 <AppError v-if="validateError" title="未能完成校验" :reason="validateError" hint="这是校验请求本身失败（本地服务或网络问题），不代表配置有问题，也不代表校验通过；修正后可重新校验。" retry-label="重新校验" @retry="emit('refresh')"/>
 <template v-if="report">
+<p v-if="reportStale" class="inline-warning">此检查结果对应的项目配置已变化（或依赖被改动），结果已过期：请点「刷新校验」重新检查后再发布。</p>
 <p :class="report.errors.length?'inline-error':'inline-success'">{{report.errors.length?('发现 '+report.errors.length+' 个问题，发布前需全部解决：这些是阻断问题，下方发布已禁用'):'已配置项校验通过（未执行业务数据验证）；未配置项见下方清单'}}</p>
 <template v-if="report.errors.length"><h3 class="issue-group">错误 {{report.errors.length}}</h3><div v-for="e in report.errors" :key="e" class="issue-row error"><span>{{friendly(e)}}</span>
 <button v-if="fixForError(e)" class="row-link" @click="goFixError(e)">去处理 →</button></div></template>
@@ -211,7 +242,7 @@ async function verifyPublished(){
 </details></div>
 <div class="card"><div class="panelhead"><div><h2>发布项目配置快照</h2>
 <p class="muted">保存可追溯的配置版本，发布不代表已运行。发布先生成已保存的完整项目修订（未落盘修改会先自动保存），再写入不可变配置快照；引用的本体发布版本随之固定在快照中。</p></div>
-<div class="tools"><span v-if="hasErrors" class="muted">先处理上方问题，再发布当前草稿。</span><button class="primary" :disabled="publishBusy||!checkReady||hasErrors" @click="doPublish">{{publishBusy?'发布中…':'发布项目配置'}}</button></div></div>
+<div class="tools"><span v-if="reportStale" class="muted">配置已变化，当前检查结果不再对应现有配置；请先重新校验。</span><span v-else-if="hasErrors" class="muted">先处理上方问题，再发布当前草稿。</span><button class="primary" :disabled="publishBusy||!checkReady||hasErrors" @click="doPublish">{{publishBusy?'发布中…':'发布项目配置'}}</button></div></div>
 <p v-if="lastPublish" class="inline-success">已发布 {{lastPublish}}。项目引用的本体版本与配置已固定在快照中。</p>
 <AppError v-if="publishError" :compact="true" :title="publishUnknown?'未收到发布结果，暂不能确认是否成功':'发布未完成'" :reason="publishError" :hint="publishUnknown?'发布请求可能已到达服务端。请先核对下方「已发布版本」是否已产生新版本，再决定是否重新发布——不要重复发布。':'已保存的项目草稿不受影响；修正后可在上方重新校验并再次发布。'" retry-label="核对已发布版本" @retry="verifyPublished"/>
 <p v-if="publishCheckNote" :class="publishCheckNote.startsWith('服务端已有')?'inline-warning':'muted'">{{publishCheckNote}}</p>

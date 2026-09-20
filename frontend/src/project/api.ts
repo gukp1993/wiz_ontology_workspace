@@ -28,7 +28,10 @@ export const listProjectReleases = (projectId: string) => getJson('/api/project-
 
 export const saveProject = (state: any, revision: string) => projectPost('project-save', { state, revision })
 export const validateProjectConfig = (state: any, revision: string) => projectPost('project-validate', { state, revision })
-export const publishProject = (state: any, revision: string) => projectPost('project-publish', { state, revision })
+/** 发布：requestId 为幂等键（2026-09-20 v2 冻结，03 分册 §2.3）；同 key 同内容回放、同 key 异内容 409。 */
+export const publishProject = (state: any, revision: string, requestId?: string) =>
+  projectPost('project-publish', { state, revision, ...(requestId ? { requestId } : {}) })
+/** 升级预检：`revision` 是本次比较基于的项目草稿修订（服务端据此固化比较基线，确认时复核）。 */
 export const upgradeCheck = (state: any, revision: string, targetVersion: string) => projectPost('project-upgrade-check', { state, revision, targetVersion })
 
 /** 连接探测：真实网络操作，服务端不持全局写锁；前端也不在保存队列内调用。 */
