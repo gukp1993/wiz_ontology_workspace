@@ -212,10 +212,13 @@ def _message(exc):
 
 
 def _finish(user_id, run_id, state, error='', retryable=False):
-    """短事务写回终态（已成为终态的运行不再改写：保留更精确的结果）。
+    """短事务写回非成功终态（cancelled / failed）。
 
     fencing：本线程的执行权（lease_of）不匹配（运行已被取消后重试/被新接管）直接丢弃
     晚结果，绝不把新接管的 queued/running 覆盖成 failed/cancelled。
+    终态审计（第 5 轮报告 §4 要求的同类排查）：行已是终态时一律不改写——
+    取消后 worker 再抛异常不会把 cancelled 覆盖成 failed，重复收尾幂等；
+    「成功先提交、取消后到」由 request_cancel 的终态检查保证保持 succeeded。
     """
     try:
         expected = lease_of(user_id, run_id)
@@ -227,8 +230,7 @@ def _finish(user_id, run_id, state, error='', retryable=False):
             if expected and str(row['lease_token']) != expected:
                 return
             if row['state'] in ('succeeded', 'failed', 'cancelled', 'interrupted'):
-                if state != 'succeeded' or row['state'] in ('failed', 'cancelled', 'interrupted'):
-                    return
+                return
             store.update_run(conn, run_id, user_id, state=state, error=error,
                              retryable=retryable, cancel_requested=(state == 'cancelled'),
                              lease=expected or None)
@@ -289,24 +291,42 @@ def stage(user_id, run_id, stage, label=None, progress=None):
 def finish_success(user_id, run_id, usage=None):
     """把运行标成功；生成类运行同时把任务推进到「评审初稿」。
 
-    状态推进与运行终态在同一事务内完成：任务阶段必须反映真实进度，
-    不能运行早成功了而任务还停在「生成中」。lease 不匹配则整体丢弃。
+    终态收尾与内容写入同一状态原则（R5-01）：在同一个 BEGIN IMMEDIATE 写事务内
+    先读行核对——归属（get_run 带 owner）、执行权（lease）、取消标记、当前状态——
+    全部通过才允许转成功，取消/重试无法插在核对与写入之间：
+    * 已取消或 cancel_requested=1 → 保留 cancelled，不用成功覆盖（用户已看到取消）；
+    * failed / interrupted → 不转成功；succeeded → 幂等返回；
+    * 仅 running 允许成功收尾：当前三类管线作业都会先 stage 进 running，
+      queued 直达成功没有真实调用场景（第 5 轮验收报告 §4）。
+    成功转换实际成立才在同一事务内推进任务阶段；拒绝收尾不动任务阶段。
+    「成功先提交、取消后到」由 request_cancel 的终态检查保证保持 succeeded。
     """
     from workbench.ontology_build import protocol
 
     expected = lease_of(user_id, run_id)
 
     def body(conn):
+        row = store.get_run(conn, run_id, user_id)
+        if row is None:
+            return
+        if expected and str(row['lease_token']) != expected:
+            return  # 执行权已被重试接管或轮换：晚到收尾整体丢弃
+        if row['cancel_requested'] or row['state'] == 'cancelled':
+            return  # 取消已先提交：保留 cancelled，不用成功覆盖
+        if row['state'] in ('failed', 'interrupted', 'succeeded'):
+            return  # 失败/中断不转成功；重复成功收尾幂等
+        if row['state'] != 'running':
+            return
         # usage=None 时 update_run 不动 usage_json 列：管线在生成过程里已按 LLM 调用
         # 累计写入（calls/promptBytes/completionBytes/durationMs），终态补写绝不能
-        # 用空字典把它覆盖回零（可选修复项：run.usage 恒为空的真正原因）。
+        # 用空字典把它覆盖回零。
         hit = store.update_run(conn, run_id, user_id, state='succeeded', error='',
                                retryable=False, usage=usage or None, checkpoint=None,
                                lease=expected or None)
         if hit is False:
             return
-        row = store.get_run(conn, run_id, user_id)
-        if row is None or row['kind'] != 'generate':
+        # 成功转换实际成立，才推进任务阶段（同事务；拒绝收尾时不顺带改任务）
+        if row['kind'] != 'generate':
             return
         task = store.require_task(conn, row['task_id'], user_id)
         if task is not None and task['status'] == 'generating':
