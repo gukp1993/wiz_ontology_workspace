@@ -198,7 +198,9 @@ async function bootstrap() {
   deferredRows.value = []
   excludedRows.value = []
   untakenError.value = ''
-  await Promise.all([runPrecheck(), loadDelivery(), loadUntaken('defer'), loadUntaken('exclude')])
+  // loadDelivery 必须先于 runPrecheck 完成：预检要把「已交付」识别为预期状态而非错误。
+  await loadDelivery()
+  await Promise.all([runPrecheck(), loadUntaken('defer'), loadUntaken('exclude')])
   loading.value = false
 }
 
@@ -226,7 +228,11 @@ async function runPrecheck() {
     }
   } catch (error) {
     precheck.value = null
-    precheckError.value = '交付预检失败：' + errorText(error)
+    // 已交付任务再预检必然被服务端拒绝（一个任务只能交付一次）——那是预期状态，
+    // 不是错误：页面下方已有「已创建本体」只读区，这里不该再飘一条红字误导用户。
+    precheckError.value = delivery.value
+      ? ''
+      : '交付预检失败：' + errorText(error)
   }
 }
 
