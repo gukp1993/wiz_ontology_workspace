@@ -128,7 +128,8 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 - `frontend/src/` — Vue3 单页。`app/`：`http.ts`（唯一请求与错误解析层，409 带 currentRevision/.data）、`saveCoordinator.ts`（保存队列）、`navigation.ts`、`workspace.ts`；`ontology/`：`modelFormat.ts`（前后端协议层，与 model_format.py 镜像，两边必须同步改）+ 本体页；`project/`：`bindingModel.ts`（来源制适配层）+ `api.ts`（stripCatalogs 唯一实现）+ 项目页；`shared/` 通用控件；`tools/` 辅助页。页面不得自写 fetch/错误解析
 - `ontology/` — 全部数据（见下方存储规则），**用户数据，勿手改勿删**；`ontology/vault/` 是连接密码受保护存储（服务自动管理）
 - `tests/` — 回归套件 + `fixtures/validation_golden.json`（项目校验金样）+ `ts_hooks.mjs`（Node 跑 TS 的解析钩子）
-- 2026-09-15 已按用户要求删除根目录 `待删除_非运行资料/`、`tools/`、`service/`；`outputs/` 已不存在。不要重建旧兼容入口或引用已删归档作为必要步骤。`resources/` 保留来源参考所需 source.jsonId；`workbench/demo` 仍是运行依赖。`发布包/` 是精简交付副本，不含真实数据或密钥；不在包内开发。
+- 2026-09-15 已按用户要求删除根目录 `待删除_非运行资料/`、`tools/`、`service/`；`outputs/` 已不存在。不要重建旧兼容入口或引用已删归档作为必要步骤。`workbench/demo` 仍是运行依赖。`发布包/` 是精简交付副本，不含真实数据或密钥；不在包内开发。
+- 2026-09-21 已按用户要求删除根目录 `resources/`（source.jsonId 已随 2026-09-18 SQLite 存储迁移入库为 source-reference 附件，运行时接口读库内副本，仅 `transfer import` 迁移 CLI 引用文件路径且有 is_dir 守卫；需要时从 git 历史找回）与 `backup-20260918-202932/`（存储迁移日快照+根密钥副本，git 忽略未入库）。
 - `文档/` — 设计方案（以 `通用储能本体工作台设计方案_v3.md` 为准）；`文档/交付物/` 实施说明与指令；`文档/prototypes/` 原型；`文档/迁移清单_20260915.md` 目录迁移记录
 
 ## 接口文档与前后端契约（2026-09-18，强制）
@@ -176,7 +177,7 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 - 契约/绑定引用一律用稳定 id（系统生成），手写数据文件时勿自造 id
 - 工作目录必须在仓库根运行 `python3 -m workbench.server`（模块按根定位）
-- 历史遗留：`metrics.yaml`/`rules.yaml` 为旧格式兼容文件，允许为空；`resources/imports/` 仅保留运行接口仍读取的原始 source.jsonId，不是当前本体草稿；其他历史存档已按用户要求删除
+- 历史遗留：`metrics.yaml`/`rules.yaml` 为旧格式兼容文件，允许为空；`resources/` 已于 2026-09-21 按用户要求删除（source.jsonId 已入库，git 历史可查），不是当前本体草稿；其他历史存档已按用户要求删除
 - 改前端后需 `npm run build`，后端直接托管 dist（无自动刷新）
 - 用户数据（ontology/ 下一切）是用户真实资产：清理/重建需用户明确确认；演示用临时数据一律用完即删且不写入用户草稿
 

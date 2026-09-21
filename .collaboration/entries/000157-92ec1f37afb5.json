@@ -1,0 +1,23 @@
+{
+  "ticket": "a454b876a02646b3bce3ee22128ff10b",
+  "task": "按用户指令删除 resources/ 与 backup-20260918-202932/",
+  "status": "verified",
+  "summary": "删前已核实：resources/ 仅含已入 git 的 source.jsonId（2026-09-18 存储迁移已导入 SQLite 为 source-reference 附件，运行时读库内副本，仅 transfer.py:575 迁移 CLI 引用且有 is_dir 守卫；tests/deep_perf.py 与 OntologyDiscover.vue 的 resources 字样为同名无关概念）；backup 目录为 9-18 迁移日 SQLite 快照+根密钥副本，密钥与 keys/wb-root.key 逐字节相同，git 忽略未入库、无代码引用。执行：git rm resources、rm -rf backup 目录、同步更新 AGENTS.md 两处与 README.md 目录表对 resources 的描述。主服务 18765 删后 HTTP 200 不受影响，未重启未构建。",
+  "decisions": [],
+  "verification": [
+    "删除后 ls 确认两目录不存在",
+    "curl 18765 HTTP 200",
+    "grep 复核代码无 resources/ 目录依赖"
+  ],
+  "next": [
+    "若将来对新空库重跑 transfer import 需要来源参考材料，从 git 历史找回 resources/imports/storage_20260814/source.jsonId",
+    "backup 快照已不可恢复（git 忽略），如需 9-18 数据时点回退已无来源"
+  ],
+  "references": [],
+  "actor": "zcode",
+  "created_at": "2026-09-21T06:10:12.011779+00:00",
+  "sequence": 157,
+  "filename": "000157-92ec1f37afb5.json",
+  "record_hash": "a069c90af42687f6f95798f9186f4715878ee8067ac40b40aeb51db98598462f",
+  "context_advanced": false
+}

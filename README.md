@@ -45,7 +45,6 @@ cd frontend && npm run dev   # 开发模式（Vite 热更新，/api 代理到 18
 | `workbench/` | Python 标准库后端：`server.py`（安全边界+路由分派）、`{model,project}_routes.py`（接口处理）、`projects.py`+`project_validation.py`+`project_mapping.py`（存储/校验/共享辅助）、`workspaces/versions/contracts/model_format/properties/workflow/formatting/value_types`、`dbdrivers/catalogs/secrets`（数据连接）、`locking.py`、`paths.py`（CODE_ROOT/DATA_ROOT）、`demo/`（演示执行器） |
 | `ontology/` | 全部用户数据（见上节），原位不动 |
 | `tests/` | 自动化回归（Python 套件 + Node 保存队列测试 + 校验金样），一律用 `WIZ_WORKBENCH_ROOT=<临时目录>` + 独立端口 |
-| `resources/` | 仅保留来源参考接口仍读取的原始 source.jsonId；其他历史资料已按用户要求删除 |
 | `文档/` | 规范与方案；`文档/交付物/` 各阶段实施说明与指令；`文档/prototypes/` 交互原型；`文档/归档/` 早期资料 |
 | `发布包/` | 精简程序交付目录，不附带真实数据和密码 |
 | `.runtime/` | 当前进程、日志、依赖戳记和临时构建；旧回退快照已删除 |
