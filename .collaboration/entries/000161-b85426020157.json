@@ -1,0 +1,20 @@
+{
+  "ticket": "c7235ebd9c9d4492b0f146c967b32430",
+  "task": "项目能力补齐推进计划表交付",
+  "status": "ready",
+  "summary": "交付P00-P13分阶段推进表，先核对基线和储能试点，再决定说明语义、依赖固定、绑定验证及后续消费能力；历史恢复、MCP与动作执行保持待决策/延期，不启动实施。",
+  "decisions": [],
+  "verification": [
+    "核对依赖顺序、完成标准与授权停止点；未改代码、未创建worktree、未更新服务。"
+  ],
+  "next": [],
+  "references": [
+    "文档/需求/20260921_项目能力补齐推进计划/推进计划表.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-21T06:36:30.147063+00:00",
+  "sequence": 161,
+  "filename": "000161-b85426020157.json",
+  "record_hash": "51184673c33d25a63a55714bf58137207a0c1d12eeefa9c9b4360497a58c5396",
+  "context_advanced": false
+}
