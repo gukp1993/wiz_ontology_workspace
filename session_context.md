@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`b934e12ec459d13e`
+上下文版本：`81614f17a42d64eb`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,58 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 本体与项目辅助填写交互原型制作与验收循环 · zcode · 已实施，待验收
+
+时间：2026-09-21T01:00:23.378534+00:00；记录：`.collaboration/entries/000133-2dfe15d07508.json`
+
+交付 文档/需求/20260920_本体与项目辅助填写/交互原型_v1.html（单文件离线原型，2017行，SHA256 dd4a350655cdf43ff9a54a99be3dbc111ef31e67a448b936d358f47b9dffd030）。经主会话浏览器自检、外部harness报告F01～F05修复，及4个并行子agent独立验收（G1复验、G2a D1-D4、G2b D5-D7、G3横向+静态）：全部通过，P0=0/P1=0，console 0错0警。8条P2中修复2处文案优先级bug（O5/P6上下文空值占位），其余7条设计级如实记录为待评审。需求说明§9已补真实自检记录。仅原型，未实施正式功能。
+
+- 决定：P2处置拍板：仅修G3空值占位文案bug（一行修、无行为变化）；改答需清空重答、old==neu幂等卡、说明快照残留等7条记录为待评审，避免为风格项重跑整轮验收。；交付基线以修复后 dd4a3506… 为准，§9按另起一条追加、不回改记录。
+- 验证：静态：禁用API grep 0命中、http(s)仅演示文本、内联JS node --check通过。；浏览器真实点击链路：F01～F05修复复验+D1～D7全链路+A01～A17；XSS纯文本渲染；1440×900/1280×800/768×1024三档视口；四组会话console 0 error/0 warning/0未捕获异常。；本轮修复后复验：清空预期效果/url→面板摘要显示（空）占位，实测通过。；未覆盖：真机多浏览器矩阵、完整无障碍走查；未连接任何真实模型/数据库。
+- 下一步：用户介入验收原型；确认后另议正式实现范围（右侧面板窄屏呈现、本体/项目优先级、复杂编排自动生成是否另立需求）。
+- 依据/文档：文档/需求/20260920_本体与项目辅助填写/交互原型_v1.html；文档/需求/20260920_本体与项目辅助填写/需求说明.md
+
+### system-deep-test环境与测试指令 · codex · 需求已交付
+
+时间：2026-09-20T16:05:33.930212+00:00；记录：`.collaboration/entries/000132-9d1caa107fc6.json`
+
+用户要求全方位测试环境并改名test；已创建worktree/test、codex/test，端口18931，测试计划与执行指令在该分支提交；尚未启动或测试。
+
+- 决定：基于main d6c73c2，无其他分支未合入修复；测试harness只测试报告，不改业务代码、不合并。
+- 依据/文档：worktree/test/文档/需求/20260921_系统全方位深度测试/执行指令.md；worktree/test/文档/需求/20260921_系统全方位深度测试/测试计划.md
+
+### 本体与项目辅助填写原型委托需求 · codex · 需求已交付
+
+时间：2026-09-20T12:04:28.558493+00:00；记录：`.collaboration/entries/000131-082bbd8f1bdb.json`
+
+按用户改为由其他harness制作原型的要求，交付完整需求与独立执行指令；本轮未生成HTML或实施业务功能。
+
+- 决定：本轮两份文档，不生成开发计划；其他harness生成同目录交互原型_v1.html，后续按清单验收。；覆盖本体5类及项目6类辅助填写场景，7条演示链路、17项验收；使用现有风格及离线假数据。；采纳只进入表单，旧建议失效保护、共享影响确认、缺信息追问必须演示；复杂编排生成与真实模型调用不在本次原型必做范围。
+- 验证：文档场景/验收编号完整性与两份文件范围检查通过，git diff --check通过；未声称原型或浏览器已验收。
+- 下一步：其他harness按执行指令制作独立原型并自检，用户交回后按A01至A17验收。
+- 依据/文档：文档/需求/20260920_本体与项目辅助填写/需求说明.md；文档/需求/20260920_本体与项目辅助填写/执行指令.md
+
+### acceptance-fixes环境与修复指令 · codex · 需求已交付
+
+时间：2026-09-20T10:07:25.055603+00:00；记录：`.collaboration/entries/000130-c41ccb18eab1.json`
+
+按用户要求从main b0fb7c0创建worktree/acceptance-fixes，分支codex/acceptance-fixes；修复计划和完整指令已在该分支提交，未开始业务开发。
+
+- 决定：只覆盖合并验收R01-R03/A01-A02；实施后交独立验收，不自动合并main。；端口18921创建时检查可用并登记，尚未启动；隔离数据与Python环境均在该树.runtime。
+- 验证：Git工作树创建成功，任务登记加锁写入公共Git目录；文档diff检查通过。
+- 依据/文档：worktree/acceptance-fixes/文档/需求/20260920_本体与项目统一维护体验改版/验收修复执行指令.md；worktree/acceptance-fixes/文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md
+
+### 规则动作字段精简独立验收并合并记录 · codex · 已验证
+
+时间：2026-09-20T09:57:12.318295+00:00；记录：`.collaboration/entries/000129-2fb2a7d94131.json`
+
+字段精简需求暂不通过：非文本content/effect可发布、图谱业务定义必填可绕过。独立记录合并到统一维护开发计划11.6，保留上轮11.5结论。未修改业务代码。
+
+- 决定：本次统一缺陷编号A01/A02，前次R01-R03未复验不关闭；原需求开发计划仅补归档链接。
+- 验证：构建通过；规则/动作模型、Excel导入27项、图谱桥接回归通过；后端规则40项、动作库与动作HTTP74项通过。；正式发布路由函数在隔离存储接受对象content与数组effect，200并读回发布快照；图谱桥接空定义返回成功并触发changed。；模板与需求原件逐字节一致，四页/表头/冻结/下拉公式和业务空白区检查通过；未做本轮浏览器与Excel原生验收。
+- 下一步：修复统一清单问题后补独立复验及浏览器导入闭环。
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md；文档/需求/20260920_规则动作字段精简与Excel模板同步/开发计划.md
 
 ### 执行 20260920_规则动作字段精简与Excel模板同步 执行指令 · zcode · 已实施，待验收
 
@@ -96,60 +148,4 @@ AGENTS新增细粒度任务拆分与多agent并行原则：后续开发计划和
 - 验证：AGENTS及本次计划/指令的隔离、合并、回退关键条款和相对链接检查通过。；git diff --check通过；无业务代码改动，未构建、测试或重启服务。
 - 下一步：后续生成指令采用新规则；正在main开发的任务由原执行者完成阶段或协调迁移，不自动操作。
 - 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 统一维护改版v2独立验收 · codex · 已验证
-
-时间：2026-09-20T08:06:47.302898+00:00；记录：`.collaboration/entries/000121-d44011600c1f.json`
-
-基线06eee30独立验收未通过：确认3项P1；已追加开发计划11.5，未修改业务代码。
-
-- 决定：延期UI不列验收项；不能以实施记录全部通过代替独立证据。
-- 验证：构建通过，前端5套定向回归和后端发布/编排/目录/升级专项通过；目录套件仍有2项规格观察。；R01真实App客户端mount抛flowState初始化前访问异常，原SSR测试漏检。；R02空壳编排check_flow报输出未绑定，项目属性校验errors仍为空。；R03目录payload读取后、首次依赖token读取前更新目录，发布返回200并生成v3，预期409零写入。；隔离根与假账号验证，无真实数据修改；未做浏览器视觉验收。
-- 下一步：修复R01-R03后定向复验，校正文档F06/F07通过结论及测试规格观察。
-- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md
-
-### 执行 20260920_本体与项目统一维护体验改版 执行指令（v2 功能保护，多Agent并行）——实施完成交接 · zcode · 已实施，待验收
-
-时间：2026-09-20T07:47:40.655262+00:00；记录：`.collaboration/entries/000120-b48bbedf7bad.json`
-
-v2 功能保护七个工作包全部完成并提交：L 集成（d2cc6b9）、C 目录凭据（53f46f9）、A 本体三项复验修正（cc1b833）、E 映射保留+两处 P0（9d57276）、D 前端基线（8e2f7c1）、B 领域校验（4a1dcb5）。测试：run.py all 39/39、金样重生成回放 97/507、前端 node 全套通过、F 独立 QA 三套（135+47+60 项）全过、npm run build 通过；隔离实例浏览器验收 5 项通过（UI 发布 v2 与幂等回放、删被引用连接阻断、损坏目录发布阻断等）。开发计划 §11.2 冻结记录、§11.3 进度、§11.4 F01–F10 逐项结论与未验证项已终稿。
-
-- 决定：幂等指纹只含内容（不含 revision，回放优先于 CAS）；保存边界 422 REFERENCE_IN_USE 覆盖四类引用形态、同批移除放行；依赖重验快照=编排 head+目录指纹代际。；F 独立 QA 两个 P0 已修：损坏目录阻断校验与发布（路由兜底+B 形参双路径）、目录存储失败 GET/POST 同 503。；F 两个 P2 观察项：数组顺序视为内容差异（已登记 03 §2.3）；动作绑定 unreadable 文案仍沿用「不存在」（行为正确 fail-closed，记为待跟进）。；B 的 P1-5 后半（编排自身 check_flow 阻断）因会打挂对抗夹具而回滚，列为待办；金样按 B 预期条目重生成并回放通过。；既有失败 mapping_forms.test.mjs（四提交复现、范围外，P02 延期）不复写；现行编排绑定路径由 flow_editor_bind 覆盖。
-- 验证：后端：python3 tests/run.py all → 39/39（quick 3/3、http 10/10、unit 28/28）；金样 97 样例 507 断言；test_publish_guards 14 步；test_references 21 步；test_project_flow_source 38 步；test_upgrade_impact 7 项。；前端：22 个 node 测试文件全部通过；typecheck 0；npm run build 通过。；F 独立 QA：对抗性 135 项、目录语义 47 项、UI 保护 60 项全过；P0 修复后加回归步骤 m/n 锁定。；浏览器验收（隔离 18871，验收后实例与数据已清理）：概览「1 项待处理」；删被内联 SQL 引用连接阻断且提示精确；校验阻断→发布禁用；修正后 UI 发布 v2 且同 requestId 回放；真实重载与服务端一致。
-- 下一步：Codex 复验 F01–F10 证据，并决定 P1-5/B-4 两个待办是否本期补齐。；待办（非本期阻塞）：编排自身 check_flow 阻断启用+F 夹具同步；动作绑定 unreadable 文案统一；App.vue TDZ 由他人修复。
-- 依据/文档：文档/接口文档/02 §2.2、03 §2.1–§2.4/§3.3、01 §5.1、05 §1.2、README 变更记录；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2–§11.4；提交：d2cc6b9、53f46f9、cc1b833、9d57276、8e2f7c1、4a1dcb5
-
-### 角色B领域校验（重派）：依赖三态/目录降级形参/属性键失效/影响匹配纯函数 · zcode · 已实施，待验收
-
-时间：2026-09-20T07:39:53.878228+00:00；记录：`.collaboration/entries/000119-facb07ab5040.json`
-
-P0 三项已落盘。① kind=flow 改消费 flows.dependency_state：unreadable→error 阻断（文案含「读取失败（reason）」与 flowId），missing 沿用「不存在或已删除」，软删除按 missing，found 用其 state；_check_action_bindings 的 flows.listing 改 fail-closed（StorageUnavailable 原样抛给路由 503，其他异常逐行报错，不再跳过存在性检查）。② validate_project 新增第三形参 degraded_catalogs=None（None 时逐字节不变）；传入时逐条「数据连接 {名称}：目录缓存读取失败（缓存内容损坏）…」error + connection/invalid items，与 project_routes 兜底文案结构一致，路由 signature 探测会自动切到本实现。③ 属性键在引用版本中不存在→error「引用的版本中不存在此属性」，原配置不动。P1-4 field/related 有目录但字段不存在→error（无目录不报）。P1-5「编排自身 check_flow error 阻断」试做后回滚（会误伤 F 的对抗性夹具，其编排缺 name），软删除部分已保留；是否启用交协调者。P1-6 新增 workbench/project_impact.py 纯函数（稳定 id 精确匹配、sharedPropertyId/valueTypeId 继承、未绑定不误报），未改 projects.py。新增 tests/test_upgrade_impact.py 7 项全过。
-
-- 决定：degraded_catalogs 默认 None 保证兼容入口 projects.validate_project 两参调用与金样逐字节不变；文案与 items 与 project_routes._validate_with_degraded 完全一致。；属性键不存在的 error 加在属性循环最前，items.issues 顺序稳定（新 error 在前），便于金样回放。；field/related 字段目录核对仅在该表字段目录可读（catalog_fields 非 None）时报 error；目录缺失保持现状。；P1-5 编排自身 check_flow error 阻断属性绑定回滚：本轮 F 的对抗夹具编排缺 name 即 check_flow error，会使其可发布夹具失去可发布性；优先保证 P0 与既有 135 项对抗断言不回退。；project_impact.binding_impacts 兼容 JSON-LD 与 JSON schema 两形态，只做纯匹配，不改变 projects.upgrade_check 输出结构。
-- 验证：tests/run.py --test test_project_flow_source.py → 通过（38 步）：unreadable→error 含 flowId 且不含「不存在」、found 正常、软删除→不存在、动作绑定 listing 失败→error、StorageUnavailable→原样抛出、恢复后通过。；tests/run.py --test test_property_sources.py → 全部通过（f1 属性键不存在 block、f2 字段目录核对、f3 degraded_catalogs 生效且 None 逐字节一致）。；tests/run.py --test test_upgrade_impact.py → 7 项全过（相似 apiName 不误报、共享/值类型继承命中、未绑定不产生影响、链接相似名不误报、契约定位、schema 形态兼容）。；tests/run.py --test test_publish_guards_adversarial.py → 通过 135 项/不符 0（回滚 check_flow 阻断后无回退）。；tests/run.py unit → 28/29；唯一失败 test_validation_split.py 为金样预期失配（未改金样，变动清单见报告 C 节：8 个样例、约 95 error 槽位/43 item 槽位）。
-- 下一步：协调者按报告 C 节预期变动重新生成金样（tests/make_validation_golden.py）并回放 test_validation_split.py。；接线 project_impact.binding_impacts 到 projects.upgrade_check，替换现行子串/endswith 匹配，返回结构不变。；决定 P1-5 是否启用「编排自身 check_flow error 阻断属性绑定」；若启用需同步调整 tests/test_publish_guards_adversarial.py 夹具（补 name/绑定）。；project_routes._validate_with_degraded 的 signature 探测现已切到新实现，兜底分支可在集成阶段清理。
-- 依据/文档：workbench/project_validation.py（validate_project 第三形参、_append_degraded_catalog_issues、flow 三态、field 目录核对、属性键 error、动作绑定 fail-closed）；workbench/project_impact.py（新增纯函数模块）、tests/test_upgrade_impact.py（新增）；tests/test_project_flow_source.py（38 步）、tests/test_property_sources.py（+3 组用例）；文档/接口文档/03-项目区接口.md §2.2（依赖读取失败语义）；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2（G1 冻结）
-
-### 从物料自动构建本体开发计划与执行指令v1 · codex · 需求已交付
-
-时间：2026-09-20T07:36:57.831434+00:00；记录：`.collaboration/entries/000118-be92f9805b6d.json`
-
-按用户要求补齐开发计划和可独立交给其他harness的执行指令，同步需求状态与原型文档导航；未实施业务代码。
-
-- 决定：四件套齐全，现有需求范围与原型主流程不变。；P0-P7分阶段覆盖真实解析/多轮LLM/候选评审/合并再生成/原子新建；T01-T25验证矩阵映射G01-G16。；保留全局2 MB请求上限，建议JSON分片上传；后台owner显式绑定、安全LLM日志、任务和新本体交付同事务。；未定OCR/外部服务/技术栈扩展与规模承诺不自动扩大；工程默认与降级必须明示。
-- 验证：四份文件相对链接、P0-P7阶段、T01-T25测试矩阵及现有测试路径检查通过。；原型只增加计划与指令链接，JS语法通过；git diff --check通过。未运行正式业务测试或构建。
-- 下一步：执行工具获用户实施指令后，按必读顺序和P0协议核对开始实施，结果追加开发计划§11。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-
-### 执行 20260920_本体与项目统一维护体验改版 执行指令（v2 功能保护，多Agent并行） · zcode · 实施中
-
-时间：2026-09-20T07:07:50.953248+00:00；记录：`.collaboration/entries/000117-35aec319ef1d.json`
-
-W3 阶段：A 三项最小修复完成（B1 前端补 applicable_objects 三入口一致、B2 references 补裸名前缀容错、B3 槽位身份改目标出现序号不放松保护；test_references 21 步、dependency_guard 22/22、金样 97/507 全过）；F 前端保护独立复核 60 项通过并发现两缺陷，协调者已修：① ConnectionManager 引用检测补 inlineSql（原漏报导致先见「保存失败」）、② PropertySources 编排读取失败且配置未改时不再阻断「只改说明」的保存；C/E 产物经 F 独立复核通过；L 补 stale 前端分支与目录/凭据条件写接线、保存后清理已删连接派生数据；12 步发布守卫测试（a–l）全过。B（领域校验）与 D（前端基线）仍在实施，D 的幂等 key 签名含 revision 的修正待其应用。
-
-- 决定：F 发现①处理：UI 引用检测必须覆盖 inlineSql/inline.connection，与服务端保存边界同形态，避免用户先见持久化失败。；F 发现②处理：编排读取失败仅阻断发布（G1 契约），配置未改、只改说明的草稿保存不被阻断（过滤该条提示）。；A 的 B1 采用「同步前端」而非登记差异：三入口（图谱/对象页/批量）统一预告阻断。；A 的 B3 槽位身份=引用类别+目标 id+同目标出现序号（不用所在序号）；新增同目标槽位仍产生新键。
-- 验证：test_references 21 步（含新增单元⑩B2/⑪B1/⑫B3）、dependency_guard 22/22、legacy_graph_bridge、object_workspace 7/7、ont_list_unified 4/4、金样 97/507 全过。；F 复核 ui_protection_independent.test.mjs 60 项全过（换表逐字段保留、未知 kind 只读、flow failed/missing 区分、stale 不覆盖、删除先落盘）。；我修后复跑：connection_manager.test.mjs、ui_protection_independent、source_config_retention 全过；typecheck exit=0；test_publish_guards 12 步、quick 3/3、unit 27/27、test_project_api_roundtrip 13 步、test_save_iteration、test_references、test_mapping_descriptions、test_flows、test_storage_contract 全过。；接口文档 02 §2.2 已登记 B2 前缀容错与 B3 槽位身份口径（文档先行的同 commit 差异）。
-- 下一步：等 B（project_validation/project_mapping/影响匹配）与 D（key 签名修正等）回收；随后金样预期差异生成与回放。；W4：npm run build（cs统一一次）、隔离实例浏览器验收（F）、§11.4 逐项 F01–F10、按工作包提交。
-- 依据/文档：文档/接口文档/02-本体区接口.md §2.2、03-项目区接口.md §2.1-§2.4/§3.3、README 变更记录；workbench/{references,projects,project_routes,flows,catalogs,secrets,server}.py；tests/{test_publish_guards,test_references,ui_protection_independent,connection_manager,source_config_retention}.py|mjs
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。

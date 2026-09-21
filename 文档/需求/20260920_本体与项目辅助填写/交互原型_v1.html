@@ -1,0 +1,2017 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本体与项目辅助填写 · 交互原型 v1（假数据，不连接模型）</title>
+<style>
+/* ============ 令牌：与当前工作台 style.css 对齐 ============ */
+:root{
+  --ink:#182c3e; --ink-2:#3d5063; --muted:#5b6d7e; --faint:#8394a5;
+  --bg:#f6f8fa; --paper:#ffffff; --paper-2:#f4f7fa; --paper-3:#eef2f6;
+  --line:#dce4eb; --line-2:#c9d5e0;
+  --blue:#245cdf; --blue-deep:#1a49b0; --blue-ink:#234fa8; --blue-soft:#edf3ff; --blue-line:#b8cff8;
+  --focus:#245cdf;
+  --ok:#1f7a55; --ok-soft:#eefaf3; --ok-line:#cdebd8;
+  --warn:#8a6116; --warn-soft:#fff8e8; --warn-line:#f0dfb2;
+  --danger:#b03a3a; --danger-deep:#8f2f2f; --danger-soft:#fdf0f0; --danger-line:#f2cfcf;
+  --backdrop:#10283d66;
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --r-pill:999px;
+  --shadow-1:0 1px 2px rgba(24,44,62,.08);
+  --shadow-2:0 16px 48px rgba(16,40,61,.18);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;
+  color:var(--ink); background:var(--bg);
+}
+button{font:inherit;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+h2{font-size:17px;font-weight:650;margin:0}
+h3{font-size:15px;font-weight:650;margin:0}
+
+/* ============ 演示条 ============ */
+#demo-bar{
+  position:fixed;top:0;left:0;right:0;height:38px;z-index:60;
+  background:#2b2f3a;color:#e8ebf2;display:flex;align-items:center;gap:14px;
+  padding:0 14px;font-size:12.5px;white-space:nowrap;overflow-x:auto;
+}
+#demo-bar .demo-tag{background:#8a6116;color:#fff;border-radius:var(--r-pill);padding:2px 10px;font-weight:600;flex:none}
+#demo-bar label{display:flex;align-items:center;gap:5px;color:#c6cede;flex:none}
+#demo-bar select{background:#3a3f4d;color:#e8ebf2;border:1px solid #4a5062;border-radius:var(--r-sm);padding:2px 6px;font-size:12.5px}
+#demo-bar .demo-note{color:#9aa4b6;flex:none}
+
+/* ============ 布局 ============ */
+#rail{
+  position:fixed;top:38px;bottom:0;left:0;width:224px;background:var(--paper);
+  border-right:1px solid var(--line);padding:12px 10px;overflow-y:auto;z-index:40;
+}
+#topbar{
+  position:fixed;top:38px;left:224px;right:0;height:56px;background:var(--paper);
+  border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;
+  padding:0 24px;z-index:30;
+}
+#main{margin:94px 0 0 244px;padding:20px 24px 40px}
+#main.with-panel{margin-right:484px}
+@media (max-width:1200px){ #main.with-panel{margin-right:24px} }
+
+.space-switch{display:flex;border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;margin-bottom:12px}
+.space-switch button{flex:1;padding:7px 0;border:0;background:var(--paper);color:var(--muted);font-weight:500}
+.space-switch button.on{background:var(--blue);color:#fff}
+.rail-asset{font-size:12.5px;color:var(--muted);padding:6px 10px;background:var(--paper-2);border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:10px;word-break:break-all}
+.rail-asset b{color:var(--ink-2);font-weight:600}
+#rail .nav-btn{display:block;width:100%;text-align:left;padding:8px 10px;font-size:14px;font-weight:500;border:0;background:none;border-radius:var(--r-sm);color:var(--ink-2);margin-bottom:2px}
+#rail .nav-btn:hover{background:var(--paper-2);color:var(--blue-ink)}
+#rail .nav-btn.on{background:var(--blue-soft);color:var(--blue-ink);font-weight:600}
+.rail-cap{font-size:11.5px;color:var(--faint);padding:10px 10px 4px;letter-spacing:.05em}
+
+.crumb{color:var(--muted);font-size:13.5px;display:flex;align-items:center;gap:8px;min-width:0}
+.crumb b{color:var(--ink);font-weight:600}
+.crumb .sep{color:var(--line-2)}
+.crumb .ver{background:var(--paper-3);border:1px solid var(--line);border-radius:var(--r-pill);padding:1px 9px;font-size:12px;color:var(--ink-2)}
+.topbar-spacer{flex:1}
+
+/* ============ 卡片与表单 ============ */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);padding:20px;box-shadow:var(--shadow-1);margin-bottom:16px}
+.page-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.page-head .ttl{min-width:0}
+.page-head .sub{color:var(--muted);font-size:12.5px;margin-top:2px}
+.page-actions{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dirty-pill{font-size:12px;border-radius:var(--r-pill);padding:2px 10px;border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--warn)}
+.saved-pill{font-size:12px;border-radius:var(--r-pill);padding:2px 10px;border:1px solid var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+
+button.btn{padding:6px 13px;border:1px solid var(--line);background:#fff;border-radius:var(--r-sm);font-size:14px;color:var(--ink-2)}
+button.btn:hover{border-color:var(--blue-line);color:var(--blue-ink)}
+button.btn:active{transform:translateY(1px)}
+button.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+button.btn.primary:hover{background:var(--blue-deep);border-color:var(--blue-deep);color:#fff}
+button.btn.ghost{border-color:transparent;background:transparent;color:var(--blue-ink);padding:4px 8px}
+button.btn.small{padding:3px 9px;font-size:12.5px}
+button.btn:disabled{opacity:.55;cursor:not-allowed}
+button.btn.danger-ghost{border-color:var(--danger-line);color:var(--danger)}
+
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+@media (max-width:900px){.form-grid{grid-template-columns:1fr}}
+.field{margin:14px 0}
+.field.full{grid-column:1 / -1}
+.field-label{display:block;font-size:13px;color:var(--muted);margin:0 0 5px}
+.field-label .req{color:var(--danger);margin-left:2px}
+.field-label .opt{color:var(--faint);margin-left:6px;font-size:12px}
+.field input[type=text],.field select,.field textarea{
+  width:100%;min-height:40px;padding:9px 11px;font-size:14px;
+  border:1px solid var(--line-2);border-radius:var(--r-sm);background:#fff;margin-top:0;
+}
+.field textarea{min-height:96px;line-height:1.8;resize:vertical}
+.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--focus);outline-offset:1px;border-color:var(--blue-line)}
+.field .hint{font-size:12px;color:var(--faint);margin-top:4px}
+.field .err{font-size:12.5px;color:var(--danger);margin-top:4px}
+.field .static-val{min-height:40px;padding:9px 11px;border:1px dashed var(--line-2);border-radius:var(--r-sm);background:var(--paper-2);color:var(--ink-2)}
+.field .ro-val{padding:9px 11px;background:var(--paper-3);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--muted);font-size:13px}
+details.fold{border-top:1px solid var(--line);margin-top:14px;padding-top:10px}
+details.fold summary{cursor:pointer;color:var(--blue-ink);font-size:13px;user-select:none}
+
+.desc-card{border:1px solid #ccd8e6;border-radius:7px;background:#fff;margin:14px 0}
+.desc-card .desc-head{display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--paper-2)}
+.desc-card .desc-head b{font-size:13px}
+.desc-card .desc-head button{margin-left:auto;border:0;background:none;color:var(--blue-ink);font-size:12.5px}
+.desc-card textarea{border:0;border-radius:0 0 7px 7px;min-height:140px;padding:12px 14px;font-size:13px;line-height:1.9;width:100%;resize:vertical}
+
+/* 列表与表格 */
+table.lst{width:100%;border-collapse:collapse}
+table.lst th{height:40px;text-align:left;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--line);font-weight:500}
+table.lst td{border-bottom:1px solid var(--line);padding:10px 8px;font-size:13.5px;vertical-align:top}
+table.lst tr.cur td{background:var(--blue-soft)}
+table.lst button.pick{border:0;background:none;color:var(--blue-ink);font-weight:600;padding:0}
+.tag{display:inline-block;font-size:11.5px;border-radius:var(--r-pill);padding:1px 8px;border:1px solid var(--line);background:var(--paper-2);color:var(--muted);margin-left:6px;white-space:nowrap}
+.tag.blue{border-color:var(--blue-line);background:var(--blue-soft);color:var(--blue-ink)}
+.tag.ok{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.tag.warn{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
+.tag.danger{border-color:var(--danger-line);background:var(--danger-soft);color:var(--danger)}
+.split{display:grid;grid-template-columns:250px 1fr;gap:16px;align-items:start}
+@media (max-width:1000px){.split{grid-template-columns:1fr}}
+.obj-list{list-style:none;margin:0;padding:0}
+.obj-list li{padding:8px 10px;border-radius:var(--r-sm);cursor:pointer;font-size:13.5px;color:var(--ink-2)}
+.obj-list li:hover{background:var(--paper-2)}
+.obj-list li.on{background:var(--blue-soft);color:var(--blue-ink);font-weight:600}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:14px 0 4px}
+.tabs button{border:0;background:none;padding:8px 14px;font-size:13.5px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--blue-ink);font-weight:600;border-bottom-color:var(--blue)}
+.note{font-size:12.5px;color:var(--muted);background:var(--paper-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 12px;margin:10px 0}
+.note b{color:var(--ink-2)}
+
+/* Key 模板编辑 */
+.tpl-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 8px;background:#fff;min-height:40px}
+.tpl-seg{background:var(--paper-3);border-radius:4px;padding:4px 8px;font-size:13px;color:var(--ink-2);word-break:break-all}
+.tpl-tok{display:inline-flex;align-items:center;gap:4px;background:var(--blue-soft);border:1px solid var(--blue-line);border-radius:4px;padding:2px 4px;font-size:12.5px;color:var(--blue-ink)}
+.tpl-tok select{border:1px solid var(--blue-line);border-radius:4px;background:#fff;font-size:12px;padding:2px 3px}
+.tpl-add{display:flex;gap:6px;margin-top:6px;align-items:center}
+.tpl-add input{flex:1;min-height:32px;padding:4px 8px;font-size:13px}
+
+/* 参数表 */
+table.params{width:100%;border-collapse:collapse}
+table.params th{font-size:12px;color:var(--muted);text-align:left;border-bottom:1px solid var(--line);padding:6px 6px;font-weight:500}
+table.params td{border-bottom:1px solid var(--line);padding:6px 6px;vertical-align:middle}
+table.params select,table.params input{min-height:34px;padding:5px 8px;font-size:13px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:#fff;width:100%}
+
+/* ============ 辅助面板 ============ */
+#panel-backdrop{position:fixed;inset:38px 0 0 0;background:var(--backdrop);z-index:65;display:none}
+#panel{
+  position:fixed;top:38px;right:0;bottom:0;width:440px;max-width:94vw;z-index:70;
+  background:var(--paper);border-left:1px solid var(--line);box-shadow:var(--shadow-2);
+  display:none;flex-direction:column;
+}
+#panel.open{display:flex}
+@media (min-width:1201px){ #panel{box-shadow:none} }
+@media (max-width:1200px){ #panel{width:min(440px,94vw)} #panel-backdrop.on{display:block} }
+.panel-head{flex:none;padding:12px 14px;border-bottom:1px solid var(--line)}
+.panel-head .row1{display:flex;align-items:center;gap:8px}
+.panel-head h3{flex:1;min-width:0}
+.panel-head .close{border:0;background:none;font-size:18px;color:var(--muted);line-height:1;padding:2px 8px}
+.panel-target{margin-top:6px;font-size:12.5px;color:var(--muted);background:var(--paper-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:5px 9px;word-break:break-all}
+.panel-target b{color:var(--blue-ink)}
+.panel-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding:0 10px;flex:none}
+.panel-tabs button{border:0;background:none;padding:9px 10px;font-size:13.5px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.panel-tabs button.on{color:var(--blue-ink);font-weight:600;border-bottom-color:var(--blue)}
+.panel-body{flex:1;overflow-y:auto;padding:12px 14px;overscroll-behavior:contain}
+.panel-foot{flex:none;border-top:1px solid var(--line);padding:10px 14px;background:var(--paper-2);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.panel-foot .foot-hint{font-size:12px;color:var(--muted);flex:1;min-width:120px}
+.panel-foot .foot-btns{display:flex;gap:8px}
+
+.ctx-details{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper-2);margin:8px 0;font-size:12.5px}
+.ctx-details summary{padding:7px 10px;cursor:pointer;color:var(--ink-2);font-weight:500}
+.ctx-details .ctx-body{padding:2px 12px 10px;color:var(--muted)}
+.ctx-details .ctx-body p{margin:5px 0}
+.ctx-line b{color:var(--ink-2);font-weight:600}
+
+.intent-box{width:100%;min-height:88px;padding:10px 12px;border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:13.5px;line-height:1.8;resize:vertical}
+.ex-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.ex-chips .ex-cap{width:100%;font-size:12px;color:var(--faint)}
+.ex-chips button{border:1px dashed var(--blue-line);background:var(--blue-soft);color:var(--blue-ink);border-radius:var(--r-pill);padding:3px 10px;font-size:12.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+
+.q-card{border:1px solid var(--warn-line);background:var(--warn-soft);border-radius:var(--r-sm);padding:10px 12px;margin:10px 0}
+.q-card .q-t{font-size:13px;font-weight:600;color:var(--warn)}
+.q-card .q-o{display:flex;flex-direction:column;gap:4px;margin-top:7px}
+.q-card .q-o label{display:flex;gap:6px;align-items:flex-start;font-size:13px;color:var(--ink-2);cursor:pointer}
+
+.sug-card{border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin:10px 0;background:#fff}
+.sug-card.blocked,.sug-card.pending{background:var(--paper-2)}
+.sug-top{display:flex;gap:8px;align-items:flex-start}
+.sug-top input[type=checkbox]{margin-top:4px;width:15px;height:15px;flex:none}
+.sug-field{font-size:13.5px;font-weight:650;color:var(--ink);flex:1;min-width:0}
+.sug-src{font-size:11px;border-radius:var(--r-pill);padding:1px 8px;border:1px solid var(--line);background:var(--paper-2);color:var(--muted);flex:none}
+.sug-src.user{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.sug-src.cat{border-color:var(--blue-line);background:var(--blue-soft);color:var(--blue-ink)}
+.sug-src.sug{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
+.sug-diff{margin:7px 0 0;font-size:13px;display:grid;gap:4px}
+.sug-diff .old{color:var(--faint);text-decoration:line-through;word-break:break-all}
+.sug-diff .old.none{text-decoration:none;font-style:italic}
+.sug-diff .new{color:var(--ink);background:var(--paper-2);border:1px solid var(--line);border-radius:4px;padding:4px 8px;word-break:break-all;white-space:pre-wrap}
+.sug-reason{font-size:12.5px;color:var(--muted);margin-top:6px}
+.sug-block{font-size:12.5px;color:var(--danger);margin-top:6px;background:var(--danger-soft);border:1px solid var(--danger-line);border-radius:4px;padding:4px 8px}
+.sug-pend{font-size:12.5px;color:var(--warn);margin-top:6px;background:var(--warn-soft);border:1px solid var(--warn-line);border-radius:4px;padding:4px 8px}
+.stale-banner{border:1px solid var(--danger-line);background:var(--danger-soft);color:var(--danger);border-radius:var(--r-sm);padding:8px 10px;font-size:12.5px;margin:10px 0}
+.gen-state{border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);padding:10px 12px;font-size:13px;margin:10px 0;color:var(--blue-ink)}
+.fail-state{border:1px solid var(--danger-line);background:var(--danger-soft);border-radius:var(--r-sm);padding:10px 12px;font-size:13px;margin:10px 0;color:var(--danger)}
+.nomi-state{border:1px solid var(--warn-line);background:var(--warn-soft);border-radius:var(--r-sm);padding:10px 12px;font-size:13px;margin:10px 0;color:var(--warn)}
+.panel-note{font-size:12px;color:var(--faint);margin:8px 0}
+.filled-tip{font-size:12.5px;color:var(--ok);background:var(--ok-soft);border:1px solid var(--ok-line);border-radius:var(--r-sm);padding:6px 10px;margin:8px 0}
+
+.issue-card{border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:var(--r-sm);padding:9px 11px;margin:9px 0;font-size:13px;background:#fff}
+.issue-card .i-f{font-weight:650}
+.issue-card .i-d{color:var(--muted);font-size:12.5px;margin-top:3px}
+.issue-card button{margin-top:6px}
+
+.expl-pick{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.expl-pick button{border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-pill);padding:4px 11px;font-size:12.5px;color:var(--ink-2)}
+.expl-pick button.on{border-color:var(--blue-line);background:var(--blue-soft);color:var(--blue-ink);font-weight:600}
+.expl-card{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px;margin:10px 0;font-size:13px;background:#fff}
+.expl-card h4{margin:0 0 6px;font-size:13.5px}
+.expl-card p{margin:6px 0;color:var(--ink-2)}
+.expl-card .cap{font-size:12px;color:var(--faint)}
+
+/* ============ 弹窗与提示 ============ */
+#modal-back{position:fixed;inset:0;background:var(--backdrop);z-index:90;display:none;align-items:center;justify-content:center;padding:20px}
+#modal-back.on{display:flex}
+.modal-card{background:#fff;border-radius:var(--r-lg);box-shadow:var(--shadow-2);padding:24px 26px;width:min(560px,94vw);max-height:80vh;overflow-y:auto}
+.modal-card h3{margin-bottom:10px}
+.modal-card ul{margin:8px 0;padding-left:20px}
+.modal-card .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:30px;background:#22303c;color:#fff;border-radius:var(--r-pill);padding:8px 18px;font-size:13px;z-index:120;display:none;max-width:80vw;box-shadow:var(--shadow-2)}
+.sim-tag{font-size:11px;color:var(--faint);font-style:normal}
+</style>
+</head>
+<body>
+<div id="demo-bar" role="region" aria-label="演示控制">
+  <span class="demo-tag">交互原型</span>
+  <span class="demo-note">假数据 · 预置建议 · 不连接模型 · 刷新即重置</span>
+  <label>模型演示：<select id="dm-model" aria-label="模型演示状态">
+    <option value="ok">正常</option><option value="nomodel">无模型</option><option value="fail">请求失败</option><option value="slow">生成延迟</option>
+  </select></label>
+  <label>表目录演示：<select id="dm-catalog" aria-label="表目录演示状态">
+    <option value="ok">正常</option><option value="missing">目录缺失</option>
+  </select></label>
+  <label>已有编排演示：<select id="dm-flow" aria-label="已有编排演示状态">
+    <option value="ok">输出兼容</option><option value="text">输出改为文本</option>
+  </select></label>
+  <span class="demo-note">演示控制仅影响建议生成，不改动表单数据；本页所有“保存”均为内存演示保存。</span>
+</div>
+<nav id="rail" aria-label="主导航"></nav>
+<header id="topbar"><div id="crumb" class="crumb"></div><div class="topbar-spacer"></div><div id="top-status"></div></header>
+<main id="main"></main>
+<div id="panel-backdrop"></div>
+<aside id="panel" role="complementary" aria-label="辅助填写面板"></aside>
+<div id="modal-back"><div class="modal-card" id="modal-card" role="dialog" aria-modal="true"></div></div>
+<div id="toast" role="status"></div>
+<script>
+'use strict';
+/* =====================================================================
+   本体与项目辅助填写 · 交互原型 v1
+   单文件离线原型：内存演示仓库 + 编辑缓冲区分离；刷新复位；无任何网络调用。
+   ===================================================================== */
+
+/* ---------------- 工具 ---------------- */
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function clone(o){return JSON.parse(JSON.stringify(o));}
+function el(html){const t=document.createElement('template');t.innerHTML=html.trim();return t.content.firstElementChild;}
+function $(sel,root){return (root||document).querySelector(sel);}
+function $$(sel,root){return Array.prototype.slice.call((root||document).querySelectorAll(sel));}
+function trunc(s,n){s=String(s==null?'':s);return s.length>n?s.slice(0,n)+'…':s;}
+let toastTimer=null;
+function toast(msg){const t=$('#toast');t.textContent=msg;t.style.display='block';
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.style.display='none';},2600);}
+
+/* 引用令牌：{token} 拆分/合并（数组形如 ['str',{key,src}]） */
+function tplParse(s){const out=[];const re=/\{([^{}]*)\}/g;let last=0,m;
+  while((m=re.exec(s))){if(m.index>last)out.push(s.slice(last,m.index));
+    out.push({key:m[1],src:''});last=re.lastIndex;}
+  if(last<s.length)out.push(s.slice(last));return out;}
+function tplSerialize(segs){return segs.map(function(s){return typeof s==='string'?s:'{'+s.key+'}';}).join('');}
+function tplKeyPreview(segs){return segs.map(function(s){return typeof s==='string'?s:('‹'+ (s.src==='pk'?'1001':s.src==='attr:cluster_code'?s.src:'…') +'›');}).join('');}
+
+/* 常量 */
+const SRC={USER:'你提供的说明',CAT:'当前表目录',ONT:'已有本体定义',FLOW:'已有编排声明',SUG:'建议，需确认'};
+const SRC_CLS={};SRC_CLS[SRC.USER]='user';SRC_CLS[SRC.CAT]='cat';SRC_CLS[SRC.ONT]='cat';SRC_CLS[SRC.FLOW]='cat';SRC_CLS[SRC.SUG]='sug';
+const DATATYPES=[['xsd:string','文本'],['xsd:double','数值'],['xsd:boolean','是／否'],['xsd:dateTime','时间'],['xsd:array','数组'],['xsd:struct','结构体'],['timeSeries','时间序列']];
+const OBSTYPES=DATATYPES.filter(function(d){return d[0]!=='xsd:array'&&d[0]!=='xsd:struct';});
+const CARDINALITY=[['oneToOne','一对一'],['oneToMany','一对多'],['manyToOne','多对一'],['manyToMany','多对多']];
+function dtypeLabel(v,obs){const d=DATATYPES.find(function(x){return x[0]===v;});if(!d)return v||'（未设置）';
+  if(v==='timeSeries')return '时间序列（'+(OBSTYPES.find(function(x){return x[0]===(obs||'xsd:double');})||['','数值'])[1]+'）';return d[1];}
+function cardLabel(v){const c=CARDINALITY.find(function(x){return x[0]===v;});return c?c[1]+'（'+v+'）':(v||'（未选择）');}
+
+/* 演示控制状态 */
+const DEMO={model:'ok',catalog:'ok',flow:'ok'};
+
+/* ---------------- 演示仓库（保存态；与编辑缓冲区分离） ---------------- */
+/* 全部为完全虚构的储能簇/储能设备/储能系统与项目数据，不来自真实工作台。 */
+const SAVED={
+  ont:{
+    name:'储能设备本体', pubVersion:'2.0.0',
+    objects:[
+      {id:'o_bess',name:'储能设备',def:'可独立运行、可被调度的储能装置，包含电池簇、PCS 与 BMS 等部件。'},
+      {id:'o_station',name:'储能系统',def:'由多台储能设备及其附属设施组成的站点级对象。'},
+      {id:'o_cluster',name:'储能簇',def:'一组电池。'}
+    ],
+    props:[ /* 对象私有属性 */
+      {id:'p_c_soc',obj:'o_cluster',name:'SOC',def:'电池剩余电量',dataType:'xsd:string',obsType:'',fmt:'',shared:''},
+      {id:'p_c_cap',obj:'o_cluster',name:'额定容量',def:'储能簇在标准工况下可存储的能量额定值，单位 kWh。',dataType:'xsd:double',obsType:'',fmt:'数值（保留 1 位小数，后缀 kWh）',shared:'sp_cap'},
+      {id:'p_c_code',obj:'o_cluster',name:'簇编号',def:'厂内标识储能簇的编号。',dataType:'xsd:string',obsType:'',fmt:'',shared:''},
+      {id:'p_c_bizid',obj:'o_cluster',name:'业务设备ID',def:'业务系统内标识该储能簇的稳定 ID。',dataType:'xsd:string',obsType:'',fmt:'',shared:''},
+      {id:'p_b_soc',obj:'o_bess',name:'SOC',def:'',dataType:'xsd:string',obsType:'',fmt:'',shared:'sp_soc'},
+      {id:'p_b_pcs',obj:'o_bess',name:'PCS额定功率',def:'功率变换单元的额定功率，单位 kW。',dataType:'xsd:double',obsType:'',fmt:'',shared:''}
+    ],
+    shared:[ /* 共享属性库 */
+      {id:'sp_soc',name:'SOC（荷电状态）',def:'当前剩余容量占其容量基准的比例。',dataType:'xsd:double',obsType:'',fmt:'',refs:['储能簇','储能设备']},
+      {id:'sp_cap',name:'额定容量',def:'标准工况下可存储能量的额定值。',dataType:'xsd:double',obsType:'',fmt:'',refs:['储能簇']}
+    ],
+    links:[
+      {id:'l_c2b',start:'o_cluster',end:'o_bess',fwd:'关联',card:'',rev:'',def:''},
+      {id:'l_b2s',start:'o_bess',end:'o_station',fwd:'所属储能系统',card:'manyToOne',rev:'包含储能设备',def:'一台储能设备归属一套储能系统；一套储能系统包含多台储能设备。'}
+    ],
+    rules:[
+      {id:'r_soc',name:'设备SOC计算',def:'设备SOC等于各簇SOC平均值。',content:'',legacy:'输出：设备SOC（数值）'}
+    ],
+    actions:[
+      {id:'a_stop',name:'停止充放电',def:'停止设备。',effect:'',linkedObjs:['储能设备']}
+    ]
+  },
+  prj:{
+    name:'创智园二期', ontRef:'储能设备本体', refVersion:'2.0.0',
+    connections:[
+      {id:'c_mysql',name:'园区储能 MySQL',kind:'MySQL'},
+      {id:'c_redis',name:'园区实时 Redis',kind:'Redis'}
+    ],
+    catalog:{ /* 连接目录（模拟） */
+      m_storage_cluster_phase:[
+        {name:'id',comment:'实例主键（用户说明：主键且唯一）'},
+        {name:'storage_id',comment:'业务设备ID'},
+        {name:'cluster_code',comment:'簇编号'},
+        {name:'capacity',comment:'额定容量（kWh）'},
+        {name:'available_capacity',comment:'可用容量（kWh）'},
+        {name:'record_time',comment:'采集时间'}
+      ],
+      m_storage_device:[
+        {name:'id',comment:'设备实例主键'},
+        {name:'device_name',comment:'设备名称'}
+      ],
+      s_attr_scada:[
+        {name:'model_name',comment:'模型名'},
+        {name:'attr_name',comment:'属性名'},
+        {name:'model_id',comment:'实例ID'},
+        {name:'scada_table',comment:'测点表名'},
+        {name:'scada_id',comment:'测点ID'}
+      ]
+    },
+    redisNote:{conn:'c_redis',name:'园区实时 Redis',hint:'仅提供连接候选；地址与密码不在原型中出现'},
+    flows:[
+      {id:'f_soc',name:'通用SOC采样查询',
+       desc:'三步查询：① s_attr_scada 按 model_name/attr_name/model_id 查 scada_table、scada_id；② 按测点元数据得到 sample_table_name、sample_field_name；③ 按 record_time 与时间范围取采样值。',
+       inputs:[{k:'model_name',t:'文本'},{k:'attr_name',t:'文本'},{k:'model_id',t:'文本'},{k:'start_time',t:'时间'},{k:'end_time',t:'时间'}],
+       output:{kind:'timeSeries',label:'时间序列<数值>'}}
+    ],
+    instanceSrcs:{
+      o_cluster:{mode:'database',conn:'c_mysql',table:'m_storage_cluster_phase',pk:'',desc:''},
+      o_bess:{mode:'registered',conn:'',table:'',pk:'',desc:'储能设备实例由项目实施人员在项目中登记维护（编号+显示名），不绑定数据表。'}
+    },
+    propSrcs:[
+      {id:'ps_cap',obj:'o_cluster',prop:'额定容量',propId:'p_c_cap',kind:'field',conn:'c_mysql',table:'m_storage_cluster_phase',field:'available_capacity',merge:'zero_or_one',desc:''},
+      {id:'ps_rt',obj:'o_cluster',prop:'SOC实时值',propId:'p_c_soc',kind:'redis',conn:'c_redis',method:'',tpl:[],conv:'text',miss:'none',desc:''},
+      {id:'ps_series',obj:'o_cluster',prop:'SOC采样值',propId:'p_c_soc_series',kind:'flow',flowId:'',bind:{model_name:'',attr_name:'',model_id:'',start_time:'',end_time:''},desc:''},
+      {id:'ps_bizid',obj:'o_cluster',prop:'业务设备ID',propId:'p_c_bizid',kind:'field',conn:'c_mysql',table:'m_storage_cluster_phase',field:'storage_id',merge:'zero_or_one',desc:'读取 storage_id 列。'}
+    ],
+    linkMaps:{
+      l_c2b:{startTable:'cluster_src',startField:'',endTable:'device_registered',endField:'',desc:''}
+    },
+    actionBinds:{
+      a_stop:{method:'POST',url:'',bodyFmt:'json',pStoragePos:'body',pStorageSrc:'',pStorageVal:'',pPowerPos:'body',pPowerSrc:'',pPowerVal:'0',pPowerType:'xsd:double',auth:'none',cred:'',desc:''}
+    },
+    registeredDevices:[{code:'BESS-CY2-001',name:'1号储能设备'}]
+  }
+};
+/* 演示专用：SOC采样值需要一个时间序列私有属性用于展示（不改动 SOC 文本属性本体） */
+SAVED.ont.props.push({id:'p_c_soc_series',obj:'o_cluster',name:'SOC采样值',def:'一段时间内 SOC 的采样序列。',dataType:'timeSeries',obsType:'xsd:double',fmt:'',shared:''});
+SAVED.ont.props.forEach(function(p){p.series=undefined;});
+SAVED.ont.props.find(function(p){return p.id==='p_c_soc_series';}).series=true;
+
+/* ---------------- 页面路由与缓冲区 ---------------- */
+const NAV={space:'ont',page:'obj',objId:'o_cluster',ruleId:'r_soc',actionId:'a_stop',sharedId:'sp_soc',linkId:'l_c2b',propId:'p_c_soc',tab:'props',
+           pObjId:'o_cluster',pTab:'instance',psId:'ps_cap',lmId:'l_c2b',abId:'a_stop'};
+/* editKey：当前可辅助目标的唯一键；bufferKey 对应缓冲区 */
+const BUFFERS={}; /* editKey -> {buf, savedHash, dirty} */
+const PANELS={}; /* editKey -> 面板会话状态 */
+let REQ=0;         /* 全局请求代际：切目标/取消/保存后忽略迟到结果 */
+
+function findObj(id){return SAVED.ont.objects.find(function(o){return o.id===id;});}
+function findProp(id){return SAVED.ont.props.find(function(p){return p.id===id;});}
+function findShared(id){return SAVED.ont.shared.find(function(p){return p.id===id;});}
+function findLink(id){return SAVED.ont.links.find(function(l){return l.id===id;});}
+function findRule(id){return SAVED.ont.rules.find(function(r){return r.id===id;});}
+function findAction(id){return SAVED.ont.actions.find(function(a){return a.id===id;});}
+function psOf(id){return SAVED.prj.propSrcs.find(function(p){return p.id===id;});}
+function catalogFields(table){
+  if(DEMO.catalog==='missing')return null;
+  return SAVED.prj.catalog[table]||null;
+}
+/* ---------------- 表单渲染引擎 ---------------- */
+function getByPath(o,p){return p.split('.').reduce(function(a,k){return a==null?a:a[k];},o);}
+function setByPath(o,p,v){const ks=p.split('.');const last=ks.pop();
+  ks.reduce(function(a,k){if(a[k]==null)a[k]={};return a[k];},o)[last]=v;}
+
+/* field 描述：{k,label,type:text|textarea|select|static|ro,opts:[[v,l]],req,opt,ph,hint,full,show,display} */
+function fieldHTML(f,buf){
+  if(f.show&&!f.show(buf))return '';
+  const v=getByPath(buf,f.k);
+  const cls='field'+(f.full?' full':'');
+  let lab='<label class="field-label" for="f_'+f.k+'">'+esc(f.label)+(f.req?'<span class="req">*</span>':'')+(f.opt?'<span class="opt">选填</span>':'')+'</label>';
+  let inner='';
+  if(f.type==='text')inner='<input type="text" id="f_'+f.k+'" data-k="'+f.k+'" value="'+esc(v==null?'':v)+'" placeholder="'+esc(f.ph||'')+'">';
+  else if(f.type==='textarea')inner='<textarea id="f_'+f.k+'" data-k="'+f.k+'" rows="'+(f.rows||4)+'" placeholder="'+esc(f.ph||'')+'">'+esc(v==null?'':v)+'</textarea>';
+  else if(f.type==='select'){
+    let os=(typeof f.opts==='function'?f.opts(buf):f.opts).map(function(o){
+      return '<option value="'+esc(o[0])+'"'+(String(v)===String(o[0])?' selected':'')+'>'+esc(o[1])+'</option>';}).join('');
+    inner='<select id="f_'+f.k+'" data-k="'+f.k+'"'+(f.disabled?' disabled':'')+'>'+os+'</select>';
+  }
+  else if(f.type==='static')inner='<div class="static-val">'+(f.display||esc(v))+'</div>';
+  else inner='<div class="ro-val">'+(f.display||esc(v))+'</div>';
+  return '<div class="'+cls+'" data-fld="'+f.k+'">'+lab+inner+(f.hint?'<div class="hint">'+f.hint+'</div>':'')+'<div class="err" data-err="'+f.k+'" hidden></div></div>';
+}
+function bindFormInputs(scope,buf,onSoft,onRerender){
+  $$('[data-k]',scope).forEach(function(node){
+    const k=node.dataset.k;
+    const ev=node.tagName==='SELECT'?'change':'input';
+    node.addEventListener(ev,function(){
+      setByPath(buf,k,node.value);
+      if(k==='dataType'&&node.value!=='timeSeries'&&('obsType' in buf))buf.obsType='';
+      invalidateAdoption(curEditKey());
+      if(node.tagName==='SELECT')onRerender(k);else onSoft(k);
+    });
+  });
+}
+function showErrors(scope,errs){
+  errs.forEach(function(e){const n=$('[data-err="'+e.k+'"]',scope);if(n){n.textContent=e.msg;n.hidden=false;}});
+}
+function reqCheck(buf,list){const errs=[];list.forEach(function(r){
+  const v=getByPath(buf,r.k);if(!v||!String(v).trim())errs.push({k:r.k,msg:'请填写'+r.label+'。'});});return errs;}
+
+/* 缓冲区 */
+function extract(editKey){
+  const m=editKey.split(':');const kind=m[0],id=m[1];
+  if(kind==='o')return clone(findObj(id));
+  if(kind==='p'){const p=findProp(id);return clone(p);}
+  if(kind==='sh')return clone(findShared(id));
+  if(kind==='lk')return clone(findLink(id));
+  if(kind==='rule')return clone(findRule(id));
+  if(kind==='act')return clone(findAction(id));
+  if(kind==='pi')return clone(SAVED.prj.instanceSrcs[id]);
+  if(kind==='ps'){const s=psOf(id);const b=clone(s);delete b.prop;delete b.kind;if(b.bind&&!b.bindv)b.bindv={};return b;}
+  if(kind==='lm')return clone(SAVED.prj.linkMaps[id]);
+  if(kind==='ab')return clone(SAVED.prj.actionBinds[id]);
+  return {};
+}
+function bufOf(editKey){
+  const cur=JSON.stringify(extract(editKey));
+  if(!BUFFERS[editKey]||BUFFERS[editKey].__seed!==cur){
+    const b=extract(editKey);b.__seed=cur;BUFFERS[editKey]=b;
+  }
+  return BUFFERS[editKey];
+}
+function isDirty(editKey){const b=BUFFERS[editKey];if(!b)return false;
+  const c=clone(b);delete c.__seed;return JSON.stringify(c)!==b.__seed;}
+function commitSave(editKey){
+  const b=BUFFERS[editKey];const c=clone(b);delete c.__seed;delete c.__filledTip; /* 内部提示标志不入库 */
+  if(c.dataType&&c.dataType!=='timeSeries')c.obsType=''; /* 非时间序列不残留观测值类型 */
+  const m=editKey.split(':');const kind=m[0],id=m[1];
+  if(kind==='o')Object.assign(findObj(id),c);
+  else if(kind==='p')Object.assign(findProp(id),c);
+  else if(kind==='sh')Object.assign(findShared(id),c);
+  else if(kind==='lk')Object.assign(findLink(id),c);
+  else if(kind==='rule')Object.assign(findRule(id),c);
+  else if(kind==='act')Object.assign(findAction(id),c);
+  else if(kind==='pi')Object.assign(SAVED.prj.instanceSrcs[id],c);
+  else if(kind==='ps')Object.assign(psOf(id),c);
+  else if(kind==='lm')Object.assign(SAVED.prj.linkMaps[id],c);
+  else if(kind==='ab')Object.assign(SAVED.prj.actionBinds[id],c);
+  delete BUFFERS[editKey];
+  REQ++; /* 保存后旧建议基线失效 */
+}
+function curEditKey(){return editKeyOf(NAV);}
+function editKeyOf(n){
+  if(n.space==='ont'){
+    if(n.page==='obj')return n.propId&&n.tab==='props'&&n.propFocus? 'p:'+n.propId : (n.linkId&&n.tab==='links'&&n.linkFocus? 'lk:'+n.linkId : 'o:'+n.objId);
+    if(n.page==='shared')return 'sh:'+n.sharedId;
+    if(n.page==='rules')return 'rule:'+n.ruleId;
+    if(n.page==='actions')return 'act:'+n.actionId;
+  }else{
+    if(n.page==='mapping'){
+      if(n.pTab==='instance')return 'pi:'+n.pObjId;
+      if(n.pTab==='props')return 'ps:'+n.psId;
+      if(n.pTab==='links')return 'lm:'+n.lmId;
+      if(n.pTab==='actions')return 'ab:'+n.abId;
+    }
+  }
+  return null;
+}
+
+/* ---------------- 弹窗 / 顶栏 / 导航 ---------------- */
+function showModal(html,onMount){$('#modal-card').innerHTML=html;$('#modal-back').classList.add('on');
+  const btn=$('#modal-card button');if(btn)btn.focus();if(onMount)onMount($('#modal-card'));}
+function hideModal(){$('#modal-back').classList.remove('on');}
+$('#modal-back').addEventListener('click',function(e){if(e.target===this)hideModal();});
+
+function go(patch){
+  const oldKey=curEditKey();
+  Object.assign(NAV,patch);
+  const newKey=curEditKey();
+  if(oldKey!==newKey){REQ++;discardPanelResult(oldKey,'已切换辅助目标，上一目标的结果与生成已丢弃（不串场）。');}
+  render();
+}
+let panelOpen=false;
+
+function renderRail(){
+  const r=$('#rail');
+  const isOnt=NAV.space==='ont';
+  let h='<div class="space-switch">'
+    +'<button data-space="ont" class="'+(isOnt?'on':'')+'" aria-pressed="'+isOnt+'">本体区</button>'
+    +'<button data-space="prj" class="'+(!isOnt?'on':'')+'" aria-pressed="'+!isOnt+'">项目区</button></div>';
+  if(isOnt){
+    h+='<div class="rail-asset">当前本体<br><b>储能设备本体</b><span class="tag">草稿</span><br>最新发布 '+SAVED.ont.pubVersion+'</div>';
+    h+='<div class="rail-cap">本体建模</div>';
+    h+=navBtn('obj','对象建模')+navBtn('shared','共享属性')+navBtn('rules','业务规则')+navBtn('actions','动作定义');
+  }else{
+    h+='<div class="rail-asset">当前项目<br><b>'+esc(SAVED.prj.name)+'</b><br>引用 <b>'+esc(SAVED.prj.ontRef)+'</b> '+SAVED.prj.refVersion+'</div>';
+    h+='<div class="rail-cap">项目映射</div>';
+    h+=navBtn('mapping','对象映射')+navBtn('flows','函数编排（示意）')+navBtn('llm','模型设置（示意）');
+  }
+  r.innerHTML=h;
+  $$('[data-space]',r).forEach(function(b){b.addEventListener('click',function(){
+    go({space:b.dataset.space,page:b.dataset.space==='ont'?'obj':'mapping'});});});
+  $$('[data-page]',r).forEach(function(b){b.addEventListener('click',function(){go({page:b.dataset.page});});});
+}
+function navBtn(p,label){return '<button class="nav-btn'+(NAV.page===p?' on':'')+'" data-page="'+p+'">'+esc(label)+'</button>';}
+
+function renderTopbar(){
+  const isOnt=NAV.space==='ont';
+  let h;
+  if(isOnt)h='<b>'+esc(SAVED.ont.name)+'</b><span class="sep">/</span><span>本体配置</span><span class="ver">草稿（编辑中）</span>';
+  else h='<b>'+esc(SAVED.prj.name)+'</b><span class="sep">/</span><span>项目配置</span><span class="ver">引用 '+esc(SAVED.prj.ontRef)+' '+SAVED.prj.refVersion+'</span>';
+  $('#crumb').innerHTML=h;
+}
+
+/* ---------------- 页面头（辅助填写入口） ---------------- */
+function assistHeadHTML(editKey,title,sub){
+  return '<div class="page-head"><div class="ttl"><h2>'+esc(title)+'</h2><div class="sub">'+sub+'</div></div>'
+   +'<div class="page-actions">'
+   +'<span class="dirty-pill" id="dirty-pill" hidden>未保存</span>'
+   +'<button class="btn primary" id="btn-assist" data-edit-key="'+editKey+'">✦ 辅助填写</button>'
+   +'</div></div>';
+}
+function bindHead(editKey){
+  $('#btn-assist').addEventListener('click',function(){openPanel(editKey);});
+  updateDirtyPill();
+}
+function updateDirtyPill(){
+  const k=curEditKey();const p=$('#dirty-pill');if(!p)return;
+  if(k&&BUFFERS[k]&&isDirty(k)){p.hidden=false;p.textContent='未保存（编辑缓冲区）';}
+  else if(k&&BUFFERS[k]&&BUFFERS[k].__filledTip){p.hidden=false;p.textContent='已填入建议，尚未保存';}
+  else p.hidden=true;
+}
+
+/* ---------------- 本体区页面 ---------------- */
+function renderObjPage(){
+  const main=$('#main');
+  const objs=SAVED.ont.objects;
+  const obj=findObj(NAV.objId)||objs[0];NAV.objId=obj.id;
+  let h='<div class="split"><div class="card"><h3>对象列表</h3><ul class="obj-list" style="margin-top:8px">';
+  objs.forEach(function(o){h+='<li data-obj="'+o.id+'" class="'+(o.id===obj.id?'on':'')+'">'+esc(o.name)+'</li>';});
+  h+='</ul><div class="note" style="margin-top:10px">演示数据均为虚构。对象的动作/规则关联请在对应页面维护。</div></div>';
+  h+='<div>';
+  const ek='o:'+obj.id;
+  h+='<div class="card">'+assistHeadHTML(ek,'编辑对象「'+obj.name+'」','本体：'+SAVED.ont.name+' · 草稿（编辑中，未保存内容不影响发布版本）')
+   +'<div id="obj-form"></div></div>';
+  h+='<div class="card"><div class="tabs">'
+   +'<button data-tab="props" class="'+(NAV.tab==='props'?'on':'')+'">属性</button>'
+   +'<button data-tab="links" class="'+(NAV.tab==='links'?'on':'')+'">链接</button>'
+   +'</div><div id="tab-body"></div></div>';
+  h+='</div></div>';
+  main.innerHTML=h;
+  bindHead(ek);
+  objFormInto($('#obj-form'),obj);
+  $$('[data-obj]').forEach(function(li){li.addEventListener('click',function(){go({objId:li.dataset.obj,tab:'props',propFocus:false,linkFocus:false,propId:null,linkId:null});});});
+  $$('[data-tab]').forEach(function(b){b.addEventListener('click',function(){go({tab:b.dataset.tab,propFocus:false,linkFocus:false});});});
+  renderObjTab(obj);
+}
+function renderObjTab(obj){
+  const box=$('#tab-body');
+  if(NAV.tab==='props'){
+    const props=SAVED.ont.props.filter(function(p){return p.obj===obj.id;});
+    let h='<table class="lst"><tr><th>属性</th><th>业务定义</th><th>数据类型</th><th></th></tr>';
+    props.forEach(function(p){
+      h+='<tr><td><button class="pick" data-prop="'+p.id+'">'+esc(p.name)+'</button>'+(p.shared?'<span class="tag blue">引用共享</span>':'')+'</td>'
+        +'<td style="color:var(--muted)">'+esc(trunc(p.def,42)||'（未填写）')+'</td>'
+        +'<td>'+esc(dtypeLabel(p.dataType,p.obsType))+'</td><td></td></tr>';});
+    h+='</table>';
+    if(NAV.propFocus&&NAV.propId){const p=findProp(NAV.propId);if(p)h+=propFormHTML(p);}
+    box.innerHTML=h;
+    $$('[data-prop]',box).forEach(function(b){b.addEventListener('click',function(){go({propId:b.dataset.prop,propFocus:true});});});
+    if(NAV.propFocus&&NAV.propId)bindPropForm(findProp(NAV.propId));
+  }else{
+    const links=SAVED.ont.links.filter(function(l){return l.start===obj.id||l.end===obj.id;});
+    let h='<table class="lst"><tr><th>链接</th><th>数量关系</th><th>定义</th><th></th></tr>';
+    links.forEach(function(l){
+      const s=findObj(l.start),t=findObj(l.end);
+      h+='<tr><td><button class="pick" data-link="'+l.id+'">'+esc(s.name)+' → '+esc(l.fwd||'（未命名）')+' → '+esc(t.name)+'</button></td>'
+        +'<td>'+esc(cardLabel(l.card))+'</td><td style="color:var(--muted)">'+esc(trunc(l.def,36)||'（未填写）')+'</td><td></td></tr>';});
+    h+='</table>';
+    if(NAV.linkFocus&&NAV.linkId){const l=findLink(NAV.linkId);if(l)h+=linkFormHTML(l);}
+    box.innerHTML=h;
+    $$('[data-link]',box).forEach(function(b){b.addEventListener('click',function(){go({linkId:b.dataset.link,linkFocus:true});});});
+    if(NAV.linkFocus&&NAV.linkId)bindLinkForm(findLink(NAV.linkId));
+  }
+}
+
+/* --- O1 对象表单 --- */
+const OBJ_FIELDS=[
+  {k:'name',label:'对象名称',type:'text',req:1,ph:'例如 储能簇'},
+  {k:'def',label:'业务定义',type:'textarea',req:1,rows:3,ph:'说明这个对象是什么、由什么构成、处于什么层级'}
+];
+function objFormInto(scope,obj){
+  const ek='o:'+obj.id;const buf=bufOf(ek);
+  scope.innerHTML='<div class="form-grid">'+OBJ_FIELDS.map(function(f){return fieldHTML(f,buf);}).join('')+'</div>'
+   +formBtnsHTML(ek);
+  bindFormInputs(scope,buf,softChange,function(){softChange();});
+  bindFormBtns(scope,ek,{validate:function(){return reqCheck(buf,[{k:'name',label:'对象名称'},{k:'def',label:'业务定义'}]);},
+    fields:[{k:'name',label:'对象名称'},{k:'def',label:'业务定义'}]});
+}
+function formBtnsHTML(ek){
+  return '<div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap">'
+   +'<button class="btn primary" data-act="save">演示保存</button>'
+   +'<button class="btn" data-act="cancel">取消编辑</button>'
+   +'<span class="note" style="margin:0;padding:4px 8px" data-act="msg" hidden></span></div>'
+   +'<p class="panel-note">「演示保存」仅写入本原型内存演示仓库；正式实现须走后端校验、CAS 与发布流程，本原型不模拟。</p>';
+}
+function bindFormBtns(scope,ek,hooks){
+  const msgN=$('[data-act="msg"]',scope);
+  function say(t,ok){if(!msgN)return;msgN.hidden=false;msgN.textContent=t;msgN.style.color=ok?'var(--ok)':'var(--danger)';
+    setTimeout(function(){msgN.hidden=true;},3000);}
+  const saveB=$('[data-act="save"]',scope),cancelB=$('[data-act="cancel"]',scope);
+  if(cancelB)cancelB.addEventListener('click',function(){
+    delete BUFFERS[ek];REQ++;discardPanelResult(ek,'已取消编辑并恢复已保存数据，旧建议作废。');render();toast('已恢复已保存演示数据');});
+  if(saveB)saveB.addEventListener('click',function(){
+    const buf=BUFFERS[ek];
+    $$('[data-err]',scope).forEach(function(n){n.hidden=true;});
+    const errs=hooks.validate?hooks.validate():[];
+    if(errs.length){showErrors(scope,errs);toast('存在必填项未完成，无法演示保存');return;}
+    if(hooks.preSave){hooks.preSave(function(ok){if(ok)doSave();else say('已取消保存，演示仓库未变化',false);});return;}
+    doSave();
+    function doSave(){commitSave(ek);render();toast('演示保存成功（仅内存，未写真实数据）');}
+  });
+  function say2(t){}
+}
+
+/* --- O2 属性表单（私有） --- */
+function propFormHTML(p){
+  const ek='p:'+p.id;const buf=bufOf(ek);
+  const sharedRef=p.shared?findShared(p.shared):null;
+  let h='';
+  h+='<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:6px;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3>编辑属性「'+esc(p.name)+'」'+(p.series?'<span class="tag">时间序列</span>':'')+(sharedRef?'<span class="tag blue">引用共享定义</span>':'')+'</h3>'
+    +(sharedRef?'':'<button class="btn primary" style="margin-left:auto" data-assist="'+ek+'">✦ 辅助填写</button>')+'</div>';
+  if(sharedRef){
+    h+='<div class="note">该属性引用共享定义 <b>'+esc(sharedRef.name)+'</b>。名称与定义在共享属性页维护；此处只读示意，不提供编辑。</div>'
+      +'<div class="form-grid">'
+      +fieldHTML({k:'name',label:'属性名称',type:'static'},buf)
+      +fieldHTML({k:'def',label:'业务定义',type:'ro',display:esc(sharedRef.def||'（未填写）')},buf)
+      +fieldHTML({k:'dataType',label:'数据类型',type:'static',display:esc(dtypeLabel(sharedRef.dataType,sharedRef.obsType))},buf)
+      +'</div><div style="margin-top:10px"><button class="btn" id="goto-shared">打开共享定义</button>'
+      +'<button class="btn" id="to-private" disabled title="本原型未演示转私有流程">转为私有（本原型未演示）</button></div>';
+    return h;
+  }
+  const fields=[
+    {k:'name',label:'属性名称',type:'text',req:1,ph:'例如 额定功率'},
+    {k:'def',label:'业务定义',type:'textarea',req:1,rows:3},
+    {k:'dataType',label:'数据类型',type:'select',req:1,opts:DATATYPES},
+    {k:'obsType',label:'观测值类型',type:'select',req:1,opts:OBSTYPES,
+      show:function(b){return b.dataType==='timeSeries';},
+      hint:'仅数据类型为「时间序列」时出现；组合必须合法。'},
+    {k:'fmt',label:'显示格式',type:'text',opt:1,ph:'原型保留字段，不演示完整格式化编辑'}
+  ];
+  h+='<div class="form-grid">'+fields.map(function(f){return fieldHTML(f,buf);}).join('')+'</div>'+formBtnsHTML(ek);
+  return h;
+}
+function bindPropForm(p){
+  if(p.shared){
+    const g=$('#goto-shared');if(g)g.addEventListener('click',function(){go({space:'ont',page:'shared',sharedId:p.shared,propFocus:false});});
+    return;
+  }
+  const scope=$('#tab-body');const ek='p:'+p.id;const buf=BUFFERS[ek];
+  if(!buf||!$('[data-k="name"]',scope))return;
+  bindFormInputs(scope,buf,softChange,function(){softChange();render();});
+  bindFormBtns(scope,ek,{validate:function(){
+    const errs=reqCheck(buf,[{k:'name',label:'属性名称'},{k:'def',label:'业务定义'}]);
+    if(buf.dataType==='timeSeries'&&!buf.obsType)errs.push({k:'obsType',msg:'请选择观测值类型。'});
+    return errs;}});
+}
+
+/* --- O3 链接表单 --- */
+function linkFormHTML(l){
+  const ek='lk:'+l.id;const buf=bufOf(ek);
+  const objs=SAVED.ont.objects.map(function(o){return [o.id,o.name];});
+  const s=findObj(buf.start),t=findObj(buf.end);
+  let h='<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:6px;display:flex;align-items:center;gap:12px"><h3>编辑链接</h3><button class="btn primary" style="margin-left:auto" data-assist="'+ek+'">✦ 辅助填写</button></div>';
+  h+='<div class="form-grid">'
+   +fieldHTML({k:'start',label:'起点对象',type:'select',req:1,opts:objs},buf)
+   +fieldHTML({k:'end',label:'终点对象',type:'select',req:1,opts:objs},buf)
+   +fieldHTML({k:'fwd',label:'正向名称',type:'text',req:1,hint:'从起点读到终点的业务含义。'},buf)
+   +fieldHTML({k:'card',label:'数量关系',type:'select',req:1,opts:[['','请选择数量关系']].concat(CARDINALITY)},buf)
+   +'<div class="field full"><details class="fold" open><summary>反向阅读名称（选填）</summary>'
+   +fieldHTML({k:'rev',label:'反向名称',type:'text',opt:1,ph:'例如 包含储能簇'},buf)+'</details></div>'
+   +'<div class="field full"><details class="fold" open><summary>更多信息（选填）</summary>'
+   +fieldHTML({k:'def',label:'业务定义',type:'textarea',opt:1,rows:3},buf)+'</details></div>'
+   +'<div class="field full"><span class="field-label">关系预览</span><div class="static-val">'+esc((s?s.name:'?')+' → '+(buf.fwd||'（未命名）')+' → '+(t?t.name:'?'))+'</div></div>'
+   +'</div>'+formBtnsHTML(ek);
+  return h;
+}
+function bindLinkForm(l){
+  const scope=$('#tab-body');const ek='lk:'+l.id;const buf=BUFFERS[ek];
+  if(!buf)return;
+  bindFormInputs(scope,buf,softChange,function(){softChange();render();});
+  bindFormBtns(scope,ek,{validate:function(){return reqCheck(buf,[
+    {k:'start',label:'起点对象'},{k:'end',label:'终点对象'},{k:'fwd',label:'正向名称'},{k:'card',label:'数量关系'}]);}});
+}
+
+/* --- 共享属性页 --- */
+function renderSharedPage(){
+  const main=$('#main');const sp=findShared(NAV.sharedId)||SAVED.ont.shared[0];NAV.sharedId=sp.id;
+  let h='<div class="split"><div class="card"><h3>共享属性库</h3><ul class="obj-list" style="margin-top:8px">';
+  SAVED.ont.shared.forEach(function(s){
+    h+='<li data-sh="'+s.id+'" class="'+(s.id===sp.id?'on':'')+'">'+esc(s.name)+'<span class="tag">'+s.refs.length+' 个对象引用</span></li>';});
+  h+='</ul><div class="note" style="margin-top:10px">采纳建议不会自动创建/合并共享定义；采用已有共享定义需要你在库中显式选择并确认关联。</div></div><div>';
+  const ek='sh:'+sp.id;
+  h+='<div class="card">'+assistHeadHTML(ek,'编辑共享属性「'+sp.name+'」','被 '+sp.refs.map(esc).join('、')+' 引用 · 修改高影响字段需确认')+'<div id="sh-form"></div></div>';
+  h+='</div></div>';
+  main.innerHTML=h;bindHead(ek);
+  $$('[data-sh]').forEach(function(li){li.addEventListener('click',function(){go({sharedId:li.dataset.sh});});});
+  const buf=bufOf(ek);
+  const scope=$('#sh-form');
+  scope.innerHTML='<div class="form-grid">'
+   +fieldHTML({k:'name',label:'属性名称',type:'text',req:1},buf)
+   +fieldHTML({k:'def',label:'业务定义',type:'textarea',req:1,rows:3},buf)
+   +fieldHTML({k:'dataType',label:'数据类型',type:'select',req:1,opts:DATATYPES},buf)
+   +fieldHTML({k:'obsType',label:'观测值类型',type:'select',req:1,opts:OBSTYPES,show:function(b){return b.dataType==='timeSeries';}},buf)
+   +'<div class="field full"><span class="field-label">引用该共享定义的对象</span><div class="static-val">'+sp.refs.map(esc).join('、')+'</div></div>'
+   +'</div>'+formBtnsHTML(ek);
+  bindFormInputs(scope,buf,softChange,function(){softChange();render();});
+  bindFormBtns(scope,ek,{validate:function(){return reqCheck(buf,[{k:'name',label:'属性名称'},{k:'def',label:'业务定义'}]);},
+    preSave:function(done){
+      const defChanged=buf.def!==sp.def,typeChanged=buf.dataType!==sp.dataType||buf.obsType!==sp.obsType;
+      if(!(defChanged||typeChanged)){done(true);return;}
+      if(sp.refs.length<2){done(true);return;}
+      showModal('<h3>共享定义影响确认</h3><p>你正在修改被 <b>'+sp.refs.length+'</b> 个对象引用的共享属性「'+esc(sp.name)+'」'+(defChanged?'的<b>业务定义</b>':'')+(typeChanged?(defChanged?'和':'')+'<b>数据类型</b>':'')+'。</p>'
+        +'<p>引用该定义的对象：</p><ul>'+sp.refs.map(function(r){return '<li>'+esc(r)+'</li>';}).join('')+'</ul>'
+        +'<p style="color:var(--muted);font-size:12.5px">修改将影响上述对象对本属性的理解。正式实现还会执行后端引用保护与版本策略；取消则不保存。</p>'
+        +'<div class="foot"><button class="btn" id="m-cancel">取消，不保存</button><button class="btn primary" id="m-ok">确认影响并演示保存</button></div>',
+        function(card){
+          $('#m-cancel',card).addEventListener('click',function(){hideModal();done(false);});
+          $('#m-ok',card).addEventListener('click',function(){hideModal();done(true);});
+        });
+    }});
+}
+
+/* --- 业务规则页 --- */
+function renderRulesPage(){
+  const main=$('#main');const r=findRule(NAV.ruleId)||SAVED.ont.rules[0];NAV.ruleId=r.id;
+  let h='<div class="split"><div class="card"><h3>业务规则库</h3><ul class="obj-list" style="margin-top:8px">';
+  SAVED.ont.rules.forEach(function(x){h+='<li data-rule="'+x.id+'" class="'+(x.id===r.id?'on':'')+'">'+esc(x.name)+'</li>';});
+  h+='</ul><div class="note" style="margin-top:10px">规则内容选填；历史输出只读保留，辅助填写不会生成新的输出字段。</div></div><div>';
+  const ek='rule:'+r.id;
+  h+='<div class="card">'+assistHeadHTML(ek,'编辑规则「'+r.name+'」','规则属于本体草稿；不写入具体表名、字段名或项目 SQL')+'<div id="rule-form"></div></div></div></div>';
+  main.innerHTML=h;bindHead(ek);
+  $$('[data-rule]').forEach(function(li){li.addEventListener('click',function(){go({ruleId:li.dataset.rule});});});
+  const buf=bufOf(ek);const scope=$('#rule-form');
+  scope.innerHTML='<div class="form-grid">'
+   +fieldHTML({k:'name',label:'规则名称',type:'text',req:1},buf)
+   +fieldHTML({k:'def',label:'业务定义',type:'textarea',req:1,rows:3},buf)
+   +fieldHTML({k:'content',label:'规则内容',type:'textarea',opt:1,rows:10,full:true},buf)
+   +fieldHTML({k:'legacy',label:'历史补充说明（原输出结果）',type:'ro',full:true,display:esc(r.legacy||'（无）')+'<span class="tag">只读保留</span>'},buf)
+   +'</div>'+formBtnsHTML(ek);
+  bindFormInputs(scope,buf,softChange,function(){softChange();render();});
+  bindFormBtns(scope,ek,{validate:function(){return reqCheck(buf,[{k:'name',label:'规则名称'},{k:'def',label:'业务定义'}]);}});
+}
+
+/* --- 动作定义页 --- */
+function renderActionsPage(){
+  const main=$('#main');const a=findAction(NAV.actionId)||SAVED.ont.actions[0];NAV.actionId=a.id;
+  let h='<div class="split"><div class="card"><h3>动作库</h3><ul class="obj-list" style="margin-top:8px">';
+  SAVED.ont.actions.forEach(function(x){h+='<li data-act="'+x.id+'" class="'+(x.id===a.id?'on':'')+'">'+esc(x.name)+'</li>';});
+  h+='</ul><div class="note" style="margin-top:10px">本原型不提供动作参数或提交条件。</div></div><div>';
+  const ek='act:'+a.id;
+  h+='<div class="card">'+assistHeadHTML(ek,'编辑动作「'+a.name+'」','动作定义属于本体；项目侧的接口映射在“动作映射”单独维护')+'<div id="act-form"></div></div></div></div>';
+  main.innerHTML=h;bindHead(ek);
+  $$('[data-act]',main).forEach(function(li){li.addEventListener('click',function(){go({actionId:li.dataset.act});});});
+  const buf=bufOf(ek);const scope=$('#act-form');
+  scope.innerHTML='<div class="form-grid">'
+   +fieldHTML({k:'name',label:'动作名称',type:'text',req:1,ph:'例如 停止充放电'},buf)
+   +fieldHTML({k:'def',label:'业务定义',type:'textarea',req:1,rows:4},buf)
+   +fieldHTML({k:'effect',label:'预期效果',type:'textarea',opt:1,rows:4,full:true,ph:'例如 设备退出充放电运行状态。'},buf)
+   +'<div class="field full"><span class="field-label">已关联对象（在对象详情中维护）</span><div class="static-val">'+(a.linkedObjs.length?a.linkedObjs.map(esc).join('、'):'（无）')+'<span class="tag">辅助填写不会自动关联</span></div></div>'
+   +'</div>'+formBtnsHTML(ek);
+  bindFormInputs(scope,buf,softChange,function(){softChange();render();});
+  bindFormBtns(scope,ek,{validate:function(){return reqCheck(buf,[{k:'name',label:'动作名称'},{k:'def',label:'业务定义'}]);}});
+}
+/* ---------------- 项目区页面 ---------------- */
+function renderMappingPage(){
+  const main=$('#main');
+  const objs=[['o_cluster','储能簇'],['o_bess','储能设备']];
+  let h='<div class="split"><div class="card"><h3>对象映射</h3><ul class="obj-list" style="margin-top:8px">';
+  objs.forEach(function(o){h+='<li data-po="'+o[0]+'" class="'+(o[0]===NAV.pObjId?'on':'')+'">'+esc(o[1])+'</li>';});
+  h+='</ul><div class="note" style="margin-top:10px">项目固定引用 <b>'+esc(SAVED.prj.ontRef)+' '+SAVED.prj.refVersion+'</b>；对象定义不跟随本体草稿。</div></div><div>';
+  const tabs=[['instance','实例识别'],['props','属性取值'],['links','链接映射'],['actions','动作映射']];
+  h+='<div class="card"><div class="tabs">'+tabs.map(function(t){
+    return '<button data-ptab="'+t[0]+'" class="'+(NAV.pTab===t[0]?'on':'')+'">'+t[1]+'</button>';}).join('')+'</div>'
+   +'<div id="ptab-body"></div></div></div></div>';
+  main.innerHTML=h;
+  $$('[data-po]').forEach(function(li){li.addEventListener('click',function(){go({pObjId:li.dataset.po});});});
+  $$('[data-ptab]').forEach(function(b){b.addEventListener('click',function(){go({pTab:b.dataset.ptab});});});
+  const box=$('#ptab-body');
+  if(NAV.pTab==='instance')renderInstancePage(box);
+  else if(NAV.pTab==='props')renderPropSrcPage(box);
+  else if(NAV.pTab==='links')renderLinkMapPage(box);
+  else renderActionBindPage(box);
+}
+function descCardHTML(k,buf,hint,rows){
+  return '<div class="desc-card"><div class="desc-head"><b>说明</b>'
+   +'<button type="button" data-desc-toggle>收起 ▴</button></div>'
+   +'<textarea data-k="'+k+'" rows="'+(rows||7)+'" aria-label="项目说明" placeholder="'+esc(hint||'')+'">'+esc(getByPath(buf,k)||'')+'</textarea></div>';
+}
+function bindDescToggle(scope){
+  $$('[data-desc-toggle]',scope).forEach(function(b){b.addEventListener('click',function(){
+    const ta=b.closest('.desc-card').querySelector('textarea');
+    const hidden=ta.style.display==='none';
+    ta.style.display=hidden?'':'none';b.textContent=hidden?'收起 ▴':'展开 ▾';});});
+}
+
+/* --- P1 实例识别 --- */
+function renderInstancePage(box){
+  const oid=NAV.pObjId;const src=SAVED.prj.instanceSrcs[oid];
+  const objName=oid==='o_cluster'?'储能簇':'储能设备';
+  const ek='pi:'+oid;
+  box.innerHTML=assistHeadHTML(ek,'「'+objName+'」实例识别','项目：'+SAVED.prj.name+' · 固定引用 '+SAVED.prj.ontRef+' '+SAVED.prj.refVersion)
+   +'<div id="inst-form"></div>';
+  bindHead(ek);
+  const buf=bufOf(ek);const scope=$('#inst-form');
+  let h='';
+  if(buf.mode==='registered'){
+    h+='<div class="form-grid">'
+     +fieldHTML({k:'mode',label:'实例来源方式',type:'select',req:1,opts:[['database','数据库表／视图'],['registered','项目登记']],full:false},buf)
+     +fieldHTML({k:'reg',label:'已登记实例',type:'ro',display:SAVED.prj.registeredDevices.map(function(d){return esc(d.code)+' · '+esc(d.name);}).join('<br>')},buf)
+     +'</div><div class="note">该对象使用项目登记实例，不绑定数据表；辅助填写不会建议为其创建表绑定。</div>';
+  }else{
+    const connOpts=SAVED.prj.connections.filter(function(c){return c.kind==='MySQL';}).map(function(c){return [c.id,c.name+' · MySQL'];});
+    const tables=DEMO.catalog==='missing'?[]:Object.keys(SAVED.prj.catalog);
+    const cf=catalogFields(buf.table);
+    const pkOpts=[['','请选择字段']].concat((cf||[]).map(function(f){return [f.name,f.name+'（'+f.comment+'）'];}));
+    h+='<div class="form-grid">'
+     +fieldHTML({k:'mode',label:'实例来源方式',type:'select',req:1,opts:[['database','数据库表／视图'],['registered','项目登记']]},buf)
+     +fieldHTML({k:'conn',label:'数据连接',type:'select',req:1,opts:connOpts},buf)
+     +fieldHTML({k:'table',label:'来源表／视图',type:'select',req:1,
+        opts:[['','请选择表／视图']].concat(tables.map(function(t){return [t,t];})),
+        hint:DEMO.catalog==='missing'?'<span style="color:var(--danger)">目录缺失（演示）：无法列出表与字段</span>':''},buf)
+     +fieldHTML({k:'pk',label:'实例主键',type:'select',
+        opts:DEMO.catalog==='missing'?[['','目录缺失，无法选择字段']]:pkOpts,
+        hint:'字段名含 id 不足以证明唯一；需要目录或你的资料支持。'},buf)
+     +'</div>'+descCardHTML('desc',buf,'说明该对象实例来自哪张表、每行代表什么……',9)
+     +formBtnsHTML(ek);
+  }
+  if(buf.mode==='registered')h+=descCardHTML('desc',buf,'说明这些登记实例代表什么……',9)+formBtnsHTML(ek);
+  scope.innerHTML=h;
+  bindFormInputs(scope,buf,softChange,function(){softChange();render();});
+  bindDescToggle(scope);
+  bindFormBtns(scope,ek,{validate:function(){const errs=[];
+    if(buf.mode==='database'){errs.push.apply(errs,reqCheck(buf,[{k:'conn',label:'数据连接'},{k:'table',label:'来源表／视图'}]));}
+    return errs;}});
+}
+
+/* --- P2/P3/P4 属性取值 --- */
+function renderPropSrcPage(box){
+  const list=SAVED.prj.propSrcs.filter(function(s){return s.obj===NAV.pObjId;});
+  if(!list.some(function(s){return s.id===NAV.psId;}))NAV.psId=list.length?list[0].id:null;
+  let h='<table class="lst"><tr><th>属性</th><th>来源类型</th><th>项目说明</th><th>状态</th><th></th></tr>';
+  list.forEach(function(s){
+    const st=statusOfPs(s);
+    h+='<tr><td>'+esc(s.prop)+'</td><td>'+psKindLabel(s.kind)+'</td><td style="color:var(--muted)">'+esc(trunc(s.desc,30)||'（无）')+'</td>'
+     +'<td><span class="tag '+(st.cls||'')+'">'+st.label+'</span></td>'
+     +'<td><button class="pick" data-ps="'+s.id+'">配置</button></td></tr>';});
+  h+='</table>';
+  const cur=psOf(NAV.psId);
+  if(cur)h+='<div id="ps-form" style="margin-top:14px"></div>';
+  box.innerHTML=h;
+  $$('[data-ps]').forEach(function(b){b.addEventListener('click',function(){go({psId:b.dataset.ps});});});
+  if(cur)renderPsForm(cur);
+}
+function psKindLabel(k){return {field:'读取数据源（表字段）',redis:'读取数据源（Redis）',flow:'函数编排'}[k]||k;}
+function statusOfPs(s){
+  if(s.kind==='field')return s.field?{label:'已配置',cls:'ok'}:{label:'待配置',cls:'warn'};
+  if(s.kind==='redis')return (s.tpl&&s.tpl.some(function(x){return typeof x!=='string';})&&s.method)?{label:'已配置',cls:'ok'}:{label:'待配置',cls:'warn'};
+  if(s.kind==='flow')return s.flowId?{label:'已配置',cls:'ok'}:{label:'待配置',cls:'warn'};
+  return {label:'—'};
+}
+function renderPsForm(s){
+  const ek='ps:'+s.id;const buf=bufOf(ek);const scope=$('#ps-form');
+  const connAll=SAVED.prj.connections.map(function(c){return [c.id,c.name+' · '+c.kind];});
+  let h='<div style="border-top:1px solid var(--line);padding-top:6px;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3>配置来源 · '+esc(s.prop)+'<span class="tag">'+psKindLabel(s.kind)+'</span></h3>'
+   +'<span style="margin-left:auto"></span><span class="dirty-pill" id="dirty-pill" hidden>未保存</span>'
+   +(SCEN[ek]?'<button class="btn primary" data-assist="'+ek+'">✦ 辅助填写</button>':'<span class="note" style="margin:0">该来源本原型未提供辅助场景</span>')+'</div>'; /* 有场景才给入口，不设假按钮 */
+  if(NAV.pObjId==='o_cluster'&&s.prop==='SOC实时值'){h+='<div class="note" style="margin-top:6px">演示连接只用已有候选；<b>不会生成地址或密码</b>；Key 模板必须由你提供。</div>';}
+  if(s.kind==='field'){
+    const tables=DEMO.catalog==='missing'?[]:Object.keys(SAVED.prj.catalog);
+    const cf=catalogFields(buf.table);
+    h+='<div class="form-grid">'
+     +fieldHTML({k:'conn',label:'数据连接',type:'select',req:1,opts:connAll},buf)
+     +fieldHTML({k:'table',label:'表／视图',type:'select',req:1,opts:[['','请选择表／视图']].concat(tables.map(function(t){return [t,t];}))},buf)
+     +fieldHTML({k:'field',label:'取值字段',type:'select',req:1,
+        opts:DEMO.catalog==='missing'?[['','目录缺失，无法选择字段']]:[['','请选择字段']].concat((cf||[]).map(function(f){return [f.name,f.name+'（'+f.comment+'）'];}))},buf)
+     +fieldHTML({k:'merge',label:'多条记录如何得到一个值',type:'select',req:1,opts:[['zero_or_one','预期零或一条，多行报错'],['latest','按时间取最新'],['sum','求和'],['avg','求平均']]},buf)
+     +'</div>'+descCardHTML('desc',buf,'说明这个属性怎么取值、口径是什么……')+formBtnsHTML(ek);
+  }else if(s.kind==='redis'){
+    h+='<div class="form-grid">'
+     +fieldHTML({k:'conn',label:'数据连接',type:'select',req:1,opts:SAVED.prj.connections.filter(function(c){return c.kind==='Redis';}).map(function(c){return [c.id,'已登记 Redis 来源 · '+c.name];})},buf)
+     +fieldHTML({k:'method',label:'读取方式',type:'select',req:1,opts:[['','请选择读取方式'],['GET','GET'],['HGET','HGET']]},buf)
+     +'</div>';
+    h+='<div class="field full"><span class="field-label">Key 模板<span class="req">*</span></span><div id="tpl-editor"></div>'
+     +'<div class="hint">输入固定文字并“插入参数”；参数来源只能从下拉选择。原型不会从对象名猜 Key。</div><div class="err" data-err="tpl" hidden></div></div>';
+    if(buf.method==='HGET'){h+='<div class="form-grid">'+fieldHTML({k:'hashField',label:'Hash 字段',type:'select',req:1,opts:[['','请选择'],['soc','soc'],['state','state']]},buf)+'</div>';}
+    h+='<div class="form-grid">'
+     +fieldHTML({k:'conv',label:'结果转换',type:'select',req:1,opts:[['xsd:double','数值'],['xsd:int','整数'],['text','文本']]},buf)
+     +fieldHTML({k:'miss',label:'未找到或转换失败',type:'select',req:1,opts:[['none','明确返回无数据'],['error','返回错误']]},buf)
+     +'</div>'
+     +'<div class="field"><span class="field-label">示例实例主键</span><div style="display:flex;gap:8px"><input type="text" id="pk-sample" value="1001" aria-label="示例实例主键"><button class="btn" id="tpl-preview">预览 Key</button></div></div>'
+     +descCardHTML('desc',buf,'说明 Key 约定、原始值口径（如 0～100）……')+formBtnsHTML(ek);
+  }else{
+    const flow=SAVED.prj.flows.find(function(f){return f.id===buf.flowId;});
+    const outLabel=DEMO.flowOutputLabel();
+    h+='<div class="form-grid">'
+     +fieldHTML({k:'flowId',label:'函数编排',type:'select',req:1,
+        opts:[['','请选择函数编排']].concat(SAVED.prj.flows.map(function(f){return [f.id,f.name];}))},buf)
+     +fieldHTML({k:'flowOut',label:'输出声明',type:'static',display:esc(outLabel)+(DEMO.flow==='text'?'<span class="tag danger">与时间序列属性不兼容（演示）</span>':'')},buf)
+     +'</div>';
+    h+='<div class="field full"><span class="field-label">输入参数绑定</span>'+flowBindTableHTML(buf,flow)+'</div>';
+    h+=descCardHTML('desc',buf,'整理这个属性取值规则的文字说明……')+formBtnsHTML(ek);
+  }
+  scope.innerHTML=h;
+  if(s.kind==='redis')renderTplEditor(buf);
+  bindFormInputs(scope,buf,softChange,function(){softChange();render();});
+  bindDescToggle(scope);
+  const pv=$('#tpl-preview',scope);
+  if(pv)pv.addEventListener('click',function(){
+    const sample=$('#pk-sample').value||'?';
+    const k=tplSerialize(buf.tpl).replace(/\{[^{}]*\}/g,sample);
+    toast('预览 Key（仅本地字符串替换，未连接 Redis）：'+k);});
+  bindFormBtns(scope,ek,{validate:function(){const errs=[];
+    if(s.kind==='field'){errs.push.apply(errs,reqCheck(buf,[{k:'conn',label:'数据连接'},{k:'table',label:'表／视图'},{k:'field',label:'取值字段'}]));}
+    else if(s.kind==='redis'){errs.push.apply(errs,reqCheck(buf,[{k:'conn',label:'数据连接'},{k:'method',label:'读取方式'}]));
+      if(!buf.tpl.length)errs.push({k:'tpl',msg:'请配置 Key 模板。'});}
+    else{errs.push.apply(errs,reqCheck(buf,[{k:'flowId',label:'函数编排'}]));}
+    return errs;}});
+}
+function flowBindTableHTML(buf,flow){
+  const inputs=flow?flow.inputs:[{k:'model_name',t:'文本'},{k:'attr_name',t:'文本'},{k:'model_id',t:'文本'},{k:'start_time',t:'时间'},{k:'end_time',t:'时间'}];
+  const attrOpts=[['cluster_code','簇编号'],['storage_id','业务设备ID'],['capacity','额定容量']].concat(
+    SAVED.ont.props.filter(function(p){return p.obj===NAV.pObjId;}).map(function(p){return ['prop:'+p.id,p.name];}));
+  let h='<table class="params"><tr><th style="width:34%">输入</th><th style="width:30%">来源</th><th>来源项／固定值</th></tr>';
+  inputs.forEach(function(i){
+    const srcSel=buf.bind[i.k]||'';
+    const runtime=i.k==='start_time'||i.k==='end_time';
+    h+='<tr><td>'+esc(i.k)+'（'+esc(i.t)+'）</td>';
+    if(runtime){
+      h+='<td colspan="2"><span class="tag warn">待配置</span> <span style="color:var(--muted);font-size:12.5px">当前表单不支持绑定运行时输入；正式实现确认后再配置（原型不发明能力）</span></td>';
+    }else{
+      h+='<td><select data-k="bind.'+i.k+'"><option value="">待绑定（请选择来源）</option>'
+       +'<option value="attr"'+(srcSel==='attr'?' selected':'')+'>当前对象属性</option>'
+       +'<option value="const"'+(srcSel==='const'?' selected':'')+'>固定值</option>'
+       +'<option value="instid"'+(srcSel==='instid'?' selected':'')+'>实例编号</option></select></td>';
+      let third='—';
+      if(srcSel==='attr'){
+        third='<select data-k="bindv.'+i.k+'"><option value="">属性…</option>'+attrOpts.map(function(o){
+          return '<option value="'+esc(o[0])+'"'+(buf.bindv&&buf.bindv[i.k]===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join('')+'</select>';
+      }else if(srcSel==='const'){
+        third='<input type="text" data-k="bindv.'+i.k+'" value="'+esc((buf.bindv&&buf.bindv[i.k])||'')+'" placeholder="固定值">';
+      }else if(srcSel==='instid'){third='<span style="color:var(--muted);font-size:12.5px">当前对象实例编号</span>';}
+      h+='<td>'+third+'</td>';
+    }
+    h+='</tr>';});
+  h+='</table><p class="panel-note">来源候选来自“已有编排声明”。原型不创建/编辑编排，不提供“前往函数编排”真实跳转。</p>';
+  return h;
+}
+function renderTplEditor(buf){
+  const host=$('#tpl-editor');if(!host)return;
+  const srcOpts=[['','参数来源…'],['pk','实例主键（pk）'],['attr:cluster_code','属性 · 簇编号'],['attr:storage_id','属性 · 业务设备ID']];
+  let h='<div class="tpl-wrap">';
+  buf.tpl.forEach(function(sg,idx){
+    if(typeof sg==='string'){h+='<span class="tpl-seg">'+esc(sg)+'</span>';}
+    else{
+      h+='<span class="tpl-tok">{'+esc(sg.key)+' <select data-toksrc="'+idx+'" aria-label="参数 '+esc(sg.key)+' 来源">'
+       +srcOpts.map(function(o){return '<option value="'+o[0]+'"'+(sg.src===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join('')
+       +'</select><button type="button" class="btn small" data-tokdel="'+idx+'" aria-label="删除参数">×</button></span>';
+    }});
+  if(!buf.tpl.length)h+='<span style="color:var(--faint);font-size:12.5px">（空模板——请输入固定文字并插入参数）</span>';
+  h+='</div><div class="tpl-add"><input type="text" id="tpl-fixed" placeholder="固定文字，例如 m_storage_cluster_phase-" aria-label="固定文字片段">'
+   +'<button class="btn small" id="tpl-add-text">＋文字</button>'
+   +'<input type="text" id="tpl-token" placeholder="参数名，例如 id" aria-label="参数名" style="max-width:120px">'
+   +'<button class="btn small" id="tpl-add-token">＋参数</button></div>';
+  host.innerHTML=h;
+  $$('[data-toksrc]',host).forEach(function(sel){sel.addEventListener('change',function(){
+    buf.tpl[+sel.dataset.toksrc].src=sel.value;softChange();render();});});
+  $$('[data-tokdel]',host).forEach(function(b){b.addEventListener('click',function(){
+    buf.tpl.splice(+b.dataset.tokdel,1);softChange();render();});});
+  $('#tpl-add-text',host).addEventListener('click',function(){
+    const v=$('#tpl-fixed').value;if(!v.trim())return;buf.tpl.push(v.trim());$('#tpl-fixed').value='';softChange();render();});
+  $('#tpl-add-token',host).addEventListener('click',function(){
+    const v=$('#tpl-token').value.trim();if(!v)return;buf.tpl.push({key:v,src:''});$('#tpl-token').value='';softChange();render();});
+}
+DEMO.flowOutputLabel=function(){return DEMO.flow==='text'?'文本<字符串>':'时间序列<数值>';};
+
+/* --- P5 链接映射 --- */
+function renderLinkMapPage(box){
+  const lm=SAVED.prj.linkMaps[NAV.lmId]||SAVED.prj.linkMaps.l_c2b;NAV.lmId='l_c2b';
+  const link=findLink('l_c2b');
+  const ek='lm:l_c2b';const buf=bufOf(ek);
+  const cf=catalogFields('m_storage_cluster_phase');
+  let h=assistHeadHTML(ek,'链接映射：储能簇 → 储能设备','项目：'+SAVED.prj.name+' · 固定引用 '+SAVED.prj.ontRef+' '+SAVED.prj.refVersion+' · 两端对象共用这一份说明');
+  h+='<div class="form-grid">'
+   +fieldHTML({k:'stObj',label:'起点对象',type:'static',display:'储能簇（实例来源 · m_storage_cluster_phase）'},buf)
+   +fieldHTML({k:'enObj',label:'终点对象',type:'static',display:'储能设备（项目登记实例）'},buf)
+   +fieldHTML({k:'startTable',label:'起点来源表',type:'select',req:1,opts:[['cluster_src','实例来源 · m_storage_cluster_phase']]},buf)
+   +fieldHTML({k:'startField',label:'起点关联字段',type:'select',req:1,
+      opts:DEMO.catalog==='missing'?[['','目录缺失，无法选择字段']]:[['','请选择字段']].concat((cf||[]).map(function(f){return [f.name,f.name+'（'+f.comment+'）'];}))},buf)
+   +fieldHTML({k:'endTable',label:'终点来源',type:'select',req:1,opts:[['device_registered','项目登记 · 储能设备']]},buf)
+   +fieldHTML({k:'endField',label:'终点匹配字段',type:'select',req:1,opts:[['','请选择字段'],['code','实例编号'],['name','显示名称']]},buf)
+   +'<div class="field full"><span class="field-label">关系预览</span><div class="static-val">储能簇.'+esc(buf.startField||'（未选）')+' ↔ 储能设备.'+esc(buf.endField||'（未选）')+' · 数量关系：多对一（来自引用版本定义）</div></div>'
+   +'</div>'+descCardHTML('desc',buf,'说明两个对象如何关联……需要你的资料支持，不按同名推断。')+formBtnsHTML(ek);
+  box.innerHTML=h;bindHead(ek);
+  bindFormInputs(box,buf,softChange,function(){softChange();render();});
+  bindDescToggle(box);
+  bindFormBtns(box,ek,{validate:function(){return reqCheck(buf,[{k:'startField',label:'起点关联字段'},{k:'endField',label:'终点匹配字段'}]);}});
+}
+
+/* --- P6 动作映射 --- */
+function renderActionBindPage(box){
+  const a=SAVED.ont.actions.find(function(x){return x.id==='a_stop';});
+  const ek='ab:a_stop';const buf=bufOf(ek);
+  let h=assistHeadHTML(ek,'动作映射：'+a.name,'动作与关联来自项目引用的本体版本 '+SAVED.prj.refVersion+' · 与本体动作定义分离');
+  h+='<div class="form-grid">'
+   +fieldHTML({k:'method',label:'请求方式',type:'select',req:1,opts:[['GET','GET'],['POST','POST'],['PUT','PUT'],['PATCH','PATCH'],['DELETE','DELETE']]},buf)
+   +fieldHTML({k:'url',label:'接口地址',type:'text',req:1,ph:'https://…（当前表单要求完整 URL）',hint:'仅提供相对路径时保存会被要求补充；原型不编造域名。'},buf)
+   +fieldHTML({k:'bodyFmt',label:'请求体格式',type:'select',req:1,opts:[['json','JSON'],['form','表单（application/x-www-form-urlencoded）']],show:function(b){return ['POST','PUT','PATCH'].indexOf(b.method)>=0;}},buf)
+   +'</div>';
+  h+='<div class="field full"><span class="field-label">参数</span><table class="params"><tr><th>参数名</th><th>参数位置</th><th>取值来源</th><th>来源项／固定值</th><th>值类型</th></tr>'
+   +'<tr><td>storageId</td>'
+   +'<td><select data-k="pStoragePos"><option value="body"'+(buf.pStoragePos==='body'?' selected':'')+'>请求体</option><option value="path"'+(buf.pStoragePos==='path'?' selected':'')+'>路径</option><option value="query"'+(buf.pStoragePos==='query'?' selected':'')+'>Query</option></select></td>'
+   +'<td><select data-k="pStorageSrc"><option value="">待绑定</option><option value="attr"'+(buf.pStorageSrc==='attr'?' selected':'')+'>当前对象属性</option><option value="pk"'+(buf.pStorageSrc==='pk'?' selected':'')+'>当前对象实例主键</option><option value="const"'+(buf.pStorageSrc==='const'?' selected':'')+'>固定值</option></select></td>'
+   +'<td>'+(buf.pStorageSrc==='attr'
+      ?'<select data-k="pStorageVal"><option value="">属性…</option><option value="storage_id"'+(buf.pStorageVal==='storage_id'?' selected':'')+'>业务设备ID</option><option value="cluster_code"'+(buf.pStorageVal==='cluster_code'?' selected':'')+'>簇编号</option></select>'
+      :(buf.pStorageSrc==='const'?'<input type="text" data-k="pStorageVal" value="'+esc(buf.pStorageVal||'')+'">':'<span style="color:var(--muted);font-size:12.5px">'+(buf.pStorageSrc==='pk'?'实例主键 id':'—')+'</span>'))+'</td>'
+   +'<td><span class="tag">文本</span></td></tr>'
+   +'<tr><td>power</td>'
+   +'<td><select data-k="pPowerPos"><option value="body"'+(buf.pPowerPos==='body'?' selected':'')+'>请求体</option><option value="query"'+(buf.pPowerPos==='query'?' selected':'')+'>Query</option></select></td>'
+   +'<td><select data-k="pPowerSrc"><option value="const" selected>固定值</option></select></td>'
+   +'<td><input type="text" data-k="pPowerVal" value="'+esc(buf.pPowerVal||'')+'"></td>'
+   +'<td><select data-k="pPowerType"><option value="xsd:double"'+(buf.pPowerType==='xsd:double'?' selected':'')+'>数值</option><option value="xsd:string"'+(buf.pPowerType==='xsd:string'?' selected':'')+'>文本</option><option value="xsd:boolean"'+(buf.pPowerType==='xsd:boolean'?' selected':'')+'>是-否</option></select></td></tr>'
+   +'</table><p class="panel-note">不提供“执行/测试请求”按钮；请求被接受不等于设备已停止。</p></div>';
+  h+='<div class="field full"><details class="fold"><summary>认证配置（选填）</summary><div class="form-grid">'
+   +fieldHTML({k:'auth',label:'认证方式',type:'select',opts:[['none','无认证'],['bearer','Bearer Token'],['apikey','API Key']]},buf)
+   +(buf.auth&&buf.auth!=='none'?fieldHTML({k:'cred',label:'凭据引用',type:'select',req:1,opts:[['','请选择已登记凭据'],['cred_ems','（演示）EMS 控制服务凭据'],['cred_gw','（演示）园区网关凭据']],hint:'密钥只写不回显；本原型不生成任何密钥。'},buf):fieldHTML({k:'credHint',label:'凭据引用',type:'static',display:'（无认证）'},buf))
+   +'</details></div>';
+  h+=descCardHTML('desc',buf,'接口说明：参数含义、等价关系依据……')+formBtnsHTML(ek);
+  box.innerHTML=h;bindHead(ek);
+  bindFormInputs(box,buf,softChange,function(){softChange();render();});
+  bindDescToggle(box);
+  bindFormBtns(box,ek,{validate:function(){
+    const errs=reqCheck(buf,[{k:'url',label:'接口地址'}]);
+    if(buf.url&&!/^https?:\/\//.test(buf.url))errs.push({k:'url',msg:'接口地址需为完整 URL（协议+域名）；仅相对路径不完整。'});
+    if(!buf.pStorageSrc)errs.push({k:'pStorageSrc',msg:'请为 storageId 选择取值来源。'});
+    if(buf.pStorageSrc==='attr'&&!buf.pStorageVal)errs.push({k:'pStorageVal',msg:'请选择来源属性。'});
+    return errs;}});
+}
+
+/* --- 只读示意页 --- */
+function renderFlowsPage(){
+  const f=SAVED.prj.flows[0];
+  $('#main').innerHTML='<div class="card"><div class="page-head"><div class="ttl"><h2>函数编排（只读示意）</h2><div class="sub">辅助填写仅引用已有编排声明，不自动新建或修改流程</div></div>'
+   +'<div class="page-actions"><button class="btn" id="back-from-flows">返回对象映射</button></div></div>'
+   +'<h3 style="margin-top:8px">'+esc(f.name)+'<span class="tag blue">已有编排</span></h3>'
+   +'<p style="color:var(--muted);font-size:13px">'+esc(f.desc)+'</p>'
+   +'<table class="params" style="max-width:560px"><tr><th>输入</th><th>类型</th></tr>'
+   +f.inputs.map(function(i){return '<tr><td>'+esc(i.k)+'</td><td>'+esc(i.t)+'</td></tr>';}).join('')
+   +'</table><p class="note">输出声明：<b>'+esc(DEMO.flowOutputLabel())+'</b>'+(DEMO.flow==='text'?'<span class="tag danger">演示：已切换为文本，绑定将不兼容</span>':'')+'</p>'
+   +'<p class="panel-note">本原型未演示编排编辑、测试与依赖冻结。</p></div>';
+  $('#back-from-flows').addEventListener('click',function(){go({page:'mapping',pTab:'props'});});
+}
+let llmReturn=null;
+function renderLlmPage(){
+  $('#main').innerHTML='<div class="card"><div class="page-head"><div class="ttl"><h2>模型设置（只读示意）</h2><div class="sub">正式实现按账号配置模型；本原型不连接任何模型</div></div>'
+   +'<div class="page-actions"><button class="btn" id="back-from-llm">返回上页（保留辅助面板输入）</button></div></div>'
+   +'<table class="lst" style="margin-top:10px"><tr><th>名称</th><th>状态</th><th>说明</th></tr>'
+   +'<tr><td>（演示）本地模拟模型</td><td><span class="tag ok">仅示意</span></td><td style="color:var(--muted)">按场景返回预置示例；不存在真实推理</td></tr></table>'
+   +'<div class="note">当前工作台确有模型配置与调用基础（LlmProviders / llm_client），但<b>尚无辅助填写服务</b>；本页仅示意“尚未配置模型”时的前往入口。密钥永不出现在上下文与建议中。</div></div>';
+  $('#back-from-llm').addEventListener('click',function(){
+    if(llmReturn){const t=llmReturn;llmReturn=null;Object.assign(NAV,t);render();panelOpen=true;renderPanel();}
+    else go({page:'mapping'});});
+}
+
+function render(){
+  renderRail();renderTopbar();
+  syncPanelTarget();
+  const main=$('#main');
+  let pageHTMLFn=null;
+  if(NAV.space==='ont'){
+    pageHTMLFn={obj:renderObjPage,shared:renderSharedPage,rules:renderRulesPage,actions:renderActionsPage}[NAV.page];
+  }else{
+    pageHTMLFn={mapping:renderMappingPage,flows:renderFlowsPage,llm:renderLlmPage}[NAV.page];
+  }
+  main.className=panelOpen?'with-panel':'';
+  if(pageHTMLFn)pageHTMLFn();
+  $$('[data-assist]').forEach(function(b){b.addEventListener('click',function(){openPanel(b.dataset.assist);});});
+  updateDirtyPill();
+  renderPanel();
+}
+function softChange(){updateDirtyPill();renderPanel();}
+function syncPanelTarget(){
+  if(!panelOpen)return;
+  const k=curEditKey();
+  if(k&&SCEN[k]){panelCur=k;return;}
+  /* 模型设置示意页保留面板（从面板跳转而来）；其余无辅助目标的页面关闭面板 */
+  if(NAV.page!=='llm')panelOpen=false;
+}
+/* =====================================================================
+   辅助场景（O1–O5、共享属性、P1–P6）：每个场景有独立的示例、问题、
+   建议、依据与上下文摘要；不共用同一段 SOC 文字。
+   ===================================================================== */
+const UN='__unsure__';
+function sug(o){ /* 依据 §5.2：仅当原值为空/占位时才允许默认勾选 */
+  var sv=String(o.old==null?'':o.old).trim();
+  var ph=!sv||/^（(空|未|待|无)/.test(sv);
+  o.defChecked=!!o.defChecked&&ph;o.fields=o.fields||[];return o;}
+function privBuf(){return BUFFERS[curEditKey()]||{};}
+
+const SCEN={
+/* ---------- O1 储能簇对象 ---------- */
+'o:o_cluster':{
+  target:'本体 · 对象「储能簇」（草稿）',
+  keys:['name','def'],
+  examples:['储能簇就是一组电池包捆在一起，含 BMS，可以整体充放电，属于储能设备的组成部分'],
+  ctx:function(){return[
+    ['目标资产','储能设备本体 · 草稿（编辑中；发布版本 '+SAVED.ont.pubVersion+' 不变）'],
+    ['已有对象',SAVED.ont.objects.map(function(o){return o.name;}).join('、')],
+    ['当前表单（未保存）','名称：'+trunc(BUFFERS['o:o_cluster']?BUFFERS['o:o_cluster'].name:'',20)+'；业务定义：'+trunc(BUFFERS['o:o_cluster']?BUFFERS['o:o_cluster'].def:'',30)]];},
+  explains:{name:{what:'对象在当前本体中的业务名称，同一本体内应唯一、可被业务人员直接理解。',need:'对象指代的业务事物；不要使用表名或系统代号。',example:'储能簇、储能设备'},
+    def:{what:'说明这个对象“是什么、由什么构成、处于什么层级”，是共享定义的核心。',need:'组成/边界、与其它对象的关系（不新增层级）、典型实例。',example:'「储能系统」：由多台储能设备及其附属设施组成的站点级对象。'}},
+  fill:function(t,ans,buf){
+    const notes=['上下文仅包含已有对象名称与定义；建议不会创造新的设备层级、对象或链接。'];
+    if(/电池包|BMS|捆在|一组电池簇|充放电/.test(t)){
+      return {suggestions:[sug({label:'业务定义',old:'一组电池。',neu:'由若干电池包并联组成、配置 BMS、可整体参与充放电的储能单元，是储能设备的组成部分。',source:SRC.USER,defChecked:false,fields:['def'],
+        reason:'按你提供的说明整理（已有值替换，默认不勾选）。未新增对象或层级。',
+        apply:function(b){b.def='由若干电池包并联组成、配置 BMS、可整体参与充放电的储能单元，是储能设备的组成部分。';}})],notes:notes};
+    }
+    return {noValid:true,notes:['原型根据你的输入匹配预置场景返回示例，并非真实模型理解。可点击下方示例带入，或换一种描述。']};},
+  check:function(buf){
+    const issues=[];const sugs=[];
+    if(!buf.def||buf.def.length<12)issues.push({field:'def',f:'业务定义',d:'当前定义「'+trunc(buf.def,20)+'」过短，未说明组成与归属关系，读者无法判断它与储能设备/系统的层级。'});
+    if(issues.length)sugs.push(sug({label:'业务定义（按常见簇构成整理，需你确认）',old:buf.def,neu:'由电池包组成、含 BMS、可独立充放电的储能单元，隶属于储能设备。',source:SRC.SUG,defChecked:false,fields:['def'],
+      reason:'补全组成与归属；仅建议，不标“业务已验证”。',apply:function(b){b.def='由电池包组成、含 BMS、可独立充放电的储能单元，隶属于储能设备。';}}));
+    return {issues:issues,suggestions:sugs,notes:['检查读取的是当前未保存表单；不会先静默保存。']};}
+},
+/* ---------- O2 储能簇 SOC 私有属性（D1） ---------- */
+'p:p_c_soc':{
+  target:'本体 · 储能簇 · 属性「SOC」（草稿）',
+  keys:['def','dataType','obsType','fmt'],
+  examples:['电池还剩多少电','SOC 是剩余电量占额定容量的百分比，记录为时间序列，数值比例约定 0～100'],
+  ctx:function(){const b=BUFFERS['p:p_c_soc']||{};return[
+    ['目标资产','储能设备本体 · 草稿 → 对象「储能簇」私有属性「SOC」'],
+    ['当前表单（未保存）','定义：'+trunc(b.def,24)+'；数据类型：'+dtypeLabel(b.dataType,b.obsType)],
+    ['相关定义','共享属性库存在候选「SOC（荷电状态）」（被 储能簇、储能设备 引用）'],
+    ['已有对象属性','储能簇：'+SAVED.ont.props.filter(function(p){return p.obj==='o_cluster'&&p.id!=='p_c_soc';}).map(function(p){return p.name;}).join('、')]];},
+  explains:{def:{what:'属性的业务含义与口径：这个数值到底表示什么、按什么基准计算。',need:'量纲/比例约定、计算基准（如额定容量）、取值范围。',example:'额定容量：标准工况下可存储能量的额定值，单位 kWh。'},
+    dataType:{what:'属性的通用数据类型；时间序列是独立类型，用于一段时间内的观测序列。',need:'业务上要记录“一个时刻的值”还是“一段序列”。',example:'SOC采样值 使用 时间序列（数值）。'},
+    obsType:{what:'观测值类型：时间序列内每个观测点的值类型，仅当数据类型为「时间序列」时出现。',need:'先确定数据类型为时间序列。',example:'时间序列（数值）→ 观测值类型=数值。'},
+    fmt:{what:'显示格式只影响展示，不改变业务定义与数值口径。',need:'比例约定（0～1 或 0～100）与后缀/小数位。',example:'百分比（原值口径 0～100）'}},
+  fill:function(t,ans,buf){
+    const notes=[];const qs=[];const sugs=[];
+    notes.push('共享属性库已有候选「SOC（荷电状态）」：你可以选择「引用已有」（与储能设备共用定义，改一处影响两处），或「单独创建」（仅本对象）。采纳建议不会自动写入或合并共享定义。');
+    /* 从你的文字中识别已给出的口径；缺什么问什么，不由一项推导另一项 */
+    const g={
+      hist:/时间序列|历史序列|序列/.test(t)?'series':(/当前值|实时值|某一时刻/.test(t)?'value':ans.hist),
+      scale:/0\s*[～~\-—]\s*100|0\s*[-—]\s*100/.test(t)?'0100':(/0\s*[～~\-—]\s*1(\s*(比例|小数|分数)|[^0-9～~\-—]|$)/.test(t)?'01':ans.scale),
+      base:/额定容量/.test(t)?'rated':(/可用容量/.test(t)?'avail':ans.base)};
+    if(g.base==='rated'||/占额定容量/.test(t))notes.push('本条定义口径（占额定容量）来自你的说明，仅适用于该示例，不代表所有 SOC 均按额定容量定义。');
+    if(!g.hist)qs.push({qid:'hist',q:'这个 SOC 记录的是某一时刻的当前值，还是一段时间内的历史序列？',opts:[['value','当前值（单个数值）'],['series','历史序列（时间序列）']]});
+    if(!g.scale)qs.push({qid:'scale',q:'SOC 数值的比例约定是什么？（不提供不猜测）',opts:[['01','0～1'],['0100','0～100（百分比）']]});
+    if(!g.base)qs.push({qid:'base',q:'容量基准口径：剩余电量“占谁”的百分比？',opts:[['rated','额定容量'],['avail','可用容量']]});
+    if(g.hist==='series')sugs.push(sug({label:'数据类型＋观测值类型（联合采纳）',old:dtypeLabel(buf.dataType,buf.obsType),neu:'时间序列（数值）',source:SRC.SUG,defChecked:false,fields:['dataType','obsType'],
+      reason:'你说“记录为时间序列”（或选择了历史序列）；观测值类型=数值与其成组采纳，保证组合合法。',apply:function(b){b.dataType='timeSeries';b.obsType='xsd:double';}}));
+    else if(g.hist==='value')sugs.push(sug({label:'数据类型',old:dtypeLabel(buf.dataType,buf.obsType),neu:'数值',source:SRC.SUG,defChecked:false,fields:['dataType'],
+      reason:'当前值场景；非时间序列不显示、不写入观测值类型。',apply:function(b){b.dataType='xsd:double';b.obsType='';}}));
+    if(g.scale==='0100')sugs.push(sug({label:'显示格式',old:buf.fmt||'（空）',neu:'百分比（原值口径 0～100）',source:SRC.USER,defChecked:true,fields:['fmt'],
+      reason:'依据你给出的 0～100 约定，展示按此口径，不做自动换算。',apply:function(b){b.fmt='百分比（原值口径 0～100）';}}));
+    else if(g.scale==='01')sugs.push(sug({label:'显示格式',old:buf.fmt||'（空）',neu:'比例（原值口径 0～1）',source:SRC.USER,defChecked:true,fields:['fmt'],
+      reason:'依据你给出的 0～1 约定。',apply:function(b){b.fmt='比例（原值口径 0～1）';}}));
+    if(g.base==='rated'||g.base==='avail'){
+      const bw=g.base==='rated'?'额定容量':'可用容量';
+      const segs=['当前剩余电量占'+bw+'的百分比'];
+      if(g.hist==='series')segs.push('按时间序列记录');
+      if(g.scale==='0100')segs.push('数值比例约定为 0～100');
+      else if(g.scale==='01')segs.push('数值比例约定为 0～1');
+      const defTxt=segs.join('，')+'。';
+      sugs.push(sug({label:'业务定义',old:buf.def,neu:defTxt,source:SRC.USER,defChecked:false,fields:['def'],
+        reason:'仅由你给出的信息成文：'+(g.scale?'比例约定来自你的说明。':'尚未确认比例约定，定义不含数值区间；确认后重新生成可补全。'),
+        apply:function(b){b.def=defTxt;}}));
+    }else{
+      sugs.push(sug({label:'业务定义',old:buf.def,neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['def'],
+        pending:g.base===UN?'容量基准“暂不确定”，不能替你选定口径；确认后再生成完整定义。':'依赖“容量基准口径”问题的回答；回答后可采纳。'}));
+    }
+    if(!g.hist&&!g.scale&&!g.base&&!/还剩多少电|电池剩余|剩多少/.test(t))return {noValid:true,notes:notes.concat(['原型根据场景返回预置示例；你的输入未匹配到演示场景，未伪造理解结果。可点击下方示例试试。'])};
+    return {questions:qs,suggestions:sugs,notes:notes};},
+  check:function(buf,ans){
+    const issues=[];
+    if(!buf.def||!/占|比例|基准/.test(buf.def))issues.push({field:'def',f:'业务定义',d:'缺少比例基准/量纲约定：只写了“'+trunc(buf.def||'（空）',18)+'”，未说明“占谁的百分比、数值范围”。不是泛泛“描述需完善”，请先补充容量基准。'});
+    if(buf.dataType==='xsd:string'&&/序列|trend|采样/i.test((buf.def||'')+''))issues.push({field:'dataType',f:'数据类型',d:'定义含序列含义但类型为文本，建议改为时间序列（需在“帮我填写”确认）。'});
+    else if(buf.dataType==='xsd:string')issues.push({field:'dataType',f:'数据类型',d:'SOC 通常是数值/时间序列；当前为文本。修改数据类型属破坏性变更（正式实现会按分类提示），原型仅提示不代改。'});
+    if(!buf.fmt)issues.push({field:'fmt',f:'显示格式',d:'未设置显示格式：数值比例约定（0～1 / 0～100）会直接影响展示口径。'});
+    return {issues:issues,suggestions:[],notes:['检查仅读取当前编辑缓冲区，不做任何修改；技术性问题（类型口径）请切到“帮我填写”走建议流程。','共享候选提示：库中存在「SOC（荷电状态）」，是否引用由你显式决定。']};}
+},
+/* ---------- O3 链接（含 D7 解释） ---------- */
+'lk:l_c2b':{
+  target:'本体 · 链接「储能簇 → ? → 储能设备」（草稿）',
+  keys:['fwd','card','rev','def'],
+  examples:['每个储能簇都属于一台储能设备，一台储能设备可以包含多个储能簇'],
+  ctx:function(){const b=BUFFERS['lk:l_c2b']||{};return[
+    ['目标资产','储能设备本体 · 草稿 → 对象「储能簇」的链接'],
+    ['两端（必须为现有对象）','起点：'+(findObj(b.start)||{}).name+'；终点：'+(findObj(b.end)||{}).name],
+    ['当前表单（未保存）','正向名称：'+(b.fwd||'（空）')+'；数量关系：'+cardLabel(b.card)]];},
+  explains:{card:{what:'数量关系描述“起点的一个实例对应终点多少个实例”，决定链接的业务读法。',need:'来源：你的业务资料或设备台账口径；不能按同名或猜测确定。',
+      example:'多对一的储能例子：1 台储能设备包含 4 个储能簇。正向读「储能簇 → 所属设备 → 储能设备」（簇只属于一台设备＝一）；反向读「储能设备 → 包含储能簇 → 储能簇」（一台设备对多簇＝多）。解释不修改表单。'},
+    fwd:{what:'正向名称是从起点读到终点的业务含义。',need:'动词或关系名词，业务人员可读。',example:'所属设备、包含储能簇'},
+    def:{what:'链接的业务定义：说明两端关系与约束。',need:'来源关系、构成关系还是引用关系。',example:'储能簇是储能设备的组成部分。'}},
+  fill:function(t,ans,buf){
+    if(/每个储能簇|都属于一台|包含多个/.test(t)){
+      return {suggestions:[
+        sug({label:'正向名称',old:buf.fwd,neu:'所属设备',source:SRC.SUG,defChecked:false,fields:['fwd'],reason:'「关联」过泛；按你的描述建议改为“所属设备”，仅建议。',apply:function(b){b.fwd='所属设备';}}),
+        sug({label:'数量关系',old:cardLabel(buf.card),neu:'多对一（manyToOne）',source:SRC.USER,defChecked:true,fields:['card'],reason:'依据你的说明：“一个簇属于一台设备、一台设备含多个簇”。',apply:function(b){b.card='manyToOne';}}),
+        sug({label:'反向名称',old:buf.rev||'（空）',neu:'包含储能簇',source:SRC.USER,defChecked:true,fields:['rev'],reason:'与正向构成同一关系的反向读法。',apply:function(b){b.rev='包含储能簇';}}),
+        sug({label:'业务定义',old:buf.def||'（空）',neu:'储能簇是储能设备的组成部分；一个储能簇只属于一台储能设备，一台储能设备可包含多个储能簇。',source:SRC.USER,defChecked:true,fields:['def'],reason:'依据你的说明成文。',apply:function(b){b.def='储能簇是储能设备的组成部分；一个储能簇只属于一台储能设备，一台储能设备可包含多个储能簇。';}})
+      ],notes:['起点/终点必须是本体内现有对象，表单已选定为 储能簇→储能设备；建议不修改两端。']};
+    }
+    const qs=[];const sugs=[];
+    if(!ans.card_q)qs.push({qid:'card_q',q:'这条链接的数量关系是？请提供依据（原型不猜测）。',opts:[['manyToOne','起点多个对终点一个（多对一）'],['oneToMany','起点一个对终点多个（一对多）'],['oneToOne','一对一'],['manyToMany','多对多']]});
+    if(ans.card_q&&ans.card_q!==UN){
+      sugs.push(sug({label:'数量关系',old:cardLabel(buf.card),neu:cardLabel(ans.card_q),source:SRC.USER,defChecked:true,fields:['card'],
+        reason:'按你确认的资料口径选择；原型不猜测。',apply:function(b){b.card=ans.card_q;}}));
+    }else{
+      sugs.push(sug({label:'数量关系',old:cardLabel(buf.card),neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['card'],
+        pending:ans.card_q===UN?'数量关系“暂不确定”：不替你选定，保持待补充。':'回答上方问题后，若你的资料支持，才能采纳。'}));
+    }
+    return {questions:qs,suggestions:sugs,
+      notes:['原型根据场景返回预置示例；数量关系、正向/反向名称需要你的业务资料支持，不自动编造。']};},
+  check:function(buf){
+    const issues=[];const sugs=[];
+    if(!buf.card)issues.push({field:'card',f:'数量关系',d:'必选项未选择：无法判断“一簇对一设备、一设备对多簇”的业务读法。'});
+    if(buf.fwd==='关联')issues.push({field:'fwd',f:'正向名称',d:'「关联」过于泛化，未表达业务含义。'});
+    if(!buf.def)issues.push({field:'def',f:'业务定义',d:'链接缺少定义：构成关系（簇是设备的组成部分）应写明。'});
+    sugs.push(sug({label:'正向名称',old:buf.fwd,neu:'所属设备',source:SRC.SUG,defChecked:false,fields:['fwd'],reason:'检查发现名称泛化；仅建议。',apply:function(b){b.fwd='所属设备';}}));
+    return {issues:issues,suggestions:sugs,notes:['数量关系、两端对象需要你的业务资料支持，检查模式不代填。']};}
+},
+/* ---------- O4 业务规则（D2） ---------- */
+'rule:r_soc':{
+  target:'本体 · 业务规则「设备SOC计算」（草稿）',
+  keys:['name','def','content'],
+  examples:['设备SOC按各簇额定容量加权平均，单位保持一致；容量为0或缺测的簇不参与计算，采样时间按最近时刻对齐'],
+  ctx:function(){const b=BUFFERS['rule:r_soc']||{};return[
+    ['目标资产','储能设备本体 · 草稿 → 规则「'+(b.name||'设备SOC计算')+'」'],
+    ['当前表单（未保存）','业务定义：'+trunc(b.def,40)+'；规则内容：'+(b.content?'已填写':'（空，选填）')],
+    ['相关定义','属性「SOC」占额定容量比例（口径仍在确认中，见属性场景）'],
+    ['历史字段','历史补充说明（原输出结果）只读保留，不生成新字段']];},
+  explains:{def:{what:'规则的业务定义：用什么口径、按什么公式得到什么结果。',need:'计算口径（简单平均/容量加权）、单位一致性、适用范围。',example:'设备SOC按各簇额定容量加权平均。'},
+    content:{what:'规则内容为选填：可写步骤、异常处理等执行细节描述。',need:'不要写入具体表名、字段名或项目 SQL——那属于项目实现层。',example:'容量为0或缺测的簇不参与加权。'}},
+  fill:function(t,ans,buf){
+    const qs=[];const sugs=[];const notes=[];
+    const a={calc:ans.calc,wzero:ans.wzero,time:ans.time};
+    if(/加权/.test(t)&&a.calc==null)a.calc='weighted';
+    if(/简单平均|平均/.test(t)&&!/加权/.test(t)&&a.calc==null)a.calc='simple';
+    if(/不参与|跳过|剔除/.test(t)&&a.wzero==null)a.wzero='skip';
+    if(/最近/.test(t)&&a.time==null)a.time='nearest';
+    if(a.calc==null)qs.push({qid:'calc',q:'各簇容量不同，“简单平均”与“容量加权”结果不同：采用哪种口径？',opts:[['simple','各簇简单平均'],['weighted','按额定容量加权平均']]});
+    if(a.wzero==null)qs.push({qid:'wzero',q:'簇容量为 0 或 SOC 缺测时怎么处理？',opts:[['skip','跳过该簇，按其余簇计算'],['nodata','整体返回无数据'],['later','设备离线时暂缓，需要单独规则']]});
+    if(a.time==null)qs.push({qid:'time',q:'各簇采样时间不齐时怎么取值？',opts:[['strict','仅严格同一时刻的样本'],['nearest','取目标时刻最近的采样值']]});
+    notes.push('单位一致（kWh 容量、% SOC）已按你的说明纳入前提；若实际不一致，先修正属性单位再采纳本建议。');
+    notes.push('原型不会替你在“容量为0按0计算”等异常策略上做默认业务决定。');
+    if(a.calc==='weighted'){
+      sugs.push(sug({label:'业务定义',old:buf.def,neu:'设备SOC按各簇额定容量加权平均：设备SOC = Σ(簇SOC×簇额定容量) ÷ Σ(参与计算的簇额定容量)；各簇 SOC 与容量单位一致。',source:SRC.USER,defChecked:false,fields:['def'],
+        reason:'你确认采用容量加权口径。',apply:function(b){b.def='设备SOC按各簇额定容量加权平均：设备SOC = Σ(簇SOC×簇额定容量) ÷ Σ(参与计算的簇额定容量)；各簇 SOC 与容量单位一致。';}}));
+    }else if(a.calc==='simple'){
+      sugs.push(sug({label:'业务定义',old:buf.def,neu:'设备SOC取各簇SOC的简单算术平均（不区分容量差异）。',source:SRC.USER,defChecked:false,fields:['def'],reason:'你确认简单平均；注意与加权口径不同。',apply:function(b){b.def='设备SOC取各簇SOC的简单算术平均（不区分容量差异）。';}}));
+    }else{
+      sugs.push(sug({label:'业务定义',old:buf.def,neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['def'],pending:'平均口径未确认，定义不能采纳。'}));
+    }
+    if(a.wzero&&a.wzero!==UN&&a.wzero!=='later'&&a.time&&a.time!==UN){
+      sugs.push(sug({label:'规则内容（异常与时间对齐）',old:buf.content||'（空）',neu:'簇容量为 0 或 SOC 缺测时：'+(a.wzero==='skip'?'该簇不参与加权计算；':'整体返回无数据；')+'采样时间不齐时：'+(a.time==='strict'?'仅使用严格同一时刻的样本；':'取目标时刻最近的采样值。')+'（具体阈值/时间窗由实施阶段确认，原型不编造数值。）',source:SRC.USER,defChecked:false,fields:['content'],
+        reason:'按你对异常与时间问题的回答成文。',
+        apply:function(b){b.content='簇容量为 0 或 SOC 缺测时：'+(a.wzero==='skip'?'该簇不参与加权计算；':'整体返回无数据；')+'采样时间不齐时：'+(a.time==='strict'?'仅使用严格同一时刻的样本；':'取目标时刻最近的采样值。');}}));
+    }else if(a.wzero==='later'||!a.wzero||!a.time||a.wzero===UN||a.time===UN){
+      sugs.push(sug({label:'规则内容',old:buf.content||'（空）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['content'],
+        pending:a.wzero===UN||a.time===UN?'异常处理或时间对齐选择了“暂不确定”：原型不会替你转成“整体返回无数据/取最近采样值”等策略；确认后再生成。':'异常处理或时间对齐未确认；相关内容保持待补充，不可采纳。'}));
+    }
+    return {questions:qs,suggestions:sugs,notes:notes};},
+  check:function(buf,ans){
+    const issues=[
+      {field:'def',f:'业务定义',d:'「各簇SOC平均值」未区分口径：各簇容量不同时，简单平均与容量加权结果不同——需要你确认，检查不擅自改写。'},
+      {field:'def',f:'业务定义',d:'未说明簇容量为 0 时的处理：按 0 参与加权会导致整机SOC被拉低，跳过则口径不同——两种都不应偷偷选择。'},
+      {field:'def',f:'业务定义',d:'未说明个别簇 SOC 缺测时是否跳过或整体无数据。'},
+      {field:'def',f:'业务定义',d:'未说明各簇采样时间不齐时是否对齐（严格同刻/取最近）。'}];
+    if(!buf.content)issues.push({field:'content',f:'规则内容',d:'规则内容为选填，当前为空；异常处理细节可补充在这里（不要写表名/SQL）。'});
+    const r=this.fill('',ans||{},buf);
+    return {issues:issues,questions:r.questions,suggestions:r.suggestions,notes:['确认口径请回答下方问题或切到“帮我填写”。历史输出只读保留。']};}
+},
+/* ---------- O5 动作定义 ---------- */
+'act:a_stop':{
+  target:'本体 · 动作「停止充放电」（草稿）',
+  keys:['name','def','effect'],
+  examples:['让目标储能设备退出当前充电或放电运行状态，指令下发后设备应停止功率交换'],
+  ctx:function(){const b=BUFFERS['act:a_stop']||{};return[
+    ['目标资产','储能设备本体 · 草稿 → 动作「'+(b.name||'停止充放电')+'」'],
+    ['当前表单（未保存）','业务定义：'+(trunc(b.def||'',24)||'（空）')+'；预期效果：'+(trunc(b.effect||'',24)||'（空）')],
+    ['关联对象（现有）',(findAction('a_stop')||{}).linkedObjs.join('、')],
+    ['边界','动作定义不含本体参数/提交条件；接口细节在“项目·动作映射”维护']];},
+  explains:{def:{what:'动作的业务定义：对什么对象做什么业务操作。',need:'操作对象、操作内容、生效范围。',example:'请求目标储能设备停止当前的充电或放电运行。'},
+    effect:{what:'预期效果（选填）：动作成功后业务上应出现的状态。',need:'只写业务状态，不写接口返回码或执行细节。',example:'设备退出充放电运行状态。'}},
+  fill:function(t,ans,buf){
+    if(/退出|停止|充放电|指令/.test(t)){
+      return {suggestions:[
+        sug({label:'业务定义',old:buf.def,neu:'请求目标储能设备停止当前的充电或放电运行。',source:SRC.USER,defChecked:false,fields:['def'],reason:'按你的说明成文；已有值替换默认不勾选。',apply:function(b){b.def='请求目标储能设备停止当前的充电或放电运行。';}}),
+        sug({label:'预期效果',old:buf.effect||'（空）',neu:'设备退出充放电运行状态。',source:SRC.SUG,defChecked:true,fields:['effect'],reason:'依据你的描述润色，属“建议，需确认”，不是“业务已验证”。',apply:function(b){b.effect='设备退出充放电运行状态。';}})
+      ],notes:['对象关联需你在对象详情的“动作”页签显式选择；辅助填写不会自动关联所有设备。','不提供动作参数/提交条件字段。','“请求被接受”不等于“设备已停止”：执行反馈属于运行层，不在本体定义中承诺。']};
+    }
+    return {noValid:true,notes:['原型根据场景返回预置示例。']};},
+  check:function(buf){
+    const issues=[];
+    if(buf.def&&buf.def.length<8)issues.push({field:'def',f:'业务定义',d:'「'+trunc(buf.def,14)+'」未写明作用对象与“充电或放电”两种运行态，边界不清。'});
+    if(!buf.effect)issues.push({field:'effect',f:'预期效果',d:'预期效果为空（选填）：建议写明动作成功后的业务状态，便于映射核对。'});
+    return {issues:issues,suggestions:[],notes:['不新增动作参数/提交条件；关联对象不在此页自动改动。']};}
+},
+/* ---------- 共享属性（D2 后半 / A09） ---------- */
+'sh:sp_soc':{
+  target:'本体 · 共享属性「SOC（荷电状态）」（草稿）',
+  keys:['def','dataType','obsType'],
+  examples:['SOC 统一定义为剩余容量占额定容量的比例，范围 0～1','检查这个共享定义有没有口径问题'],
+  ctx:function(){const b=BUFFERS['sh:sp_soc']||{};return[
+    ['目标资产','储能设备本体 · 草稿 → 共享属性「SOC（荷电状态）」'],
+    ['被引用','储能簇、储能设备（2 个对象引用）'],
+    ['当前表单（未保存）','定义：'+trunc(b.def,36)+'；数据类型：'+dtypeLabel(b.dataType,b.obsType)]];},
+  explains:{def:{what:'共享属性的业务定义，所有引用对象共同继承。',need:'口径唯一明确；修改属于高影响变更。',example:'引用了本定义的对象都会在保存时收到影响确认。'}},
+  fill:function(t,ans,buf){
+    if(/额定容量|占.*比例|0～1|0~1/.test(t)){
+      return {suggestions:[sug({label:'业务定义',old:buf.def,neu:'当前剩余容量占额定容量的比例，数值范围约定 0～1。',source:SRC.USER,defChecked:false,fields:['def'],
+        reason:'按你的说明补充容量基准与范围；被 2 个对象引用，保存时需影响确认。',apply:function(b){b.def='当前剩余容量占额定容量的比例，数值范围约定 0～1。';}})],
+        notes:['该定义为共享：采纳并保存前会展示引用对象的影响确认；取消不写入演示仓库。','不会因名称相同自动与其它共享定义合并。']};
+    }
+    if(/检查|口径|问题/.test(t))return this.check(buf,{});
+    return {noValid:true,notes:['原型根据场景返回预置示例。']};},
+  check:function(buf){
+    const issues=[];
+    if(!/0～1|0~1|0～100|0~100|百分比|比例/.test(buf.def||'')||!/基准|额定|可用/.test(buf.def||''))
+      issues.push({field:'def',f:'业务定义',d:'共享定义未写明容量基准（额定/可用）与数值范围；两个引用对象可能各自按不同理解使用。'});
+    return {issues:issues,suggestions:[],notes:['共享属性的高影响修改（定义/数据类型）在演示保存时会弹出引用确认。']};}
+},
+/* ---------- P1 实例识别 ---------- */
+'pi:o_cluster':{
+  target:'项目 · 创智园二期（引用 2.0.0）· 储能簇 · 实例识别',
+  keys:['mode','conn','table','pk','desc'],
+  examples:['储能簇实例来自 m_storage_cluster_phase，每行一个储能簇；id 有主键唯一约束','储能簇对应表 m_storage_cluster_phase，用 id 当主键就行'],
+  ctx:function(){const b=BUFFERS['pi:o_cluster']||{};return[
+    ['目标资产','项目「创智园二期」· 固定引用 储能设备本体 2.0.0（不读取本体草稿内容）'],
+    ['当前表单（未保存）','来源方式：'+(b.mode==='registered'?'项目登记':'数据库表／视图')+'；表：'+(b.table||'（未选）')+'；主键：'+(b.pk||'（未选）')],
+    ['候选目录','连接「园区储能 MySQL」· 表 '+Object.keys(SAVED.prj.catalog).join('、')+(DEMO.catalog==='missing'?'（演示：目录缺失）':'')],
+    ['相邻对象','储能设备使用「项目登记」实例，不绑定表']];},
+  explains:{pk:{what:'实例主键字段：每行实例的唯一标识。',need:'唯一性依据（主键约束/唯一索引），字段名含 id 不构成证明。',example:'确认 id 是 PRIMARY KEY 后才能绑定。'},
+    mode:{what:'实例来源方式：数据库表／视图 或 项目登记。登记方式适合无表或虚拟对象。',need:'实例的稳定标识来源。',example:'储能设备按项目登记实例维护，无需绑表。'}},
+  fill:function(t,ans,buf){
+    const qs=[];const sugs=[];const notes=[];
+    notes.push('储能设备对象使用「项目登记」来源方式：辅助填写不会建议为其创建表绑定（不强迫虚拟对象绑表）。');
+    if(/m_storage_cluster_phase|储能簇实例|每行一个/.test(t)){
+      const uniq=/主键|唯一|PRIMARY|UNIQUE/i.test(t);
+      if(!uniq&&!ans.uq)qs.push({qid:'uq',q:'候选主键 id 的唯一性依据是什么？仅凭字段名含“id”不足以证明唯一。',opts:[['confirmed','我的资料确认它是主键/唯一索引']]});
+      sugs.push(sug({label:'来源说明（整理进项目说明）',old:buf.desc||'（空）',neu:'储能簇实例来自园区储能 MySQL 的 m_storage_cluster_phase 表，每行对应一个物理储能簇。',source:SRC.USER,defChecked:true,fields:['desc'],
+        reason:'把你的描述整理成规范说明。',apply:function(b){b.desc='储能簇实例来自园区储能 MySQL 的 m_storage_cluster_phase 表，每行对应一个物理储能簇。';}}));
+      if(uniq||ans.uq==='confirmed'){
+        sugs.push(sug({label:'实例主键',old:buf.pk||'（未选）',neu:'id',source:SRC.CAT,defChecked:true,fields:['pk'],
+          reason:'你的资料确认 id 为主键且唯一；字段存在于当前表目录。',apply:function(b){b.pk='id';}}));
+      }else{
+        sugs.push(sug({label:'实例主键',old:buf.pk||'（未选）',neu:'id？',source:SRC.SUG,defChecked:false,fields:['pk'],
+          pending:ans.uq===UN?'唯一性“暂不确定”：主键绑定保持待补充，不默认 id 唯一。':'缺少唯一性依据，回答上方问题后才能采纳。'}));
+      }
+      if(DEMO.catalog==='missing'){sugs[sugs.length-1].pending='目录缺失（演示）：无法确认字段存在，实例主键绑定不可采纳。';}
+      return {questions:qs,suggestions:sugs,notes:notes};
+    }
+    return {noValid:true,notes:['原型根据场景返回预置示例。']};},
+  check:function(buf){
+    const issues=[];const sugs=[];
+    if(!buf.desc)issues.push({field:'desc',f:'来源说明',d:'实例识别缺少说明：后续映射与交接无法知道每行代表什么。'});
+    if(!buf.pk)issues.push({field:'pk',f:'实例主键',d:'实例主键未选定：所有按主键匹配的来源/链接/参数绑定都将无法完成。'});
+    if(!buf.pk)sugs.push(sug({label:'实例主键',old:'（未选）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['pk'],pending:'唯一性需要你提供依据——见“帮我填写”的问题。'}));
+    return {issues:issues,suggestions:sugs,notes:['检查基于当前未保存表单。']};}
+},
+/* ---------- P2 额定容量字段映射 ---------- */
+'ps:ps_cap':{
+  target:'项目 · 储能簇 · 属性「额定容量」来源（表字段）',
+  keys:['conn','table','field','merge','desc'],
+  examples:['额定容量取 capacity 字段，目录注释是额定容量（kWh）；available_capacity 是可用容量，别混用','额定容量从设备档案表 device_info 里取'],
+  ctx:function(){const b=BUFFERS['ps:ps_cap']||{};const cf=catalogFields(b.table);return[
+    ['目标资产','项目「创智园二期」· 引用 2.0.0 → 储能簇 · 额定容量（本体定义：额定容量（kWh）口径）'],
+    ['当前表单（未保存）','取值字段：'+(b.field||'（未选）')+'；表：'+(b.table||'（未选）')],
+    ['候选目录',DEMO.catalog==='missing'?'（演示）目录缺失：无法列出字段':(cf||[]).map(function(f){return f.name+'（'+f.comment+'）';}).join('；')]];},
+  explains:{field:{what:'取值字段：从来源表中读取该属性值的列。',need:'字段真实存在于目录且口径一致（额定≠可用）。',example:'capacity（注释：额定容量（kWh））'},
+    merge:{what:'多条记录如何得到一个值：同一实例命中多行时的归并策略。',need:'业务上是否可能多行、需要哪种聚合。',example:'每实例仅一行时选“预期零或一条，多行报错”。'}},
+  fill:function(t,ans,buf){
+    const sugs=[];const notes=[];
+    const cf=catalogFields(buf.table);
+    const catMissing=DEMO.catalog==='missing';
+    if(/capacity|额定容量/.test(t)){
+      sugs.push(sug({label:'来源说明（整理）',old:buf.desc||'（空）',neu:'额定容量读取 m_storage_cluster_phase.capacity（额定容量，kWh）；available_capacity 为可用容量，不作为额定容量来源。',source:SRC.USER,defChecked:true,fields:['desc'],
+        reason:'说明文字与字段绑定分离：即使目录缺失也可先采纳说明。',apply:function(b){b.desc='额定容量读取 m_storage_cluster_phase.capacity（额定容量，kWh）；available_capacity 为可用容量，不作为额定容量来源。';}}));
+      if(/device_info|档案/.test(t)){
+        sugs.push(sug({label:'取值字段',old:buf.field,neu:'（无法采纳）',source:SRC.CAT,defChecked:false,fields:['field'],
+          blocked:'目录中不存在 device_info 表：不存在的技术引用不能成为可采纳绑定。请确认字段实际所在的表（当前簇表含 capacity 候选）。'}));
+        notes.push('“刷新目录”只是演示状态切换；原型不连接真实数据源。');
+      }else if(catMissing){
+        sugs.push(sug({label:'取值字段',old:buf.field,neu:'capacity',source:SRC.CAT,defChecked:false,fields:['field'],
+          blocked:'目录缺失（演示）：无法确认 capacity 存在，技术绑定不可采纳；上方说明仍可采纳。'}));
+      }else{
+        const has=cf&&cf.some(function(f){return f.name==='capacity';});
+        sugs.push(sug({label:'取值字段',old:buf.field,neu:'capacity',source:SRC.CAT,defChecked:false,fields:['field'],
+          blocked:has?null:'目录中未找到 capacity 字段，不能采纳。',
+          reason:'候选对比：capacity（注释：额定容量（kWh））口径一致；available_capacity（可用容量）口径不同。已有值替换默认不勾选。',
+          apply:function(b){b.field='capacity';}}));
+      }
+      return {suggestions:sugs,notes:notes};
+    }
+    return {noValid:true,notes:['原型根据场景返回预置示例。']};},
+  check:function(buf){
+    const issues=[];const sugs=[];
+    if(buf.field==='available_capacity')issues.push({field:'field',f:'取值字段',d:'当前绑定 available_capacity（可用容量），与本体属性「额定容量」口径不一致：额定≠可用。'});
+    if(!buf.desc)issues.push({field:'desc',f:'来源说明',d:'来源说明为空，无法追溯这个映射的业务依据。'});
+    if(buf.field==='available_capacity')sugs.push(sug({label:'取值字段（替换）',old:buf.field,neu:'capacity',source:SRC.CAT,defChecked:false,fields:['field'],
+      blocked:DEMO.catalog==='missing'?'目录缺失（演示）：不可采纳技术绑定。':null,
+      reason:'目录注释支持：capacity=额定容量（kWh）。',apply:function(b){b.field='capacity';}}));
+    return {issues:issues,suggestions:sugs,notes:['检查读取当前未保存表单，不修改。']};}
+},
+/* ---------- P3 SOC 实时值 Redis ---------- */
+'ps:ps_rt':{
+  target:'项目 · 储能簇 · 属性「SOC实时值」来源（Redis）',
+  keys:['conn','method','conv','miss','desc','tplk'],
+  baseline:function(b){return JSON.stringify({conn:b.conn,method:b.method,conv:b.conv,miss:b.miss,desc:b.desc,tplk:tplSerialize(b.tpl||[])+(b.tpl||[]).filter(function(x){return typeof x!=='string';}).map(function(x){return x.key+'='+x.src;}).join(',')});},
+  examples:['用 GET 读取 Key 模板 m_storage_cluster_phase-{id}-soc，里面的值是 0～100 的百分比','实时值存在 Redis 里，帮我配一下'],
+  ctx:function(){const b=BUFFERS['ps:ps_rt']||{};return[
+    ['目标资产','项目「创智园二期」· 引用 2.0.0 → 储能簇 · SOC实时值'],
+    ['当前表单（未保存）','读取方式：'+(b.method||'（未选）')+'；Key 模板：'+(tplSerialize(b.tpl||[])||'（空）')],
+    ['候选连接','已登记 Redis 来源 · 园区实时 Redis（只用已有候选；不生成地址或密码；凭据不进上下文）'],
+    ['实例身份','储能簇实例主键绑定：'+(SAVED.prj.instanceSrcs.o_cluster.pk||BUFFERS['pi:o_cluster']&&BUFFERS['pi:o_cluster'].pk||'（未配置）')]];},
+  explains:{tpl:{what:'Key 模板：Redis 键名的固定文字＋参数；参数来源只能是实例主键/身份字段/已映射属性。',need:'Key 模板必须由你的运维资料提供，原型不从对象名猜测。',example:'m_storage_cluster_phase-{id}-soc'},
+    conv:{what:'结果转换：把 Redis 原始字符串转成属性值类型。',need:'原始值的口径约定（如 0～100）。',example:'约定 0～100 时按数值转换，不做自动换算。'}},
+  fill:function(t,ans,buf){
+    const qs=[];const sugs=[];const notes=[];
+    const rawAns=(ans&&ans.tplq)?String(ans.tplq).trim():'';
+    const srcText=t+' '+rawAns;
+    let tplRaw='';
+    if(/\{id\}/.test(rawAns))tplRaw=rawAns;
+    else{const m=t.match(/[A-Za-z0-9_\-\.]*\{id\}[A-Za-z0-9_\-\{\}\u4e00-\u9fa5]*/);if(m)tplRaw=m[0];}
+    const hasTpl=/\{id\}/.test(tplRaw);
+    if(!hasTpl){
+      qs.push({qid:'tplq',q:'请提供 Redis 读取方式（GET/HGET）与 Key 模板（原型不会从对象名猜 Key 或命令）。',free:true,ph:'例如 GET m_storage_cluster_phase-{id}-soc',opts:[]});
+      notes.push('未提供模板前不生成任何 Key 建议；也可点上方示例带入演示模板。');
+      return {questions:qs,suggestions:[sug({label:'Key 模板',old:'（空）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['tpl'],pending:'等待你提供模板/命令。'})],notes:notes};
+    }
+    /* 命令文字与 Key 分离：不允许把 “GET …” 整体当作 Key */
+    const tpl=tplRaw.replace(/^\s*(?:GET|HGET)\s*[:：]?\s+/i,'').trim();
+    let meth=null;const mm=srcText.match(/\b(HGET|GET)\b/i);if(mm)meth=mm[1].toUpperCase();
+    if(!ans.meth)qs.push({qid:'meth',q:'Key 模板应使用哪个读取命令？由你的运维资料决定（原型不代选、不默认 GET）。',opts:[['GET','GET'],['HGET','HGET']]});
+    const methVal=meth||ans.meth||null;
+    if(methVal&&methVal!==UN){
+      sugs.push(sug({label:'读取方式',old:buf.method||'（未选）',neu:methVal,source:SRC.USER,defChecked:true,fields:['method'],
+        reason:meth?'读取命令出现在你提供的文字中。':'来自你对补充问题的回答。',apply:function(b){b.method=methVal;}}));
+    }else{
+      sugs.push(sug({label:'读取方式',old:buf.method||'（未选）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['method'],
+        pending:methVal===UN?'读取方式“暂不确定”：不默认 GET。':'依赖上方“读取命令”问题的回答；回答前不代选。'}));
+    }
+    sugs.push(sug({label:'Key 模板',old:tplSerialize(buf.tpl||[])||'（空）',neu:tpl,source:SRC.USER,defChecked:true,fields:['tpl'],
+      reason:'模板原文来自你的说明（已剔除命令前缀）；{id} 仅登记为参数，来源不在此项写入。',
+      apply:function(b){b.tpl=tplParse(tpl);}}));
+    const pkReady=(BUFFERS['pi:o_cluster']?BUFFERS['pi:o_cluster'].pk:SAVED.prj.instanceSrcs.o_cluster.pk);
+    const tokSrc=(buf.tpl||[]).filter(function(x){return typeof x!=='string';}).map(function(x){return x.src;}).join(',');
+    sugs.push(sug({label:'参数 {id} 来源',old:tokSrc==='pk'?'实例主键（pk）':(tokSrc?'（部分已绑定）':'（未绑定）'),neu:'实例主键（pk）',source:SRC.ONT,defChecked:true,fields:['tpl'],
+      pending:pkReady?null:'依赖“实例识别·实例主键”尚未配置：参数绑定待补充（可先采纳模板本身，来源在模板编辑器里稍后选择）。',
+      reason:pkReady?'储能簇实例主键已确认为 '+pkReady+'。':'',apply:function(b){(b.tpl||[]).forEach(function(sg){if(typeof sg!=='string')sg.src='pk';});}}));
+    const convKnown=/0\s*[～~\-—]\s*100/.test(srcText);
+    const convOne=/0\s*[～~\-—]\s*1(\s*(的)?(比例|小数|分数)|[^0-9～~\-—]|$)/.test(srcText)&&!/0\s*[～~\-—]\s*100/.test(srcText);
+    if(!convKnown&&!convOne&&!ans.ratio)qs.push({qid:'ratio',q:'Key 里原始数值的比例约定是什么？没有约定就不做换算（原型不补造 0～100）。',opts:[['p100','0～100（百分比）'],['p1','0～1（比例）']]});
+    const ratioVal=convKnown?'p100':(convOne?'p1':ans.ratio||null);
+    if(ratioVal&&ratioVal!==UN){
+      sugs.push(sug({label:'结果转换',old:buf.conv||'文本',neu:'数值',source:SRC.USER,defChecked:false,fields:['conv'],
+        reason:'你提供了原始值口径（'+(ratioVal==='p100'?'0～100 百分比':'0～1 比例')+'）：按数值读取并保留原值，不做自动换算。',apply:function(b){b.conv='xsd:double';}}));
+    }else{
+      sugs.push(sug({label:'结果转换',old:buf.conv||'文本',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['conv'],
+        pending:ratioVal===UN?'比例约定“暂不确定”：保持文本原样读取，不补造 0～100，不自动换算。':'依赖上方“比例约定”问题的回答；未确认前不改动转换。'}));
+    }
+    const known=[];
+    known.push('SOC 实时值从园区实时 Redis 读取');
+    known.push(methVal?methVal+' Key '+tpl:'读取命令：待补充');
+    known.push(pkReady?'{id} 为当前实例主键':'{id} 参数来源：待绑定');
+    known.push(ratioVal&&ratioVal!==UN?('原始值约定 '+(ratioVal==='p100'?'0～100（百分比）':'0～1（比例）')+'，不做自动换算'):'原始值比例约定：待确认');
+    const descTxt=known.join('；')+'。';
+    sugs.push(sug({label:'来源说明',old:buf.desc||'（空）',neu:descTxt,source:SRC.USER,defChecked:true,fields:['desc'],
+      reason:'仅由你已提供的信息组装；未确认部分明确标为“待补充/待确认”，可稍后重新生成覆盖。',
+      apply:function(b){b.desc=descTxt;}}));
+    notes.push('说明与 Key、命令一一对应你的资料；更换模板或命令后请重新生成，说明会随之更新。');
+    return {questions:qs,suggestions:sugs,notes:notes};},
+  check:function(buf){
+    const issues=[];
+    if(!buf.method)issues.push({field:'method',f:'读取方式',d:'GET/HGET 未选择：必须由你的运维资料确定，不代选。'});
+    if(!buf.tpl||!buf.tpl.length)issues.push({field:'tpl',f:'Key 模板',d:'Key 模板为空：请提供模板，原型不从对象名猜测。'});
+    if((buf.tpl||[]).some(function(x){return typeof x!=='string'&&!x.src;}))issues.push({field:'tpl',f:'Key 模板参数',d:'模板中存在未绑定来源的参数。'});
+    if(!buf.desc)issues.push({field:'desc',f:'来源说明',d:'说明为空：原始值口径约定（如 0～100）未记录。'});
+    return {issues:issues,suggestions:[],notes:['检查不修改表单；Redis 地址与密码永不进入上下文或建议。']};}
+},
+/* ---------- P4 SOC 采样序列 · 已有编排 ---------- */
+'ps:ps_series':{
+  target:'项目 · 储能簇 · 属性「SOC采样值」来源（函数编排）',
+  keys:['flowId','desc'],
+  baseline:function(b){return JSON.stringify({flowId:b.flowId,desc:b.desc,bind:b.bind,bindv:b.bindv});},
+  examples:['SOC采样规则：先按 model_name、attr_name、model_id 在 s_attr_scada 查出 scada_table 和 scada_id，再查测点元数据得到 sample_table_name、sample_field_name，最后按 record_time 和时间范围取采样值','给电流采样也配一个编排'],
+  ctx:function(){const b=BUFFERS['ps:ps_series']||{};return[
+    ['目标资产','项目「创智园二期」· 引用 2.0.0 → 储能簇 · SOC采样值（时间序列）'],
+    ['当前表单（未保存）','函数编排：'+(b.flowId?SAVED.prj.flows[0].name:'（未选）')],
+    ['已有编排声明','通用SOC采样查询：输入 model_name/attr_name/model_id/start_time/end_time；输出 '+DEMO.flowOutputLabel()],
+    ['边界','仅推荐已有兼容编排；不自动新建流程或编排节点']];},
+  explains:{flowId:{what:'函数编排：选择项目内已编排好的计算函数作为属性取值来源。',need:'输入签名齐备且输出类型与属性数据类型兼容。',example:'SOC采样值（时间序列）需输出为时间序列的编排。'},
+    bind:{what:'输入参数绑定：为编排的每个输入指定来源（对象属性/固定值/实例编号）。',need:'常量值要来自你的资料；运行时参数需表单支持才能配置。',example:'model_id 绑定实例编号。'}},
+  fill:function(t,ans,buf){
+    const qs=[];const sugs=[];const notes=[];
+    if(/电流|功率采样|功率采样/.test(t)&&!/SOC|soc/.test(t)){
+      const org='电流采样需求（原文来自你的说明）：'+String(t).replace(/\s+/g,' ').trim().slice(0,160);
+      return {notes:['没有兼容的已有编排（当前项目只有「通用SOC采样查询」且面向SOC）。仅整理说明可用；不会自动创建流程、取值规则菜单或编排节点。'],
+        questions:[],
+        suggestions:[sug({label:'来源说明（整理）',old:buf.desc||'（空）',neu:org,source:SRC.USER,defChecked:true,fields:['desc'],
+          reason:'仅把你的需求原文登记为说明，便于后续人工配置；不虚构查询流程或编排。',apply:function(b){b.desc=org;}}),
+          sug({label:'编排绑定',old:'（未选）',neu:'（无可选项）',source:SRC.FLOW,defChecked:false,fields:['flowId'],pending:'无兼容编排：绑定待补充；不生成虚构编排。'})]};
+    }
+    if(/s_attr_scada|采样规则|sample_table|scada/.test(t)){
+      sugs.push(sug({label:'取值规则说明（整理）',old:buf.desc||'（空）',neu:'三步查询：① s_attr_scada 按 model_name/attr_name/model_id 定位 scada_table、scada_id；② 按测点元数据解析 sample_table_name、sample_field_name；③ 按 record_time 在时间范围内取采样值。',source:SRC.USER,defChecked:true,fields:['desc'],
+        reason:'把你的描述整理成结构化说明——即使编排不可用也能保留。',apply:function(b){b.desc='三步查询：① s_attr_scada 按 model_name/attr_name/model_id 定位 scada_table、scada_id；② 按测点元数据解析 sample_table_name、sample_field_name；③ 按 record_time 在时间范围内取采样值。';}}));
+      if(DEMO.flow==='text'){
+        sugs.push(sug({label:'选择编排：通用SOC采样查询',old:'（未选）',neu:'通用SOC采样查询',source:SRC.FLOW,defChecked:false,fields:['flowId'],
+          blocked:'输出类型不符（演示）：编排输出声明已改为 文本<字符串>，与属性「SOC采样值」的时间序列类型不兼容，禁止采纳绑定。'}));
+      }else{
+        sugs.push(sug({label:'选择编排：通用SOC采样查询',old:'（未选）',neu:'通用SOC采样查询',source:SRC.FLOW,defChecked:true,fields:['flowId'],
+          reason:'已有编排输入签名匹配你的三步规则，输出 时间序列<数值> 与属性类型兼容。仅复用已有编排，不新建。',apply:function(b){b.flowId='f_soc';}}));
+      }
+      if(!ans.consts)qs.push({qid:'consts',q:'model_name 与 attr_name 的常量取值？需要你资料中登记的标识（可点“＋参数”式补充或直接填写）。',free:true,ph:'例如 storage_cluster / SOC',opts:[]});
+      if(ans.consts&&ans.consts!==UN&&/[\/／]|,|\s\S+/.test(ans.consts+'')){
+        const parts=(ans.consts||'').split(/[\/／,，\s]+/).filter(Boolean);
+        const mn=parts[0]||'storage_cluster',an=parts[1]||'SOC';
+        sugs.push(sug({label:'输入 model_name（固定值）',old:'（待绑定）',neu:mn,source:SRC.USER,defChecked:true,fields:['flowId'],
+          reason:'你确认的常量标识。',apply:function(b){b.bind.model_name='const';b.bindv=b.bindv||{};b.bindv.model_name=mn;}}));
+        sugs.push(sug({label:'输入 attr_name（固定值）',old:'（待绑定）',neu:an,source:SRC.USER,defChecked:true,fields:['flowId'],
+          reason:'你确认的常量标识。',apply:function(b){b.bind.attr_name='const';b.bindv=b.bindv||{};b.bindv.attr_name=an;}}));
+      }else{
+        sugs.push(sug({label:'输入 model_name / attr_name',old:'（待绑定）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['flowId'],
+          pending:ans.consts===UN?'常量取值“暂不确定”：不替你编造模型标识。':'依赖上方问题的回答。'}));
+      }
+      sugs.push(sug({label:'输入 model_id（实例编号）',old:'（待绑定）',neu:'实例编号',source:SRC.SUG,defChecked:true,fields:['flowId'],
+        reason:'model_id 随实例变化，表单已支持“实例编号”来源。',apply:function(b){b.bind.model_id='instid';}}));
+      sugs.push(sug({label:'输入 start_time / end_time（运行时时间范围）',old:'（待绑定）',neu:'（待配置）',source:SRC.SUG,defChecked:false,fields:['flowId'],
+        pending:'当前表单不提供“运行时输入”绑定项：明确显示为待配置，不发明正式已支持能力。'}));
+      notes.push('编排输出若与属性类型不符将禁止采纳（可用顶部“已有编排演示：输出改为文本”试验）。');
+      return {questions:qs,suggestions:sugs,notes:notes};
+    }
+    return {noValid:true,notes:['原型根据场景返回预置示例。']};},
+  check:function(buf){
+    const issues=[];
+    if(!buf.flowId)issues.push({field:'flowId',f:'函数编排',d:'未选择编排：SOC采样值为时间序列属性，需输出兼容的已有编排。'});
+    if(!buf.desc)issues.push({field:'desc',f:'来源说明',d:'三步查询规则未写入说明，后续无法核对口径。'});
+    const unbound=Object.keys(buf.bind||{}).filter(function(k){return !buf.bind[k];});
+    if(unbound.length)issues.push({field:'flowId',f:'输入参数绑定',d:'待绑定参数：'+unbound.join('、')+'（start/end 需表单支持后才能配置——显示为待配置）。'});
+    return {issues:issues,suggestions:[],notes:['检查不创建编排；仅整理说明可走“帮我填写”。']};}
+},
+/* ---------- P5 链接映射 ---------- */
+'lm:l_c2b':{
+  target:'项目 · 链接映射「储能簇 → 储能设备」',
+  keys:['startField','endField','desc'],
+  examples:['簇表的 storage_id 就是设备登记实例的编号，用它关联两端','两个表都有 id 字段，名字差不多，用 id 对 id 关联吧'],
+  ctx:function(){const b=BUFFERS['lm:l_c2b']||{};const cf=catalogFields('m_storage_cluster_phase');return[
+    ['目标资产','项目「创智园二期」· 引用 2.0.0 → 链接「储能簇-所属设备-储能设备」的映射'],
+    ['当前表单（未保存）','起点字段：'+(b.startField||'（未选）')+'；终点：'+(b.endField||'（未选）')],
+    ['候选目录',DEMO.catalog==='missing'?'（演示）目录缺失':'起点表 m_storage_cluster_phase 字段：'+(cf||[]).map(function(f){return f.name;}).join('、')+'；终点：项目登记储能设备（实例编号/显示名称）']];},
+  explains:{startField:{what:'起点关联字段：起点实例与终点实例建立关系所用的字段。',need:'你的资料说明该字段与终点标识的等价关系。',example:'storage_id（注释：业务设备ID）'},
+    endField:{what:'终点匹配字段：终点侧用于匹配的字段。',need:'与起点字段语义等价的终点标识。',example:'登记实例的“实例编号”'}},
+  fill:function(t,ans,buf){
+    const qs=[];const sugs=[];const notes=[];
+    if(/名字差不多|同名|都叫 ?id|id 对 ?id/.test(t)){
+      return {notes:['两端字段同名或相似不构成关联依据：请提供映射说明（哪个字段对应终点哪个标识）。'],
+        questions:[{qid:'pair',q:'两端的关联依据是什么？',free:true,ph:'例如 簇表 storage_id = 设备登记编号',opts:[]}],
+        suggestions:[sug({label:'起点关联字段',old:'（未选）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['startField'],pending:'缺少你的资料支持。'})]};
+    }
+    if(/storage_id/.test(t)&&(/登记|编号|设备/.test(t)||ans.pair)){
+      sugs.push(sug({label:'起点关联字段',old:buf.startField||'（未选）',neu:'storage_id',source:SRC.USER,defChecked:true,fields:['startField'],
+        reason:'依据你的说明（storage_id=业务设备ID/登记编号）；目录中存在该字段。同名相似不是依据。',blocked:DEMO.catalog==='missing'?'目录缺失（演示）：不能确认字段存在。':null,
+        apply:function(b){b.startField='storage_id';}}));
+      sugs.push(sug({label:'终点匹配字段',old:buf.endField||'（未选）',neu:'实例编号（code）',source:SRC.USER,defChecked:true,fields:['endField'],
+        reason:'终点为项目登记实例，按你的说明对应“实例编号”。',apply:function(b){b.endField='code';}}));
+      sugs.push(sug({label:'链接映射说明',old:buf.desc||'（空）',neu:'储能簇通过 storage_id 对应储能设备登记实例的实例编号建立“所属设备”关系（多对一，依据引用版本定义）。',source:SRC.USER,defChecked:true,fields:['desc'],
+        reason:'记录关联依据，供后续核对。',apply:function(b){b.desc='储能簇通过 storage_id 对应储能设备登记实例的实例编号建立“所属设备”关系（多对一，依据引用版本定义）。';}}));
+      return {suggestions:sugs,notes:notes};
+    }
+    qs.push({qid:'pair',q:'两端的关联依据是什么？（需提供资料支持的字段对）',free:true,ph:'例如 storage_id = 设备登记编号',opts:[]});
+    return {questions:qs,suggestions:[sug({label:'起点/终点关联字段',old:'（未选）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['startField'],pending:'等待你的字段对说明。'})],notes:['不以同名推断正确关联。']};},
+  check:function(buf){
+    const issues=[];
+    if(!buf.startField)issues.push({field:'startField',f:'起点关联字段',d:'未配置：链接映射无法建立两端实例对应。'});
+    if(!buf.endField)issues.push({field:'endField',f:'终点匹配字段',d:'未配置。'});
+    if(!buf.desc)issues.push({field:'desc',f:'说明',d:'说明为空：关联依据（哪个字段对应哪个标识）未记录。'});
+    return {issues:issues,suggestions:[],notes:['两端字段关联需要你的资料支持；同名字段不视为依据。']};}
+},
+/* ---------- P6 动作映射 ---------- */
+'ab:a_stop':{
+  target:'项目 · 动作映射「停止充放电」（接口）',
+  keys:['method','url','pStorageSrc','pStorageVal','pPowerSrc','pPowerVal','desc'],
+  examples:['接口是 POST /storage/setPower，参数 storageId 传业务设备ID，power 固定 0','接口 https://ems.chuangzhi.example/api/setPower，storageId 用簇的业务设备ID，power 传 0'],
+  ctx:function(){const b=BUFFERS['ab:a_stop']||{};return[
+    ['目标资产','项目「创智园二期」· 引用 2.0.0 → 动作「停止充放电」的接口映射'],
+    ['当前表单（未保存）','方式：'+(b.method||'（未选）')+'；地址：'+(trunc(b.url||'',40)||'（空）')],
+    ['本体动作定义','停止充放电（业务定义来自引用版本，不含参数）'],
+    ['边界','凭据/密钥不进入上下文；仅基于你已提供的接口信息，不解析上传文件、不猜接口、不执行请求']];},
+  explains:{url:{what:'接口地址：当前表单要求完整 URL（协议+域名+路径）。',need:'你方接口文档给出的完整地址；仅有相对路径时保持未完整状态。',example:'https://<域名>/storage/setPower'},
+    pStorageSrc:{what:'参数取值来源：storageId 从哪取。',need:'业务ID与实例ID的等价关系说明；否则要先问。',example:'当前对象属性 · 业务设备ID（storage_id）'}},
+  fill:function(t,ans,buf){
+    const qs=[];const sugs=[];const notes=[];
+    if(!/setPower|storageId|接口/i.test(t)){
+      return {noValid:true,notes:['原型只演示“基于你提供的接口信息”的配置：请先给出接口与参数描述（或点示例）。']};
+    }
+    const fullUrl=(t.match(/https?:\/\/[^\s，。]+/)||[])[0];
+    if(fullUrl){
+      sugs.push(sug({label:'接口地址',old:buf.url||'（空）',neu:fullUrl,source:SRC.USER,defChecked:!buf.url,fields:['url'],
+        reason:'你提供了完整地址。',apply:function(b){b.url=fullUrl;}}));
+    }else{
+      sugs.push(sug({label:'接口地址',old:buf.url||'（空）',neu:'（未完整：/storage/setPower）',source:SRC.USER,defChecked:false,fields:['url'],
+        pending:'你只提供了相对路径 /storage/setPower，当前表单要求完整 URL（协议+域名）：地址保持未完整状态，请补充，原型不编造域名。'}));
+      notes.push('补充完整地址后重新生成，才能采纳该项。');
+    }
+    if(!ans.eq)qs.push({qid:'eq',q:'storageId 传“业务设备ID”——它与表单里哪个来源等价？（实例主键与业务ID不同，未明确前不默认）',opts:[['attr','当前对象属性 · 业务设备ID（storage_id）'],['pk','当前对象实例主键 id']]});
+    const srcLabel=v=>v==='attr'?('当前对象属性'+(buf.pStorageVal?' · '+buf.pStorageVal:'')):(v==='pk'?'当前对象实例主键':(v==='const'?('固定值 '+(buf.pStorageVal||'')):'（待绑定）'));
+    if(ans.eq==='attr')sugs.push(sug({label:'参数 storageId 绑定',old:srcLabel(buf.pStorageSrc||''),neu:'当前对象属性 · 业务设备ID',source:SRC.USER,defChecked:true,fields:['pStorageSrc'],
+      reason:'你确认了等价关系：storageId=业务设备ID（storage_id）。',apply:function(b){b.pStorageSrc='attr';b.pStorageVal='storage_id';}}));
+    else if(ans.eq==='pk')sugs.push(sug({label:'参数 storageId 绑定',old:srcLabel(buf.pStorageSrc||''),neu:'当前对象实例主键',source:SRC.USER,defChecked:true,fields:['pStorageSrc'],
+      reason:'你选择用实例主键；请再次确认接口侧确实接受实例主键。',apply:function(b){b.pStorageSrc='pk';}}));
+    else sugs.push(sug({label:'参数 storageId 绑定',old:srcLabel(buf.pStorageSrc||''),neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['pStorageSrc'],
+      pending:ans.eq===UN?'等价关系“暂不确定”：不默认实例ID=业务ID。':'依赖上方等价关系问题的回答。'}));
+    const powOld=buf.pPowerSrc==='const'?('请求体 · 固定值 '+(buf.pPowerVal||'')+'（'+(buf.pPowerType||'数值')+'）'):(buf.pPowerSrc?(buf.pPowerSrc==='query'?'URL查询参数':'')+'已配置为'+buf.pPowerSrc:'（未绑定）');
+    sugs.push(sug({label:'参数 power（固定值）',old:powOld,neu:'请求体 · 固定值 0（数值）',source:SRC.USER,defChecked:true,fields:['pPowerSrc'],
+      reason:'你说明 power=0 表示停止。',apply:function(b){b.pPowerSrc='const';b.pPowerVal='0';b.pPowerType='xsd:double';}}));
+    const descSegs=[];
+    descSegs.push('调用 setPower 将目标储能单元功率设为 0');
+    if(ans.eq==='attr')descSegs.push('storageId 传业务设备ID（storage_id）');
+    else if(ans.eq==='pk')descSegs.push('storageId 传实例主键（经你确认）');
+    else descSegs.push('storageId 来源：待确认等价关系');
+    descSegs.push('power 固定 0');
+    descSegs.push('注意：请求被接受不等于设备已停止，执行反馈需另行核对');
+    const abDesc='POST '+descSegs.join('；')+'。';
+    sugs.push(sug({label:'接口说明',old:buf.desc||'（空）',neu:abDesc,source:SRC.USER,defChecked:true,fields:['desc'],
+      reason:'整理你已提供的接口信息与已确认的参数来源；未确认项在说明中标注“待确认”。',apply:function(b){b.desc=abDesc;}}));
+    notes.push('请求方式 POST 与当前表单一致，无需变更；不添加“执行/测试请求”能力；认证凭据只登记引用、不生成密钥。');
+    return {questions:qs,suggestions:sugs,notes:notes};},
+  check:function(buf){
+    const issues=[];
+    if(!buf.url)issues.push({field:'url',f:'接口地址',d:'接口地址为空（表单要求完整 URL）。'});
+    else if(!/^https?:\/\//.test(buf.url))issues.push({field:'url',f:'接口地址',d:'仅相对路径不完整：请补充协议与域名。'});
+    if(!buf.pStorageSrc)issues.push({field:'pStorageSrc',f:'参数 storageId',d:'未绑定取值来源：实例主键≠业务设备ID，需要你明确等价关系。'});
+    if(!buf.desc)issues.push({field:'desc',f:'说明',d:'说明为空：参数含义与“请求接受≠设备已停止”未记录。'});
+    return {issues:issues,suggestions:[],notes:['检查不执行任何请求、不触碰凭据。']};}
+},
+'p:p_b_soc':{ /* 引用共享的属性：不提供独立辅助（只读），避免假入口 */ }
+};
+
+/* =====================================================================
+   辅助面板
+   ===================================================================== */
+function panelState(ek){
+  if(!PANELS[ek])PANELS[ek]={tab:'fill',intent:'',answers:{},state:'idle',mode:null,result:null,baseline:null,
+    undo:null,canUndo:false,undoReason:'',checked:{},notice:'',explains:null};
+  return PANELS[ek];}
+function openPanel(ek){
+  if(!SCEN[ek]){toast('该表单本原型未提供辅助入口');return;}
+  if(panelCur&&panelCur!==ek)REQ++;
+  panelCur=ek;panelOpen=true;panelState(ek);render();
+  const ta=$('#p-intent');if(ta&&panelState(ek).tab==='fill')ta.focus();}
+function closePanel(){REQ++;const p=panelCur?PANELS[panelCur]:null;
+  if(p&&p.state==='gen'){p.state='idle';p.notice='面板已关闭时取消了生成；迟到结果将被忽略。';}
+  panelOpen=false;render();}
+function discardPanelResult(ek,msg){
+  const p=PANELS[ek];if(!p)return;
+  if(p.result||p.state==='gen'){p.result=null;p.state='idle';p.notice=msg||'';}}
+function invalidateAdoption(ek){
+  const p=PANELS[ek];if(!p)return;
+  if(p.undo&&p.canUndo){p.canUndo=false;p.undoReason='采纳后你已手动编辑表单：直接撤销会覆盖新修改。请在表单中手动修正，或重新生成建议后再采纳。';renderPanelIfOpen(ek);}}
+function baselineOf(ek){
+  const b=BUFFERS[ek]||extract(ek);const sc=SCEN[ek];
+  if(sc.baseline)return sc.baseline(b);
+  const o={};(sc.keys||Object.keys(b)).forEach(function(k){o[k]=b[k];});
+  return JSON.stringify(o);}
+function renderPanelIfOpen(ek){if(panelOpen&&panelCur===ek)renderPanel();}
+
+let panelCur=null;
+
+function isStale(ek){const p=PANELS[ek];return p&&p.result&&p.baseline&&p.baseline!==baselineOf(ek);}
+
+function renderPanel(){
+  const host=$('#panel');
+  if(!panelOpen||!panelCur){host.classList.remove('open');$('#panel-backdrop').classList.remove('on');return;}
+  const ek=panelCur;const sc=SCEN[ek];const p=panelState(ek);
+  if(!sc){closePanel();return;}
+  host.classList.add('open');
+  if(window.innerWidth<=1200)$('#panel-backdrop').classList.add('on');else $('#panel-backdrop').classList.remove('on');
+  const buf=BUFFERS[ek]||extract(ek);
+  let h='<div class="panel-head"><div class="row1"><h3>辅助填写</h3>'
+   +'<button class="close" id="p-close" aria-label="关闭辅助面板">✕</button></div>'
+   +'<div class="panel-target">当前目标：<b>'+esc(sc.target)+'</b><br><span style="color:var(--faint)">切换页面/记录后面板跟随新目标，不沿用旧结果</span></div></div>';
+  h+='<div class="panel-tabs" role="tablist">'
+   +tabBtn('fill','帮我填写',p)+tabBtn('check','检查当前内容',p)+tabBtn('explain','解释怎么填',p)+'</div>';
+  h+='<div class="panel-body" id="p-body">';
+  if(p.notice)h+='<div class="gen-state" style="background:var(--paper-2);border-color:var(--line);color:var(--muted)">'+esc(p.notice)+'</div>';
+  if(p.tab==='fill')h+=panelFillHTML(p,buf);
+  else if(p.tab==='check')h+=panelCheckHTML(p,buf);
+  else h+=panelExplainHTML(p,sc);
+  h+='</div>';
+  h+=panelFootHTML(p,ek);
+  host.innerHTML=h;
+  bindPanel(host,ek,p,buf);
+}
+function tabBtn(t,label,p){return '<button role="tab" data-ptab="'+t+'" class="'+(p.tab===t?'on':'')+'" aria-selected="'+(p.tab===t)+'">'+label+'</button>';}
+
+function panelFillHTML(p,buf){
+  const ek=panelCur;const sc=SCEN[ek];
+  let h=ctxHTML(p,sc,buf);
+  h+='<label class="field-label" for="p-intent">你想填什么／问题描述（可粘贴你的资料文字）</label>';
+  h+='<textarea id="p-intent" class="intent-box" aria-label="意图描述" placeholder="例如：电池还剩多少电……">'+esc(p.intent)+'</textarea>';
+  if(!p.intent.trim()){
+    h+='<div class="ex-chips"><span class="ex-cap">空输入时提供本场景示例（点击带入；原型按预置场景返回示例，不假装理解任意文字）：</span>';
+    (sc.examples||[]).forEach(function(x,i){h+='<button data-ex="'+i+'" title="'+esc(x)+'">'+esc(trunc(x,38))+'</button>';});
+    h+='</div>';
+  }
+  if(p.state==='nomodel'){
+    h+='<div class="nomi-state"><b>尚未配置模型</b><br>本原型不连接真实模型。正式实现中此处为配置引导。<div style="margin-top:8px"><button class="btn" id="goto-llm">前往模型设置（只读示意）→</button></div>你的输入已保留。</div>';
+  }
+  if(p.state==='gen'){
+    h+='<div class="gen-state">生成中…（演示：根据场景返回预置示例，'+'"'+esc(DEMO.model==='slow'?'延迟约 3 秒':'瞬间返回')+'"）重复提交已禁用；可点“取消生成”。</div>';
+  }
+  if(p.state==='fail'){
+    h+='<div class="fail-state"><b>请求失败（演示）</b>：你的文字与已有配置均已保留，未填入任何空值。<div style="margin-top:8px"><button class="btn" id="retry-gen">重试</button></div></div>';
+  }
+  if(p.result){h+=resultHTML(p,buf);}
+  if(p.state==='empty'){
+    h+='<div class="gen-state" style="background:var(--paper-2);border-color:var(--line);color:var(--muted)">本次没有产出有效建议（演示状态）。表单未做任何修改，可调整描述后重试。</div>';
+  }
+  return h;
+}
+function panelCheckHTML(p,buf){
+  const sc=SCEN[panelCur];
+  let h='<p class="panel-note">读取当前<b>未保存</b>表单进行检查；不修改数据、不会先静默保存。</p>';
+  h+=ctxHTML(p,sc,buf);
+  if(p.state==='gen')h+='<div class="gen-state">检查中…（演示）可点“取消生成”。</div>';
+  if(p.state==='fail')h+='<div class="fail-state"><b>请求失败（演示）</b>：已有内容保留。<div style="margin-top:8px"><button class="btn" id="retry-gen">重试</button></div></div>';
+  if(p.state==='nomodel')h+='<div class="nomi-state"><b>尚未配置模型</b><div style="margin-top:8px"><button class="btn" id="goto-llm">前往模型设置（只读示意）→</button></div></div>';
+  if(p.result)h+=resultHTML(p,buf,true);
+  return h;
+}
+function panelExplainHTML(p,sc){
+  const exs=sc.explains||{};const ks=Object.keys(exs);
+  let h='<p class="panel-note">解释只展示帮助信息，<b>不产生任何字段修改</b>。</p>';
+  h+='<div class="expl-pick" role="tablist">';
+  ks.forEach(function(k){h+='<button data-expl="'+k+'" class="'+(p.explains===k?'on':'')+'">'+esc(exs[k].what?explainLabel(sc,k):k)+'</button>';});
+  h+='</div>';
+  if(p.explains&&exs[p.explains]){
+    const e=exs[p.explains];
+    h+='<div class="expl-card"><h4>'+esc(explainLabel(sc,p.explains))+'</h4><p>'+esc(e.what)+'</p>'
+     +'<p><b>需要你提供：</b>'+esc(e.need)+'</p>'
+     +'<p class="cap">当前对象示例：'+esc(e.example||'（无）')+'</p></div>';
+  }
+  return h;
+}
+function explainLabel(sc,k){
+  const map=({name:'名称',def:'业务定义',dataType:'数据类型',obsType:'观测值类型',fmt:'显示格式',card:'数量关系',fwd:'正向名称',content:'规则内容',effect:'预期效果',
+    pk:'实例主键',mode:'实例来源方式',field:'取值字段',merge:'多行归并',tpl:'Key 模板',conv:'结果转换',flowId:'函数编排',bind:'输入参数绑定',
+    startField:'起点关联字段',endField:'终点匹配字段',url:'接口地址',pStorageSrc:'storageId 来源'});
+  return map[k]||k;}
+
+function ctxHTML(p,sc,buf){
+  const lines=sc.ctx?sc.ctx(buf):[];
+  let h='<details class="ctx-details"><summary>本次参考内容（上下文摘要 · 只读）</summary><div class="ctx-body">';
+  lines.forEach(function(l){h+='<p class="ctx-line"><b>'+esc(l[0])+'：</b>'+esc(l[1])+'</p>';});
+  if(p.intent.trim())h+='<p class="ctx-line"><b>你输入的文字：</b>'+esc(trunc(p.intent,80))+'</p>';
+  h+='<p style="margin-top:8px;color:var(--faint)">模型密钥、数据库密码、API 凭据不进入上下文；默认不发送业务记录样本。若接入远程模型，上述所选上下文将被发送。</p>';
+  h+='</div></details>';
+  return h;
+}
+
+function resultHTML(p,buf,checkMode){
+  const r=p.result;let h='';
+  if(isStale(panelCur)){
+    h+='<div class="stale-banner"><b>建议已失效：</b>生成后你手动修改了表单。旧建议按整批失效处理，不会静默覆盖新内容。请点击“重新生成”。</div>';
+  }
+  if(checkMode&&r.issues&&r.issues.length){
+    h+='<h3 style="margin:6px 0">发现的问题（'+r.issues.length+'）</h3>';
+    r.issues.forEach(function(iss,i){
+      h+='<div class="issue-card"><div class="i-f">'+esc(iss.f)+'</div><div class="i-d">'+esc(iss.d)+'</div>'
+       +'<button class="btn small" data-locate="'+esc(iss.field)+'">定位到字段</button></div>';});
+  }
+  if(r.questions&&r.questions.length){
+    r.questions.forEach(function(q){
+      h+='<div class="q-card"><div class="q-t">需要你确认：</div>'+esc(q.q)+'<div class="q-o">';
+      (q.opts||[]).forEach(function(o){
+        const checked=p.answers[q.qid]===o[0]?'checked':'';
+        h+='<label><input type="radio" name="'+q.qid+'" value="'+esc(o[0])+'" '+checked+'><span>'+esc(o[1])+'</span></label>';});
+      h+='<label><input type="radio" name="'+q.qid+'" value="'+UN+'" '+(p.answers[q.qid]===UN?'checked':'')+'><span>暂不确定</span></label>';
+      if(q.free){
+        h+='<label style="margin-top:4px"><input type="radio" name="'+q.qid+'" value="__free__" '+(p.answers['__free_'+q.qid]?'checked':'')+'><span>直接填写：</span></label>';
+        h+='<input type="text" data-free="'+q.qid+'" value="'+esc(p.answers[q.qid]===UN||p.answers['__free_'+q.qid]?p.answers[q.qid]||'':'')+'" placeholder="'+esc(q.ph||'')+'" aria-label="自由补充">';
+      }
+      h+='</div></div>';});
+    h+='<p class="panel-note">回答后建议将基于已有上下文即时重算（演示，不重新请求模型）。“暂不确定”会让依赖项保持待补充。</p>';
+  }
+  if(r.notes&&r.notes.length){
+    r.notes.forEach(function(n){h+='<div class="note">'+esc(n)+'</div>';});
+  }
+  if(r.suggestions&&r.suggestions.length){
+    h+='<h3 style="margin:10px 0 2px">建议（逐项勾选）</h3>';
+    r.suggestions.forEach(function(s,i){
+      const disabled=s.blocked||s.pending||isStale(panelCur);
+      const defv=p.checked[s.id]!==undefined?p.checked[s.id]:!!s.defChecked;
+      h+='<div class="sug-card'+(s.blocked?' blocked':s.pending?' pending':'')+'">'
+       +'<div class="sug-top"><input type="checkbox" data-sug="'+i+'" '+(defv&&!disabled?'checked':'')+(disabled?' disabled':'')+' aria-label="采纳建议：'+esc(s.label)+'">'
+       +'<span class="sug-field">'+esc(s.label)+'</span><span class="sug-src '+(SRC_CLS[s.source]||'')+'">'+esc(s.source)+'</span></div>';
+      h+='<div class="sug-diff">'+(s.old&&String(s.old).trim()&&!/（空|（未选|（未绑定|（待|（无/.test(String(s.old).slice(0,4))?'<div class="old">原值：'+esc(trunc(s.old,60))+'</div>':'<div class="old none">原值：'+esc(s.old||'（空）')+'</div>')
+       +'<div class="new">建议：'+esc(trunc(s.neu,220))+'</div></div>';
+      if(s.reason)h+='<div class="sug-reason">依据：'+esc(s.reason)+'</div>';
+      if(s.blocked)h+='<div class="sug-block">禁止采纳：'+esc(s.blocked)+'</div>';
+      if(s.pending)h+='<div class="sug-pend">待补充：'+esc(s.pending)+'</div>';
+      if(s.fields&&s.fields.length&&s.fields[0]!=='tpl')h+='<button class="btn small" style="margin-top:6px" data-locate="'+esc(s.fields[0])+'">定位到字段</button>';
+      h+='</div>';});
+    h+='<p class="panel-note">空字段的有效建议默认选中；已有值的替换默认不选。采纳仅更新当前编辑缓冲区，不会自动保存。</p>';
+  }
+  if(p.mode==='fill'&&Object.keys(p.answers||{}).length)
+    h+='<div style="margin-top:8px"><button class="btn small" id="reset-ans">清空补充回答并重新提问</button></div>';
+  if(p.undoReason)h+='<div class="fail-state" style="background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)">'+esc(p.undoReason)+'</div>';
+  if(BUFFERS[ek2filled()]&&BUFFERS[ek2filled()].__filledTip)h+='<div class="filled-tip">已填入表单，<b>尚未保存</b>。可继续编辑、撤销本次填入或用表单的“演示保存”。</div>';
+  return h;
+}
+function ek2filled(){return panelCur;}
+
+function panelFootHTML(p,ek){
+  const r=p.result;let h='<div class="panel-foot">';
+  h+='<span class="foot-hint">原型不自动保存、不发布、不执行任何请求</span><span class="foot-btns">';
+  if(p.state==='gen'){
+    h+='<button class="btn danger-ghost" id="cancel-gen">取消生成</button>';
+  }else{
+    if(p.tab==='fill')h+='<button class="btn primary" id="gen-btn">生成建议</button>';
+    if(p.tab==='check')h+='<button class="btn primary" id="check-btn">'+(p.result?'重新检查':'检查当前内容')+'</button>';
+    if(p.tab==='explain')h+='<span class="panel-note" style="margin:0">解释模式无采纳操作</span>';
+  }
+  if(r&&p.tab!=='explain'&&p.state!=='gen')h+='<button class="btn primary" id="adopt-btn" '+(isStale(ek)?'disabled':'')+'>填入所选建议</button>';
+  if(r&&p.tab!=='explain'&&p.state!=='gen')h+='<button class="btn" id="regen-btn">重新生成</button>';
+  if(p.undo)h+='<button class="btn" id="undo-btn" '+(p.canUndo&&!isStale(ek)?'':'disabled')+'>撤销上次填入</button>';
+  h+='</span></div>';
+  return h;
+}
+
+function bindPanel(host,ek,p,buf){
+  $('#p-close',host).addEventListener('click',closePanel);
+  const ra=$('#reset-ans',host);if(ra)ra.addEventListener('click',function(){p.answers={};recomputeAnswers(ek,p);toast('已清空补充回答，可重新选择。');});
+  $$('[data-ptab]',host).forEach(function(b){b.addEventListener('click',function(){p.tab=b.dataset.ptab;renderPanel();});});
+  const ta=$('#p-intent',host);
+  if(ta)ta.addEventListener('input',function(){p.intent=ta.value;});
+  $$('[data-ex]',host).forEach(function(b){b.addEventListener('click',function(){
+    p.intent=SCEN[ek].examples[+b.dataset.ex];renderPanel();const t2=$('#p-intent');if(t2)t2.focus();});});
+  const g=$('#gen-btn',host);if(g)g.addEventListener('click',function(){startGenerate('fill');});
+  const c=$('#check-btn',host);if(c)c.addEventListener('click',function(){startGenerate('check');});
+  const rg=$('#retry-gen',host);if(rg)rg.addEventListener('click',function(){startGenerate(p.mode||'fill');});
+  const cg=$('#cancel-gen',host);if(cg)cg.addEventListener('click',function(){cancelGenerate();});
+  const gl=$('#goto-llm',host);if(gl)gl.addEventListener('click',function(){
+    llmReturn=clone(NAV);delete llmReturn.__seed;go({space:'prj',page:'llm'});});
+  const ab=$('#adopt-btn',host);if(ab)ab.addEventListener('click',function(){adoptSelected();});
+  const rb=$('#regen-btn',host);if(rb)rb.addEventListener('click',function(){startGenerate(p.mode||'fill');});
+  const ub=$('#undo-btn',host);if(ub)ub.addEventListener('click',function(){undoAdopt();});
+  $$('input[type=radio]',host).forEach(function(r){r.addEventListener('change',function(){
+    if(r.value==='__free__'){p.answers['__free_'+r.name]=true;recomputeAnswers(ek,p);return;}
+    p.answers[r.name]=r.value;delete p.answers['__free_'+r.name];recomputeAnswers(ek,p);});});
+  $$('[data-free]',host).forEach(function(inp){inp.addEventListener('input',function(){
+    p.answers[inp.dataset.free]=inp.value;p.answers['__free_'+inp.dataset.free]=true;});
+    inp.addEventListener('change',function(){recomputeAnswers(ek,p);});});
+  $$('[data-sug]',host).forEach(function(ch){ch.addEventListener('change',function(){
+    p.checked[SCEN[ek]&&panelState(ek).result.suggestions[+ch.dataset.sug].id]=ch.checked;});});
+  $$('[data-locate]',host).forEach(function(b){b.addEventListener('click',function(){locateField(b.dataset.locate);});});
+  $$('[data-expl]',host).forEach(function(b){b.addEventListener('click',function(){p.explains=b.dataset.expl;renderPanel();});});
+}
+function recomputeAnswers(ek,p){
+  if(!p.result)return;
+  const sc=SCEN[ek];const buf=BUFFERS[ek]||extract(ek);
+  if(p.mode==='check'){p.result=sc.check(buf,p.answers);}
+  else{p.result=sc.fill(p.intent,p.answers,buf);}
+  idResults(p.result);
+  renderPanel();
+}
+function idResults(res){(res.suggestions||[]).forEach(function(s,i){if(!s.id)s.id='s'+i+'-'+Date.now()%100000;});}
+function cancelGenerate(){
+  REQ++;const p=panelState(panelCur);p.state='idle';p.notice='已取消生成；迟到结果将被忽略。';renderPanel();
+}
+function startGenerate(mode){
+  const ek=panelCur;const p=panelState(ek);const sc=SCEN[ek];
+  if(!sc){return;}
+  p.mode=mode;p.notice='';
+  if(mode==='fill'&&!p.intent.trim()){p.state='idle';p.notice='先输入描述，或点击示例带入。';renderPanel();return;}
+  if(DEMO.model==='nomodel'){p.state='nomodel';renderPanel();return;}
+  p.state='gen';renderPanel();
+  const token=++REQ;
+  const delay=DEMO.model==='slow'?3000:300;
+  setTimeout(function(){
+    if(REQ!==token)return; /* 已被取消/切目标，忽略迟到结果 */
+    if(DEMO.model==='fail'){p.state='fail';renderPanel();return;}
+    const buf=BUFFERS[ek]||bufOf(ek);
+    let res;
+    try{
+      res=mode==='check'?sc.check(buf,p.answers):sc.fill(p.intent,p.answers,buf);
+    }catch(e){res={noValid:true,notes:['生成异常（演示兜底）：未修改任何内容。']};}
+    if(res.noValid){p.result=null;p.state='empty';renderPanel();return;}
+    res.suggestions=res.suggestions||[];
+    idResults(res);
+    p.result=res;p.state='done';p.baseline=baselineOf(ek);
+    p.checked={};
+    renderPanel();
+  },delay);
+}
+function adoptSelected(){
+  const ek=panelCur;const p=panelState(ek);
+  if(!p.result||isStale(ek))return;
+  const buf=bufOf(ek);
+  const items=(p.result.suggestions||[]).filter(function(s){
+    const ck=p.checked[s.id]!==undefined?p.checked[s.id]:!!s.defChecked;
+    return ck&&!s.blocked&&!s.pending&&s.apply;});
+  if(!items.length){toast('没有可采纳的勾选项（被禁止/待补充项不可采纳）');return;}
+  p.undo={buf:clone(buf),reason:''};p.canUndo=true;p.undoReason='';
+  items.forEach(function(s){try{s.apply(buf);}catch(e){}});
+  buf.__filledTip=true;
+  p.baseline=baselineOf(ek); /* 采纳本身不算“手动修改”，仍可继续勾选 */
+  p.notice='';
+  render();
+  toast('已填入 '+items.length+' 项建议到表单（尚未保存）');
+}
+function undoAdopt(){
+  const ek=panelCur;const p=panelState(ek);
+  if(!p.undo)return;
+  if(!p.canUndo){toast(p.undoReason||'采纳后有手动编辑，不能直接撤销');return;}
+  BUFFERS[ek]=p.undo.buf;BUFFERS[ek].__seed=BUFFERS[ek].__seed||p.undo.buf.__seed;
+  p.undo=null;p.canUndo=false;p.result=null;p.state='idle';p.notice='已撤销上次填入，表单恢复采纳前状态。';
+  render();toast('已撤销采纳内容（未保存状态）');
+}
+function locateField(k){
+  const scope=document;
+  let node=$('[data-k="'+k+'"]',scope)||$('[data-fld="'+k+'"]',scope)||$('[data-err="'+k+'"]',scope);
+  if(!node&&k.indexOf('bind.')===0)node=$('[data-k="'+k+'"]',scope);
+  if(!node&&k==='pStorageSrc')node=$('[data-k="pStorageSrc"]',scope);
+  if(!node){toast('该字段在当前视图不可直接定位（'+esc(k)+'）');return;}
+  const d=node.closest&&node.closest('details');if(d)d.open=true;
+  node.scrollIntoView({behavior:'smooth',block:'center'});
+  node.focus&&node.focus();
+  node.style.boxShadow='0 0 0 3px var(--blue-line)';
+  setTimeout(function(){node.style.boxShadow='';},1500);
+}
+
+/* ---------------- 全局交互 ---------------- */
+['dm-model','dm-catalog','dm-flow'].forEach(function(id){
+  $('#'+id).addEventListener('change',function(e){
+    const m={'dm-model':'model','dm-catalog':'catalog','dm-flow':'flow'};
+    DEMO[m[id]]=e.target.value;
+    /* 切换演示状态使已有建议基线失效，并作废在途请求 */
+    REQ++;
+    Object.keys(PANELS).forEach(function(k){discardPanelResult(k,'演示状态已切换：旧建议作废，请重新生成。');});
+    toast('演示控制已切换（不改动表单数据）');
+    render();
+  });});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){
+    if($('#modal-back').classList.contains('on'))hideModal();
+    else if(panelOpen)closePanel();
+  }});
+$('#panel-backdrop').addEventListener('click',function(){closePanel();toast('面板已关闭；输入与未采纳建议保留，点“辅助填写”可再打开');});
+window.addEventListener('resize',function(){if(panelOpen)renderPanel();});
+
+/* 初始化 */
+render();
+</script>
+</body>
+</html>
