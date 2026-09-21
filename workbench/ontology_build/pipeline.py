@@ -40,6 +40,10 @@ from workbench.storage import ontology_build as store
 DIALOG_STAGE = 'dialog'
 DIALOG_STAGE_LABEL = '范围对话'
 MAX_MODEL_FACTS = protocol.LLM_BATCH_FACTS * 25   # 单次生成最多发给模型的事实数
+# 人工排除决定回放的有效窗口（D04）：store.list_batches 默认只取最近 20 批，直接用默认值会
+# 把更早批次里的人工否决静默丢掉（保护再次失效）。这里放宽到任务级不设限的实用上限
+# （单个任务要超过 1000 个生成批次才可能落到窗口之外）。
+_DECISION_HISTORY_BATCH_LIMIT = 1000
 DEFINITION_ORDER_NOTE = ('definitionOrder 为候选层预检（对象→属性→链接→规则→动作，'
                          '再按对齐键排序）；正式定义 ID 与最终顺序由交付事务分配。')
 
@@ -488,30 +492,57 @@ def _append_candidates(conn, owner_id, task_id, batch_id, items):
     return created
 
 
-def _excluded_aligned_keys_previous(conn, owner_id, task_id, batch_id):
-    """上一有效批次里人工排除（decision=exclude）候选的 alignedKey 集合（D04）。
+def _manual_exclusion_keys(conn, owner_id, task_id, batch_id):
+    """跨批次的人工排除决定：回放全部旧批次后**仍**被排除的 alignedKey 集合（D04）。
 
-    只回看最近一个有候选的旧批次（与再生成差异比较 build_diff 的对照批一致）。
+    需求 §8.3 硬禁令是「人工否决不得被再次生成自动复活」；只回看最近一个有候选的旧批次
+    会让保护只生效一轮（B1 排除 → B2 继承为 defer → B3 直接复活）。因此这里取该任务的
+    全部批次（`store.list_batches`，上限见 _DECISION_HISTORY_BATCH_LIMIT，避免默认 20 条
+    截断掉更早的决定），按 created_at 从旧到新回放，跳过当前批次；每批用
+    `all_candidates(..., include_merged=True)` 读取（被合并掉的候选同样承载过人工决定，
+    漏掉它们会让保护凭空失效）。逐 alignedKey 维护状态，后发生的批次覆盖先前的：
+
+    * decision=exclude                  → 状态 'exclude'（人工否决，持续生效）；
+    * decision=include 且 reviewed 为真  → 状态 'include'（用户显式重新纳入，解除保护）；
+    * 其余（defer，或未经评审的 include/未知取值）→ 不改变已有状态；此前没有任何状态时
+      记为 'defer'（继承产生的 defer 与人工暂缓都不构成保护，也不解除保护）。
+
+    返回最终状态为 'exclude' 的键集合（空 alignedKey 不参与保护）。
     """
-    for previous in store.list_batches(conn, task_id, owner_id, limit=20):
-        if previous['id'] == batch_id:
+    state = {}
+    history = store.list_batches(conn, task_id, owner_id, limit=_DECISION_HISTORY_BATCH_LIMIT)
+    # 仓储按 created_at DESC 返回（只取最近 N 批）；这里显式排成从旧到新，同秒批次按 id
+    # 定序，保证「后发生的批次覆盖先前的」有确定结果而不是数据库返回顺序。
+    ordered = sorted(history,
+                     key=lambda batch: (_text(batch.get('createdAt')), _text(batch.get('id'))))
+    for previous in ordered:
+        previous_id = _text(previous.get('id'))
+        if not previous_id or previous_id == _text(batch_id):
             continue
-        old_items = store.all_candidates(conn, task_id, owner_id, batch_id=previous['id'])
-        if not old_items:
-            continue
-        return {str(item.get('alignedKey') or '') for item in old_items
-                if item.get('decision') == 'exclude' and str(item.get('alignedKey') or '')}
-    return set()
+        for item in store.all_candidates(conn, task_id, owner_id, batch_id=previous_id,
+                                         include_merged=True):
+            key = _text(item.get('alignedKey'))
+            if not key:
+                continue
+            decision = _text(item.get('decision'))
+            if decision == 'exclude':
+                state[key] = 'exclude'
+            elif decision == 'include' and bool(item.get('reviewed')):
+                state[key] = 'include'
+            else:
+                state.setdefault(key, 'defer')
+    return {key for key, value in state.items() if value == 'exclude'}
 
 
 def inherit_manual_exclusions(conn, owner_id, task_id, batch_id, items):
-    """人工决定继承（D04，需求 §8.3 硬禁令）：旧批次已排除的候选绝不自动复活。
+    """人工决定继承（D04，需求 §8.3 硬禁令）：排除决定**跨批次持续继承**，直到用户显式重新纳入。
 
-    新批次按 alignedKey 对齐命中旧批次 decision=exclude 的候选时，强制 defer 并在
-    origin 标记 `revived=true`（提示人工重新处理），必须在生成写事务内执行。
-    返回被保护的候选数。
+    新批次按 alignedKey 命中**历史任一旧批次**人工排除（decision=exclude）的候选时，强制
+    defer 并在 origin 标记 `revived=true`（提示人工重新处理）；保护不会因为再次生成而失效，
+    只在用户对后来批次显式决定 include（reviewed=true）时解除。
+    必须在生成写事务内执行（候选行随后由调用方整批落库）。返回被保护的候选数。
     """
-    excluded_keys = _excluded_aligned_keys_previous(conn, owner_id, task_id, batch_id)
+    excluded_keys = _manual_exclusion_keys(conn, owner_id, task_id, batch_id)
     protected = 0
     if not excluded_keys:
         return protected
@@ -644,7 +675,7 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
         runner.check_cancelled(conn, run_id, owner_id)
         protected = inherit_manual_exclusions(conn, owner_id, task_id, batch_id, final)
         if protected:
-            _note(notes, '上一批次人工排除的 %d 个候选在新批次未自动复活：已强制暂缓并标记 '
+            _note(notes, '历史批次人工排除的 %d 个候选在新批次未自动复活：已强制暂缓并标记 '
                          'revived，需人工确认后重新纳入。' % protected)
         return _write_candidates(conn, owner_id, task_id, batch_id, final)
     _tx(_final_write)

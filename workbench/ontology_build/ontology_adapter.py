@@ -111,7 +111,7 @@ ACTION_DEFINITION_VERSION = 2
 ACTION_NEW_STATUS = 'experimental'
 
 
-def assemble(candidates):
+def assemble(candidates, aliases=None):
     """选定候选集合 → (编辑器态 ontology JSON-LD, workflow 装配, ID 映射, warnings)。
 
     规则/动作（D06）不进 @graph：按现行协议装配为
@@ -123,6 +123,13 @@ def assemble(candidates):
       `{objectTypeId, ruleId|actionId}`，objectTypeId 用宿主对象在本图分配的
       稳定 @id（与 definitionOrder 同源，不发明新引用格式）。
     任一引用解析不到即抛 AdapterError（在交付事务里回滚，绝不落半成品）。
+
+    aliases（选传，默认 None = 无别名，完全保持旧行为）：合并别名表
+    `{被合并候选的 key 或候选 ID: 最终保留项候选 ID}`。评审合并后候选从选定集合
+    消失，其它候选仍按旧 key/ID 引用它；调用方（delivery）按本批次全部候选
+    （含已合并）构造本表传入，装配即把旧引用规范化到保留项（R3-03）。
+    解析顺序严格为 key → 候选 ID → 别名；别名指向的保留项必须出现在本次
+    candidates 里，否则仍按「无法解析」处理（抛 AdapterError），绝不静默丢弃。
     """
     by_key, by_id = {}, {}
     for candidate in candidates:
@@ -146,28 +153,28 @@ def assemble(candidates):
     for candidate in candidates:
         ctype = candidate['type']
         if ctype in ('rule', 'action'):
-            _assemble_business(candidate, assigned, by_key, by_id, workflow)
+            _assemble_business(candidate, assigned, by_key, by_id, workflow, aliases)
             continue
         node = build_node(candidate, assigned[candidate['id']], warnings)
         if ctype == 'property':
-            owner = _resolve(candidate.get('ownerKey'), by_key, by_id)
-            if owner is None or owner['type'] != 'object':
-                raise AdapterError('属性「%s」所属对象无法解析（未选入或不存在）' % candidate['name'])
-            node['rdfs:domain'] = {'@id': assigned.get(owner['id']) or ''}
-            if not node['rdfs:domain']['@id']:
-                raise AdapterError('属性「%s」所属对象未分配定义 ID' % candidate['name'])
+            owner = _require_object_ref(candidate.get('ownerKey'), by_key, by_id, aliases,
+                                        '属性', candidate['name'], '所属对象')
+            if owner is not None:
+                node['rdfs:domain'] = {'@id': assigned.get(owner['id']) or ''}
+                if not node['rdfs:domain']['@id']:
+                    raise AdapterError('属性「%s」所属对象未分配定义 ID' % candidate['name'])
         elif ctype == 'link':
             fields = candidate.get('fields') or {}
-            source = _resolve(fields.get('sourceRef'), by_key, by_id)
-            target = _resolve(fields.get('targetRef'), by_key, by_id)
-            if source is None or target is None:
-                raise AdapterError('链接「%s」两端对象无法解析（缺端点或未选入）' % candidate['name'])
-            if source['type'] != 'object' or target['type'] != 'object':
-                raise AdapterError('链接「%s」的端点必须是对象定义' % candidate['name'])
+            source = _require_object_ref(fields.get('sourceRef'), by_key, by_id, aliases,
+                                         '链接', candidate['name'], '源端对象',
+                                         allow_empty=False)
+            target = _require_object_ref(fields.get('targetRef'), by_key, by_id, aliases,
+                                         '链接', candidate['name'], '目标端对象',
+                                         allow_empty=False)
             node['rdfs:domain'] = {'@id': assigned.get(source['id']) or ''}
             node['rdfs:range'] = {'@id': assigned.get(target['id']) or ''}
             if not node['rdfs:domain']['@id'] or not node['rdfs:range']['@id']:
-                raise AdapterError('链接「%s」端点未分配定义 ID' % candidate['name'])
+                raise AdapterError('链接「%s」端点对象未分配定义 ID' % candidate['name'])
         graph.append(node)
         order.append(node['@id'])
 
@@ -176,18 +183,24 @@ def assemble(candidates):
     return ontology, workflow, id_map, warnings
 
 
-def _assemble_business(candidate, assigned, by_key, by_id, workflow):
-    """规则/动作候选 → workflow 业务定义与对象关联（D06 的正确落位）。"""
+def _assemble_business(candidate, assigned, by_key, by_id, workflow, aliases=None):
+    """规则/动作候选 → workflow 业务定义与对象关联（D06 的正确落位）。
+
+    R3-03：宿主引用解析不到时绝不静默丢弃关联——**非空** ownerKey 抛 AdapterError
+    （在交付事务里回滚），空字符串仍表示「未声明宿主」（不挂关联、不阻断）。
+    """
     ctype = candidate['type']
+    label = protocol.TYPE_LABELS.get(ctype, ctype)
     fields = candidate.get('fields') or {}
     node_id = assigned[candidate['id']]
     record = {'id': node_id, 'name': candidate['name'], 'description': candidate['definition']}
-    owner = _resolve(candidate.get('ownerKey'), by_key, by_id)
+    owner = _require_object_ref(candidate.get('ownerKey'), by_key, by_id, aliases,
+                                label, candidate['name'], '宿主对象')
     owner_id = None
-    if owner is not None and owner['type'] == 'object':
+    if owner is not None:
         owner_id = assigned.get(owner['id']) or None
         if not owner_id:
-            raise AdapterError('规则/动作「%s」的宿主对象未分配定义 ID' % candidate['name'])
+            raise AdapterError('%s「%s」的宿主对象未分配定义 ID' % (label, candidate['name']))
     if ctype == 'rule':
         content = str(fields.get('content') or '').strip()
         if content:
@@ -206,12 +219,54 @@ def _assemble_business(candidate, assigned, by_key, by_id, workflow):
             workflow['actionAssociations'].append({'objectTypeId': owner_id, 'actionId': node_id})
 
 
-def _resolve(reference, by_key, by_id):
-    """引用解析：接受候选临时键或候选 ID（两种都允许，先键后 ID）。"""
+def _require_object_ref(reference, by_key, by_id, aliases, label, name, role,
+                        allow_empty=True):
+    """对象引用解析：**非空**解析不到即抛 AdapterError（R3-03，绝不静默丢弃关联）。
+
+    空引用（''/None）：allow_empty=True（宿主类引用，如属性 ownerKey 与规则/动作
+    ownerKey）= 未声明宿主，返回 None，由调用方决定不挂关联（属性缺 domain 仍由
+    verify_structure 与交付预检报出）；allow_empty=False（链接两端）沿用既有口径
+    直接抛错——链接没有端点就不是合法定义，绝不生成半成品节点。
+    """
+    token = str(reference or '').strip()
+    if not token:
+        if allow_empty:
+            return None
+        raise AdapterError('链接「%s」缺少%s（链接必须同时给出源端与目标端对象）'
+                           % (name, role))
+    node = _resolve(token, by_key, by_id, aliases)
+    if node is None or node['type'] != 'object':
+        raise AdapterError('%s「%s」的%s「%s」无法解析（未选入、已合并或不存在）；'
+                           '请纳入该对象、清除该引用，或确认合并保留项'
+                           % (label, name, role, token))
+    return node
+
+
+def _resolve(reference, by_key, by_id, aliases=None):
+    """引用解析：候选临时键 → 候选稳定 ID → 合并别名表（R3-03）。
+
+    别名表（aliases = {被合并候选的 key 或 ID: 最终保留项候选 ID}）只在键与 ID
+    都未命中时生效：合并后候选被移出选定集合，其它候选仍按旧 key/ID 引用它，
+    这里把它规范化到保留项。别名指向的保留项不在本次集合中（by_id 取不到）
+    时返回 None，由调用点抛 AdapterError，绝不静默降级。
+    """
     token = str(reference or '')
     if not token:
         return None
-    return by_key.get(token) or by_id.get(token)
+    node = by_key.get(token) or by_id.get(token)
+    if node is not None or not aliases:
+        return node
+    current = str(aliases.get(token) or '')
+    seen = {token}
+    for _ in range(8):          # 别名表已传递解析；这里只做有界兜底（环保护）
+        if not current or current in seen:
+            return None
+        node = by_id.get(current)
+        if node is not None:
+            return node
+        seen.add(current)
+        current = str(aliases.get(current) or '')
+    return None
 
 
 # 与 model_routes.DEFAULT_NAMESPACES 保持一致（新本体沿用工作台默认命名空间）
@@ -277,6 +332,8 @@ def verify_structure(ontology, workflow=None):
         if domain and domain not in ids:
             issues.append('定义「%s」的起点对象不在本次定义集合内' % node.get('rdfs:label'))
         if kind == 'owl:ObjectProperty':
+            if not domain:
+                issues.append('链接「%s」缺少起点对象' % node.get('rdfs:label'))
             target = (node.get('rdfs:range') or {}).get('@id')
             if not target or target not in ids:
                 issues.append('链接「%s」的端点对象不在本次定义集合内' % node.get('rdfs:label'))

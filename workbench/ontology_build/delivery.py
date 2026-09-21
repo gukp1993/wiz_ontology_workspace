@@ -53,6 +53,50 @@ def _selected_candidates(conn, task_id, owner_id, batch_id):
     return items, selected
 
 
+def _merge_aliases(conn, task_id, owner_id, batch_id):
+    """合并别名表（R3-03）：被合并候选的 key 与 ID → 最终保留项候选 ID。
+
+    合并后候选被移出交付选定集合，但其它候选的 ownerKey/sourceRef/targetRef 仍按
+    旧 key/ID 引用它（评审侧沿 origin.mergedInto 解析，交付侧没有别名表就会阻断
+    或静默丢关联）。这里按**本批次全部候选**（含已合并）构造别名，并把合并链
+    （A→B→C）传递解析到最终保留项。
+
+    环保护：链上出现环或断链（mergedInto 指向的候选已不在本批次）时按**原样保留**
+    ——别名指回该候选自身；它不在选定集合里，因此后续解析按「无法解析」报错
+    （AdapterError / 可定位 issue），既不静默改指别人、也不会死循环。
+    """
+    pool = store.all_candidates(conn, task_id, owner_id, batch_id=batch_id, include_merged=True)
+    by_id = {node['id']: node for node in pool}
+    aliases = {}
+
+    def final_primary(node):
+        """沿 mergedInto 走到最终保留项；环/断链返回 None（调用方原样保留）。"""
+        seen = {node['id']}
+        current = node
+        while True:
+            target = str((current.get('origin') or {}).get('mergedInto') or '')
+            if not target:
+                return current
+            if target in seen:
+                return None
+            following = by_id.get(target)
+            if following is None:
+                return None
+            seen.add(target)
+            current = following
+
+    for node in pool:
+        if not str((node.get('origin') or {}).get('mergedInto') or ''):
+            continue
+        primary = final_primary(node)
+        target_id = primary['id'] if primary is not None else node['id']
+        key = str(node.get('key') or '').strip()
+        if key:
+            aliases.setdefault(key, target_id)
+        aliases.setdefault(node['id'], target_id)
+    return aliases
+
+
 def _blocking_issues(conn, task_id, owner_id, batch_id):
     """依赖与结构阻断（与评审页 deliver_blockers 同口径，交付时服务端重验）。"""
     from workbench.ontology_build import review
@@ -70,16 +114,24 @@ def _blocking_issues(conn, task_id, owner_id, batch_id):
                                  'OBSERVATION_VALUE_TYPE_INVALID'):
                 issues.append({'code': issue['code'], 'candidateId': candidate['id'],
                                'message': '%s：%s' % (candidate['name'], issue['message'])})
-    # 端点引用必须指向本批候选（合并后可能只剩主候选，端点使用已合并键也算合法）
+    # 端点引用必须指向本批候选（合并后可能只剩主候选，端点使用已合并键也算合法：
+    # 别名表能解析到**本次选定集合**里的保留项即通过；别名指向已合并/未选定候选
+    # 时按无法解析报告——与装配侧口径一致，避免「预检通过、交付 422」的分裂）。
+    keys = {str(c['key'] or '') for c in items if str(c['key'] or '')}
+    aliases = _merge_aliases(conn, task_id, owner_id, batch_id)
+    selected_ids = {c['id'] for c in selected}
     for candidate in selected:
         if candidate['type'] != 'link':
             continue
         fields = candidate.get('fields') or {}
         for endpoint in ('sourceRef', 'targetRef'):
             token = str(fields.get(endpoint) or '')
-            if token and token not in ids and not any(c['key'] == token for c in items):
-                issues.append({'code': 'LINK_ENDPOINT_UNRESOLVED', 'candidateId': candidate['id'],
-                               'message': '链接「%s」的%s无法解析到本批候选' % (candidate['name'], endpoint)})
+            if not token or token in ids or token in keys:
+                continue
+            if aliases.get(token) in selected_ids:
+                continue
+            issues.append({'code': 'LINK_ENDPOINT_UNRESOLVED', 'candidateId': candidate['id'],
+                           'message': '链接「%s」的%s无法解析到本批候选' % (candidate['name'], endpoint)})
     return issues
 
 
@@ -151,7 +203,10 @@ def prepare_payload(conn, task_id, batch_id=None):
                               '结果已过期')
     items, selected = _selected_candidates(conn, task_id, owner_id, batch['batch_id'])
     try:
-        ontology, workflow, id_map, warnings = adapter.assemble(selected)
+        # R3-03：装配前先按本批次全部候选（含已合并）构造合并别名表，把其它候选
+        # 指向被合并候选 key/ID 的引用规范化到最终保留项，绝不静默丢关联。
+        ontology, workflow, id_map, warnings = adapter.assemble(
+            selected, _merge_aliases(conn, task_id, owner_id, batch['batch_id']))
     except adapter.AdapterError as exc:
         # 装配异常同样按 422 阻断清单上报（D09：绝不以裸 ValueError 形态漏成 400）
         raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': str(exc)}])

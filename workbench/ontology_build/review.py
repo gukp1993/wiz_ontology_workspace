@@ -30,6 +30,9 @@ _FIELD_ORDER = ('name', 'definition', 'ownerKey', 'dataType', 'valueType', 'sour
                 'targetRef', 'cardinality', 'content', 'effect')
 
 _DEPENDENCY_BLOCKED = 'DEPENDENCY_NOT_INCLUDED'
+# 宿主/端点解析不到的可定位阻断码（R3-03）：复用 08 分册既有阻断码集合，
+# 语义为「属性/规则/动作所属对象存在且未被排除」——交付侧不新增未登记码。
+_OWNER_UNRESOLVED = 'PROPERTY_OWNER_UNRESOLVED'
 
 
 class InvalidStateError(ValueError):
@@ -90,7 +93,9 @@ def update_candidate(conn, candidate_id, fields, revision) -> dict:
     """人工编辑候选字段（只允许契约内字段），写回前重算结构 issues。
 
     fields 允许 name/definition/dataType/valueType/content/effect/cardinality/ownerKey；
-    未知键抛 ValueError；dataType 限 protocol.PROPERTY_DATA_TYPES；
+    未知键抛 ValueError；dataType 限 protocol.PROPERTY_DATA_TYPES（**平铺字符串**，
+    不接受嵌套对象）；valueType 必须 ∈ protocol.VALUE_TYPES（= model_format 的
+    SERIES_VALUE_TYPES，与交付侧同一枚举，非法值在这里就拒绝，不等交付才报）；
     cardinality 必须是 {source, target} 且取值 ∈ {one, many}。CAS 用 revision。
     """
     owner_id = owner()
@@ -109,16 +114,29 @@ def update_candidate(conn, candidate_id, fields, revision) -> dict:
         if key in _COLUMN_FIELDS:
             columns[key] = str(value or '').strip()
         elif key == 'dataType':
+            if isinstance(value, dict):
+                raise ValueError('dataType 需要平铺字符串（如 "timeSeries"）；'
+                                 '观测值类型请用平铺的 valueType 字段，可选：%s'
+                                 % '/'.join(protocol.VALUE_TYPES))
+            if isinstance(value, (list, tuple)):
+                raise ValueError('dataType 需要平铺字符串（如 "timeSeries"）')
             text = str(value or '').strip()
             if text not in protocol.PROPERTY_DATA_TYPES:
-                raise ValueError('不支持的数据类型：%s' % (text or '空'))
+                raise ValueError('不支持的数据类型：%s（可选：%s）'
+                                 % (text or '空', '/'.join(protocol.PROPERTY_DATA_TYPES)))
             updated_fields['dataType'] = text
         elif key == 'valueType':
+            if isinstance(value, dict):
+                raise ValueError('valueType 需要平铺字符串，可选：%s'
+                                 % '/'.join(protocol.VALUE_TYPES))
             text = str(value or '').strip()
-            if text:
-                updated_fields['valueType'] = text
-            else:
+            if not text:
                 updated_fields.pop('valueType', None)
+            elif text not in protocol.VALUE_TYPES:
+                raise ValueError('时间序列观测值类型「%s」不合法；可选：%s'
+                                 % (text, '/'.join(protocol.VALUE_TYPES)))
+            else:
+                updated_fields['valueType'] = text
         elif key == 'cardinality':
             if value is None or value == '':
                 updated_fields.pop('cardinality', None)
@@ -342,10 +360,17 @@ def validate_candidate(conn, task_id, candidate) -> list:
 
 
 def deliver_blockers(conn, task_id, batch_id=None) -> dict:
-    """交付前的依赖阻断：拟纳入的属性/链接，其所属对象或链接另一端未纳入即逐条报错。
+    """交付前的依赖阻断：拟纳入的属性/链接/规则/动作，其宿主或端点未纳入即逐条报错。
 
     返回 {'selected': {type: 数量}, 'issues': [{code, message, candidateId}],
-    'excludedItems': [{candidateId, type, name, decision}]}；已合并候选不参与选定集。
+    'excludedItems': [{candidateId, type, name, decision}]}；已合并候选不参与选定集，
+    但**引用被合并候选的候选**沿 origin.mergedInto 解析到保留项后再判断依赖
+    （合并链一并跟随；撤销合并后 mergedInto 清空，引用回到被合并候选本身）。
+
+    R3-03：非空引用解析不到（对象已合并后撤销、被删除或引用不存在）同样产出
+    **可定位** issue（candidateId），绝不静默放过；属性/链接的同类问题由
+    validate_candidate 报告（delivery._blocking_issues 按码并入，不在这里重复），
+    规则/动作没有那条校验路径，在这里补齐，避免「预检通过、交付 422」的分裂。
     """
     owner_id = owner()
     if store.require_task(conn, task_id, owner_id) is None:
@@ -361,8 +386,22 @@ def deliver_blockers(conn, task_id, batch_id=None) -> dict:
         counts[node['type']] = counts.get(node['type'], 0) + 1
         for slot, ref, role in _relation_refs(node):
             target = _resolve(ref, by_id, by_key)
-            if target is None or target.get('type') != 'object':
-                continue  # 端点本身缺失由 validate_candidate 报告，这里只判依赖决定
+            # 合并链走到头仍停在「已被合并」的候选上（悬空/成环）时同样不可交付：
+            # 解析方返回的是被合并候选本身，validate_candidate 看不出这种情况。
+            chain_broken = bool(target is not None
+                                and str((target.get('origin') or {}).get('mergedInto') or ''))
+            if target is None or target.get('type') != 'object' or chain_broken:
+                # 端点缺失：属性/链接由 validate_candidate 报（并入交付阻断清单），
+                # 规则/动作没有那条校验路径，在此补报可定位 issue
+                # （非空引用才报；空字符串 = 未声明宿主，允许不挂关联）。
+                if str(ref or '').strip() and (node['type'] in ('rule', 'action') or chain_broken):
+                    issues.append({'code': _OWNER_UNRESOLVED, 'candidateId': node['id'],
+                                   'message': '%s「%s」的%s「%s」无法解析到本次交付的对象'
+                                              '（未纳入、合并已撤销或合并链缺失），请先纳入该对象'
+                                              '或清除该引用'
+                                              % (protocol.TYPE_LABELS.get(node['type'], node['type']),
+                                                 node['name'] or '未命名', role, ref)})
+                continue
             if target['decision'] not in ('exclude', 'defer'):
                 continue
             issues.append({'code': _DEPENDENCY_BLOCKED, 'candidateId': node['id'],
