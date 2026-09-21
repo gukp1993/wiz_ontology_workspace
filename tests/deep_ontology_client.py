@@ -15,11 +15,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import auth_client  # noqa: E402
+import deep_verdicts as V  # noqa: E402
 
 BASE = os.environ.get('Q02_BASE', 'http://127.0.0.1:18931')
 USER = os.environ.get('Q02_USER', 'qa_deep_a')
 PASSWORD = os.environ.get('Q02_PASSWORD', 'DeepTest!2026#abc')
-EVIDENCE_DIR = Path(__file__).resolve().parents[1] / '.runtime/test-evidence/q02'
+REPO_ROOT = Path(__file__).resolve().parents[1]
+EVIDENCE_DIR = REPO_ROOT / '.runtime/test-evidence/q02'
 
 _ORIGINS = ('allow', 'none', 'wrong')
 
@@ -95,29 +97,49 @@ class Api:
 # --- 断言与证据 ----------------------------------------------------------------
 
 class Recorder:
-    def __init__(self, suite):
+    """证据记录器（20260921 继续验证修订）。
+
+    - 每次运行写独立 runId 目录：.runtime/test-evidence/<suite-dir>/runs/<runId>/<suite>.jsonl
+      （旧 JSONL 只读保留，不再追加覆盖）。
+    - 每行同时写旧 `verdict` 与新 `result`（deep_verdicts 分类）及运行元数据。
+    """
+
+    def __init__(self, suite, run_id=None, evidence_dir=None):
         self.suite = suite
         self.results = []
-        EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        self.run = V.run_metadata(REPO_ROOT, Path(sys.argv[0]) if sys.argv and sys.argv[0].endswith('.py') else None,
+                                  run_id=run_id)
+        self.dir = Path(evidence_dir) if evidence_dir else EVIDENCE_DIR
+        self.dir.mkdir(parents=True, exist_ok=True)
 
-    def add(self, case_id, verdict, title, evidence='', kind=''):
-        self.results.append({'case': case_id, 'verdict': verdict, 'title': title,
-                             'evidence': evidence[:4000], 'kind': kind})
+    def add(self, case_id, verdict, title, evidence='', kind='', analysis_unit='scenario',
+            root_cause='', replacement=''):
+        result = V.to_result(verdict)
+        self.results.append({'case': case_id, 'verdict': verdict, 'result': result, 'title': title,
+                             'evidence': evidence[:4000], 'kind': kind,
+                             'analysisUnit': analysis_unit, 'rootCause': root_cause,
+                             'replaces': replacement, 'runId': self.run['runId']})
         flag = {'pass': '✓', 'fail': '✗ 缺陷', 'blocked': '⚠ 阻塞', 'untested': '—',
-                'known': '✗ 基线已知', 'info': '·'}[verdict]
+                'known': '✗ 基线已知', 'info': '·',
+                V.PRODUCT_PASS: '✓ 通过', V.STATIC_PASS: '✓ 静态通过', V.KNOWN_DEFECT: '✗ 已知缺陷复现',
+                V.NEW_DEFECT: '✗ 新缺陷复现', V.TEST_ERROR: '！测试错误', V.NOT_TESTED: '— 未测'}.get(verdict, verdict)
         print(f'[{flag}] {case_id} {title}')
-        if evidence and verdict in ('fail', 'known', 'blocked', 'info'):
-            for line in str(evidence).splitlines()[:12]:
+        if evidence and verdict in ('fail', 'known', 'blocked', 'info', V.KNOWN_DEFECT, V.NEW_DEFECT,
+                                    V.TEST_ERROR, V.BLOCKED):
+            for line in str(evidence).splitlines()[:14]:
                 print('      ' + line)
 
     def dump(self):
-        path = EVIDENCE_DIR / (self.suite + '.jsonl')
-        with path.open('a', encoding='utf-8') as fh:
+        run_dir = self.dir / 'runs' / self.run['runId']
+        run_dir.mkdir(parents=True, exist_ok=True)
+        path = run_dir / (self.suite + '.jsonl')
+        with path.open('w', encoding='utf-8') as fh:
+            fh.write(json.dumps({'meta': True, **self.run}, ensure_ascii=False) + '\n')
             for row in self.results:
-                fh.write(json.dumps(row, ensure_ascii=False) + '\n')
-        passed = sum(1 for r in self.results if r['verdict'] == 'pass')
-        failed = sum(1 for r in self.results if r['verdict'] in ('fail', 'known'))
-        print(f'\n== {self.suite}: 记录 {len(self.results)} 条，通过 {passed}，失败/已知 {failed} ==')
+                fh.write(json.dumps({**self.run, **row}, ensure_ascii=False) + '\n')
+        stat = V.counts([r['result'] for r in self.results])
+        print('\n== %s: 记录 %d 条 | %s ==' % (self.suite, len(self.results), V.verdict_line(stat)))
+        print('   证据：%s' % path)
         return path
 
 

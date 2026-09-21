@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 import deep_project_client as C
 from deep_project_client import Api, Recorder, blank_state, brief
+from deep_reverify_scenarios import scenario_r02  # noqa: E402  修订后的统一判定（deep_verdicts）
 
 BASE = C.BASE
 PASSWORD = C.PASSWORD
@@ -636,76 +637,29 @@ def _find_binding(state, otype):
 
 # ============================== P8 (R02 复现) ==================================
 
-def _shell_flow_state(flow_id, name):
-    """空壳编排：声明一个输出但 binding=null（自身 check 报 OUTPUT_BINDING_MISSING）。"""
-    return {'schemaVersion': 1, 'flowId': flow_id, 'name': name, 'description': '', 'status': 'active',
-            'inputs': [], 'outputs': [{'id': 'fout-1', 'name': 'value', 'label': '取值',
-                                       'type': {'type': 'number'}, 'binding': None}],
-            'connections': [], 'nodes': [],
-            'layout': {'positions': {}, 'zoom': 1, 'pan': {'x': 0, 'y': 0}}}
-
-
 def _p8_r02(api, rec):
+    """R02：修订后判定 —— 前置必须成功，未拦截记 known_defect_reproduced（不是产品通过）。
+
+    一致性：与 tests/deep_reverify_scenarios.py::scenario_r02 共用同一套判定，
+    口径以 deep_verdicts 为准；本函数只负责把结果写进本套件证据。
+    """
     pid = CTX_STATE['proj_id']
-    # 1) 创建一个空壳编排
-    r = api.post('/api/flows', {'name': f'Q03空壳编排 {UNIQ}', 'description': 'R02 复现：输出未绑定'})
-    j = r['json'] if isinstance(r['json'], dict) else {}
-    fid = j.get('id')
-    CTX_STATE['shell_flow_id'] = fid
-    rec.add('P8.1', 'pass' if r['status'] == 201 and fid else 'fail',
-            'P8 创建空壳编排', f'HTTP {r["status"]} {brief(j)}', 'api')
-
-    # 2) 保存空壳（输出声明存在、binding 为空）
-    r = api.get(f'/api/flow-state?flow={fid}')
-    st = copy.deepcopy((r['json'] or {}).get('state') or {})
-    rev = (r['json'] or {}).get('revision')
-    shell = _shell_flow_state(fid, st.get('name') or f'Q03空壳编排 {UNIQ}')
-    r = api.post('/api/flow-save', {'state': shell, 'revision': rev})
-    j = r['json'] if isinstance(r['json'], dict) else {}
-    if j.get('revision'):
-        CTX_STATE['shell_flow_rev'] = j['revision']
-    chk = j.get('check') or {}
-    flow_check_err = chk.get('errors') or []
-    has_output_missing = any('尚未绑定' in e or 'OUTPUT' in str(item) for e, item in zip(flow_check_err, chk.get('items', [{}])) ) \
-        or 'OUTPUT_BINDING_MISSING' in json.dumps(chk, ensure_ascii=False)
-    rec.add('P8.2', 'pass' if r['status'] == 200 and has_output_missing else 'fail',
-            'P8 flow-check 对空壳编排报输出未绑定（编排自身有错）',
-            f'HTTP {r["status"]} errors={brief(flow_check_err)}', 'r02')
-
-    # 3) 项目属性引用该空壳编排（选其声明输出 fout-1），校验/发布是否放行
     r = api.get(f'/api/project-state?project={pid}')
     pst = copy.deepcopy((r['json'] or {}).get('state') or {})
+    rev = (r['json'] or {}).get('revision')
     pst['connections'] = {'connections': [mysql_conn('conn-clean', 'Q03干净连接', 3)]}
     pst['implementations'] = []
-    pst['bindings']['catalogs'] = {}
+    pst.setdefault('bindings', {})['catalogs'] = {}
     pst['bindings']['object_bindings'] = [{
         'object_type': 'Q03Cluster', 'connection': 'conn-clean', 'table': 'cluster', 'primary_key': 'cluster_id',
-        'properties': {'activePower': {'kind': 'flow', 'flow': fid, 'output': 'fout-1', 'inputs': {}}},
+        'properties': {'activePower': {'kind': 'flow', 'flow': 'pending', 'output': 'fout-1', 'inputs': {}}},
         'relations': []}]
-    r = api.post('/api/project-save', {'state': pst, 'revision': CTX_STATE['proj_rev']})
-    j = r['json'] if isinstance(r['json'], dict) else {}
-    if j.get('revision'):
-        CTX_STATE['proj_rev'] = j['revision']
 
-    r = api.post('/api/project-validate', {'state': pst, 'revision': CTX_STATE['proj_rev']})
-    j = r['json'] if isinstance(r['json'], dict) else {}
-    errs = j.get('errors') or []
-    # R02：项目校验不运行 flow-check，输出未绑定的空壳编排被引用仍无阻断错误
-    flow_binding_block = any('activePower' in e and ('编排' in e or '输出' in e) for e in errs)
-    rec.add('P8.3', 'pass' if (not flow_binding_block) else 'info',
-            'P8 R02 复现：空壳编排(输出未绑定)被项目引用 → 项目校验未拦截',
-            f'project errors={brief(errs)} 是否因该绑定报错={flow_binding_block}', 'r02')
-
-    r = api.post('/api/project-publish', {'state': pst, 'revision': CTX_STATE['proj_rev'],
-                                          'requestId': f'q03-r02-{UNIQ}'})
-    j = r['json'] if isinstance(r['json'], dict) else {}
-    if j.get('revision'):
-        CTX_STATE['proj_rev'] = j['revision']
-    published = r['status'] == 200 and j.get('version')
-    rec.add('P8.4', 'known' if published else 'pass',
-            'P8 R02 复现：携带错误输出绑定的空壳编排的项目仍发布成功（基线已知缺口）',
-            f'publish HTTP {r["status"]} version={j.get("version")} — 根因：project_validation._check_flow_binding 不调用 flows.check_flow',
-            'r02-known')
+    out = scenario_r02(api, rec, pid, pst, 'Q03Cluster', 'activePower', tag='P8')
+    CTX_STATE['shell_flow_id'] = out.get('shellFlowId')
+    CTX_STATE['proj_rev'] = (api.get(f'/api/project-state?project={pid}')['json'] or {}).get('revision')
+    print(f'    P8(R02) 结论：{brief(out.get("cases"))} 发布版本数 {out.get("publish", {}).get("before")}'
+          f'->{out.get("publish", {}).get("after")}')
 
 
 # ============================== P9 跨账号 =====================================

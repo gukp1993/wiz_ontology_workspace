@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from deep_ontology_client import Api, Recorder, brief  # noqa: E402
 from deep_ontology_common import (obj, private_prop, state_with, schema_of,  # noqa: E402
                                   rule, action_v2, find_record)
+import deep_verdicts as V  # noqa: E402
+from deep_reverify_scenarios import scenario_a01  # noqa: E402
 
 API = Api()
 REC = Recorder('o3o4o5-rules-publish')
@@ -94,28 +96,12 @@ ok = (not ve['json']['errors']) and sr['status'] == 200 and pub['status'] == 200
 case('O3-03', 'content/effect 空白或 null 按选填处理，保存发布均不阻断', ok,
      f'validate={brief(ve["json"]["errors"])} save={sr["status"]} publish={pub["status"]}/{brief(pub["json"])}')
 
-# O3-04 A01 专项：规则 content={"x":1}、动作 effect=["a"] 走 save→publish
-a01_state = clean_state(rules=[rule('r-a01', content={'x': 1})],
-                        actions=[action_v2('a-a01', effect=['a'])])
-va = API.post('/api/validate', {'state': dict(a01_state, workspaceId=oid3)})
-sr = save(oid3, a01_state)
-rev = get_state(oid3)['revision']
-pub = API.post('/api/publish', {'state': dict(a01_state, workspaceId=oid3), 'revision': rev})
-version = (pub['json'] or {}).get('version', '')
-vs = API.get(f'/api/version-state?ontology={oid3}&version={version}') if pub['status'] == 200 else {'status': None, 'json': None}
-back_rules = (vs['json'] or {}).get('state', {}).get('workflow', {}).get('businessRules', []) if vs['json'] else []
-back_acts = (vs['json'] or {}).get('state', {}).get('workflow', {}).get('actions', []) if vs['json'] else []
-content_kept = any(r['id'] == 'r-a01' and r.get('content') == {'x': 1} for r in back_rules)
-effect_kept = any(a['id'] == 'a-a01' and a.get('effect') == ['a'] for a in back_acts)
-repro = (va['status'] == 200 and not va['json']['errors'] and sr['status'] == 200
-         and pub['status'] == 200 and content_kept and effect_kept)
-if repro:
-    known('O3-04', 'A01 复现：非文本 content/effect 未被拦截，save 200 且发布快照读回原值',
-          f'validate错误={brief(va["json"]["errors"])} save={sr["status"]} publish={pub["status"]} version={version} '
-          f'读回rules={brief(back_rules)} actions={brief(back_acts)}', 'A01')
-else:
-    case('O3-04', 'A01 专项：非文本 content/effect 应被拒绝（若 200+读回即复现基线 A01）', repro,
-         f'validate={brief(va["json"])} save={sr["status"]} publish={pub["status"]}/{brief(pub["json"])} content_kept={content_kept} effect_kept={effect_kept}')
+# O3-04 A01 专项（修订：前置合法→追加非法→统一判定；未复现分支不再固定 fail）
+# 判定与 tests/deep_reverify_scenarios.py::scenario_a01 共用（deep_verdicts R1–R7）：
+#  - 前置失败 → blocked；500/无关4xx/空响应 → test_error；
+#  - 被接受且非法值进发布快照 → known_defect_reproduced（基线已知，不是产品通过）；
+#  - 被正确拒绝（422 + 针对 content/effect 的诊断 + 版本零新增）→ product_pass。
+_a01 = scenario_a01(API, REC, oid3, tag='O3-04')
 
 # O3-05 旧规则 output 键零丢失（透传保存与发布快照）
 out_state = clean_state(rules=[rule('r-out', output='历史输出说明')])
@@ -207,15 +193,21 @@ REC.add('O4-05b', 'fail' if ok05b_expected else 'pass',
         'release-zip 附件仅由 transfer 迁移写入（workbench/storage/transfer.py），versions.publish 不写；'
         '前端 OntologyRelease.vue 的恢复下拉依赖此端点', 'new')
 
-# O4-06 发布不可变性：路由白名单无发布改写/删除入口 → 记「无入口，未验证」
+# O4-06 发布不可变性（修订）：拆成两条，避免把「无入口」写成动态验证通过
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from workbench import server  # noqa: E402
 write_like = [p for p in list(server.GET_ROUTES) + list(server.POST_ROUTES)
               if not p.startswith('/api/project') and ('release' in p or 'version' in p)
               and p not in ('/api/versions', '/api/version-state', '/api/releases',
                             '/api/publish-check', '/api/publish')]
-case('O4-06', '发布不可变性：接口白名单不存在改写/删除已发布版本的入口（无入口，未验证破坏路径）',
-     not write_like, f'可疑写路径={write_like}（GET_ROUTES/POST_ROUTES 只读枚举）', 'unreachable')
+_static = V.classify_static_check(not write_like,
+                                  '可疑写路径=%s（GET_ROUTES/POST_ROUTES 只读枚举）' % brief(write_like))
+REC.add('O4-06', _static['result'],
+        'O4-06 静态核对：路由白名单不存在发布版本的改写/删除入口',
+        _static['reason'] + '；' + _static['detail'], 'static')
+REC.add('O4-06b', V.NOT_TESTED,
+        'O4-06b 发布不可变性（破坏路径）未实测：协议无落库写入口可达，不能替代动态验证',
+        '发布为不可变快照；本基线只能确认不存在 HTTP 入口，未构造任何绕过或直连存储的破坏尝试', 'unreachable')
 
 # O4-07 /api/restore 真实语义：
 #  7a 成功路径——在线发布本体拿不到快照名（见 O4-05b），记阻塞；
