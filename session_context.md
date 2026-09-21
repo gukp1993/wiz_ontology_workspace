@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`ba7b10837b08e809`
+上下文版本：`d0561dc6fdac427d`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### acceptance-fixes：C01 空白依赖引用漏检修复（B01/B02 第二轮验收补充） · zcode · 已实施，待验收
+
+时间：2026-09-21T01:38:19.847606+00:00；记录：`.collaboration/entries/000137-48ec23555317.json`
+
+按 /tmp/B01B02_独立验收_20260921/修复指令.md 补修 C01 并自测通过，提交待独立验收。根因：适配层 _flow_declares_provider/_flow_references_credential 用 .strip() 判「是否声明依赖」，底层 flows/flow_http 用原始非空字符串判「有没有引用」，纯空白 providerId/credentialId 因此被当成未声明→跳过检查→目录读取失败时 fail-open 放行。修复：新增 _raw_id_present 作为唯一声明判据（bool(str(impl.get(key) or ''))，不 trim），空白 ID 按「已声明但无效」处理——目录可读判不存在、读取失败按三态转阻断；键缺失/None/空串仍按未声明。文档先行（04 §2.2 判据段、03 §2.2 空白 ID 条、README 行），未合并 main、未重启 18765、未改真实数据。
+
+- 决定：声明判据统一为原始值的非空字符串（与检查器底层逐字一致），不 strip、不 trim、不重写既有 ID；空白 ID 不得被降级为「未声明」。；键缺失/None/空字符串仍按未声明：不读取无关目录、不被无关故障误伤，保持既有兼容语义与编辑页 None 未知上下文行为。；HTTP 节点识别沿用 flows._check_body 分派口径（node.kind or impl.language），不新造识别规则。；金样采用增量追加：只加 57_c01_blank_provider_reference（固定 flowId 播种），旧 97 样例逐字节不变；新增 check_c01_samples 结构断言防止误删后「重新生成即通过」。
+- 验证：反例先复现（隔离根，验收方脚本）：provider 空白两态 errors=[] 且 200 新增 v1；credential 空白读取失败态同型 200 v1——与验收报告 C01 四组表一致。；反例有效性：git archive 9d0fa6f 解到 /tmp 跑新断言 → 67 通过 / 25 失败；修复后同文件 92/92 全绿。；新增覆盖：空白矩阵（空格/Tab/换行/混合 × provider/credential × 空集合/读取失败 16 项）、非空集合对照 2 项、真正未填写三态 6 项、正常 ID 三态对照 2 项、动作绑定路径 1 项、发布路由四组 20 项（422/零版本/revision 不推进/重复请求/不回显注入原文）、改正 ID 后可恢复发布 2 项。；串行回归（本树 venv，清继承 WIZ_*）：test_flow_dependency_context 92/92、test_project_flow_source 44 步、test_publish_guards 16 步、test_publish_guards_adversarial 135/135、test_validation_split 98 样例/515 断言、test_business_rules 57、test_action_library 77、test_catalog_independent 51 硬断言；原五项独立脚本 codex_reacceptance_backend_20260920 43/43；tests/run.py all 40/40。
+- 下一步：Codex/独立 harness 验收本提交，重点复跑四组空白 ID 反例（修复前 200、修复后 422 零写入）与空白矩阵边界。；验收通过后停在「待用户授权集成」；本轮无合并授权，不得自行合并 main 或清理 worktree。；未测：浏览器（前端零改动，18921 未重启仍跑上一被验代码）、真实 MySQL/Redis、真实项目故障注入；mapping_forms 既有失败与辅助填写原型属范围外。
+- 依据/文档：/tmp/B01B02_独立验收_20260921/修复指令.md 与 验收报告.md（C01 / P2）；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §14.5（本轮实施与复验记录）；文档/接口文档/03-项目区接口.md §2.2、04-编排与LLM接口.md §2.2、README.md 变更记录（C01 行）；workbench/project_validation.py（_raw_id_present/_flow_declares_provider/_flow_references_credential）；tests/test_flow_dependency_context.py、tests/test_validation_split.py、tests/golden_c01_flow.py、tests/fixtures/validation_golden.json
 
 ### acceptance-fixes：B01/B02 外部harness验收指令交付 · codex · 需求已交付
 
@@ -137,14 +148,3 @@ AGENTS新增细粒度任务拆分与多agent并行原则：后续开发计划和
 - 决定：尽可能细分到可独立交付和验证的任务，不机械按文件或行数拆分。；支持多agent并行但不扩大业务授权，不自动创建额外worktree，不跳过独立验收与用户合并授权。；本轮仅更新主仓库治理规则，未开发业务功能、未修改已有任务分支。
 - 验证：AGENTS文档差异检查通过；未运行业务构建或测试（仅治理文档修改）。
 - 依据/文档：AGENTS.md
-
-### 从物料自动构建本体：创建独立worktree · codex · 需求已交付
-
-时间：2026-09-20T08:42:58.175117+00:00；记录：`.collaboration/entries/000125-e301dc9bff94.json`
-
-按用户授权仅创建开发环境：codex/ontology-build，独立目录wiz_kq_builder_v2-ontology-build，基于最新已提交main 4a12fead6356d5d6cc5f778c84963cddef6779f1。登记端口18871及专属空数据根，已同步执行指令和开发计划；分支文档提交78393e8。未开始业务开发。
-
-- 决定：仅创建环境；安装依赖、初始化数据库、启动服务和实施等待后续开发指令。；主目录现有未提交业务修改未带入或改动；集成合并仍需用户明确授权。
-- 验证：两份登记文档在主目录与worktree内容一致，git diff --check通过。；18871端口空闲，专属数据目录为空，未创建.venv或数据库，未启动服务。
-- 下一步：后续执行者使用已登记worktree内执行指令，不重复创建worktree，不在main开发。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/执行指令.md；文档/需求/20260920_从物料自动构建本体/开发计划.md
