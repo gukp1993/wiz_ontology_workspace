@@ -511,6 +511,13 @@ def post_run_cancel(payload):
 def post_run_resume(payload):
     task_id = _text(payload, 'taskId')
     run_id = _text(payload, 'runId')
+    # V2-8（08 §5）：resumeMode 控制 generate 断点续跑粒度——
+    #   auto（默认）：按批次检查点只补跑失败批次，成功批次候选保留；
+    #   abstract：复用已持久化的确定性阶段产物（筛选/对齐），但重跑全部抽象批次。
+    # 非 generate 运行忽略该字段。
+    resume_mode = payload.get('resumeMode', 'auto')
+    if resume_mode not in ('auto', 'abstract'):
+        raise ValueError('参数 resumeMode 只能是 auto 或 abstract')
     owner_id = _owner()
     from workbench.ontology_build import pipeline
     with sto.write_tx() as tx:
@@ -531,7 +538,7 @@ def post_run_resume(payload):
         result = tx.run(body)
     kind = result['kind']
     if kind == 'generate':
-        return _resume_generate(owner_id, task_id, run_id, result['batchId']), 200
+        return _resume_generate(owner_id, task_id, run_id, result['batchId'], resume_mode), 200
     if kind == 'scan':
         scan_provider = _current_provider()
         _run_task(owner_id, run_id,
@@ -542,11 +549,12 @@ def post_run_resume(payload):
     return {'runId': run_id}, 200
 
 
-def _resume_generate(owner_id, task_id, run_id, batch_id):
+def _resume_generate(owner_id, task_id, run_id, batch_id, resume_mode='auto'):
     provider = _provider_or_raise()
     from workbench.ontology_build import pipeline
     _run_task(owner_id, run_id,
-              lambda user, run: pipeline.run_generate(user, task_id, run, batch_id, provider))
+              lambda user, run: pipeline.run_generate(user, task_id, run, batch_id, provider,
+                                                      resume_mode=resume_mode))
     return {'runId': run_id}
 
 

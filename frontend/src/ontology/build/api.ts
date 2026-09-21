@@ -218,8 +218,13 @@ export async function cancelRun(taskId: string, runId: string): Promise<{ run: B
   return await postJson(EP.runCancel, { taskId, runId }) as { run: BuildRun }
 }
 
-export async function resumeRun(taskId: string, runId: string): Promise<{ runId: string }> {
-  return await postJson(EP.runResume, { taskId, runId }) as { runId: string }
+/**
+ * 重试/继续运行（08 §5）。
+ * - resumeMode 缺省 'auto'：按批次检查点只补跑失败批次，成功批次候选保留（G23）；
+ * - 'abstract'：复用已持久化的筛选/对齐产物，但重跑全部抽象批次。
+ */
+export async function resumeRun(taskId: string, runId: string, resumeMode: 'auto' | 'abstract' = 'auto'): Promise<{ runId: string }> {
+  return await postJson(EP.runResume, { taskId, runId, resumeMode }) as { runId: string }
 }
 
 // ── §6 范围对话 ───────────────────────────────────────────────────────────

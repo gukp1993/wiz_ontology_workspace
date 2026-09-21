@@ -110,12 +110,24 @@ class FakeLlm(BaseHTTPRequestHandler):
     """按 system prompt 分流：范围澄清 → questions/patch；候选抽取 → candidates。
 
     抽取应答故意包含一个捏造 factId（BOGUS_FACT_ID），用于验证「越界证据被剔除」。
+    V2-8：extract_fail_remaining > 0 时抽取请求返回 HTTP 500（模拟批次失败），逐次递减；
+    extract_attempts 记录抽取尝试次数（含失败），供批次续跑断言「只重跑失败批次」。
     """
     calls = []
     facts_seen = []
+    extract_fail_remaining = 0
+    extract_attempts = 0
 
     def log_message(self, *args):  # 不打印访问日志
         pass
+
+    def _reply(self, status, payload):
+        data = json.dumps(payload, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self):
         length = int(self.headers.get('Content-Length') or 0)
@@ -125,6 +137,12 @@ class FakeLlm(BaseHTTPRequestHandler):
         user_text = str(messages[-1].get('content') or '') if messages else ''
         if '抽取器' in system:
             FakeLlm.calls.append('extract')
+            FakeLlm.extract_attempts += 1
+            if FakeLlm.extract_fail_remaining > 0:
+                FakeLlm.extract_fail_remaining -= 1
+                self._reply(500, {'error': {'message': '注入的抽取批次失败',
+                                            'type': 'server_error'}})
+                return
             payload = self._extract_payload(user_text)
         elif '材料解析器' in system:
             FakeLlm.calls.append('fallback')
@@ -136,13 +154,8 @@ class FakeLlm(BaseHTTPRequestHandler):
                                'suggestion': '暂不纳入', 'reason': '本期聚焦设备运行'}],
                 'patch': {'include': '设备台账、监测数据'},
                 'notes': ['材料覆盖：DDL 与需求文档一致']}
-        data = json.dumps({'choices': [{'message': {'content': json.dumps(payload, ensure_ascii=False)},
-                                        'finish_reason': 'stop'}]}).encode()
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self._reply(200, {'choices': [{'message': {'content': json.dumps(payload, ensure_ascii=False)},
+                                       'finish_reason': 'stop'}]})
 
     @staticmethod
     def _fallback_payload(user_text):
@@ -961,6 +974,155 @@ def flow_revision_contracts():
     check(status == 200 and (excluded.get('material') or {}).get('excluded') is True
           and int((excluded.get('task') or {}).get('materialRevision') or 0) == material_rev + 1,
           '物料排除按 String(materialRevision) 通过并推进修订', actual=(status, _short(excluded)))
+
+
+# --- 回归流：V2-8 生成断点续跑与状态回退（G23） ----------------------------------------
+def flow_generate_resume():
+    """批次检查点（只重跑失败批）、阶段产物复用、失败入口、基线约束与状态回退。"""
+    status, created = api('/api/build-task-create', {'name': '生成断点续跑回归'})
+    task_id = require((created.get('task') or {}).get('id'), '续跑回归任务创建失败')
+    provider_id = require(_provider_id(), '未找到默认 LLM 提供方')
+    fixture_dir = FIXTURE_DIR / 'resume'
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    # 50 列 DDL → >40 条事实 → 2 个抽象批次（LLM_BATCH_FACTS=40）
+    columns = []
+    for index in range(1, 51):
+        columns.append("  col_%02d VARCHAR(64) COMMENT '设备监测字段%02d：额定容量与功率采样说明'" % (index, index))
+    ddl = 'CREATE TABLE device_monitor (\n  id BIGINT PRIMARY KEY,\n' + ',\n'.join(columns) + '\n);\n'
+    (fixture_dir / 'big_schema.sql').write_text(ddl, encoding='utf-8')
+    status, body = _upload_bytes(ddl.encode('utf-8'), task_id, 'big_schema.sql')
+    if status != 200:
+        raise Abort('上传 big_schema.sql 失败：%s' % _short(body))
+    status, scan = api('/api/build-scan', {'taskId': task_id})
+    run = poll_run(task_id, require(scan.get('runId'), '扫描未返回 runId'))
+    if run.get('state') != 'succeeded':
+        raise Abort('续跑搭建扫描失败：%s' % run.get('error'))
+    _, detail = api('/api/build-task', query='?taskId=' + task_id)
+    scope_rev = (detail.get('scope') or {}).get('revision') or 0
+    scope = {'goal': '设备运行管理', 'include': '设备台账、监测数据、额定容量', 'exclude': '收益结算',
+             'relations': '', 'coverage': '', 'openQuestions': []}
+    status, saved = api('/api/build-scope-save', {'taskId': task_id, 'revision': scope_rev, 'scope': scope})
+    revision = require((saved.get('scope') or {}).get('revision'), '范围保存失败')
+    fact_count = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?', (task_id,))[0]['n']
+    check(int(fact_count) > protocol.LLM_BATCH_FACTS,
+          '夹具事实数 > %d（将切出多个抽象批次）' % protocol.LLM_BATCH_FACTS, actual=fact_count)
+
+    saved_remaining = FakeLlm.extract_fail_remaining
+    FakeLlm.extract_fail_remaining = 1   # 第 1 个抽取请求 500：批 1 失败、批 2 成功
+    attempts_before = FakeLlm.extract_attempts
+    try:
+        status, confirmed = api('/api/build-scope-confirm',
+                                {'taskId': task_id, 'revision': revision, 'providerId': provider_id})
+        batch_id = require(confirmed.get('batchId'), '范围确认未启动生成')
+        run_id = require(confirmed.get('runId'), '范围确认未返回 runId')
+        run = poll_run(task_id, run_id)
+        attempts_first = FakeLlm.extract_attempts - attempts_before
+        check(run.get('state') == 'failed' and '第 1/2 批抽取失败' in str(run.get('error')),
+              '批次检查点：批 1 失败 → 运行 failed 且失败入口含批号与原因（G23）',
+              actual=(run.get('state'), run.get('error'), attempts_first))
+        check(attempts_first == 2, '失败运行前两批各尝试一次（共 2 次抽取调用）',
+              actual=attempts_first)
+        _, run_body = api('/api/build-run', query='?taskId=%s&runId=%s' % (task_id, run_id))
+        checkpoint = ((run_body.get('run') or {}).get('checkpoint') or {}).get('generate') or {}
+        batches = checkpoint.get('batches') or {}
+        check(batches.get('total') == 2 and 2 in (batches.get('done') or [])
+              and (batches.get('failed') or [{}])[0].get('position') == 1
+              and checkpoint.get('planPersisted') is True,
+              'run.checkpoint 摘要：计划持久化 + done=[2] + failed=[批1]（失败入口数据）',
+              actual=checkpoint)
+        _, task_detail = api('/api/build-task', query='?taskId=' + task_id)
+        check((task_detail.get('task') or {}).get('status') == 'scope',
+              '状态回退缺陷修复：generate 运行 failed 后任务从 generating 回退 scope',
+              actual=(task_detail.get('task') or {}).get('status'))
+        kept = db_rows('SELECT COUNT(*) AS n FROM wb_build_candidates '
+                       'WHERE task_id = ? AND batch_id = ?', (task_id, batch_id))[0]['n']
+        check(int(kept) >= 1, '成功批次候选保留（失败后批次内仍有候选）', actual=kept)
+
+        # 重试失败批次（resumeMode=auto）：只重跑批 1，成功批候选保留
+        FakeLlm.extract_fail_remaining = 0
+        attempts_before = FakeLlm.extract_attempts
+        status, resumed = api('/api/build-run-resume',
+                              {'taskId': task_id, 'runId': run_id, 'resumeMode': 'auto'})
+        check(status == 200, 'build-run-resume(auto) 受理', actual=(status, _short(resumed)))
+        run = poll_run(task_id, run_id)
+        delta = FakeLlm.extract_attempts - attempts_before
+        check(run.get('state') == 'succeeded' and delta == 1,
+              '批次续跑：只重跑失败的批 1（抽取调用恰 +1），成功批不重跑（G23）',
+              actual=(run.get('state'), run.get('error'), delta))
+        _, task_detail = api('/api/build-task', query='?taskId=' + task_id)
+        check((task_detail.get('task') or {}).get('status') == 'review',
+              '回退后重试成功且基线未变 → 任务恢复到 review',
+              actual=(task_detail.get('task') or {}).get('status'))
+        final_rows = db_rows('SELECT COUNT(*) AS n FROM wb_build_candidates '
+                             'WHERE task_id = ? AND batch_id = ?', (task_id, batch_id))[0]['n']
+        check(int(final_rows) >= 1, '续跑完成后最终候选整批替换成功', actual=final_rows)
+    finally:
+        FakeLlm.extract_fail_remaining = 0
+
+    # abstract 重跑模式：复用确定性产物、重跑全部批次（失败注入先制造一次失败运行）
+    status, regen = api('/api/build-regenerate', {'taskId': task_id})
+    batch2 = require(regen.get('batchId'), '再生成未返回 batchId')
+    run2 = poll_run(task_id, require(regen.get('runId'), '再生成未返回 runId'))
+    check(run2.get('state') == 'succeeded', '无失败注入的再生成成功', actual=run2.get('error'))
+    FakeLlm.extract_fail_remaining = 1
+    attempts_before = FakeLlm.extract_attempts
+    try:
+        status, regen2 = api('/api/build-regenerate', {'taskId': task_id})
+        batch3 = require(regen2.get('batchId'), '再生成(2)未返回 batchId')
+        run_id3 = require(regen2.get('runId'), '再生成(2)未返回 runId')
+        run3 = poll_run(task_id, run_id3)
+        check(run3.get('state') == 'failed', '注入后再生成失败（待 abstract 重试）',
+              actual=run3.get('state'))
+        FakeLlm.extract_fail_remaining = 0
+        status, resumed = api('/api/build-run-resume',
+                              {'taskId': task_id, 'runId': run_id3, 'resumeMode': 'abstract'})
+        check(status == 200, 'build-run-resume(abstract) 受理', actual=(status, _short(resumed)))
+        run3 = poll_run(task_id, run_id3)
+        delta = FakeLlm.extract_attempts - attempts_before
+        # 第一次再生成 2 次调用（1 失败 1 成功）+ abstract 重跑全部 2 批 = 4
+        check(run3.get('state') == 'succeeded' and delta == 4,
+              'abstract 重试：复用筛选/对齐产物但重跑全部批次（抽取调用 +2）',
+              actual=(run3.get('state'), delta))
+    finally:
+        FakeLlm.extract_fail_remaining = 0
+
+    # 基线约束：制造失败运行（其基线=当时范围修订）→ 再修改范围 → resume 旧运行 → 拒绝
+    FakeLlm.extract_fail_remaining = 1
+    try:
+        status, regen3 = api('/api/build-regenerate', {'taskId': task_id})
+        run_id4 = require(regen3.get('runId'), '再生成(3)未返回 runId')
+        poll_run(task_id, run_id4)   # 制造一次失败运行（旧基线）
+    finally:
+        FakeLlm.extract_fail_remaining = 0
+    _, fresh = api('/api/build-task', query='?taskId=' + task_id)
+    scope_rev = (fresh.get('scope') or {}).get('revision') or 0
+    scope['coverage'] = '补充覆盖说明以推进范围修订'
+    status, saved = api('/api/build-scope-save', {'taskId': task_id, 'revision': scope_rev, 'scope': scope})
+    require((saved.get('scope') or {}).get('revision'), '范围保存失败(2)')
+    status, resumed = api('/api/build-run-resume', {'taskId': task_id, 'runId': run_id4})
+    check(status == 200, '基线约束：resume 受理（拒绝发生在执行侧基线核对）', actual=status)
+    run4 = poll_run(task_id, run_id4)
+    check(run4.get('state') == 'failed' and '范围已' in str(run4.get('error'))
+          and '重新确认范围' in str(run4.get('error')),
+          '基线约束：范围修改后重试旧运行 → 明确失败并提示重新确认生成（G23）',
+          actual=(run4.get('state'), run4.get('error')))
+
+    # 服务重启状态回退：generating 任务在无活跃运行时回退 scope（mark_stale_runs_interrupted）
+    uid = require(_main_user_id(), '找不到测试账号 user_id')
+
+    def seed(conn):
+        stuck = ob_store.create_task(conn, uid, '重启回退回归')
+        ob_store.touch_task(conn, stuck, uid, status='generating', stage_label='生成中')
+        return stuck
+
+    with sto.write_tx() as tx:
+        stuck_id = tx.run(seed)
+    with sto.write_tx() as tx:
+        tx.run(lambda conn: ob_store.mark_stale_runs_interrupted(conn))
+    _, stuck_detail = api('/api/build-task', query='?taskId=' + stuck_id)
+    check((stuck_detail.get('task') or {}).get('status') == 'scope',
+          '服务重启：无活跃运行的 generating 任务回退 scope（不显示假生成中）',
+          actual=(stuck_detail.get('task') or {}).get('status'))
 
 
 # --- 回归流：V2-3 解析三级分派与 LLM 兜底（G19） --------------------------------------
@@ -1927,6 +2089,7 @@ def main():
     flow_blacklist_filter()
     flow_image_ocr()
     flow_llm_fallback()
+    flow_generate_resume()
     flow_lease_fencing(task_id)
     return 0
 

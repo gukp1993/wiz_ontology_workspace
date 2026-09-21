@@ -70,6 +70,28 @@ const stateNote = computed(() => {
 })
 
 const running = computed(() => run.value?.state === 'running' || run.value?.state === 'queued')
+
+/** V2-8：批次检查点摘要——失败批次列表（生成运行专用）。 */
+const failedBatches = computed(() => {
+  const batches = run.value?.checkpoint?.generate?.batches
+  return batches?.failed?.length ? batches.failed : []
+})
+const batchTotal = computed(() => run.value?.checkpoint?.generate?.batches?.total ?? 0)
+const planPersisted = computed(() => run.value?.checkpoint?.generate?.planPersisted === true)
+
+/** 失败入口文案（G23）：「第 N 步失败（原因）」——批次失败给出批号，其余给出阶段。 */
+const failureEntry = computed(() => {
+  const value = run.value
+  if (!value || value.state !== 'failed') return ''
+  if (failedBatches.value.length) {
+    const first = failedBatches.value[0]
+    const others = failedBatches.value.length > 1 ? `（共 ${failedBatches.value.length} 批失败）` : ''
+    return `第 ${first.position}/${batchTotal.value || '?'} 批抽取失败${others}：${first.error}`
+  }
+  const stage = currentStageLabel.value || '处理'
+  const reason = runErrorText(value) || '未知原因'
+  return `${stage}失败：${reason}`
+})
 const currentStageIndex = computed(() => {
   const value = run.value
   if (!value || !value.stage) return -1
@@ -208,7 +230,7 @@ async function onCancel() {
   }
 }
 
-async function onResume() {
+async function onResume(resumeMode: 'auto' | 'abstract' = 'auto') {
   if (resuming.value || !run.value) return
   const id = run.value.id || activeRunId.value
   if (!id) { actionError.value = '未取得运行标识，无法重试；请返回范围页重新确认后生成。'; return }
@@ -216,11 +238,15 @@ async function onResume() {
   actionError.value = ''
   actionNote.value = ''
   try {
-    const result = await resumeRun(props.taskId, id)
+    const result = await resumeRun(props.taskId, id, resumeMode)
     if (result.runId) activeRunId.value = result.runId
     // 重试是服务端行为：本地只回到「排队中」，attempt、阶段与错误都以轮询返回的服务端值为准。
     run.value = { ...run.value, state: 'queued', error: null }
-    actionNote.value = '已提交重试：已完成阶段的结果保留，运行从匹配到的检查点继续。'
+    actionNote.value = resumeMode === 'abstract'
+      ? '已提交「从 abstract 阶段重试」：筛选/对齐产物复用，全部抽象批次重新执行。'
+      : (failedBatches.value.length
+        ? '已提交「重试失败批次」：只重跑失败的批次，成功批次候选保留。'
+        : '已提交重试：已完成阶段的结果保留，运行从匹配到的检查点继续。')
     stopPolling()
     schedulePoll()
   } catch (error) {
@@ -329,11 +355,26 @@ onUnmounted(() => {
         </li>
       </ol>
 
+      <div v-if="failureEntry !== ''" class="bp-error-text">
+        <span class="eyebrow">第 N 步失败（原因）</span>
+        {{ failureEntry }}
+      </div>
+
       <div v-if="run && runErrorText(run) !== ''" class="bp-error-text">
         <span class="eyebrow">失败原因原文</span>
         {{ runErrorText(run) }}
         <span v-if="!runErrorRetryable(run)" class="muted">
           （服务端标记为不可重试的结构性失败：请先修正范围或材料，再重新确认生成）
+        </span>
+      </div>
+
+      <div v-if="run && run.kind === 'generate' && failedBatches.length" class="bp-checkpoint">
+        <span class="eyebrow">批次检查点（V2-8）</span>
+        <span class="muted">
+          共 {{ batchTotal }} 批 · 已完成 {{ run.checkpoint?.generate?.batches.done.length ?? 0 }} 批 ·
+          失败 {{ failedBatches.length }} 批（第
+          {{ failedBatches.map(b => b.position).join('、') }} 批）·
+          {{ planPersisted ? '筛选/对齐产物已持久化，重试不重算确定性阶段' : '无持久化产物，重试将重算确定性阶段' }}
         </span>
       </div>
 
@@ -343,9 +384,15 @@ onUnmounted(() => {
         </button>
         <button
           v-if="run && isTerminal(run.state) && run.state !== 'succeeded'"
-          type="button" class="primary" :disabled="resuming" @click="onResume()"
+          type="button" class="primary" :disabled="resuming" @click="onResume('auto')"
         >
-          {{ resuming ? '正在提交重试…' : '重试 / 继续生成' }}
+          {{ resuming ? '正在提交重试…' : failedBatches.length ? '重试失败批次' : '重试 / 继续生成' }}
+        </button>
+        <button
+          v-if="run && isTerminal(run.state) && run.state !== 'succeeded' && failedBatches.length"
+          type="button" :disabled="resuming" @click="onResume('abstract')"
+        >
+          从 abstract 阶段重试
         </button>
         <button v-if="run && run.state === 'succeeded'" type="button" class="primary" @click="emit('review')">评审初稿 →</button>
       </div>
@@ -410,6 +457,8 @@ onUnmounted(() => {
 .bp-stage-badge{margin-left:auto}
 .bp-error-text{margin:14px 0 0;padding:10px 12px;border:1px solid var(--danger-line);background:var(--danger-soft);color:var(--danger);border-radius:var(--r-sm);font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
 .bp-error-text .eyebrow{display:block;color:var(--danger);margin-bottom:4px}
+.bp-checkpoint{margin:14px 0 0;padding:10px 12px;border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);font-size:13px}
+.bp-checkpoint .eyebrow{display:block;color:var(--blue-ink);margin-bottom:4px}
 .bp-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}
 .bp-hint{margin:10px 0 0}
 .danger-ghost{color:var(--danger);border-color:var(--danger-line)}

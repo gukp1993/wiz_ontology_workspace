@@ -613,9 +613,45 @@ def run_view(row):
         'usage': _loads(row['usage_json'], {}),
         'batchId': row['batch_id'] or '',
         'cancelRequested': bool(row['cancel_requested']),
+        # V2-8（08 §1.5/§5）：检查点摘要（不含 factId 明细，避免轮询响应膨胀）——
+        # 生成页「第 N 步失败（原因）[从该步重试]」与批次/阶段续跑入口的数据来源。
+        'checkpoint': run_checkpoint_view(row),
         'createdAt': row['created_at'],
         'updatedAt': row['updated_at'],
     }
+
+
+def run_checkpoint_view(row):
+    """checkpoint_json → 对外摘要（`{generate: {...}}`，与前端 RunCheckpoint 同形）；
+    非生成运行/未持久化返回 None。"""
+    try:
+        raw = row['checkpoint_json']
+    except (KeyError, IndexError):
+        return None
+    checkpoint = _loads(raw if raw is not None else '{}', {})
+    gen = checkpoint.get('generate')
+    if not isinstance(gen, dict):
+        return None
+    plan = gen.get('plan') if isinstance(gen.get('plan'), dict) else {}
+    batches = gen.get('batches') if isinstance(gen.get('batches'), dict) else {}
+    failed = [item for item in batches.get('failed') or [] if isinstance(item, dict)]
+    return {'generate': {
+        'batchId': str(gen.get('batchId') or ''),
+        'scopeRevision': int(gen.get('scopeRevision') or 0),
+        'materialRevision': int(gen.get('materialRevision') or 0),
+        'planPersisted': bool(plan.get('modelFactIds')),
+        'modelFacts': len(plan.get('modelFactIds') or []),
+        'relevant': int(plan.get('relevant') or 0),
+        'related': int(plan.get('related') or 0),
+        'excluded': int(plan.get('excluded') or 0),
+        'batches': {
+            'size': int(batches.get('size') or 0),
+            'total': int(batches.get('total') or 0),
+            'done': [int(p) for p in batches.get('done') or []],
+            'failed': [{'position': int(item.get('position') or 0),
+                        'error': str(item.get('error') or '')} for item in failed],
+        },
+    }}
 
 
 def get_run(conn, run_id, owner_user_id):
@@ -696,12 +732,22 @@ def run_state(conn, run_id, owner_user_id):
 
 
 def mark_stale_runs_interrupted(conn, now=None):
-    """服务启动时把所有 queued/running 标为 interrupted（绝不假装仍在运行）。"""
+    """服务启动时把所有 queued/running 标为 interrupted（绝不假装仍在运行）。
+
+    V2-8 配套修复：generate 运行标中断后，任务若仍停在「generating」且已无任何
+    活跃运行，则同步回退为「scope」（与取消/失败的回退口径一致，08 §12.3），
+    任务列表不得显示假「生成中」。
+    """
     now = now or sto.utcnow()
     result = conn.execute(sto.text("UPDATE wb_build_runs SET state = 'interrupted', "
                                    "error = '服务重启，执行已中断；可重试', retryable = 1, "
                                    'updated_at = :n WHERE state IN (\'queued\', \'running\')'),
                           {'n': now})
+    conn.execute(sto.text("UPDATE wb_build_tasks SET status = 'scope', stage_label = '确定范围', "
+                          'updated_at = :n WHERE status = \'generating\' AND deleted_at IS NULL '
+                          'AND task_id NOT IN (SELECT task_id FROM wb_build_runs '
+                          "WHERE state IN ('queued', 'running'))"),
+                 {'n': now})
     return int(result.rowcount or 0)
 
 

@@ -726,8 +726,18 @@ def inherit_manual_exclusions(conn, owner_id, task_id, batch_id, items):
 
 # --- 生成：检索 → 对齐 → 抽象 → 校验 → 适配 ---------------------------------------
 
-def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
+def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode='auto'):
     """按冻结基线生成候选定义（只写任务侧候选，不创建本体）。
+
+    V2-8 / G23 断点续跑：
+    * 基线约束：重试沿用同一 scope revision 与材料基线——运行冻结基线与当前修订不一致
+      时直接失败（修改范围/材料不属于重试，须重新确认生成新批次）。
+    * 阶段检查点：retrieve/align（确定性阶段）产物按 modelFactIds 有序清单持久化；
+      LLM 阶段失败重试直接复用（不重算确定性阶段），清单中的事实缺失时自动降级为重算。
+    * 批次检查点：逐批落库 + 逐批持久化 done/failed；某批失败只标记该批，重试
+      （run-resume, resumeMode=auto）只跑失败批次，成功批次候选保留；resumeMode=abstract
+      表示复用确定性产物但重跑全部抽象批次。
+    * resume_mode='auto'（默认）按检查点续跑；'abstract' 强制重跑全部批次。
 
     返回运行摘要（含 usage / counts / definitionOrder / notes）；失败抛 PipelineError，
     已完成批次的候选与已解析材料保持可用。
@@ -736,68 +746,158 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
     if not isinstance(provider, dict) or not provider.get('endpoint') or not provider.get('model'):
         raise PipelineError('尚未配置可用的 LLM 提供方，请先到「更多工具 → LLM 配置」添加')
     context = _tx(lambda conn: _generate_context(conn, owner_id, task_id, run_id))
-    scope, facts = context['scope'], context['facts']
+    scope, facts, task = context['scope'], context['facts'], context['task']
+    saved = (context['checkpoint'] or {}).get('generate') or {}
+    baseline = context['baseline'] or {}
     notes = []
     # V2-3（G19）：LLM 兜底解析产物一律按弱证据处理——命中其证据的候选不得 supported。
     weak_fact_ids = {str(fact.get('id')) for fact in facts
                      if str(fact.get('module') or '') == 'llm-fallback'}
 
-    # 1) retrieve：本地检索（不调用模型）
-    label = protocol.GENERATE_STAGE_LABELS['retrieve']
-    runner.stage(owner_id, run_id, 'retrieve', label, {'done': 0, 'total': len(facts)})
-    index = retrieval.build_index(facts)
-    selection = retrieval.select_scope(facts, scope, index)
+    # 基线约束（G23）：重试沿用同一次范围/材料基线；修改范围或材料是重新生成。
+    if baseline.get('scopeRevision') is not None and \
+            int(baseline.get('scopeRevision')) != int(scope.get('revision') or 0):
+        raise PipelineError('范围已在生成后修改（基线 revision %s，当前 %s）：修改范围属于重新生成，'
+                            '请重新确认范围生成新批次，不能沿用旧批次重试。'
+                            % (baseline.get('scopeRevision'), scope.get('revision')))
+    if baseline.get('materialRevision') is not None and task is not None and \
+            int(baseline.get('materialRevision')) != int(task.get('materialRevision') or 0):
+        raise PipelineError('材料已在生成后变化（基线修订 %s，当前 %s）：请重新确认范围生成新批次。'
+                            % (baseline.get('materialRevision'), task.get('materialRevision')))
     by_id = {fact['id']: fact for fact in facts}
-    pool = [by_id[fact_id] for fact_id in selection['relevant'] + selection['related']
-            if fact_id in by_id]
-    if not pool:
-        raise PipelineError('没有可用于生成的事实：请先扫描材料并确认范围')
-    runner.stage(owner_id, run_id, 'retrieve', label,
-                 {'done': len(pool), 'total': len(pool), 'relevant': len(selection['relevant']),
-                  'related': len(selection['related']), 'excluded': len(selection['excluded'])})
 
-    # 2) align：同主体证据分组 + 同一片段哈希去重（重复副本不算独立佐证）
-    label = protocol.GENERATE_STAGE_LABELS['align']
-    runner.stage(owner_id, run_id, 'align', label, {'done': 0, 'total': len(pool)})
-    grouped = alignment.group_evidence(facts, selection['relevant'] + selection['related'])
-    seen_digest, model_facts = set(), []
-    for fact in pool:  # 保持“相关优先”顺序，重复片段只保留首个
-        digest = retrieval.snippet_digest(fact)
-        if digest in seen_digest:
-            continue
-        seen_digest.add(digest)
-        model_facts.append(fact)
-    truncated = max(0, len(model_facts) - MAX_MODEL_FACTS)
-    if truncated:
-        model_facts = model_facts[:MAX_MODEL_FACTS]
-        _note(notes, '事实总量超过单次生成上限 %d，按相关度优先保留前 %d 条，'
-                     '其余 %d 条未发送给模型（可缩小范围后重跑）。'
-                     % (MAX_MODEL_FACTS, len(model_facts), truncated))
-    _note(notes, '证据分组 %d 组，重复片段 %d 条只计一次佐证。'
-                 % (len(grouped['groups']), grouped['stats']['duplicates']))
-    runner.stage(owner_id, run_id, 'align', label,
-                 {'done': len(model_facts), 'total': len(model_facts),
-                  'groups': len(grouped['groups']), 'duplicates': grouped['stats']['duplicates']})
+    # 1)+2) retrieve/align：确定性阶段——优先复用已持久化产物，缺失时重算
+    label = protocol.GENERATE_STAGE_LABELS['retrieve']
+    saved_plan = saved.get('plan') if isinstance(saved.get('plan'), dict) else {}
+    plan_ids = [str(item) for item in (saved_plan.get('modelFactIds') or [])]
+    plan_reusable = (resume_mode != 'abstract' and plan_ids
+                     and int(saved_plan.get('scopeRevision') or -1) == int(scope.get('revision') or 0)
+                     and all(item in by_id for item in plan_ids))
+    if plan_reusable:
+        model_facts = [by_id[item] for item in plan_ids if item in by_id]
+        relevant_n = int(saved_plan.get('relevant') or 0)
+        related_n = int(saved_plan.get('related') or 0)
+        excluded_n = int(saved_plan.get('excluded') or 0)
+        duplicates_n = int(saved_plan.get('duplicates') or 0)
+        groups_count = int(saved_plan.get('groups') or 0)
+        truncated = max(0, len(plan_ids) - MAX_MODEL_FACTS)
+        pool = model_facts
+        _note(notes, '复用上次运行持久化的筛选/对齐产物（%d 条事实、材料与范围基线一致），'
+                     '确定性阶段未重算。' % len(model_facts))
+        runner.stage(owner_id, run_id, 'retrieve', label,
+                     {'done': len(model_facts), 'total': len(model_facts),
+                      'relevant': relevant_n, 'related': related_n, 'excluded': excluded_n,
+                      'resumed': 1})
+        runner.stage(owner_id, run_id, 'align', protocol.GENERATE_STAGE_LABELS['align'],
+                     {'done': len(model_facts), 'total': len(model_facts),
+                      'groups': int(saved_plan.get('groups') or 0), 'duplicates': duplicates_n,
+                      'resumed': 1})
+    else:
+        runner.stage(owner_id, run_id, 'retrieve', label, {'done': 0, 'total': len(facts)})
+        index = retrieval.build_index(facts)
+        selection = retrieval.select_scope(facts, scope, index)
+        pool = [by_id[fact_id] for fact_id in selection['relevant'] + selection['related']
+                if fact_id in by_id]
+        if not pool:
+            raise PipelineError('没有可用于生成的事实：请先扫描材料并确认范围')
+        relevant_n, related_n = len(selection['relevant']), len(selection['related'])
+        excluded_n = len(selection['excluded'])
+        runner.stage(owner_id, run_id, 'retrieve', label,
+                     {'done': len(pool), 'total': len(pool), 'relevant': relevant_n,
+                      'related': related_n, 'excluded': excluded_n})
 
-    # 3) abstract：分批调用模型抽取，逐批落库（失败/取消时已完成批次保留）
+        # align：同主体证据分组 + 同一片段哈希去重（重复副本不算独立佐证）
+        label = protocol.GENERATE_STAGE_LABELS['align']
+        runner.stage(owner_id, run_id, 'align', label, {'done': 0, 'total': len(pool)})
+        grouped = alignment.group_evidence(facts, selection['relevant'] + selection['related'])
+        seen_digest, model_facts = set(), []
+        for fact in pool:  # 保持“相关优先”顺序，重复片段只保留首个
+            digest = retrieval.snippet_digest(fact)
+            if digest in seen_digest:
+                continue
+            seen_digest.add(digest)
+            model_facts.append(fact)
+        duplicates_n = grouped['stats']['duplicates']
+        groups_count = len(grouped['groups'])
+        truncated = max(0, len(model_facts) - MAX_MODEL_FACTS)
+        if truncated:
+            model_facts = model_facts[:MAX_MODEL_FACTS]
+            _note(notes, '事实总量超过单次生成上限 %d，按相关度优先保留前 %d 条，'
+                         '其余 %d 条未发送给模型（可缩小范围后重跑）。'
+                         % (MAX_MODEL_FACTS, len(model_facts), truncated))
+        _note(notes, '证据分组 %d 组，重复片段 %d 条只计一次佐证。'
+                     % (len(grouped['groups']), duplicates_n))
+        runner.stage(owner_id, run_id, 'align', label,
+                     {'done': len(model_facts), 'total': len(model_facts),
+                      'groups': len(grouped['groups']), 'duplicates': duplicates_n})
+
+    plan_snapshot = {
+        'modelFactIds': [str(fact.get('id')) for fact in model_facts],
+        'relevant': relevant_n, 'related': related_n, 'excluded': excluded_n,
+        'duplicates': duplicates_n, 'groups': groups_count,
+        'scopeRevision': int(scope.get('revision') or 0),
+        'materialRevision': int(task.get('materialRevision') or 0) if task else 0,
+    }
+
+    def _checkpoint(done_positions, failed_batches, extra=None):
+        payload = {'generate': {
+            'batchId': batch_id,
+            'scopeRevision': plan_snapshot['scopeRevision'],
+            'materialRevision': plan_snapshot['materialRevision'],
+            'plan': plan_snapshot,
+            'batches': {'size': protocol.LLM_BATCH_FACTS, 'total': len(batches),
+                        'done': sorted(done_positions), 'failed': failed_batches},
+        }}
+        if extra:
+            payload['generate'].update(extra)
+        return payload
+
+    # 3) abstract：分批调用模型抽取，逐批落库 + 逐批检查点（失败/取消时已完成批次保留）
     label = protocol.GENERATE_STAGE_LABELS['abstract']
     batches = [model_facts[start:start + protocol.LLM_BATCH_FACTS]
                for start in range(0, len(model_facts), protocol.LLM_BATCH_FACTS)]
     runner.stage(owner_id, run_id, 'abstract', label,
                  {'done': 0, 'total': len(batches), 'facts': len(model_facts)})
-    # 本批旧候选整批作废也是业务内容变更（R4-01）：同事务核对取消/执行权后再删
-    runner.content_tx(owner_id, run_id,
-                      lambda conn: store.delete_candidates_of_batch(conn, task_id, owner_id,
-                                                                    batch_id))
-    accumulated, errors = [], []
+    saved_batches = saved.get('batches') if isinstance(saved.get('batches'), dict) else {}
+    done_positions, failed_batches = set(), []
+    if plan_reusable and resume_mode != 'abstract' \
+            and int(saved_batches.get('total') or 0) == len(batches):
+        done_positions = {int(p) for p in (saved_batches.get('done') or [])
+                          if str(p).lstrip('-').isdigit() and 1 <= int(p) <= len(batches)}
+        failed_batches = [item for item in (saved_batches.get('failed') or [])
+                          if isinstance(item, dict)
+                          and 1 <= int(item.get('position') or 0) <= len(batches)]
+    else:
+        # 批次计划与上次不一致（重算/无检查点）：整批重来——先作废本批旧候选（R4-01，
+        # 同事务核对取消/执行权后再删）。
+        runner.content_tx(owner_id, run_id,
+                          lambda conn: store.delete_candidates_of_batch(conn, task_id, owner_id,
+                                                                        batch_id))
+    accumulated = []
+    if done_positions:
+        # 成功批次的候选已在库中（逐批落库）：载入为合并/校验的种子，绝不重跑这些批次
+        accumulated = list(_tx(lambda conn: store.all_candidates(conn, task_id, owner_id,
+                                                                batch_id=batch_id)))
+        if failed_batches:
+            _note(notes, '检测到上次失败的批次（%s），本次只重跑失败批次，成功批次候选保留。'
+                         % '、'.join(str(item.get('position')) for item in failed_batches))
     usage = _usage()
     rejected_total = 0
     for position, batch in enumerate(batches, start=1):
+        if position in done_positions:
+            runner.stage(owner_id, run_id, 'abstract', label,
+                         {'done': position, 'total': len(batches), 'facts': len(model_facts),
+                          'candidates': len(accumulated), 'resumed': 1})
+            continue
         result = llm.extract_candidates(provider, scope, batch)
         _add_usage(usage, result.get('usage'))
+        failed_batches = [item for item in failed_batches
+                          if int(item.get('position') or 0) != position]
         if not result.get('ok'):
-            errors.append('第 %d 批抽取失败：%s' % (position, result.get('error') or '未知错误'))
+            failed_batches.append({'position': position,
+                                   'error': str(result.get('error') or '未知错误')[:400]})
         else:
+            done_positions.add(position)
             rejected_total += int(result.get('rejectedRefs') or 0)
             verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys(),
                                                    weak_fact_ids=weak_fact_ids)
@@ -808,15 +908,32 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
                 runner.content_tx(owner_id, run_id,
                                   lambda conn, items=verified:
                                   _append_candidates(conn, owner_id, task_id, batch_id, items))
+        # 批次检查点（V2-8）：成功/失败都持久化——崩溃或失败后重试只补缺口
+        _tx(lambda conn, done=set(done_positions), failed=list(failed_batches):
+            (runner.check_cancelled(conn, run_id, owner_id),
+             store.update_run(conn, run_id, owner_id, checkpoint=_checkpoint(done, failed),
+                              lease=runner.lease_of(owner_id, run_id) or None)))
         runner.stage(owner_id, run_id, 'abstract', label,
                      {'done': position, 'total': len(batches), 'facts': len(model_facts),
                       'candidates': len(accumulated)})
+    errors = ['第 %d 批抽取失败：%s' % (item['position'], item.get('error') or '未知错误')
+              for item in failed_batches]
     for message in errors:
         _note(notes, message)
     if not accumulated:
         if errors:
-            raise PipelineError('全部批次抽取失败：%s' % errors[0])
+            raise PipelineError('全部批次抽取失败：%s；已完成批次候选保留，可「重试失败批次」。'
+                                % errors[0])
         raise PipelineError('模型未产出任何候选定义，请检查范围与材料后重试或更换模型')
+    if failed_batches:
+        # G23：某批失败只标记该批——成功批次候选保留，运行失败并给出失败入口；
+        # 重试（resumeMode=auto）只重跑失败批次。
+        first = failed_batches[0]
+        raise PipelineError('第 %d/%d 批抽取失败（%s）：其余 %d 批候选已保留，'
+                            '请在生成页「重试失败批次」只补跑失败批次。'
+                            % (first.get('position'), len(batches),
+                               first.get('error') or '未知错误',
+                               max(0, len(batches) - len(failed_batches))))
 
     # 跨批合并：同名同类型（属性还要求 dataType 一致）才合并，差异字段保留两侧
     aligned = alignment.align(accumulated)
@@ -859,6 +976,7 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
         'facts': {'total': len(facts), 'pool': len(pool), 'sent': len(model_facts),
                   'batches': len(batches), 'truncated': truncated},
         'stages': list(protocol.GENERATE_STAGES),
+        'resumedPlan': bool(plan_reusable),
         'candidates': len(final), 'counts': {'byType': _counts(final, 'type'),
                                              'byStatus': _counts(final, 'evidenceStatus'),
                                              'byDecision': _counts(final, 'decision')},
@@ -869,24 +987,30 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
         'definitionOrder': adapted['definitionOrder'], 'notes': notes,
         'errors': errors, 'provider': _fingerprint(provider), 'usage': usage,
     }
-    checkpoint = {'generate': {'batch': batch_id, 'facts': summary['facts'],
-                               'counts': summary['counts'], 'issues': report['issues'],
-                               'droppedRefs': summary['droppedRefs'],
-                               'definitionOrder': adapted['definitionOrder'][:100],
-                               'truncatedOrder': max(0, len(adapted['definitionOrder']) - 100)}}
+    checkpoint = _checkpoint(done_positions, failed_batches, extra={
+        'facts': summary['facts'], 'counts': summary['counts'], 'issues': report['issues'],
+        'droppedRefs': summary['droppedRefs'],
+        'definitionOrder': adapted['definitionOrder'][:100],
+        'truncatedOrder': max(0, len(adapted['definitionOrder']) - 100)})
     _tx(lambda conn: store.update_run(conn, run_id, owner_id, usage=usage, checkpoint=checkpoint,
                                       lease=runner.lease_of(owner_id, run_id) or None))
     return summary
 
 
 def _generate_context(conn, owner_id, task_id, run_id):
-    """短事务：取消检查 + 任务/范围/事实快照（LLM 调用必须在事务外）。"""
+    """短事务：取消检查 + 任务/范围/事实/运行检查点快照（LLM 调用必须在事务外）。"""
     runner.check_cancelled(conn, run_id, owner_id)
-    if store.require_task(conn, task_id, owner_id) is None:
+    task_row = store.require_task(conn, task_id, owner_id)
+    if task_row is None:
         raise sto.NotFound('生成任务不存在')
-    return {'task': store.get_task(conn, task_id, owner_id),
+    run_row = store.get_run(conn, run_id, owner_id)
+    if run_row is None:
+        raise sto.NotFound('运行不存在')
+    return {'task': store.task_view(task_row),
             'scope': store.get_scope(conn, task_id, owner_id),
-            'facts': store.list_facts(conn, task_id, owner_id)}
+            'facts': store.list_facts(conn, task_id, owner_id),
+            'checkpoint': store._loads(run_row['checkpoint_json'] or '{}', {}),
+            'baseline': store._loads(run_row['baseline_json'] or '{}', {})}
 
 
 # --- 范围对话 ---------------------------------------------------------------------

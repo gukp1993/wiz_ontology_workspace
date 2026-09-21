@@ -146,8 +146,31 @@ export interface BuildRun {
   error: RunError | string | null
   usage: RunUsage
   batchId: string
+  /** V2-8（08 §1.5）：生成检查点摘要——失败入口「第 N 步失败（原因）[从该步重试]」的数据来源 */
+  checkpoint?: RunCheckpoint | null
   createdAt: string
   updatedAt: string
+}
+
+/** 生成检查点摘要（V2-8；不含 factId 明细）。 */
+export interface RunCheckpoint {
+  generate?: {
+    batchId: string
+    scopeRevision: number
+    materialRevision: number
+    /** 确定性阶段（筛选/对齐）产物是否已持久化（重试复用、不重算） */
+    planPersisted: boolean
+    modelFacts: number
+    relevant: number
+    related: number
+    excluded: number
+    batches: {
+      size: number
+      total: number
+      done: number[]
+      failed: { position: number; error: string }[]
+    }
+  }
 }
 
 // ── §1.8 Delivery ──────────────────────────────────────────────────────────
