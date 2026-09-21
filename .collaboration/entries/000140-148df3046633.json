@@ -1,0 +1,25 @@
+{
+  "ticket": "adcb56a2620d465b972706d3275fb946",
+  "task": "acceptance-fixes集成与清理",
+  "status": "verified",
+  "summary": "用户授权合并与清理已完成：main合并提交d8e3577，组合回归通过；acceptance-fixes及临时integration工作树、已合并分支与登记隔离环境已清理，18921任务服务已停止。",
+  "decisions": [
+    "两项无重叠main未提交文档按用户明确要求原样保留并核对SHA256",
+    "主18765未重启，其他任务工作树未动"
+  ],
+  "verification": [
+    "全量后端40/40、独立43/43、App挂载3/3、A02及npm build通过",
+    "合并后两项原文件SHA256一致；删除前分支均为main祖先；无其他未提交或未知忽略资产"
+  ],
+  "next": [],
+  "references": [
+    "文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §15",
+    "文档/需求/20260920_本体与项目统一维护体验改版/C01独立验收报告_20260921.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-21T01:56:43.176952+00:00",
+  "sequence": 140,
+  "filename": "000140-148df3046633.json",
+  "record_hash": "29da5dce003f0f92819de0e063946a6e9d46eb1e20bd1834ce7e167b18a738c6",
+  "context_advanced": false
+}
