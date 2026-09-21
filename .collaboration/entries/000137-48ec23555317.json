@@ -1,0 +1,36 @@
+{
+  "ticket": "ea1fe6eaa4474d7b9fd2a072a0629385",
+  "task": "acceptance-fixes：C01 空白依赖引用漏检修复（B01/B02 第二轮验收补充）",
+  "status": "implemented",
+  "summary": "按 /tmp/B01B02_独立验收_20260921/修复指令.md 补修 C01 并自测通过，提交待独立验收。根因：适配层 _flow_declares_provider/_flow_references_credential 用 .strip() 判「是否声明依赖」，底层 flows/flow_http 用原始非空字符串判「有没有引用」，纯空白 providerId/credentialId 因此被当成未声明→跳过检查→目录读取失败时 fail-open 放行。修复：新增 _raw_id_present 作为唯一声明判据（bool(str(impl.get(key) or ''))，不 trim），空白 ID 按「已声明但无效」处理——目录可读判不存在、读取失败按三态转阻断；键缺失/None/空串仍按未声明。文档先行（04 §2.2 判据段、03 §2.2 空白 ID 条、README 行），未合并 main、未重启 18765、未改真实数据。",
+  "decisions": [
+    "声明判据统一为原始值的非空字符串（与检查器底层逐字一致），不 strip、不 trim、不重写既有 ID；空白 ID 不得被降级为「未声明」。",
+    "键缺失/None/空字符串仍按未声明：不读取无关目录、不被无关故障误伤，保持既有兼容语义与编辑页 None 未知上下文行为。",
+    "HTTP 节点识别沿用 flows._check_body 分派口径（node.kind or impl.language），不新造识别规则。",
+    "金样采用增量追加：只加 57_c01_blank_provider_reference（固定 flowId 播种），旧 97 样例逐字节不变；新增 check_c01_samples 结构断言防止误删后「重新生成即通过」。"
+  ],
+  "verification": [
+    "反例先复现（隔离根，验收方脚本）：provider 空白两态 errors=[] 且 200 新增 v1；credential 空白读取失败态同型 200 v1——与验收报告 C01 四组表一致。",
+    "反例有效性：git archive 9d0fa6f 解到 /tmp 跑新断言 → 67 通过 / 25 失败；修复后同文件 92/92 全绿。",
+    "新增覆盖：空白矩阵（空格/Tab/换行/混合 × provider/credential × 空集合/读取失败 16 项）、非空集合对照 2 项、真正未填写三态 6 项、正常 ID 三态对照 2 项、动作绑定路径 1 项、发布路由四组 20 项（422/零版本/revision 不推进/重复请求/不回显注入原文）、改正 ID 后可恢复发布 2 项。",
+    "串行回归（本树 venv，清继承 WIZ_*）：test_flow_dependency_context 92/92、test_project_flow_source 44 步、test_publish_guards 16 步、test_publish_guards_adversarial 135/135、test_validation_split 98 样例/515 断言、test_business_rules 57、test_action_library 77、test_catalog_independent 51 硬断言；原五项独立脚本 codex_reacceptance_backend_20260920 43/43；tests/run.py all 40/40。"
+  ],
+  "next": [
+    "Codex/独立 harness 验收本提交，重点复跑四组空白 ID 反例（修复前 200、修复后 422 零写入）与空白矩阵边界。",
+    "验收通过后停在「待用户授权集成」；本轮无合并授权，不得自行合并 main 或清理 worktree。",
+    "未测：浏览器（前端零改动，18921 未重启仍跑上一被验代码）、真实 MySQL/Redis、真实项目故障注入；mapping_forms 既有失败与辅助填写原型属范围外。"
+  ],
+  "references": [
+    "/tmp/B01B02_独立验收_20260921/修复指令.md 与 验收报告.md（C01 / P2）",
+    "文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §14.5（本轮实施与复验记录）",
+    "文档/接口文档/03-项目区接口.md §2.2、04-编排与LLM接口.md §2.2、README.md 变更记录（C01 行）",
+    "workbench/project_validation.py（_raw_id_present/_flow_declares_provider/_flow_references_credential）",
+    "tests/test_flow_dependency_context.py、tests/test_validation_split.py、tests/golden_c01_flow.py、tests/fixtures/validation_golden.json"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T01:38:19.847606+00:00",
+  "sequence": 137,
+  "filename": "000137-48ec23555317.json",
+  "record_hash": "7ee5cb0009eb3abe666db2998515120e9bb8c43a9a5731e624a43cb7f5fad750",
+  "context_advanced": false
+}

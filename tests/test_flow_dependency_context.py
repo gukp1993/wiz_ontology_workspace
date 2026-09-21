@@ -346,6 +346,140 @@ pid, prev, resp, status, releases = route_project('B01路由合法公式', {'pow
 check(status == 200 and resp.get('version'),
       'B01 登记实例 + 纯公式编排 + 空连接 → 正式路由发布成功（合法对照不误伤）', (status, resp))
 
+# ============ C01 · 空白依赖引用（2026-09-21 第二轮独立验收，硬断言化） ==================
+# 判据与检查器底层一致：str(impl.get(key) or '') 的非空真值即「已声明」（不 strip）。
+# 纯空白 ID 属「已声明但无效」：目录可读 → 不存在；目录读取失败 → 读取失败阻断；
+# 两条路径都必须阻断发布（修复前：模型空集合/读取异常两态均 200 并新增版本）。
+WHITESPACE_IDS = ['   ', '\t', '\n', ' \t \n ']
+
+
+def _blank_flow(name, template, key, value):
+    node = copy.deepcopy(template)
+    node['implementation'][key] = value
+    return mk_flow(name, node)
+
+
+# —— 目录可读：空白 providerId / credentialId 必须判「不存在」（不得跳过） ——
+for i, blank in enumerate(WHITESPACE_IDS):
+    fid = _blank_flow(f'C01模型空白{i}', NODE_PY_PROVIDER, 'providerId', blank)
+    with mock.patch.object(llm_providers, 'list_metadata', return_value=[]):
+        e = verr(vstate([], {'power': F_SRC(fid)}))
+    check(any('提供方' in x and ('不存在' in x or '尚未配置' in x) for x in e),
+          f'C01 空白 providerId（{blank!r}）+ 模型空集合 → 必须报「不存在/未配置」，不得跳过', e)
+
+for i, blank in enumerate(WHITESPACE_IDS):
+    fid = _blank_flow(f'C01凭据空白{i}', NODE_HTTP_CRED, 'credentialId', blank)
+    with mock.patch.object(api_credentials, 'ids', return_value=set()):
+        e = verr(vstate([], {'power': F_SRC(fid)}))
+    check(any('凭据' in x and '不存在' in x for x in e),
+          f'C01 空白 credentialId（{blank!r}）+ 凭据空集合 → 必须报「不存在」，不得跳过', e)
+
+# —— 目录可读但非空集合（不含该空白 ID）：同样必须判「不存在」 ——
+fid_blank_provider = _blank_flow('C01模型空白非空集', NODE_PY_PROVIDER, 'providerId', '   ')
+with mock.patch.object(llm_providers, 'list_metadata',
+                       return_value=[{'id': 'other-provider', 'name': '别的模型'}]):
+    e = verr(vstate([], {'power': F_SRC(fid_blank_provider)}))
+check(any('提供方不存在' in x for x in e) and not has_read_failure(e),
+      'C01 空白 providerId + 模型非空集合（不含该 ID）→ 明确「提供方不存在」（非读取失败）', e)
+
+fid_blank_cred = _blank_flow('C01凭据空白非空集', NODE_HTTP_CRED, 'credentialId', '   ')
+with mock.patch.object(api_credentials, 'ids', return_value={'other-cred'}):
+    e = verr(vstate([], {'power': F_SRC(fid_blank_cred)}))
+check(any('凭据' in x and '不存在' in x for x in e) and not has_read_failure(e),
+      'C01 空白 credentialId + 凭据非空集合（不含该 ID）→ 明确「凭据不存在」（非读取失败）', e)
+
+# —— 目录读取失败：空白 ID 同样按「已声明」走 fail-closed ——
+for i, blank in enumerate(WHITESPACE_IDS):
+    fid = _blank_flow(f'C01模型故障空白{i}', NODE_PY_PROVIDER, 'providerId', blank)
+    with mock.patch.object(llm_providers, 'list_metadata', side_effect=ERR_PROVIDER):
+        e = verr(vstate([], {'power': F_SRC(fid)}))
+    check(has_read_failure(e) and not leaks_secret(e),
+          f'C01 空白 providerId（{blank!r}）+ 模型目录读取异常 → 必须「读取失败」阻断且不回显原文', e)
+
+for i, blank in enumerate(WHITESPACE_IDS):
+    fid = _blank_flow(f'C01凭据故障空白{i}', NODE_HTTP_CRED, 'credentialId', blank)
+    with mock.patch.object(api_credentials, 'ids', side_effect=ERR_CREDENTIAL):
+        e = verr(vstate([], {'power': F_SRC(fid)}))
+    check(has_read_failure(e) and not leaks_secret(e),
+          f'C01 空白 credentialId（{blank!r}）+ 凭据目录读取异常 → 必须「读取失败」阻断且不回显原文', e)
+
+# —— 真正未填写（键缺失/None/空字符串）仍按未声明：不读取目录、不被故障误伤 ——
+FID_NO_PROVIDER_KEY = mk_flow('C01无provider键', {k: v for k, v in NODE_PY_NO_PROVIDER.items()})
+FID_PROVIDER_NONE = _blank_flow('C01providerNone', NODE_PY_NO_PROVIDER, 'providerId', None)
+FID_PROVIDER_EMPTY = _blank_flow('C01provider空串', NODE_PY_NO_PROVIDER, 'providerId', '')
+FID_NO_CRED_KEY = mk_flow('C01无凭据键', {k: v for k, v in NODE_HTTP_NO_CRED.items()})
+FID_CRED_NONE = _blank_flow('C01凭据None', NODE_HTTP_NO_CRED, 'credentialId', None)
+FID_CRED_EMPTY = _blank_flow('C01凭据空串', NODE_HTTP_NO_CRED, 'credentialId', '')
+
+with mock.patch.object(llm_providers, 'list_metadata', side_effect=ERR_PROVIDER):
+    for fid, label in ((FID_NO_PROVIDER_KEY, '键缺失'), (FID_PROVIDER_NONE, 'None'), (FID_PROVIDER_EMPTY, '空字符串')):
+        e = verr(vstate([], {'power': F_SRC(fid)}))
+        check(not has_read_failure(e),
+              f'C01 providerId {label} = 未声明 → 模型目录故障不误伤（不读取无关目录）', e)
+
+with mock.patch.object(api_credentials, 'ids', side_effect=ERR_CREDENTIAL):
+    for fid, label in ((FID_NO_CRED_KEY, '键缺失'), (FID_CRED_NONE, 'None'), (FID_CRED_EMPTY, '空字符串')):
+        e = verr(vstate([], {'power': F_SRC(fid)}))
+        check(not has_read_failure(e),
+              f'C01 credentialId {label} = 未声明 → 凭据目录故障不误伤（不读取无关目录）', e)
+
+# —— 正常 ID 的三态对照（可读/空集合/读取失败）不被本修订改变 ——
+with mock.patch.object(llm_providers, 'list_metadata', return_value=[]):
+    e = verr(vstate([], {'power': F_SRC(FLOW_PROVIDER)}))
+check(any('不存在' in x or '尚未配置' in x for x in e) and not has_read_failure(e),
+      'C01 对照：正常 providerId + 空集合 → 明确「不存在/未配置」（非读取失败）', e)
+with mock.patch.object(api_credentials, 'ids', return_value=set()):
+    e = verr(vstate([], {'power': F_SRC(FLOW_HTTP_CRED)}))
+check(any('凭据' in x and '不存在' in x for x in e) and not has_read_failure(e),
+      'C01 对照：正常 credentialId + 空集合 → 明确「不存在」（非读取失败）', e)
+
+# —— 动作绑定路径同样不可绕过（空白 ID） ——
+fid_act_blank = _blank_flow('C01动作绑定空白模型', NODE_PY_PROVIDER, 'providerId', '   ')
+with mock.patch.object(llm_providers, 'list_metadata', return_value=[]):
+    e = verr(vstate([], {'power': F_SRC(FLOW_FORMULA)},
+                    [{'id': 'abC01', 'objectTypeId': 'Dev', 'actionId': 'act1',
+                      'implementation': {'kind': 'flow', 'flowId': fid_act_blank}}]), VONT_ACT)
+check(any('动作绑定' in x and '提供方' in x for x in e),
+      'C01 动作绑定引用空白 providerId 编排 → 同样阻断（两条路径一致）', e)
+
+# —— 正式发布路由：空白 ID 两态都必须受控失败、零新增版本、revision 不推进 ——
+for dimension, template, key, patch_obj, method, mode, expect in (
+        ('模型空白可读', NODE_PY_PROVIDER, 'providerId', llm_providers, 'list_metadata', 'empty', '提供方'),
+        ('模型空白故障', NODE_PY_PROVIDER, 'providerId', llm_providers, 'list_metadata', 'failed', '读取失败'),
+        ('凭据空白可读', NODE_HTTP_CRED, 'credentialId', api_credentials, 'ids', 'empty', '凭据'),
+        ('凭据空白故障', NODE_HTTP_CRED, 'credentialId', api_credentials, 'ids', 'failed', '读取失败')):
+    fid = _blank_flow(f'C01路由{dimension}', template, key, '   ')
+    patch_args = ({'return_value': [] if patch_obj is llm_providers else set()}
+                  if mode == 'empty' else {'side_effect': RuntimeError(f'injected-{dimension}')})
+    with mock.patch.object(patch_obj, method, **patch_args):
+        pid, prev, resp, status, releases = route_project(f'C01{dimension}', {'power': F_SRC(fid)})
+        second_state = copy.deepcopy(projects.load(pid)[0])
+        resp2, status2 = _routes.post_project_write(
+            {'state': second_state, 'revision': projects.current_token(pid),
+             'requestId': f'C01{dimension}-again'}, '/api/project-publish')
+    check(status == 422 and expect in json.dumps(resp, ensure_ascii=False),
+          f'C01 发布路由：{dimension} → 422 且文案含「{expect}」', (status, resp))
+    check(releases() == [], f'C01 发布路由：{dimension} 零新增版本', releases())
+    check(projects.current_token(pid) == prev, f'C01 发布路由：{dimension} 草稿 revision 不推进',
+          projects.current_token(pid))
+    check(status2 == 422 and releases() == [] and projects.current_token(pid) == prev,
+          f'C01 发布路由：{dimension} 重复请求同样零写入', (status2, resp2))
+    check('injected-' not in json.dumps(resp, ensure_ascii=False),
+          f'C01 发布响应不回显注入异常原文（{dimension}）')
+
+# —— 改正空白 ID 后必须可恢复发布（合规修复路径，不是死锁） ——
+NODE_PY_PROVIDER_FIXED = {
+    **NODE_PY_PROVIDER,
+    'implementation': {**NODE_PY_PROVIDER['implementation'], 'providerId': 'fixed-provider'}}
+FID_FIXED = mk_flow('C01改正后可发布', NODE_PY_PROVIDER_FIXED)
+with mock.patch.object(llm_providers, 'list_metadata',
+                       return_value=[{'id': 'fixed-provider', 'name': '修好的模型'}]):
+    pid, prev, resp, status, releases = route_project('C01改正恢复', {'power': F_SRC(FID_FIXED)})
+check(status == 200 and resp.get('version'),
+      'C01 把空白 providerId 改成有效值（依赖可读）→ 重新发布成功（可恢复、未被锁死）',
+      (status, resp))
+check(releases() != [], 'C01 恢复发布确实产生版本（拒绝路径与恢复路径可区分）', releases())
+
 print(f'\n汇总：{sum(1 for r in RESULTS if r[0] == "PASS")} 通过 / '
       f'{sum(1 for r in RESULTS if r[0] == "FAIL")} 失败')
 shutil.rmtree(TMP, ignore_errors=True)

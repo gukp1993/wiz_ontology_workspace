@@ -50,6 +50,11 @@ def main():
     data = json.loads(FIXTURE.read_text(encoding='utf-8'))
     samples = data['samples']
     assert samples, '金样为空：请先运行 tests/make_validation_golden.py'
+    # C01 金样（57_c01_blank_provider_reference）依赖固定 flowId 的编排资产：与生成端
+    # 用同一 helper 在当前隔离根内播种同一内容（见 tests/golden_c01_flow.py 说明）。
+    from workbench import flows as _flows  # noqa: E402  （隔离根就位后导入）
+    import golden_c01_flow as _c01_flow  # noqa: E402
+    _c01_flow.seed(_flows)
     checks = 0
     for s in samples:
         # validate_project 现存行为会就地改写 state 的 title_key，回放必须用深拷贝输入
@@ -76,6 +81,7 @@ def main():
     # 任务 B 新增金样（registered / aggregate / membership）的结构性断言：
     # 防止误删样例或行为漂移后“重新生成即通过”。
     checks += check_registered_samples(samples)
+    checks += check_c01_samples(samples)
     print(f'金样 {len(samples)} 个样例，{checks} 项断言全部执行')
     if FAILURES:
         print('\n'.join(FAILURES))
@@ -130,6 +136,31 @@ def check_registered_samples(samples):
             expect(text in r['warnings'], f'46 缺少警告文案：{text}')
         expect(any(i['kind'] == 'linkMapping' and i['status'] == 'unconfigured' for i in r['items']),
                '46 应保留无 kind 旧 relation 的原样校验（linkMapping unconfigured）')
+    return sub
+
+
+def check_c01_samples(samples):
+    """C01（2026-09-21）：空白 providerId 必须判「不存在/未配置」，不得被当作未声明跳过。
+
+    结构性断言防止样例被误删或行为漂移后「重新生成即通过」：只校验该样例存在且
+    errors 含提供方定位文案（不被无关环境差异影响）。"""
+    by_name = {s['name']: s for s in samples}
+    sub = 0
+
+    def expect(condition, message):
+        nonlocal sub
+        sub += 1
+        if not condition:
+            FAILURES.append(f'新金样结构断言失败：{message}')
+
+    s57 = by_name.get('57_c01_blank_provider_reference')
+    expect(s57 is not None, '缺少样例 57_c01_blank_provider_reference')
+    if s57:
+        errs = s57['report']['errors']
+        expect(any('提供方' in e and ('不存在' in e or '尚未配置' in e) for e in errs),
+               f'57 应对空白 providerId 报「提供方不存在/尚未配置」，实际 {errs}')
+        expect(not any('读取失败' in e for e in errs),
+               f'57 目录可读（空集合）时不得报「读取失败」，实际 {errs}')
     return sub
 
 

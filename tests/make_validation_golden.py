@@ -1129,6 +1129,17 @@ sample('56_action_v2_api_unknown_kept', action_project([
                 roles='运维', paramNotes='p ← 固定值', custom={'nested': [1, 2]}),
 ], object_bindings=[binding(title_key='station_name')]), action_ontology())
 
+# --- 16. C01 空白依赖引用（2026-09-21 第二轮独立验收补充） ---------------------------
+# 纯空白 providerId 属「已声明但无效」（判据 = 原始非空字符串，见接口文档 04 §2.2）：
+# 账号模型目录可读（本夹具为空集合）时必须判「提供方不存在/尚未配置」，不得因 strip
+# 判空而跳过检查后放行。编排由 tests/golden_c01_flow.py 以固定 flowId 播种（生成端与
+# 回放端各自隔离根内写入同一内容，保证金样可复现）。
+import golden_c01_flow as _c01_flow  # noqa: E402  （tests/ 已在 sys.path）
+_c01_flow.seed(_flows)
+sample('57_c01_blank_provider_reference', project(bindings=[
+    binding(properties={'rated_power': {'kind': 'flow', 'flow': _c01_flow.FLOW_ID,
+                                        'output': 'out_p', 'inputs': {}}})]))
+
 
 def main():
     FIXTURE.parent.mkdir(parents=True, exist_ok=True)

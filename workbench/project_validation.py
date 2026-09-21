@@ -552,25 +552,41 @@ def _flow_check_context(ctx):
     return resolved
 
 
+def _raw_id_present(impl, key):
+    """`providerId`/`credentialId` 是否**已声明**——与检查器底层口径完全一致（C01，2026-09-21）。
+
+    `flows._check_llm_provider` 与 `flow_http.implementation_issues` 都用
+    `str(impl.get(key) or '')` 的真值判定「有没有引用」，不做 strip。适配层的声明判据
+    必须与之一致：纯空白 ID（空格 / Tab / 换行）是**已声明但无效**——不得因「看起来
+    没填」而跳过检查（否则目录读取失败时会 fail-open 放行发布，C01 反例）。
+    只有键缺失、None、空字符串才算未声明；此处只读判断，不修改、不 trim 任何数据。
+    """
+    return bool(str((impl or {}).get(key) or '')) if isinstance(impl, dict) else False
+
+
 def _flow_declares_provider(flow_state):
-    """编排是否显式声明了 LLM 提供方（用于区分「账号还没配模型」与「引用的模型没了/读不到」）。"""
+    """编排是否声明了 LLM 提供方（用于区分「账号还没配模型」与「引用的模型没了/读不到」）。
+
+    判据按原始非空字符串（含纯空白 ID，与检查器一致），见 `_raw_id_present`。"""
     nodes = flow_state.get('nodes') if isinstance(flow_state, dict) else None
     for node in nodes or []:
-        impl = node.get('implementation') if isinstance(node, dict) else None
-        if isinstance(impl, dict) and str(impl.get('providerId') or '').strip():
+        if isinstance(node, dict) and _raw_id_present(node.get('implementation'), 'providerId'):
             return True
     return False
 
 
 def _flow_references_credential(flow_state):
-    """编排是否有 HTTP 节点显式引用 API 凭据（决定凭据目录是否为其实际依赖）。"""
+    """编排是否有 HTTP 节点声明 API 凭据（决定凭据目录是否为其实际依赖）。
+
+    HTTP 节点识别与 `flows._check_body` 的分派口径一致（`node.kind or impl.language`）；
+    声明判据同 `_raw_id_present`（含纯空白 ID）。"""
     nodes = flow_state.get('nodes') if isinstance(flow_state, dict) else None
     for node in nodes or []:
         if not isinstance(node, dict):
             continue
         impl = node.get('implementation')
         kind = (node.get('kind') or (impl or {}).get('language')) if isinstance(impl, dict) else None
-        if kind == 'http' and str((impl or {}).get('credentialId') or '').strip():
+        if kind == 'http' and _raw_id_present(impl, 'credentialId'):
             return True
     return False
 
