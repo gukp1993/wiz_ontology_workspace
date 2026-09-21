@@ -37,6 +37,9 @@ from workbench import flows
 
 from workbench import storage
 
+# 依赖目录读取状态哨兵：区别于 None（未知/未提供，跳过检查）与已知空集合。
+_READ_FAILED = object()
+
 from workbench.contracts import is_contract
 from workbench.properties import effective, signature_data_type
 from workbench.project_mapping import (
@@ -512,12 +515,17 @@ def _flow_constant_ok(flow_type, value):
 def _flow_check_context(ctx):
     """项目校验传给 flows.check_flow 的上下文（每次 validate_project 解析一次）。
 
-    - connections：本项目数据连接元数据（SQL/Redis 节点引用的存在性上下文）；
-    - credential_ids：本项目 API 凭据 id 集合（HTTP 节点认证引用）；无项目/不可读 → None
-      （check_flow 会跳过该项存在性检查，不把「项目侧无上下文」当编排错误）；
-    - llm_meta：账号已配置的 LLM 提供方元数据；账号尚未配置任何提供方时为 []，
-      由 `_flow_struct_errors` 按编排是否声明提供方决定是否传入（见该函数注释）。
-    凭据/提供方目录属于账号级读取，失败一律按「无上下文」跳过，不阻断结构检查本身。
+    三态协议（B01/B02，2026-09-21，接口文档 03 §2.2 / 04 §2.2）：已知集合（含空集合）
+    ≠ 未知（None，跳过）≠ 读取失败（_READ_FAILED 哨兵）。缓存保存的是**读取状态**，
+    由 `_flow_struct_errors` 结合编排实际声明的依赖决定如何使用，先查哪个编排都
+    不影响后查编排的结论。
+
+    - connections：本项目数据连接元数据。校验目标总是确定项目，连接列表恒为已知
+      集合（**包括明确为空**）——只有 ctx 里根本没有该键/类型异常才按未知处理；
+    - credential_ids：本项目 API 凭据 id 集合，读取失败记 _READ_FAILED（仅当编排
+      实际引用凭据时才阻断，见 `_flow_struct_errors`）；
+    - llm_meta：账号 LLM 提供方元数据，读取失败同上；账号未配置任何提供方时为 []，
+      由 `_flow_struct_errors` 按编排是否声明提供方决定是否传入。
     """
     resolved = ctx.get('flow_check_context')
     if resolved is not None:
@@ -528,21 +536,24 @@ def _flow_check_context(ctx):
         try:
             from workbench import api_credentials
             credential_ids = api_credentials.ids(project_id)
-        except Exception:  # noqa: BLE001 凭据目录不可读：跳过该项（与动作绑定既有处理一致）
-            credential_ids = None
+        except Exception:  # noqa: BLE001 凭据目录不可读：记为读取失败，不得冒充「无上下文」
+            credential_ids = _READ_FAILED
     try:
         from workbench import llm_providers
         llm_meta = llm_providers.list_metadata()
-    except Exception:  # noqa: BLE001 提供方目录不可读：按未知处理
-        llm_meta = None
-    resolved = {'connections': ctx.get('connections') or None,
+    except Exception:  # noqa: BLE001 提供方目录不可读：同上，按编排依赖决定是否阻断
+        llm_meta = _READ_FAILED
+    connections = ctx.get('connections')
+    if not isinstance(connections, list):
+        connections = None  # 确定项目的校验恒有列表；异常形态才按未知处理
+    resolved = {'connections': connections,
                 'credential_ids': credential_ids, 'llm_meta': llm_meta}
     ctx['flow_check_context'] = resolved
     return resolved
 
 
 def _flow_declares_provider(flow_state):
-    """编排是否显式声明了 LLM 提供方（用于区分「账号还没配模型」与「引用的模型没了」）。"""
+    """编排是否显式声明了 LLM 提供方（用于区分「账号还没配模型」与「引用的模型没了/读不到」）。"""
     nodes = flow_state.get('nodes') if isinstance(flow_state, dict) else None
     for node in nodes or []:
         impl = node.get('implementation') if isinstance(node, dict) else None
@@ -551,31 +562,59 @@ def _flow_declares_provider(flow_state):
     return False
 
 
+def _flow_references_credential(flow_state):
+    """编排是否有 HTTP 节点显式引用 API 凭据（决定凭据目录是否为其实际依赖）。"""
+    nodes = flow_state.get('nodes') if isinstance(flow_state, dict) else None
+    for node in nodes or []:
+        if not isinstance(node, dict):
+            continue
+        impl = node.get('implementation')
+        kind = (node.get('kind') or (impl or {}).get('language')) if isinstance(impl, dict) else None
+        if kind == 'http' and str((impl or {}).get('credentialId') or '').strip():
+            return True
+    return False
+
+
 def _flow_struct_errors(flow_id, flow_state, ctx):
-    """编排自身结构/配置错误（R02，2026-09-20）：复用 flows.check_flow，不执行任何节点。
+    """编排自身结构/配置错误（R02，2026-09-20；B01/B02 上下文修订，2026-09-21）：
+    复用 flows.check_flow，不执行任何节点。
 
     返回 error 文案列表；同一次 validate_project 内按 flowId 缓存（同一编排被多属性/
-    多绑定引用只查一次）。上下文（本项目连接/凭据、账号模型元数据）由
-    `_flow_check_context` 解析后按真实协议传入，避免误拒合法编排也避免漏检失效实现。
+    多绑定引用只查一次）。上下文三态语义：
 
-    提供方列表为空时按「账号尚未配置模型」处理，仅在编排显式声明了 providerId 时传入
-    空列表（此时 check_flow 报「尚未配置 LLM 提供方」，即引用已失效），否则传 None 跳过
-    ——账号级引导状态不是编排结构错误，由编排编辑页承担提示。
-    检查器自身抛错同样 fail-closed（阻断而非放行）。
+    - 连接集合恒按已知（含 []）传入 → 引用不存在连接报「数据连接不存在或已被删除」；
+    - 提供方/凭据目录读取失败时：编排**实际声明**该依赖（providerId / HTTP credentialId）
+      → 追加一条「读取失败」阻断（与「不存在」区分，不回显异常原文），该项上下文以 None
+      传入检查器（读取失败不得冒充「引用不存在」）；未声明 → 不因无关故障误伤；
+    - 提供方列表为空按「账号尚未配置模型」处理：仅在编排显式声明 providerId 时传空列表
+      （check_flow 报「尚未配置/引用失效」），否则 None 跳过——账号级引导状态不是编排
+      结构错误；
+    - 检查器自身抛错同样 fail-closed（阻断而非放行）。
     """
     cache = ctx.setdefault('flow_struct_cache', {})
     if flow_id in cache:
         return cache[flow_id]
     context = _flow_check_context(ctx)
     llm_meta = context['llm_meta']
-    if llm_meta == [] and not _flow_declares_provider(flow_state):
+    credential_ids = context['credential_ids']
+    blocked = []
+    if llm_meta is _READ_FAILED:
+        llm_meta = None  # 读取失败不得冒充「引用不存在」，存在性判定改由下面的阻断承担
+        if _flow_declares_provider(flow_state):
+            blocked.append('LLM 提供方目录读取失败，暂不能校验编排引用的提供方；请稍后重试')
+    elif llm_meta == [] and not _flow_declares_provider(flow_state):
         llm_meta = None
+    if credential_ids is _READ_FAILED:
+        if _flow_references_credential(flow_state):
+            credential_ids = None
+            blocked.append('API 凭据目录读取失败，暂不能校验编排引用的凭据；请稍后重试')
+        else:
+            credential_ids = None
     try:
-        report = flows.check_flow(flow_state, context['connections'], llm_meta,
-                                  context['credential_ids'])
-        cache[flow_id] = [str(e) for e in (report.get('errors') or []) if str(e)]
+        report = flows.check_flow(flow_state, context['connections'], llm_meta, credential_ids)
+        cache[flow_id] = blocked + [str(e) for e in (report.get('errors') or []) if str(e)]
     except Exception as exc:  # noqa: BLE001 编排检查失败必须阻断，不得静默放行
-        cache[flow_id] = [f'编排检查失败（{type(exc).__name__}），暂不能校验该引用']
+        cache[flow_id] = blocked + [f'编排检查失败（{type(exc).__name__}），暂不能校验该引用']
     return cache[flow_id]
 
 
