@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`7e2cb413086f3055`
+上下文版本：`bc45eee01d927d55`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### system-deep-test 继续验证（S1-S3 修订与针对性复验） · zcode · 已实施，待验收
+
+时间：2026-09-21T01:56:39.517979+00:00；记录：`.collaboration/entries/000138-d7240eb67808.json`
+
+按《继续验证指令》在 worktree/test 完成 S1-S3 修订与必要复验，业务代码零修改（基线 d6c73c2），提交 6b4665e。新增 tests/deep_verdicts.py 统一判定（八类结果，5xx/无关4xx/网络失败/空响应/前置失败一律不记通过）与 23 项判定自测（全通过）；P8/O3-04/O4-06 改为共用 tests/deep_reverify_scenarios.py；新增 tests/deep_results_index.py 与 结果索引.md（14 个有效批次、行区间、替代原因、逐行分类、根因合并，引用按 文件#行(用例) 机器核对）。有效批次 187 条：pass 178、known 3、new 2、static 1、blocked 1、info 2；被替代 94 行保留不计；根因 9 条。定向复跑 reverify-20260921T0958Z（18951 新隔离实例）A01/R02 判已知缺陷复现、负对照被拦截；回归 T1005Z(22)/T1008Z(54)。未全面重测、未恢复压测、未合并 main。
+
+- 决定：统计单位固定三种且不相加：断言/场景记录、唯一场景、缺陷根因；info 与缺陷复现不计入产品通过。；R02 的 validate 未拦截与 publish 仍成功是同一根因两条观察，合并计 1 条；保持 P1（无产品口径允许发布不可用取值配置，已写明降级条件）。；D-Q02-01 收窄为「新发布本体无法通过现有历史快照入口恢复」：发布/版本列表/版本内容读取正常、旧迁移 ZIP 仍可能恢复，不称发布整体失效或数据丢失。；O4-06 拆为静态核对通过（static_check_pass）与不可变性破坏路径未测（not_tested），二者不可互相替代。；判定修订只改 tests/deep_* 与文档、不降既有断言；工具构造错误的运行登记为 superseded/discarded，不隐藏不计入结论。
+- 验证：tests/deep_verdicts_test.py 23/23 通过（正确阻断/实际缺陷/500/无关4xx/前置失败/空响应/网络失败各有反例），退出码 0。；tests/deep_results_index.py 只读原始日志重算：14 有效批次、被替代 94 行、断言 187、唯一场景 187、根因 9；替代关系与根因引用逐条机器核对（曾捕获 3 处人工行号偏差并修正）。；reverify-20260921T0958Z（18951）：15 条 pass 11/known 3/info 1；A01 前置合法→追加非法→发布快照保留原值；R02 前置全成功、validate 未拦截、publish 200 版本 0→1，负对照 422 被拦截。；regress-20260921T1005Z(22 条)与 T1008Z(54 条)：修订后 deep_ontology_o3o4o5/deep_project_chain 全链路可运行。；隔离与清理：env -u WIZ_DATABASE_URL、库落 .runtime/reverify-data（已删）；18951 按 PID+cwd 停止并释放端口，保留 .runtime/reverify-evidence；18931 未触碰仍未停止。
+- 下一步：Codex 独立复验：核对 deep_verdicts.py/deep_results_index.py 可重算，reverify-20260921T0958Z 的 A01/R02 分类与负对照，三份文档与 结果索引.md 数字一致。；复验重跑须另起新合成数据根与空闲端口（勿用 18765/8765），脚本支持 Q02_BASE/Q03_BASE 覆盖，勿指向 18931 与真实根。；验收通过后停在「待用户授权集成」；集成合并需用户明确授权由 Codex 串行组合重验，产品缺陷修复另行安排。
+- 依据/文档：提交 6b4665ec603166b728558d0c6caa1f5cbfbe11c3（codex/test）；被验业务 SHA d6c73c2；文档/需求/20260921_系统全方位深度测试/结果索引.md；文档/需求/20260921_系统全方位深度测试/测试报告.md；缺陷清单.md；测试计划.md（继续验证区）；tests/deep_verdicts.py；deep_verdicts_test.py；deep_reverify_scenarios.py；deep_reverify_r02_a01.py；deep_results_index.py
 
 ### codex/test 深度测试继续验证指令 · codex · 需求已交付
 
@@ -138,13 +149,3 @@ AGENTS规定新开发和集成worktree统一位于主仓库worktree/<任务名>/
 - 决定：从子工作树操作仍定位主仓库worktree目录，不再嵌套。；新计划和指令遵循新路径；旧环境实际登记保持，用户要求迁移后再处理。
 - 验证：git diff --check通过；git check-ignore确认worktree/example/probe.txt被忽略。
 - 依据/文档：AGENTS.md；.gitignore
-
-### 固化细粒度任务拆分与多agent并行原则 · codex · 已确认决定
-
-时间：2026-09-20T08:50:05.079340+00:00；记录：`.collaboration/entries/000126-22be989cfdfc.json`
-
-AGENTS新增细粒度任务拆分与多agent并行原则：后续开发计划和执行指令先列任务依赖、交付物、文件owner和验收标准，再按独立性分批并行；协调者负责热点文件、串行Git操作及组合验证。
-
-- 决定：尽可能细分到可独立交付和验证的任务，不机械按文件或行数拆分。；支持多agent并行但不扩大业务授权，不自动创建额外worktree，不跳过独立验收与用户合并授权。；本轮仅更新主仓库治理规则，未开发业务功能、未修改已有任务分支。
-- 验证：AGENTS文档差异检查通过；未运行业务构建或测试（仅治理文档修改）。
-- 依据/文档：AGENTS.md
