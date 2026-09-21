@@ -117,6 +117,25 @@ for value in (None, '', '   '):
     check(not definition_errors(onto_state([dict(A2, effect=value)])),
           f'R05 v2 动作 effect 为 {value!r} 时零错误', definition_errors(onto_state([dict(A2, effect=value)])))
 
+# A01（20260921）：v2 动作 effect 选填但提供时必须为文本——数字/布尔/数组/对象逐类型拒绝，
+# 单条消息同时含动作名称、标识、字段名（effect）、「必须为文本」原因与修复建议；不隐式转字符串
+for bad in (1, 3.14, True, ['功率为 0'], {'效果': 'x'}):
+    errs = definition_errors(onto_state([dict(A2, effect=bad)]))
+    matched = [e for e in errs if '必须为文本' in e and 'effect' in e]
+    check(len(matched) == 1
+          and '「停止充放电」(act_stop)' in matched[0]
+          and f'当前类型 {type(bad).__name__}' in matched[0]
+          and '请改为文本或删除该字段' in matched[0],
+          f'A01 v2 动作 effect 为 {type(bad).__name__} 报恰好一条错误（单条消息含名称/标识/字段名/类型原因/建议）', errs)
+
+# A01 不误伤：合法动作与非法 effect 记录并存（含合法历史动作），只有非法记录报错
+mixed_actions = [dict(A2), dict(A2, id='act-bad', name='非法效果动作', effect=['a']), dict(LEGACY)]
+errs = definition_errors(onto_state(mixed_actions))
+matched = [e for e in errs if '必须为文本' in e]
+check(len(matched) == 1 and 'act-bad' in matched[0] and 'effect' in matched[0]
+      and not any('act_stop' in e for e in matched) and not any('action.change_system' in e for e in matched),
+      'A01 合法/历史动作与非法 effect 动作并存：只有非法记录报单条错误（不误伤）', errs)
+
 # --- 2. 关联集合校验（验收 4：删除保护；§5 去重/悬空） ------------------------------
 
 errs = definition_errors(onto_state([dict(A2)], [{'objectTypeId': 'mg:StorageDevice', 'actionId': 'act_stop'}]))

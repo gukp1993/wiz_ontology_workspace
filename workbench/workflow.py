@@ -46,7 +46,8 @@ def business_rule_associations(state):
 
 
 def _business_rule_errors(state, classes):
-    """业务规则校验：名称/业务定义必填（20260920 精简；content/output 选填）、标识唯一、引用存在、组合唯一。"""
+    """业务规则校验：名称/业务定义必填（20260920 精简；content/output 选填，content 提供时必须为文本
+    ——A01 20260921）、标识唯一、引用存在、组合唯一。"""
     w = state.get('workflow', {})
     rules = w.get('businessRules', [])
     if rules is None:
@@ -70,6 +71,14 @@ def _business_rule_errors(state, classes):
         for key, title in (('name', '名称'), ('description', '业务定义')):
             if not str(rule.get(key) or '').strip():
                 errors.append(f'规则 {label} 缺少{title}')
+        # A01（20260921）：content 选填但提供时必须为文本——缺键/null/空串/空白串按未填或文本放行
+        # （O3-03「选填」语义不变）；对象/数组/数值/布尔报单条错误（含定义名称/标识、字段名、
+        # 当前类型与修复建议），不经 str() 隐式转成合法说明。validate/save(errors)/publish(422) 共用本函数。
+        content = rule.get('content')
+        if content is not None and not isinstance(content, str):
+            rid_text = rid if isinstance(rid, str) and rid.strip() else f'#{index}'
+            errors.append(f'规则 「{label}」({rid_text})：content 提供时必须为文本'
+                          f'（当前类型 {type(content).__name__}），请改为文本或删除该字段')
     assoc = w.get('businessRuleAssociations', [])
     if assoc is not None and not isinstance(assoc, list):
         errors.append('对象规则引用必须是列表')
@@ -170,6 +179,12 @@ def definition_errors(state):
                 continue
             if kind=='actions' and is_action_v2(n):
                 # 20260920 字段精简：仅名称/业务定义必填（循环前段已校验），预期效果（effect）选填。
+                # A01（20260921）：选填不等于任意类型——effect 缺键/null/空串/空白串放行（O3-03 语义不变），
+                # 对象/数组/数值/布尔报单条错误（口径与 businessRules 的 content 一致），不隐式转字符串。
+                effect=n.get('effect')
+                if effect is not None and not isinstance(effect,str):
+                    errors.append(f'动作 「{label}」({n.get("id","")})：effect 提供时必须为文本'
+                                  f'（当前类型 {type(effect).__name__}），请改为文本或删除该字段')
                 continue
             if kind=='functions' and n.get('guide_version')==2:
                 for key,title in (('input_description','输入'),('logic','计算规则'),('output_description_text','输出')):
