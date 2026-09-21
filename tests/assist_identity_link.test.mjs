@@ -235,8 +235,8 @@ try {
     await check('①d linkMappingAssistBinding：四字段+note 映射、白名单外忽略、快照恢复、空草稿安全', async () => {
       const d = { relation: 'belongs', targetType: 'storage', sourceId: '', field: 'f0', targetSourceId: '', targetField: '', legacy: false }
       const note = { value: '' }
-      const lb = linkMappingAssistBinding(() => d, note, { targetId: 'belongs' })
-      assert.equal(lb.space, 'project'); assert.equal(lb.targetKind, 'linkMapping'); assert.equal(lb.targetId, 'belongs')
+      const lb = linkMappingAssistBinding(() => d, note, { projectId: 'proj-1', targetId: 'cluster.belongs' })
+      assert.equal(lb.space, 'project'); assert.equal(lb.targetKind, 'linkMapping'); assert.equal(lb.targetId, 'cluster.belongs'); assert.equal(lb.projectId, 'proj-1')
       assert.deepEqual(Object.keys(lb.draft()), ['sourceId', 'field', 'targetSourceId', 'targetField', 'note'])
       assert.deepEqual(lb.draft(), { sourceId: '', field: 'f0', targetSourceId: '', targetField: '', note: '' })
       lb.apply({ sourceId: 's1', field: 'f1', targetSourceId: 'ts1', targetField: 'tf1', note: '两端依据', relation: '越权', membership: [], legacy: true, field2: 123 })
@@ -372,10 +372,10 @@ try {
       assert.match(page, /assist-panel/, '点击后面板出现')
       assert.match(page, /维护链接映射「所属设备」/, '兜底标题含链接名称')
       assert.equal(ctx.api.assistBinding.value.targetKind, 'linkMapping')
-      assert.equal(ctx.api.assistBinding.value.targetId, 'belongs')
+      assert.equal(ctx.api.assistBinding.value.targetId, 'cluster.belongs')
       await ctx.panel.open(ctx.api.assistBinding.value)
       const body = ctx.assist.calls.context.at(-1)
-      assert.equal(body.space, 'project'); assert.equal(body.targetKind, 'linkMapping'); assert.equal(body.targetId, 'belongs')
+      assert.equal(body.space, 'project'); assert.equal(body.targetKind, 'linkMapping'); assert.equal(body.targetId, 'cluster.belongs')
       assert.deepEqual(body.draft, { sourceId: '', field: '', targetSourceId: '', targetField: '', note: '' }, '新建链接映射的白名单快照')
     })
 
@@ -420,10 +420,10 @@ try {
     await check('③d 切换编辑目标（另一条链接）：binding 以新目标重建并重取上下文', async () => {
       ctx.api.openNew(fx.graph.find(r => r['@id'] === 'mg:l_extra'))
       assert.equal(ctx.api.assistOpen.value, true, '面板保持展开')
-      assert.equal(ctx.api.assistBinding.value.targetId, 'l_extra', 'binding 已指向新链接')
+      assert.equal(ctx.api.assistBinding.value.targetId, 'cluster.l_extra', 'binding 已指向新链接')
       await ctx.panel.open(ctx.api.assistBinding.value)
       const last = ctx.assist.calls.context.at(-1)
-      assert.equal(last.targetId, 'l_extra')
+      assert.equal(last.targetId, 'cluster.l_extra')
       assert.deepEqual(last.draft, { sourceId: '', field: '', targetSourceId: '', targetField: '', note: '' })
       ctx.api.closeEditor()
     })
