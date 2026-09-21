@@ -61,8 +61,6 @@ const policyValues: Record<string, string> = {
 </template>
 
 <style scoped>
-/* 全局 pre 已给 white-space:pre-wrap，这里只补长 token 断行 */
-.sql-pre{overflow-wrap:anywhere}
 .implementation{margin:18px 0;padding-top:12px;border-top:1px solid var(--line)}
 .implementation-step{margin:12px 0;padding:14px;background:var(--bg);border:1px solid var(--line);border-radius:8px}
 h4{margin:0 0 10px}.implementation-table{overflow-x:auto}table{width:100%;text-align:left}th,td{padding:8px;overflow-wrap:anywhere}p,li{overflow-wrap:anywhere}ul{padding-left:22px}
