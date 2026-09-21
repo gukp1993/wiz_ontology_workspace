@@ -82,10 +82,9 @@ LEGAL_VALUES = ('先核验数据质量，再判断异常。', '', '   ', None)  
 # --- 1. 规则 content：放行形态（缺键/null/空串/空白串/合法文本） -----------------------
 
 for value in LEGAL_VALUES:
-    label = '缺键' if value is None else repr(value)
+    label = '显式 null' if value is None else repr(value)
     rule = dict(RULE)
-    if value is not None:
-        rule['content'] = value
+    rule['content'] = value
     errs = definition_errors(onto_state([rule], []))
     check(not errs, f'规则 content 为 {label} 时零错误（选填语义保留）', errs)
 check(not definition_errors(onto_state([{k: v for k, v in RULE.items() if k != 'content'}], [])),
@@ -106,10 +105,9 @@ for bad in BAD_VALUES:
 # --- 3. v2 动作 effect：放行形态 -----------------------------------------------------
 
 for value in LEGAL_VALUES:
-    label = '缺键' if value is None else repr(value)
+    label = '显式 null' if value is None else repr(value)
     action = dict(ACTION_V2)
-    if value is not None:
-        action['effect'] = value
+    action['effect'] = value
     errs = definition_errors(onto_state([], [action]))
     check(not errs, f'v2 动作 effect 为 {label} 时零错误（选填语义保留）', errs)
 check(not definition_errors(onto_state([], [{k: v for k, v in ACTION_V2.items() if k != 'effect'}])),

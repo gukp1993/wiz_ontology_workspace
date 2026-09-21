@@ -212,7 +212,7 @@ async function restore(name:string){
           <div class="panelhead"><strong>{{g.title}}</strong><button v-if="locate(g.raw[0])" @click="goLocate(g.raw[0])">去处理 →</button></div>
           <p v-if="g.object" class="muted">适用对象：{{g.object}}</p>
           <p>需要补充以下内容：</p><ul><li v-for="issue in g.issues" :key="issue">{{issue}}</li></ul>
-          <p v-if="g.kind==='动作定义'" class="muted">位置：更多工具 → 动作定义。名称、描述、变更效果、提交条件和权限要求在“业务定义”中填写；验收案例在“验收与试运行”中填写。如果不需要这项动作，可进入后删除该定义。</p>
+          <p v-if="g.kind==='动作定义'" class="muted">位置：动作定义。点击“去处理”查看并编辑该动作，按上方提示修正相应字段；不需要的动作可在动作定义中删除。</p>
           <details><summary>技术详情（排查时查看）</summary><p v-for="raw in g.raw" :key="raw">{{raw}}</p></details>
         </section></template>
       <div class="subsection">
