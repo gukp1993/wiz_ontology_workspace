@@ -1,0 +1,38 @@
+{
+  "ticket": "4b81a77adedb47fb822fb136a48b6ec5",
+  "task": "assist-fill-production T6 属性与共享属性编辑接入辅助填写（O2）",
+  "status": "implemented",
+  "summary": "在已登记 worktree（codex/assist-fill-production）交付 T6 三文件：修改 frontend/src/ontology/PropertyManager.vue（辅助入口+面板挂载+手改通知），新建 frontend/src/assist/propertyBinding.ts（propertyAssistBinding 宿主适配工厂）与 tests/assist_property_manager.test.mjs（54 断言）。未 git 提交、未跑 build、未启服务；未触碰 SharedLibrary/ObjectWorkspace/App.vue/AssistPanel/useAssistPanel 及并行 T5 代理的文件。",
+  "decisions": [
+    "binding 工厂：propertyAssistBinding(opts{draft,targetKind:'property'|'sharedProperty',targetId,isTimeSeries,setType,setObsType})，setter 注入=组件 setRange/setObservation 本体（唯一写路径）；apply 内 dataType/obsType 原子组先类型后观测值，formatting 整组放最后（类型联动会清 formatting，先写会被误删）",
+    "快照白名单 {label,comment,dataType,obsType?,formatting?}：obsType 仅时间序列出现；formatting 取 mg:formatting @value；dataType 与 selectedType 同值；空 obsType（离开时序补位）不进 setter；formatting 经 effectiveConfig 判空，同 PropertyFormatting.sync 写 @json 或删键",
+    "snapshot/restore 为草稿节点整体 JSON 克隆，restore 原位替换键值保持 draft 对象身份（reactive 与 PropertyFormatting JSON watch 兼容）；组件侧 assistBaseline 在打开/采纳/撤销重对齐，深度 watch 只把面板写入以外的草稿变化通知 notifyDraftChanged",
+    "目标映射：私有属性编辑/新建 targetKind=property（新建 targetId 空串，后端出「新建属性定义」标题）；就地维护共享定义与 kind=shared → sharedProperty；共享引用只读态无入口；toShared 转只读时 watch(readonly) 自动收起面板",
+    "采纳绝不调用 formSave/commit-now/touch/emit；共享高影响确认仍只由显式 save() 触发（需求 11 指纹机制不变），采纳后的显式保存照常弹确认并落盘"
+  ],
+  "verification": [
+    "node --import ./tests/ts_hooks.mjs tests/assist_property_manager.test.mjs → 54/54 通过退出 0：白名单快照映射/克隆、apply 与手动 UI 最终草稿逐字节等价、离开时序联动不残留、formatting 写换清与同组采纳顺序、采纳后 formSave 间谍零调用且 impactOpen=false、显式保存走桩合入 MANAGED 键、共享定义采纳后显式保存弹确认→确认落盘、只读态无入口、真实 AssistPanel 挂载/收起、手改后 stale 与撤销保护解除",
+    "cd frontend && npm run typecheck（vue-tsc --noEmit）→ 退出 0",
+    "复跑相邻回归无相互影响：tests/assist_panel.test.mjs 51/51、tests/editor_head_consistency.test.mjs 19/19、tests/dependency_guard.test.mjs 22/22，均退出 0",
+    "git status 核对：本任务仅改上述三文件；ObjectWorkspace.vue/ontologyBindings.ts/assist_object_workspace.test.mjs 为并行 T5 代理文件未触碰"
+  ],
+  "next": [
+    "协调者串行执行 npm run build 与提交（按指令边界本任务未做）",
+    "集成注意：T2 建议的 formatting 复合组含 kind 判别键，binding 按 effectiveConfig 原样写入 @value（零丢失约定容忍未知键）；若裁定不落盘仅需在 propertyBinding.ts formatting 分支删键",
+    "测试注意：SSR 输出模板注释，断言辅助入口须匹配按钮文案「✦ 辅助填写」而非裸文本",
+    "tests/assist_object_workspace.test.mjs ⑦ 当前失败，属并行 T5 未提交的 ObjectWorkspace.vue WIP（不涉及本任务文件），请传导给 T5 owner"
+  ],
+  "references": [
+    "frontend/src/assist/propertyBinding.ts",
+    "frontend/src/ontology/PropertyManager.vue",
+    "tests/assist_property_manager.test.mjs",
+    "文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md §8.2",
+    "workbench/assist_fields.py property/sharedProperty 白名单"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T07:44:14.160264+00:00",
+  "sequence": 160,
+  "filename": "000160-3e203be8dd69.json",
+  "record_hash": "c5ca216813c170fa1b51def0683a183f079739e1800c3061dd307135b279a97b",
+  "context_advanced": false
+}

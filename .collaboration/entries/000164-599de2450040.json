@@ -1,0 +1,30 @@
+{
+  "ticket": "67cafb8e700b4f1d95f5c41f20ef4188",
+  "task": "assist-fill-production T11 浏览器真实点击验收（隔离实例18951）",
+  "status": "verified",
+  "summary": "T11完成：O1/O2/O2b/O3/O4/O5/P2/S14/S15/三视口通过；P1/P5辅助上下文400(projectId缺失,identityLinkBindings未传)、P3 404(cluster.biz_id目标不存在)、P5既有映射不显示、储能设备登记实例(DEV-001)UI显示未配置、S13缺信息无问题卡(后端userIntent vs 桩读intent键名错位)；P6入口不可达(引用1.0.0无动作关联)。采纳均零保存(revision冻结)、保存才前进、无凭据泄漏、XSS安全。证据 /tmp/kg_t11_browser/agent/",
+  "decisions": [],
+  "verification": [
+    "revision链:r-02c2→r-4c36(O1保存)→r-9710(O4保存)；project r-c356→r-0862(P2保存)",
+    "console:6 error均为assist-context 400/404(与P1/P3断裂对应),0 warning 0 uncaught",
+    "视口1440/1280/768面板可达按钮可见"
+  ],
+  "next": [
+    "修复identityLinkBindings/linkAssistBinding缺projectId",
+    "排查未配置属性(biz_id)的assist目标404与既有映射/登记实例不显示",
+    "裁定userIntent(intent)键名错位归属(assist_schema vs stub_llm)",
+    "P6需升级项目引用或另建含动作关联的引用版本后补验"
+  ],
+  "references": [
+    "/tmp/kg_t11_browser/agent/REPORT_SUMMARY.json",
+    "frontend/src/assist/identityLinkBindings.ts",
+    "workbench/assist_schema.py:147",
+    "/tmp/kg_t11_browser/stub_llm.py:37"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T14:55:15.817114+00:00",
+  "sequence": 164,
+  "filename": "000164-599de2450040.json",
+  "record_hash": "231b1a112a2bc9bd4dabbaf7799317c5bd9ce35aee7332f7b1c74354e5266f44",
+  "context_advanced": false
+}
