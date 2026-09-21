@@ -368,9 +368,6 @@ function distribute() {
 
 <style scoped>
 /* 结构样式走全局 .ont-*（style.css 本体列表段），这里只补本页细节。 */
-.ont-filters{display:flex;gap:6px;flex-wrap:wrap}
-.ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
-.ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
 /* 保存/操作后的行定位高亮（data-lib-row 在 <tr> 上，locate 滚动定位） */
 .ont-table tr.lib-flash td{background:var(--blue-soft)}
 /* 引用位置抽屉：对象名下的属性 apiName 副标题 */

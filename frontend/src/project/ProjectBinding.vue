@@ -110,19 +110,19 @@ function onGotoTargetProperties(t:string){
 </script>
 <template><div v-if="!refState" class="card"><div class="empty-state"><div class="empty-state-ico">◇</div><p>该项目尚未绑定本体版本（或引用版本无法读取）。请到「项目概览」页的项目信息中完成「绑定本体与版本」后，再开始对象映射。</p><button @click="emit('navigate','p-home')">返回项目概览</button></div></div>
 <template v-else>
-<p class="muted" style="margin:0 0 16px">先选对象，再配置实例识别、属性取值与链接映射。对象定义引用版本 {{projectState.ontologyVersion}}，不跟随本体草稿。</p>
-<p v-if="returnTo" class="return-to" style="margin:-8px 0 16px"><button type="button" class="row-link" @click="backToSource">← 返回{{returnTo.label}}</button></p>
+<p class="muted binding-intro">先选对象，再配置实例识别、属性取值与链接映射。对象定义引用版本 {{projectState.ontologyVersion}}，不跟随本体草稿。</p>
+<p v-if="returnTo" class="return-to"><button type="button" class="row-link" @click="backToSource">← 返回{{returnTo.label}}</button></p>
 <ReferenceNotice v-if="!editorOpen" :project-state="projectState" :object-type="selected" @navigate="emit('navigate',$event)" @open-ontology="emit('open-ontology')"/>
 <div class="mapping-workspace" :class="{'mapping-editor-active':editorOpen}">
 <aside v-if="!editorOpen" class="card mapping-list"><h3>对象类型 · {{types.length}}</h3><input v-model="search" placeholder="搜索对象类型" aria-label="搜索对象绑定"><button v-for="t in visibleTypes" :key="t['@id']" :class="{active:selected===t['@id'].slice(3)}" @click="pick(t['@id'].slice(3))"><strong>{{t['rdfs:label']}}</strong><small>{{bound(t['@id'].slice(3))?'已启用映射':'尚未启用'}}</small></button><p v-if="!visibleTypes.length">没有匹配的对象类型</p></aside>
 <div class="mapping-detail">
-<section v-if="!active" class="card"><div class="detail-heading"><div><h2>{{name(selected)}}</h2><small style="display:block;color:var(--muted);font-size:13px">{{desc(selected)||'暂无业务定义'}}</small></div><span class="tag">未启用</span></div>
+<section v-if="!active" class="card"><div class="detail-heading"><div><h2>{{name(selected)}}</h2><small class="head-sub">{{desc(selected)||'暂无业务定义'}}</small></div><span class="tag">未启用</span></div>
 <div v-if="selected" class="empty-state"><div class="empty-state-ico">◇</div><p>这个项目需要使用{{name(selected)}}吗？启用后配置实例识别（来源表与主键），属性取值与链接映射再逐步补充。</p><button class="primary" @click="enable(selected)">启用并配置身份来源</button></div></section>
 <!-- 未启用数据映射的对象同样可以做动作绑定：动作绑定只依赖本体引用版本中的对象动作关联 -->
 <ActionBindings v-if="!active&&selected" :project-state="projectState" :ref-state="refState" :object-type="selected" @before-change="before" @changed="changed"/>
 <section v-for="b in active?[active]:[]" :key="b.object_type" class="card">
 <template v-if="!editorOpen">
-<div class="detail-heading"><div><h2>{{name(b.object_type)}}</h2><small style="display:block;color:var(--muted);font-size:13px">{{desc(b.object_type)||'暂无业务定义'}}</small></div><div class="tools"><span class="status-pill">项目映射</span><button class="row-link danger" @click="removeObject(b)">删除此绑定</button></div></div>
+<div class="detail-heading"><div><h2>{{name(b.object_type)}}</h2><small class="head-sub">{{desc(b.object_type)||'暂无业务定义'}}</small></div><div class="tools"><span class="status-pill">项目映射</span><button class="row-link danger" @click="removeObject(b)">删除此绑定</button></div></div>
 <div class="mapping-tabs"><button :class="{active:detail==='sources'}" @click="setDetail('sources')">实例识别</button><button :class="{active:detail==='properties'}" @click="setDetail('properties')">属性取值</button><button :class="{active:detail==='links'}" @click="setDetail('links')">链接映射</button><button :class="{active:detail==='actions'}" @click="setDetail('actions')">动作绑定</button></div>
 </template>
 <ObjectSources v-if="detail==='sources'" :ref="setSourcesRef" :project-state="projectState" :ref-state="refState" :b="b" @before-change="before" @changed="changed" @edit-state="editorOpen=$event" @go-tab="setDetail($event)"/>
@@ -133,5 +133,7 @@ function onGotoTargetProperties(t:string){
 </template>
 </template>
 <style scoped>
+/* 段落节奏与表头副行（原为内联 style；head-sub 取 13px，区别于全局 .item-note 的 12px） */
+.binding-intro{margin:0 0 16px}.return-to{margin:-8px 0 16px}.head-sub{display:block;color:var(--muted);font-size:13px}
 .mapping-workspace.mapping-editor-active{grid-template-columns:minmax(0,1fr)}
 </style>

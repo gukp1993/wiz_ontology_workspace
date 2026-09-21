@@ -317,7 +317,7 @@ async function submitDelete() {
       <p v-if="delError" class="inline-error" role="alert">{{ delError }}</p>
       <div class="dialogtools">
         <button type="button" :disabled="deleting" @click="closeDelete">取消</button>
-        <button type="button" class="danger bt-danger-btn" :disabled="!delReady || deleting" @click="submitDelete">{{ deleting ? '删除中…' : '删除任务' }}</button>
+        <button type="button" class="danger-btn" :disabled="!delReady || deleting" @click="submitDelete">{{ deleting ? '删除中…' : '删除任务' }}</button>
       </div>
     </section>
   </div>
@@ -358,7 +358,4 @@ async function submitDelete() {
 .bt-pill-bad{background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)}
 .bt-pill-info{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
 /* 弹窗里的危险按钮：全局 .danger 是行内文字样式，这里拉回按钮外观 */
-.bt-danger-btn{color:var(--danger);border-color:var(--danger-line);background:var(--paper)}
-.bt-danger-btn:hover:not(:disabled){background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
-.bt-danger-btn:disabled{opacity:.5;cursor:not-allowed}
 </style>

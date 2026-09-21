@@ -49,13 +49,7 @@ function openDialog(opts: AppConfirmOptions): Promise<boolean> {
     cancelBtn.textContent = opts.cancelLabel || '取消'
     const confirmBtn = document.createElement('button')
     confirmBtn.type = 'button'
-    confirmBtn.className = opts.danger ? 'danger' : 'primary'
-    // 危险确认：全局 .danger 自带 margin/font-size，会破坏按钮外观，用内联样式拉回并固定红字。
-    if (opts.danger) {
-      confirmBtn.style.color = '#b03a3a'
-      confirmBtn.style.margin = '0'
-      confirmBtn.style.fontSize = 'inherit'
-    }
+    confirmBtn.className = opts.danger ? 'danger-btn' : 'primary'
     confirmBtn.textContent = opts.confirmLabel || '确定'
     tools.append(cancelBtn, confirmBtn)
     card.appendChild(tools)

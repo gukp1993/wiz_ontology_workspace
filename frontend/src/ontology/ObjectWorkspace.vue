@@ -760,7 +760,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
                 <!-- R3：删除等破坏性操作收进「更多操作」，避免与常用动作并列误点 -->
                 <div ref="moreWrap" class="ow-more" @keydown="moreKeydown">
                   <button ref="moreTrigger" type="button" class="ow-more-trigger" aria-haspopup="menu" :aria-expanded="moreOpen" aria-label="更多操作" @click="moreOpen ? closeMoreMenu(true) : openMoreMenu()">更多操作 ⌄</button>
-                  <div v-if="moreOpen" class="ow-more-menu" role="menu" aria-label="对象更多操作" @keydown.tab="closeMoreMenu(false)">
+                  <div v-if="moreOpen" class="row-menu-list" role="menu" aria-label="对象更多操作" @keydown.tab="closeMoreMenu(false)">
                     <button type="button" role="menuitem" class="danger" @click="moreRemove">删除对象</button>
                   </div>
                 </div>
@@ -977,9 +977,6 @@ async function removeNode(id: string, label: string, confirmText?: string) {
 /* 对象详情页签内的统一表格：ld-detail 整体滚动，表头不再单独吸顶（避免钻到页签下面）；
    复用方式筛选沿用紧凑分段按钮（§4）。 */
 .ld-body :deep(.ont-table th){position:static}
-.ont-filters{display:flex;gap:6px;flex-wrap:wrap}
-.ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
-.ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
 .ow-sub-tabs{max-width:360px}
 .ow-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .ow-toolbar .ow-mode-tabs{display:flex;gap:6px;margin-bottom:0}
@@ -1011,13 +1008,8 @@ async function removeNode(id: string, label: string, confirmText?: string) {
 .ow-head-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .ow-head-row .ow-h2-name{margin:0}
 .ow-h2-def{margin:6px 0 0}
-.ow-head-side .danger{margin:0}
 /* 更多操作（R3）：删除对象收进菜单，触发器与菜单项均可键盘操作 */
 .ow-more{position:relative;display:inline-block}
-.ow-more-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:20;min-width:150px;background:var(--paper);border:1px solid var(--line-2);border-radius:var(--r-sm);box-shadow:var(--shadow-2);padding:4px;display:flex;flex-direction:column}
-.ow-more-menu button{border:0;background:none;text-align:left;padding:8px 10px;border-radius:var(--r-sm);font-size:13px}
-.ow-more-menu button:hover{background:var(--paper-2)}
-.ow-more-menu .danger{color:var(--danger)}
 .relation-sentence{margin:18px 0 0}
 /* 对象/链接独立编辑表单：沿用原有版式，撑满右侧工作区（不设宽度上限，也不缩窄画布与数据表） */
 .ow-graph-wrap{display:block}

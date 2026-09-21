@@ -110,7 +110,7 @@ async function test(item: any) {
       <button v-if="!item.isDefault" class="mini" :disabled="!!defaultingId" :title="DEFAULT_HINT" @click="setDefault(item)">{{defaultingId===item.id?'设置中…':'设为默认'}}</button>
       <button class="mini" :disabled="!!testingId" @click="test(item)">测试连通</button>
       <button class="mini" @click="openEdit(item)">编辑</button>
-      <button class="mini danger" @click="remove(item)">删除</button>
+      <button class="mini danger-btn" @click="remove(item)">删除</button>
     </div>
   </div>
 
@@ -149,7 +149,6 @@ async function test(item: any) {
 /* 操作按钮组：固定不收缩、文本不换行，三个按钮与内容块中线对齐 */
 .provider-row>button{flex:none;white-space:nowrap}
 /* 全局 .danger 带 margin-top:12px（为明细页底部按钮设计），在 flex 行内会造成删除按钮下移 6px，这里归零 */
-.provider-row .danger{margin-top:0}
 .pill{font-size:10px;border-radius:8px;padding:1px 8px;background:var(--blue-soft);color:var(--blue-ink);margin-left:6px}
 .form-row{display:flex;gap:10px}
 .form-row label{flex:1}

@@ -7,7 +7,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import cytoscape from 'cytoscape'
-import { GRAPH_STYLE } from '../shared/graphStyle'
+import { GRAPH_STYLE, FLOW_EXTRA_STYLE } from '../shared/graphStyle'
 import { INPUT_NODE, OUTPUT_NODE, defaultPosition, derivedEdges, ensureLayout, processingNodes } from './flowModel'
 const props = defineProps<{ state: any; results?: Record<string, any>; issueCounts?: Record<string, number>; checkStale?: boolean; mode?: 'inspect' | 'bind' | 'test'; testIds?: string[]; bindSourceId?: string }>()
 const emit = defineEmits(['before-change', 'changed', 'select', 'bind', 'unlink', 'test-toggle'])
@@ -168,20 +168,7 @@ onMounted(() => {
   cy = cytoscape({
     container: canvas.value,
     elements: [...nodeElements() as any, ...edgeElements() as any],
-    style: [...GRAPH_STYLE,
-      { selector: 'node', style: { label: 'data(label)', 'font-weight': 600, 'text-wrap': 'wrap' } },
-      { selector: '[type = "python"]', style: { 'background-color': '#e9f2ff', 'border-color': '#3978c5', shape: 'round-rectangle' } },
-      { selector: '[type = "sql"]', style: { 'background-color': '#edf9f1', 'border-color': '#35a167', shape: 'round-rectangle' } },
-      { selector: '[type = "redis"]', style: { 'background-color': '#fff2e5', 'border-color': '#d9832b', shape: 'round-rectangle' } },
-      { selector: '[type = "http"]', style: { 'background-color': '#e6f6f8', 'border-color': '#2b9db0', shape: 'round-rectangle' } },
-      { selector: '[type = "calc"]', style: { 'background-color': '#fdf0f6', 'border-color': '#c9566e', shape: 'round-rectangle' } },
-      { selector: '[type = "input"],[type = "output"]', style: { 'background-color': '#f3f0ff', 'border-color': '#8464d8', shape: 'round-tag' } },
-      { selector: 'node.boundary', style: { 'border-style': 'double', 'border-width': 4 } },
-      { selector: 'node.run-failed', style: { 'border-color': '#c4534d', 'border-width': 4.5 } },
-      { selector: 'node.run-waiting', style: { 'border-style': 'dashed', 'border-color': '#8a8f9f' } },
-      { selector: 'node.test-checked', style: { 'border-style': 'dashed', 'border-color': '#2b9db0', 'border-width': 4 } },
-      { selector: 'node.bind-src', style: { 'border-style': 'dashed', 'border-color': '#3978c5', 'border-width': 4 } },
-    ],
+    style: [...GRAPH_STYLE, ...FLOW_EXTRA_STYLE],
     layout: { name: 'preset', fit: true, padding: 60 }, wheelSensitivity: 0.2, minZoom: 0.15, maxZoom: 3,
   })
   lastTopology = topologyOf()
@@ -247,9 +234,9 @@ defineExpose({ sync, focusNode, fitAll, zoom100, autoLayout })
 </div>
 </template>
 <style scoped>
-.flow-canvas{position:relative;flex:1;min-width:0;height:100%;background-color:var(--paper-2);background-image:radial-gradient(var(--grid) 1px,transparent 1px);background-size:20px 20px;overflow:hidden}
+.flow-canvas{position:relative;flex:1;min-width:0;height:100%;background-color:var(--bg);background-image:radial-gradient(var(--grid) 1px,transparent 1px);background-size:20px 20px;overflow:hidden}
 .flow-canvas .cy-canvas{position:absolute;inset:0}
-.test-pick{position:absolute;z-index:6;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:#fffffff2;border:1px solid var(--line);border-radius:6px;cursor:pointer;transform:translateX(-50%)}
+.test-pick{position:absolute;z-index:6;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:var(--paper-float);border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer;transform:translateX(-50%)}
 .test-pick input{width:15px;height:15px;margin:0}
-.canvas-notice{position:absolute;top:14px;right:14px;background:var(--warn-soft,#fff2e5);border:1px solid var(--warn-line,#efdfba);border-radius:6px;padding:5px 12px;font-size:12px;color:var(--warn,#9b660d);z-index:5}
+.canvas-notice{position:absolute;top:14px;right:14px;background:var(--warn-soft);border:1px solid var(--warn-line);border-radius:var(--r-sm);padding:5px 12px;font-size:12px;color:var(--warn);z-index:5}
 </style>

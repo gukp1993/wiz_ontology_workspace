@@ -945,7 +945,7 @@ if(psPendingOf(props.b.object_type)){
 <p class="ps-lede">每个属性配置一种生效来源</p>
 <p class="fill-hint">支持读取数据源或函数编排。点「配置／修改」在同一页完成填写并保存。列表状态仅代表配置校验，未执行取值验证。</p>
 <div class="scroll"><table class="source-table ps-table">
-<thead><tr><th style="width:26%">属性</th><th style="width:34%">项目说明</th><th style="width:22%">状态</th><th style="width:18%">操作</th></tr></thead>
+<thead><tr><th class="ps-col-attr">属性</th><th class="ps-col-note">项目说明</th><th class="ps-col-status">状态</th><th class="ps-col-ops">操作</th></tr></thead>
 <tbody>
 <template v-for="r in rows" :key="r.api">
 <tr>
@@ -1236,6 +1236,8 @@ if(psPendingOf(props.b.object_type)){
 </div>
 </div></template>
 <style scoped>
+/* 属性绑定表列宽（原为逐行内联 style） */
+.ps-col-attr{width:26%}.ps-col-note{width:34%}.ps-col-status{width:22%}.ps-col-ops{width:18%}
 /* 列表态 */
 .ps-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;font-size:13px}
 .ps-src{display:block;margin-top:4px}
@@ -1291,13 +1293,13 @@ if(psPendingOf(props.b.object_type)){
 .ps-advanced{margin:16px 0 0}
 .ps-advanced summary{cursor:pointer;font-size:13px;color:var(--muted);padding:5px 0}
 .ps-summary{background:var(--blue-soft);border:1px solid var(--blue-line);border-left:3px solid var(--blue);border-radius:6px;padding:12px 16px;margin:16px 0 0}
-.ps-summary strong{font-size:13px;color:#2c4a86}
-.ps-summary p{margin:6px 0 0;font-size:13px;color:#33517f;overflow-wrap:anywhere}
+.ps-summary strong{font-size:13px;color:var(--blue-ink)}
+.ps-summary p{margin:6px 0 0;font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
 .ps-impl-inputs{border:1px solid var(--line);border-radius:8px;background:var(--paper-2);margin:10px 0}
 .ps-impl-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .ps-impl-row:last-child{border-bottom:0}
 .ps-impl-row small{display:block;margin-top:2px}
-.ps-impl-binding{font-size:13px;color:#33517f;overflow-wrap:anywhere}
+.ps-impl-binding{font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
 .ps-inline-link{background:transparent;border-color:transparent;color:var(--blue);padding:0 2px;font-size:12px}
 .ps-inline-link:hover{color:var(--blue-deep);border-color:transparent}
 /* 底部按钮行：取消居左，保存居右 */

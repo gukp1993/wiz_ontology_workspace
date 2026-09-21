@@ -338,7 +338,7 @@ onUnmounted(() => {
       </div>
 
       <div class="bp-actions">
-        <button v-if="running" type="button" class="danger-ghost" :disabled="cancelling" @click="onCancel()">
+        <button v-if="running" type="button" class="danger-btn" :disabled="cancelling" @click="onCancel()">
           {{ cancelling ? '正在取消…' : '取消生成' }}
         </button>
         <button
@@ -412,8 +412,6 @@ onUnmounted(() => {
 .bp-error-text .eyebrow{display:block;color:var(--danger);margin-bottom:4px}
 .bp-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}
 .bp-hint{margin:10px 0 0}
-.danger-ghost{color:var(--danger);border-color:var(--danger-line)}
-.danger-ghost:hover{background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)}
 .bp-rows{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;margin:12px 0}
 .bp-rows dt{font-size:12px;color:var(--muted)}
 .bp-rows dd{margin:0;font-size:13px;overflow-wrap:anywhere}

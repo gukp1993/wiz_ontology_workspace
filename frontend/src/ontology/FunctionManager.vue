@@ -132,7 +132,7 @@ function convertLegacy(){const f=legacyItem.value;if(!f)return;emit('before-chan
 <fieldset><legend class="field-help">使用此函数的属性 · {{usages.length}}（历史关联）</legend>
 <p v-for="u in usages" :key="u.id"><button class="row-link" @click="emit('properties',u.owner,u.id)">{{u.label}} →</button></p>
 <p v-if="!usages.length" class="field-help">新契约的属性来源在项目区的「对象映射」页配置；此处仅显示旧版本留下的关联。</p></fieldset>
-<div class="detail-footer"><span>删除前需先处理图内引用。</span><button class="danger" :disabled="saving" @click="removeContract">删除契约</button></div>
+<div class="detail-footer"><span>删除前需先处理图内引用。</span><button class="danger-btn" :disabled="saving" @click="removeContract">删除契约</button></div>
 </details>
 <div class="detail-footer">
 <span class="muted">保存到当前本体草稿；项目中再配置具体实现。</span>

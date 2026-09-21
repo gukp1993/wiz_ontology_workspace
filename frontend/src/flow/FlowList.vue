@@ -67,7 +67,7 @@ async function remove(item: any) {
   </div>
   <p v-if="error" class="inline-error" role="alert">{{error}}</p>
   <div class="library-toolbar">
-    <label class="list-search" style="margin:0">搜索编排
+    <label class="list-search">搜索编排
       <input v-model="search" type="search" aria-label="搜索编排" placeholder="按名称或说明搜索"/>
     </label>
 
@@ -83,12 +83,12 @@ async function remove(item: any) {
           <td>
             <span v-if="item.status==='deleted'" class="muted">—</span>
             <span v-else-if="item.configStatus==='passed'" class="property-pill">检查通过</span>
-            <span v-else class="property-pill" style="background:var(--warn-soft);color:var(--warn)">待完善<template v-if="item.errorCount"> · {{item.errorCount}} 个问题</template><template v-else-if="item.warningCount"> · {{item.warningCount}} 项提示</template></span>
+            <span v-else class="property-pill is-warn">待完善<template v-if="item.errorCount"> · {{item.errorCount}} 个问题</template><template v-else-if="item.warningCount"> · {{item.warningCount}} 项提示</template></span>
           </td>
           <td class="ops">
             <button class="mini" :disabled="busy||item.status==='deleted'" @click="emit('open',item.id)">编辑</button>
             <button class="mini" :disabled="busy||item.status==='deleted'" @click="copy(item)">复制</button>
-            <button class="mini danger-text" :disabled="busy" @click="remove(item)">删除</button>
+            <button class="mini danger-btn" :disabled="busy" @click="remove(item)">删除</button>
           </td>
         </tr>
         <tr v-if="!filtered.length && !loading"><td colspan="5" class="empty">{{search?'没有匹配的编排':'还没有编排；点击右上角「新建编排」开始'}}</td></tr>
@@ -112,7 +112,7 @@ async function remove(item: any) {
 <style scoped>
 table{table-layout:fixed}
 tr.deleted td{opacity:.55}
-.list-search input{margin-top:5px}
+.list-search{margin:0}.list-search input{margin-top:5px}
 th.col-nodes{width:84px;white-space:nowrap}
 th.col-time{width:150px}
 th.col-status{width:110px}
@@ -121,5 +121,4 @@ td.ops{white-space:nowrap;overflow:visible}
 td.ops .mini+.mini{margin-left:6px}
 .prop-name{overflow:hidden}
 .row-desc{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.danger-text{color:var(--danger)}
 </style>

@@ -92,7 +92,7 @@ onBeforeUnmount(() => previousFocus?.focus?.())
           </span>
           <span class="picker-row-actions">
             <button v-for="action in (row.actions || [])" :key="action.value" type="button"
-                    :class="{ danger: action.danger }" :disabled="action.disabled || row.disabled"
+                    :class="{ 'danger-btn': action.danger }" :disabled="action.disabled || row.disabled"
                     @click="emit('action', row.id, action.value)">{{ action.label }}</button>
           </span>
         </div>
@@ -124,5 +124,4 @@ onBeforeUnmount(() => previousFocus?.focus?.())
 .picker-row-main small{display:block;font-size:12px;margin-top:3px;overflow-wrap:anywhere}
 .picker-row-actions{display:flex;gap:8px;flex:none;flex-wrap:wrap}
 .picker-row-actions button{font-size:12px;padding:4px 10px}
-.picker-row-actions button.danger{color:var(--danger)}
 </style>

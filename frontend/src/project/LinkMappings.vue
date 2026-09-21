@@ -359,7 +359,7 @@ defineExpose({dirty,discard:closeEditor})
 <input :value="condValueText(c)" :aria-label="'条件值 '+rule.sourceInstance" placeholder="比较值（属于列表用逗号分隔）" @input="setCondValue(c,($event.target as HTMLInputElement).value)">
 </template>
 <span v-else class="muted lm-cond-null">—</span>
-<button class="danger-ghost" @click="rmCond(rule,ci)">×</button>
+<button class="danger-btn" @click="rmCond(rule,ci)">×</button>
 </div>
 <button @click="addCond(rule)">＋ 添加条件</button>
 </template>

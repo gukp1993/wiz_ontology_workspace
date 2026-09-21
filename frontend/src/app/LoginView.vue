@@ -78,7 +78,7 @@ async function submit() {
 <style scoped>
 /* 居中卡片：沿用工作台视觉（浅灰底、白色面板、蓝色主操作），独立于业务布局。 */
 .login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px}
-.login-card{width:min(420px,100%);background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);padding:28px;box-shadow:0 1px 2px rgba(24,44,62,.06)}
+.login-card{width:min(420px,100%);background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);padding:28px;box-shadow:var(--shadow-1)}
 .login-brand{display:flex;gap:12px;align-items:flex-start;margin-bottom:20px}
 .login-brand h1{font-size:18px;margin:0 0 4px}
 .login-brand p{margin:0;font-size:13px;line-height:1.7}

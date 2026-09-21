@@ -328,9 +328,6 @@ function goExternal(dep: any) {
 </OntDrawer>
 </template>
 <style scoped>
-.ont-filters{display:flex;gap:6px;flex-wrap:wrap}
-.ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
-.ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
 .ont-ref-row small{color:var(--muted);font-size:12px;font-weight:400}
 .blocked-deps{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:6px 0 0}
 .technical-section p{margin:8px 0;line-height:1.7}

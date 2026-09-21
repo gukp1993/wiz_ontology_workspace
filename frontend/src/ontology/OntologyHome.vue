@@ -211,9 +211,9 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
 
 <!-- 版本清单读取中且内容为空：等待空态判定，不抢先显示 0 值统计 -->
 <section v-else-if="!hasAnyDefinition&&versionState==='loading'" class="card">
-  <div class="skeleton" style="height:18px;width:220px;margin:0 0 18px"></div>
-  <div class="skeleton" style="height:14px;margin:12px 0"></div>
-  <div class="skeleton" style="height:14px;margin:12px 0;width:80%"></div>
+  <div class="skeleton sk-title"></div>
+  <div class="skeleton sk-text"></div>
+  <div class="skeleton sk-text sk-w80"></div>
   <p class="muted">正在读取本体内容与发布信息…</p>
 </section>
 
@@ -273,7 +273,7 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
       </div>
     </div>
     <div v-else-if="displayCheck==='loading'" class="check-loading">
-      <div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:45%"></div>
+      <div class="skeleton sk-w70"></div><div class="skeleton sk-w45"></div>
       <p class="muted">正在检查当前草稿…</p>
     </div>
     <div v-else class="neutral-state">
@@ -288,7 +288,7 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
       <button v-if="versionState==='error'" @click="retryVersions">重新加载</button>
       <button v-else class="text" @click="emit('navigate','o-release')">{{published?'查看发布记录 →':'校验与发布 →'}}</button></div>
     <div v-if="versionState==='loading'" class="check-loading">
-      <div class="skeleton" style="width:60%"></div>
+      <div class="skeleton sk-w60"></div>
       <p class="muted">正在读取版本与引用项目，不展示未知数据的零值。</p>
     </div>
     <template v-else-if="versionState==='error'">
@@ -305,7 +305,7 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
       </div>
       <div v-if="diffState==='changed'" class="versionnote changed">当前修改尚未发布，不影响项目正在引用的版本。
         <button class="text inline-link" @click="emit('navigate','o-release')">查看变化 →</button></div>
-      <div v-if="projectsState==='loading'" class="check-loading"><div class="skeleton" style="width:50%"></div></div>
+      <div v-if="projectsState==='loading'" class="check-loading"><div class="skeleton sk-w50"></div></div>
       <p v-else-if="projectsState==='error'" class="muted">引用项目暂时无法读取：{{projectsError}}。
         <button class="text inline-link" @click="loadProjects">重试</button></p>
       <div v-else-if="usingProjects.length" class="scroll home-table">
@@ -370,7 +370,7 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
 .issue button{font-size:12px;white-space:nowrap}
 .check-tools{display:flex;gap:8px;align-items:center}
 .check-loading{padding:5px 0}
-.check-loading .skeleton{height:12px;border-radius:4px;margin:12px 0}
+.check-loading .skeleton{height:12px;border-radius:var(--r-sm);margin:12px 0}
 .neutral-state{display:flex;align-items:center;gap:15px;padding:5px 0}
 .neutral-state .state-icon{width:32px;height:32px;background:var(--paper-2);border-radius:50%;display:grid;place-items:center;color:var(--muted);flex:none}
 .neutral-state strong{font-size:13px;font-weight:500}

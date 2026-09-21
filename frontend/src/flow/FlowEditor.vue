@@ -11,6 +11,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { prefGet, prefSet } from '../app/auth'
 import { appConfirm } from '../shared/appConfirm'
+import { FLOW_CATEGORY } from '../shared/graphStyle'
 import AppSelect from '../shared/AppSelect.vue'
 import FlowCanvas from './FlowCanvas.vue'
 import NodeConfig from './NodeConfig.vue'
@@ -496,7 +497,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
         <AppSelect :model-value="projectId || ''" :options="projectOptions" :disabled="!projectOptions.length" placeholder="未选择项目" aria-label="运行项目" @update:model-value="id => emit('switch-project', id)"/>
       </span>
       <button :disabled="checking" @click="runCheck">{{checking?'检查中…':'检查配置'}}</button>
-      <button class="primary-run" :disabled="checking" @click="openTestView('all')">▷ 测试编排</button>
+      <button class="primary" :disabled="checking" @click="openTestView('all')">▷ 测试编排</button>
     </div>
     <div class="head-sub">
       <input class="desc-inline" :value="state.description" aria-label="编排说明" placeholder="这个编排做什么（选填）" @input="emit('before-change');state.description=($event.target as HTMLInputElement).value;emit('changed')"/>
@@ -564,8 +565,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
       <button class="quiet push" @click="dockOpen=!dockOpen">{{dockOpen?'收起 ↓':'展开 ↑'}}</button>
     </div>
     <div v-if="dockOpen" class="dock-content">
-      <div v-if="!checkSnap" class="empty">点击「检查配置」，发现缺失和不匹配的配置；检查不执行任何节点。</div>
-      <div v-else-if="!issueDiags.length" class="empty good">检查通过（未执行验证）。配置修改后会标记待重新检查。</div>
+      <div v-if="!checkSnap" class="empty empty-dense">点击「检查配置」，发现缺失和不匹配的配置；检查不执行任何节点。</div>
+      <div v-else-if="!issueDiags.length" class="empty empty-dense good">检查通过（未执行验证）。配置修改后会标记待重新检查。</div>
       <div v-else>
         <p v-if="checkStale" class="stale-note">以下为上次检查结果；配置已修改，请重新检查。</p>
         <div v-for="(d,i) in issueDiags" :key="i" class="issue-row">
@@ -660,14 +661,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 .quiet{border-color:transparent;background:transparent}
 .quiet:hover{background:var(--paper-2)}
 .quiet.active{background:var(--blue-soft);color:var(--blue-ink)}
-.quiet.amber{color:var(--warn,#9b660d)}
-.quiet.error{color:var(--danger,#b53434)}
-.quiet.good{color:var(--ok,#168054)}
-.primary-run{background:var(--blue,#2458d5);border-color:var(--blue,#2458d5);color:#fff}
-.primary-run:hover{opacity:.92;background:var(--blue,#2458d5);color:#fff}
+.quiet.amber{color:var(--warn)}
+.quiet.error{color:var(--danger)}
+.quiet.good{color:var(--ok)}
 .flow-toolbar{display:flex;gap:6px;align-items:center;min-height:46px;padding:6px 16px;border-bottom:1px solid var(--line);background:var(--paper);flex-wrap:wrap}
 .menuwrap{position:relative}
-.menu{position:absolute;top:40px;left:0;background:var(--paper);border:1px solid var(--line);box-shadow:var(--shadow-2,0 8px 24px #162d4d22);min-width:180px;padding:5px;z-index:30;border-radius:7px}
+.menu{position:absolute;top:40px;left:0;background:var(--paper);border:1px solid var(--line-2);box-shadow:var(--shadow-2);min-width:180px;padding:4px;z-index:30;border-radius:var(--r-sm)}
 .menu button{display:block;border:0;width:100%;text-align:left}
 .flow-modebar{min-height:38px;display:flex;align-items:center;gap:10px;padding:4px 16px;background:var(--paper-2);border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);flex-wrap:wrap}
 .flow-modebar strong{color:var(--ink)}
@@ -680,18 +679,18 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 .list-btn{flex:1;min-width:0;text-align:left;white-space:normal;display:flex;flex-direction:column;border-color:transparent;padding:8px 10px}
 .list-btn:hover{background:var(--paper-2)}
 .list-btn.active{background:var(--blue-soft);color:var(--blue-ink)}
-.list-btn.boundary{border-left:3px solid var(--purple,#8464d8)}
+.list-btn.boundary{border-left:3px solid v-bind("FLOW_CATEGORY.boundary.border")}
 .list-btn small{color:var(--muted)}
 .flow-center{min-width:0;flex:1;position:relative;display:flex}
 .flow-center :deep(.flow-canvas){flex:1}
-.canvas-note{position:absolute;bottom:10px;left:12px;pointer-events:none;font-size:12px;color:var(--muted);background:#ffffffeb;padding:5px 10px;border-radius:6px;z-index:5}
+.canvas-note{position:absolute;bottom:14px;left:16px;pointer-events:none;font-size:12px;color:var(--muted);background:var(--paper-float);padding:5px 12px;border:1px solid var(--line);border-radius:var(--r-sm);z-index:5}
 .flow-inspector{flex-shrink:0;background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .detail-head{padding:10px 14px 8px;border-bottom:1px solid var(--line)}
 .detail-type{color:var(--muted);letter-spacing:.5px}
 .detail-name{font-weight:600;margin:6px 0 8px}
 .detail-tabs{display:flex;border-bottom:1px solid var(--line);padding:0 10px}
 .detail-tabs button{flex:1;padding:8px 4px;border:0;border-bottom:2px solid transparent;border-radius:0}
-.detail-tabs button.active{border-bottom:2px solid var(--blue,#2458d5);color:var(--blue-ink)}
+.detail-tabs button.active{border-bottom:2px solid var(--blue);color:var(--blue-ink)}
 .detail-content{padding:12px 14px;overflow:auto;flex:1;min-height:0}
 .inspector-resizer{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;z-index:9}
 .flow-inspector{position:relative}
@@ -703,30 +702,25 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 .issue-row:first-child{border-top:0}
 .issue-main{flex:1;min-width:0}
 .issue-main small{display:block;color:var(--muted)}
-.stale-note{color:var(--warn,#9b660d);font-size:12px;margin:6px 0}
+.stale-note{color:var(--warn);font-size:12px;margin:6px 0}
 .run-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0}
-.badge{font-size:11px;border-radius:10px;padding:1px 8px;background:var(--paper-2)}
-.badge.good{color:var(--ok,#168054)}
-.badge.error{color:var(--danger,#b53434)}
-.badge.amber{color:var(--warn,#9b660d)}
-.write-summary{background:var(--warn-soft,#fff8e9);border:1px solid var(--warn-line,#efdfba);border-radius:6px;padding:9px 12px;font-size:12px;margin:8px 0;color:var(--ink)}
+.write-summary{background:var(--warn-soft);border:1px solid var(--warn-line);border-radius:var(--r-sm);padding:9px 12px;font-size:12px;margin:8px 0;color:var(--ink)}
 .write-summary small{color:var(--muted);display:block;margin-top:4px}
 .viewer-tabs{display:flex;gap:4px;margin:8px 0}
-.viewer-tabs button{font-size:12px;padding:3px 12px;border-radius:6px}
+.viewer-tabs button{font-size:12px;padding:3px 12px;border-radius:var(--r-sm)}
 .viewer-tabs button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
-.viewer-json,.viewer-logs{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--paper-2);border-radius:8px;padding:10px 12px;white-space:pre;overflow:auto;max-height:260px;margin:0}
+.viewer-json,.viewer-logs{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--paper-2);border-radius:var(--r-sm);padding:10px 12px;white-space:pre;overflow:auto;max-height:260px;margin:0}
 .viewer-logs{white-space:pre-wrap}
-.flow-modal{background:var(--paper);border-radius:10px;width:560px;max-width:94vw;max-height:90vh;overflow:auto;padding:20px 22px;box-shadow:0 20px 60px #0f213a44}
+.flow-modal{background:var(--paper);border-radius:var(--r-md);width:560px;max-width:94vw;max-height:90vh;overflow:auto;padding:20px 22px;box-shadow:var(--shadow-2)}
 .flow-modal.wide{width:760px}
 .flow-modal h2{font-size:16px;margin:0 0 8px}
-.field-help{font-size:12px;color:var(--muted);margin:0 0 8px}
 .code-editor.expand{width:100%;min-height:44vh}
-.empty{padding:26px;text-align:center;color:var(--muted)}
-.empty.good{color:var(--ok,#168054)}
-.amber{color:var(--warn,#9b660d)}
-.error{color:var(--danger,#b53434)}
-.good{color:var(--ok,#168054)}
-@media(max-width:1439px){.flow-list{position:absolute;inset:0 auto 0 0;z-index:18;width:210px;box-shadow:8px 0 20px #1b32531a}}
+.empty-dense{padding:26px}
+.empty.good{color:var(--ok)}
+.amber{color:var(--warn)}
+.error{color:var(--danger)}
+.good{color:var(--ok)}
+@media(max-width:1439px){.flow-list{position:absolute;inset:0 auto 0 0;z-index:18;width:210px;box-shadow:var(--shadow-2)}}
 @media(max-width:1099px){.flow-inspector{position:absolute;right:0;top:0;bottom:0;z-index:20;max-width:100%}.inspector-resizer{display:none}}
 @media(max-width:767px){.flow-inspector{width:100%!important}.head-row{gap:6px}.flow-toolbar{gap:4px;padding:6px 10px}}
 </style>

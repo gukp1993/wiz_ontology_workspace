@@ -35,7 +35,7 @@ const policyValues: Record<string, string> = {
     <template v-if="rule.result?.type === 'timeSeries'">{{ rule.result?.timestamp }}（时间）与 {{ rule.result?.value }}（观测值）组成的{{ rule.result?.valueType === 'double' ? '数值' : rule.result?.valueType }}时间序列</template>
     <template v-else>{{ rule.result?.value }}（单值）</template>。</p>
 </section>
-<section v-else-if="rule.mode==='sqlTemplate'" class="implementation" aria-label="SQL 模板"><h3>SQL 模板</h3><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{rule.sqlTemplate}}</pre><p class="field-help">已保存的模板配置，尚未执行数据库查询。</p></section>
+<section v-else-if="rule.mode==='sqlTemplate'" class="implementation" aria-label="SQL 模板"><h3>SQL 模板</h3><pre class="sql-pre">{{rule.sqlTemplate}}</pre><p class="field-help">已保存的模板配置，尚未执行数据库查询。</p></section>
 <section v-else class="implementation" aria-label="规则实现">
   <h3>规则实现</h3>
   <p class="field-help">以下内容来自当前规则配置。动态表和字段由前一步查询结果确定，每个实例可以不同。</p>
@@ -61,6 +61,8 @@ const policyValues: Record<string, string> = {
 </template>
 
 <style scoped>
+/* 全局 pre 已给 white-space:pre-wrap，这里只补长 token 断行 */
+.sql-pre{overflow-wrap:anywhere}
 .implementation{margin:18px 0;padding-top:12px;border-top:1px solid var(--line)}
 .implementation-step{margin:12px 0;padding:14px;background:var(--bg);border:1px solid var(--line);border-radius:8px}
 h4{margin:0 0 10px}.implementation-table{overflow-x:auto}table{width:100%;text-align:left}th,td{padding:8px;overflow-wrap:anywhere}p,li{overflow-wrap:anywhere}ul{padding-left:22px}

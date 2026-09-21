@@ -23,8 +23,7 @@ function onInput(e: Event) { emit('update:modelValue', (e.target as HTMLTextArea
 .md-title{font-size:13px;font-weight:600}
 .md-fold{border:0;background:none;color:var(--muted);font-size:12px;padding:2px 4px}
 .md-fold:hover{color:var(--blue);background:none}
-textarea{display:block;width:100%;min-height:140px;resize:vertical;border:1px solid #ccd8e6;border-radius:7px;padding:12px 14px;font-size:13px;line-height:1.9;color:var(--ink);background:#fff;margin:0}
-textarea:focus{outline:2px solid var(--focus);outline-offset:-1px}
-.md-collapsed{margin:0;padding:10px 12px;border:1px dashed var(--line);border-radius:7px;font-size:13px}
+textarea{min-height:140px;padding:12px 14px;font-size:13px;line-height:1.9;margin:0}
+.md-collapsed{margin:0;padding:10px 12px;border:1px dashed var(--line);border-radius:var(--r-sm);font-size:13px}
 .md-preview{white-space:pre-wrap;max-height:88px;overflow:hidden}
 </style>

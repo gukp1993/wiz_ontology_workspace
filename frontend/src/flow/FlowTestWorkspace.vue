@@ -89,6 +89,8 @@ const overrideTexts = ref<Record<string, string>>({})
 const overrideEmpty = ref<Record<string, boolean>>({})
 const entryTexts = ref<Record<string, string>>({})
 const entryEmpty = ref<Record<string, boolean>>({})
+// 布尔测试值下拉保留空值项：它是「未提供」的唯一复位入口，不能换成 AppSelect 内置 placeholder。
+const BOOLEAN_TEST_OPTIONS = [{ value: '', label: '（请选择）' }, { value: 'true', label: '是' }, { value: 'false', label: '否' }]
 const overrideKey = (nodeId: string, inputId: string) => nodeId + '\u0000' + inputId
 // R04：输入缓存按 编排/项目 隔离；切项目/编排清空输入并使在途回包失效（晚回包不落新上下文）
 const cacheContext = computed(() => (props.state?.flowId || '') + '|' + (props.projectId || ''))
@@ -380,9 +382,7 @@ defineExpose({ openScope })
       <p class="ftw-hint">{{ scopeKind === 'all' ? '填写编排入口参数，按依赖顺序执行全部处理节点（允许并列分支）。' : '只为范围外来源提供本次测试值；范围内上游输出自动传递，不允许覆盖。测试值不修改节点绑定。' }}</p>
       <!-- R03：统一入口表单——每稳定 ID 只渲染一次，类型控件与范围无关 -->
       <label v-for="row in entryRows" :key="row.key" class="ftw-field">入口参数 · {{ row.label }} · {{ typeText(row.type) }}
-        <select v-if="row.type?.type === 'boolean'" :value="entryTexts[row.key] ?? ''" :aria-label="'入口参数 ' + row.label" @change="entryTexts[row.key] = ($event.target as HTMLSelectElement).value">
-          <option value="">（请选择）</option><option value="true">是</option><option value="false">否</option>
-        </select>
+        <AppSelect v-if="row.type?.type === 'boolean'" :model-value="entryTexts[row.key] ?? ''" :options="BOOLEAN_TEST_OPTIONS" :aria-label="'入口参数 ' + row.label" @update:model-value="v => { entryTexts[row.key] = v }"/>
         <textarea v-else-if="row.type?.type === 'object' || row.type?.type === 'list'" :value="entryTexts[row.key] || ''" rows="3" :placeholder="row.type?.type === 'object' ? '{}' : '[]'" :aria-label="'入口参数 ' + row.label" @input="entryTexts[row.key] = ($event.target as HTMLTextAreaElement).value"/>
         <template v-else>
           <input :value="overrideEmpty[row.key] || entryEmpty[row.key] ? '' : (entryTexts[row.key] || '')" :disabled="!!entryEmpty[row.key]" :aria-label="'入口参数 ' + row.label" placeholder="本次测试的入口值" @input="entryTexts[row.key] = ($event.target as HTMLInputElement).value"/>
@@ -391,9 +391,7 @@ defineExpose({ openScope })
       </label>
       <div v-for="item in plan.externalInputs" :key="item.nodeId + '/' + item.inputId" class="ftw-ext">
         <label class="ftw-field">{{ item.nodeName }} · {{ item.label }} · {{ typeText(item.type) }}<small class="ftw-src">{{ sourceHint(item) }}{{ item.kind === 'unbound' ? '（可选）' : '' }}</small>
-          <select v-if="item.type?.type === 'boolean'" :value="overrideTexts[overrideKey(item.nodeId, item.inputId)] ?? ''" :aria-label="item.nodeName + ' ' + item.label" @change="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLSelectElement).value">
-            <option value="">（请选择）</option><option value="true">是</option><option value="false">否</option>
-          </select>
+          <AppSelect v-if="item.type?.type === 'boolean'" :model-value="overrideTexts[overrideKey(item.nodeId, item.inputId)] ?? ''" :options="BOOLEAN_TEST_OPTIONS" :aria-label="item.nodeName + ' ' + item.label" @update:model-value="v => { overrideTexts[overrideKey(item.nodeId, item.inputId)] = v }"/>
           <textarea v-else-if="item.type?.type === 'object' || item.type?.type === 'list'" :value="overrideTexts[overrideKey(item.nodeId, item.inputId)] || ''" rows="3" :placeholder="item.type?.type === 'object' ? '{}' : '[]'" :aria-label="item.nodeName + ' ' + item.label" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLTextAreaElement).value"/>
           <template v-else>
             <input :value="overrideEmpty[overrideKey(item.nodeId, item.inputId)] ? '' : (overrideTexts[overrideKey(item.nodeId, item.inputId)] || '')" :disabled="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" :aria-label="item.nodeName + ' ' + item.label" :placeholder="item.kind === 'unbound' ? '可选：为未绑定输入提供本次测试值' : '本次测试值'" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).value"/>
@@ -409,7 +407,7 @@ defineExpose({ openScope })
       <p v-if="runDisableReason" class="ftw-error" role="alert">无法运行：{{ runDisableReason }}</p>
       <p v-if="formError" class="ftw-error" role="alert">{{ formError }}</p>
       <div class="ftw-actions">
-        <button class="primary-run" :disabled="runBusy || !!runDisableReason" :title="runDisableReason || ''" @click="run">{{ pendingConfirm ? '等待确认…' : running ? '执行中…' : '▷ 运行测试' }}</button>
+        <button class="primary" :disabled="runBusy || !!runDisableReason" :title="runDisableReason || ''" @click="run">{{ pendingConfirm ? '等待确认…' : running ? '执行中…' : '▷ 运行测试' }}</button>
       </div>
       <p v-if="writes.length" class="ftw-writes">本次范围包含真实外部调用：{{ writes.length }} 项（运行前会再次确认）；范围外写节点不会执行。</p>
     </aside>
@@ -523,7 +521,7 @@ defineExpose({ openScope })
 .ftw-input h3,.ftw-result-head h3{font-size:14px;margin:0 0 10px}
 .ftw-sec{margin-top:18px}
 .ftw-field{display:block;font-size:12px;color:var(--muted);margin:10px 0}
-.ftw-field input,.ftw-field textarea,.ftw-field select{margin-top:4px}
+.ftw-field input,.ftw-field textarea,.ftw-field select,.ftw-field .app-select{margin-top:4px}
 .ftw-empty-opt{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:3px}
 .ftw-empty-opt input{width:auto}
 .ftw-src{display:block;font-size:11px;margin-top:2px}
@@ -541,9 +539,6 @@ defineExpose({ openScope })
 .ftw-fixed b{color:var(--ink)}
 .linklike{border:0;background:none;color:var(--blue);font-size:12px;padding:2px 0;cursor:pointer}
 .ftw-actions{margin-top:14px}
-.primary-run{background:var(--blue);border-color:var(--blue);color:#fff}
-.primary-run:hover{background:var(--blue-deep);color:#fff}
-.primary-run:disabled{opacity:.5}
 .ftw-writes{font-size:11px;color:var(--warn);margin-top:8px}
 .ftw-result-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .ftw-badge{font-size:11px;border-radius:10px;padding:2px 10px;background:var(--paper-2);border:1px solid var(--line)}
