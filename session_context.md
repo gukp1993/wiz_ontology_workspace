@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`456188183db5aef1`
+上下文版本：`4c68c06594c3d414`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,28 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### codex/ontology-build 第4轮R3修复独立复验 · codex · 已验证
+
+时间：2026-09-21T03:45:01.671391+00:00；记录：`.collaboration/entries/000131-2d6c8d6c4986.json`
+
+基线91ff4c3（仅比f1b90c6多验收指令）：不通过。专项21/21、runner34/34、排除17/17、合并42/42、前端15项及build通过。全量首次43/44和独立核心47/48均连接重置，重跑分别44/44、162/162通过。新独立真实pipeline探针复现P1 R4-01：新尝试成功后旧LLM响应仍插入候选和assistant消息，状态令牌保护未覆盖内容写点。
+
+- 决定：R3-02/03/04和B.4对应自动化/静态范围通过；R3-01状态修复成立但内容晚写入仍阻断，需修复后复验。；只验收；未改业务/测试/接口代码，未合并main、未启停18871或18765。
+- 验证：真实临时SQLite+runner+pipeline，仅控制LLM返回顺序；B已成功后A旧响应仍产生第2条include候选和第2条assistant消息。；前端typecheck/build及接口08 §7字段口径核对通过；18文件diff与指令一致。；开始及结束18765 HTTP200；未做浏览器点击、真实模型质量或main组合验收。
+- 下一步：修复pipeline.py候选和消息写事务的取消/lease检查，新增真实pipeline时序回归后再验收。
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收报告_第4轮_20260921.md
+
+### 从物料自动构建本体 · 第3轮验收整改（R3-01～R3-04 + B.4） · zcode · 已实施，待验收
+
+时间：2026-09-21T03:30:44.291791+00:00；记录：`.collaboration/entries/000130-0837e50fa06a.json`
+
+按验收报告附录 B 的 4 项 P1 与 B.4 一项 P2 整改完成，提交三个 commit：25333c3（后端四项）、7835e05（前端 + 回链）、f1b90c6（已交付页误报修复）。四个工作包由并行子 agent 分文件实施，协调者做契约冻结、组合回归与浏览器复验。未合并 main、未重启 18765、未清理环境。
+
+- 决定：R3-01：执行权按 worker token 绑定并线程本地化；submit() 先显式轮换 lease，旧 worker 永远拿不到新执行权，finally 只清自己的登记。；R3-02：排除保护改为跨全部批次回放（新覆盖旧），仅 include+reviewed（用户显式重新纳入）解除；不再只看上一批。；R3-03：交付侧构造合并别名表（传递解析+环保护）传入 assemble()；非空宿主解析不到一律阻断，绝不静默丢关联。；R3-04：dataType 平铺字符串+平铺 valueType（枚举与 model_format.SERIES_VALUE_TYPES 同源）；旧嵌套 payload 被拒并给纠正提示；非法观测值保存时即拒。口径登记接口文档 08 §7。；B.4：任务回链携带 deliveryOntologyId，App 先 switchOntology（含未保存守卫）再进入对象建模。
+- 验证：tests/run.py all 44/44；tests/test_ontology_build.py 162/162（+2：非法观测值未落库、库内残留旧值仍被预检拦截）。；新增回归：runner_isolation 34/34、exclusion_inheritance 17/17、merge_refs 42/42（含真实交付端到端）、ontology_build_review_edit.test.mjs 15/15；vue-tsc 0 错误、npm run build 通过。；报告 B.5 三份复现脚本已转为断言正确行为的回归：验收证据_第三轮/复验_修复后回归.py 21/21，可单命令对照 R3-01～R3-04 复验。；浏览器点击级复验（18871+假模型）：评审页把属性改为时间序列保存→服务端真实落库 timeSeries/double（修复前必失败）；交付后回链跳到该本体 #objects 且 2 对象/1 属性/1 链接可见。；隔离实例按旧 PID 精确重启（未用 pkill），主工作台 18765 全程 200 未受影响。
+- 下一步：交 Codex 第 4 轮独立复验：建议按 R3-01～R3-04 逐项复跑（复验脚本+各工作包新增回归），并复验 B.4 回链。；未验证项维持不变：真实模型语义质量与多领域样本（G16/T25）、OCR、规模限额校准、窄屏与键盘可达性（G15/T24 部分）、T12/T20 故障注入、与最新 main 的组合重验。；验收通过后停在待用户授权集成；未合并 main、未重启 18765、dist 未部署、开发环境保留。
+- 依据/文档：提交：25333c3、7835e05、f1b90c6（分支 codex/ontology-build）；文档/需求/20260920_从物料自动构建本体/验收报告.md 附录 B（被整改项）；文档/需求/20260920_从物料自动构建本体/验收证据_第三轮/复验_修复后回归.py（21/21）；文档/需求/20260920_从物料自动构建本体/开发计划.md §11（第3轮整改记录）；文档/接口文档/08-从物料自动构建本体接口.md §7（R3-04 字段口径）
 
 ### codex/ontology-build 第3轮独立验收 · codex · 已验证
 
@@ -132,25 +154,3 @@ v2 功能保护七个工作包全部完成并提交：L 集成（d2cc6b9）、C 
 - 验证：后端：python3 tests/run.py all → 39/39（quick 3/3、http 10/10、unit 28/28）；金样 97 样例 507 断言；test_publish_guards 14 步；test_references 21 步；test_project_flow_source 38 步；test_upgrade_impact 7 项。；前端：22 个 node 测试文件全部通过；typecheck 0；npm run build 通过。；F 独立 QA：对抗性 135 项、目录语义 47 项、UI 保护 60 项全过；P0 修复后加回归步骤 m/n 锁定。；浏览器验收（隔离 18871，验收后实例与数据已清理）：概览「1 项待处理」；删被内联 SQL 引用连接阻断且提示精确；校验阻断→发布禁用；修正后 UI 发布 v2 且同 requestId 回放；真实重载与服务端一致。
 - 下一步：Codex 复验 F01–F10 证据，并决定 P1-5/B-4 两个待办是否本期补齐。；待办（非本期阻塞）：编排自身 check_flow 阻断启用+F 夹具同步；动作绑定 unreadable 文案统一；App.vue TDZ 由他人修复。
 - 依据/文档：文档/接口文档/02 §2.2、03 §2.1–§2.4/§3.3、01 §5.1、05 §1.2、README 变更记录；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2–§11.4；提交：d2cc6b9、53f46f9、cc1b833、9d57276、8e2f7c1、4a1dcb5
-
-### 角色B领域校验（重派）：依赖三态/目录降级形参/属性键失效/影响匹配纯函数 · zcode · 已实施，待验收
-
-时间：2026-09-20T07:39:53.878228+00:00；记录：`.collaboration/entries/000119-facb07ab5040.json`
-
-P0 三项已落盘。① kind=flow 改消费 flows.dependency_state：unreadable→error 阻断（文案含「读取失败（reason）」与 flowId），missing 沿用「不存在或已删除」，软删除按 missing，found 用其 state；_check_action_bindings 的 flows.listing 改 fail-closed（StorageUnavailable 原样抛给路由 503，其他异常逐行报错，不再跳过存在性检查）。② validate_project 新增第三形参 degraded_catalogs=None（None 时逐字节不变）；传入时逐条「数据连接 {名称}：目录缓存读取失败（缓存内容损坏）…」error + connection/invalid items，与 project_routes 兜底文案结构一致，路由 signature 探测会自动切到本实现。③ 属性键在引用版本中不存在→error「引用的版本中不存在此属性」，原配置不动。P1-4 field/related 有目录但字段不存在→error（无目录不报）。P1-5「编排自身 check_flow error 阻断」试做后回滚（会误伤 F 的对抗性夹具，其编排缺 name），软删除部分已保留；是否启用交协调者。P1-6 新增 workbench/project_impact.py 纯函数（稳定 id 精确匹配、sharedPropertyId/valueTypeId 继承、未绑定不误报），未改 projects.py。新增 tests/test_upgrade_impact.py 7 项全过。
-
-- 决定：degraded_catalogs 默认 None 保证兼容入口 projects.validate_project 两参调用与金样逐字节不变；文案与 items 与 project_routes._validate_with_degraded 完全一致。；属性键不存在的 error 加在属性循环最前，items.issues 顺序稳定（新 error 在前），便于金样回放。；field/related 字段目录核对仅在该表字段目录可读（catalog_fields 非 None）时报 error；目录缺失保持现状。；P1-5 编排自身 check_flow error 阻断属性绑定回滚：本轮 F 的对抗夹具编排缺 name 即 check_flow error，会使其可发布夹具失去可发布性；优先保证 P0 与既有 135 项对抗断言不回退。；project_impact.binding_impacts 兼容 JSON-LD 与 JSON schema 两形态，只做纯匹配，不改变 projects.upgrade_check 输出结构。
-- 验证：tests/run.py --test test_project_flow_source.py → 通过（38 步）：unreadable→error 含 flowId 且不含「不存在」、found 正常、软删除→不存在、动作绑定 listing 失败→error、StorageUnavailable→原样抛出、恢复后通过。；tests/run.py --test test_property_sources.py → 全部通过（f1 属性键不存在 block、f2 字段目录核对、f3 degraded_catalogs 生效且 None 逐字节一致）。；tests/run.py --test test_upgrade_impact.py → 7 项全过（相似 apiName 不误报、共享/值类型继承命中、未绑定不产生影响、链接相似名不误报、契约定位、schema 形态兼容）。；tests/run.py --test test_publish_guards_adversarial.py → 通过 135 项/不符 0（回滚 check_flow 阻断后无回退）。；tests/run.py unit → 28/29；唯一失败 test_validation_split.py 为金样预期失配（未改金样，变动清单见报告 C 节：8 个样例、约 95 error 槽位/43 item 槽位）。
-- 下一步：协调者按报告 C 节预期变动重新生成金样（tests/make_validation_golden.py）并回放 test_validation_split.py。；接线 project_impact.binding_impacts 到 projects.upgrade_check，替换现行子串/endswith 匹配，返回结构不变。；决定 P1-5 是否启用「编排自身 check_flow error 阻断属性绑定」；若启用需同步调整 tests/test_publish_guards_adversarial.py 夹具（补 name/绑定）。；project_routes._validate_with_degraded 的 signature 探测现已切到新实现，兜底分支可在集成阶段清理。
-- 依据/文档：workbench/project_validation.py（validate_project 第三形参、_append_degraded_catalog_issues、flow 三态、field 目录核对、属性键 error、动作绑定 fail-closed）；workbench/project_impact.py（新增纯函数模块）、tests/test_upgrade_impact.py（新增）；tests/test_project_flow_source.py（38 步）、tests/test_property_sources.py（+3 组用例）；文档/接口文档/03-项目区接口.md §2.2（依赖读取失败语义）；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2（G1 冻结）
-
-### 从物料自动构建本体开发计划与执行指令v1 · codex · 需求已交付
-
-时间：2026-09-20T07:36:57.831434+00:00；记录：`.collaboration/entries/000118-be92f9805b6d.json`
-
-按用户要求补齐开发计划和可独立交给其他harness的执行指令，同步需求状态与原型文档导航；未实施业务代码。
-
-- 决定：四件套齐全，现有需求范围与原型主流程不变。；P0-P7分阶段覆盖真实解析/多轮LLM/候选评审/合并再生成/原子新建；T01-T25验证矩阵映射G01-G16。；保留全局2 MB请求上限，建议JSON分片上传；后台owner显式绑定、安全LLM日志、任务和新本体交付同事务。；未定OCR/外部服务/技术栈扩展与规模承诺不自动扩大；工程默认与降级必须明示。
-- 验证：四份文件相对链接、P0-P7阶段、T01-T25测试矩阵及现有测试路径检查通过。；原型只增加计划与指令链接，JS语法通过；git diff --check通过。未运行正式业务测试或构建。
-- 下一步：执行工具获用户实施指令后，按必读顺序和P0协议核对开始实施，结果追加开发计划§11。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
