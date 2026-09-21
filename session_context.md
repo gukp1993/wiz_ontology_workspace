@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`d009115652333ca0`
+上下文版本：`4f25e8c07b299e21`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 本体与项目辅助填写原型：R01/R02 整改与同类扩展修复 · zcode · 已实施，待验收
+
+时间：2026-09-21T02:33:39.119128+00:00；记录：`.collaboration/entries/000141-312c64ece869.json`
+
+按用户整改指令修原型（仅 HTML，不动正式前后端/接口/数据）。开工实核基线 92573c3=2017行/dd4a3506…，与指令一致，无他人并发编辑。R01：来源/编排建议 old 改由当前编辑缓冲区还原真实原值（bindOld），默认勾选交由新增 isPlaceholderOld 门控（仅空或（未/待/无/空）占位才允许预选），等值时转 note 不生成误导卡。R02：删除 parts[1]||'SOC' 兜底，model_name/attr_name 分别校验并要求分隔符明确，单 token 无分隔→两张 pending 且 disabled，采纳第一项不连带写第二项。同类扫描 65 处 sug，扩出 3 处同族缺陷最小修复（ab:a_stop power、o:o_cluster 业务定义、lm:l_c2b 两张 pending）。必须保留项（F01/F05/A08/A10/A12）未回归。整改后基线冻结：2068 行 / de564955…。主会话真实点击自测 + 5 个并行只读子agent复验全通过，五组 console 0 error/0 warning/0 异常。停在待独立验收，未合并、未推送、未重启主工作台。
+
+- 决定：R01 修法：只读缓冲区还原 old + 全局 defChecked 门控，不新增字段、不改布局、不扩原型范围。；建议值与当前值一致时不生成卡，改记 note，避免误导为待替换（指令§三原文要求）。；同类检查按§四最小修复：仅修与 R01 同族的 old 失真，风格项不顺手改。；本轮新增 6 条 P2 记为待评审不修（含 data-locate 指向、id 重复、未 esc 的开发者字面量），理由：修复需重跑整轮验收、无数据危害。
+- 验证：静态：内联 JS node --check SYNTAX_OK；fetch/XHR/WebSocket/localStorage/sessionStorage/原生弹窗/外部 script 命中 0；|| 'SOC' 与 parts[1] 命中 0。；主会话真实点击（非内部函数）：R01/R02 修复前后值级取证；lk:l_c2b 全链路（采纳仅写 f_card/f_rev/f_def，f_fwd 未被覆盖；取消编辑回落 SAVED）；ps:ps_bizid 诚实显示无辅助场景。；并行只读子agent：GR-D(D1-D4/A01-A03)、GR-F(A05/A07-A09/A13)、GR-E(R01/R02+A04/A06/A10-A12/D7，23项，两版重跑)、GR-G2(静态+XSS)、GR-H(三档视口+A16/A17)，均 P0=0/P1=0。；console：五组 CDP 订阅 error 0 / warning 0 / 未捕获异常 0；browser-use 会话两次采集无消息。；未覆盖：真机多浏览器矩阵、完整无障碍走查；延迟/失败为本地模拟，未接真实模型或数据库。
+- 下一步：交独立验收方（Codex 或其他 harness）复验 de564955…/2068 版，重点 R01/R02 与同类扩展 3 处。；验收通过后再由用户决定是否进入正式实现范围讨论；本轮不合并、不推送、不重启主工作台。；脚本自动化注意：表单改动经去抖写缓冲，需等 ≥1.2s 再开面板生成，否则读到旧值。
+- 依据/文档：文档/需求/20260920_本体与项目辅助填写/交互原型_v1.html（2068行 / de5649554f0bdbdcefe62a4bfc7925631fb8a631c9057376d509b5d1861473b3）；文档/需求/20260920_本体与项目辅助填写/需求说明.md §9 第五轮记录；验收基线提交 92573c3（2017行 / dd4a3506…）
 
 ### acceptance-fixes集成与清理 · codex · 已验证
 
@@ -137,14 +148,3 @@
 - 验证：文档场景/验收编号完整性与两份文件范围检查通过，git diff --check通过；未声称原型或浏览器已验收。
 - 下一步：其他harness按执行指令制作独立原型并自检，用户交回后按A01至A17验收。
 - 依据/文档：文档/需求/20260920_本体与项目辅助填写/需求说明.md；文档/需求/20260920_本体与项目辅助填写/执行指令.md
-
-### acceptance-fixes：合并验收五项修复（R01/R02/R03/A01/A02） · zcode · 已实施，待验收
-
-时间：2026-09-20T14:17:44.240128+00:00；记录：`.collaboration/entries/000131-fba222697401.json`
-
-五项验收问题全部修复并自测通过，提交 codex/acceptance-fixes，等 Codex 独立验收；未合并 main、未重启主工作台、未改真实数据。R01 App.vue watch 移到 flowState 声明后并新增真实客户端 mount 回归(3/3)；R02 复用 flows.check_flow 把被引用编排自身结构错误纳入项目校验阻断（属性来源与动作绑定两条路径，上下文按真实协议传；夹具修正为合法编排）；R03 目录 payload 与依赖令牌改同一次读取（消除窗口，反例先复现 200 再修成 409）；A01 记录级文本校验（必填必为文本、content/effect 合法选填文本、非文本受控报错、正式发布路由 422 零版本、前端不再 trim 崩溃）；A02 图谱保存复用同一校验（失败零写入零事件）。A02 由子代理实施、协调者汇总。
-
-- 决定：R02 只把编排「自身结构/配置」错误纳入项目阻断；环境性错误（账号未配置模型、项目侧无凭据上下文）按跳过处理，避免误拒合法编排；编排显式声明 providerId 而已删除仍检出。；R02 不修改 flows.check_flow 既有语义，只在项目校验侧复用它并缓存（同一编排多处引用只查一次）。；R03 以「校验 payload 与记录代际同一次读取」达成基线一致，不靠长持锁；目录令牌由 _catalog_meta 派生，baseline.catalogs 同步为同一读取。；A01 统一为「缺失/null/空串/空白按未填；非文本受控报错且定位字段」，不做 str()/String() 掩盖、不自动清洗；后端与前端 recordFields/businessRuleModel/actionModel 同口径。；A01 前端编辑遇非法旧值保留原值并给字段级原因，改写后即可保存。
-- 验证：后端 python3 tests/run.py all → 39/39；定向：test_publish_guards 16 步（新增 o/p：payload 读取后目录更新→409 零写入；读取前更新→按新基线校验并发布）、test_project_flow_source 44 步、test_publish_guards_adversarial 135/135（夹具改合法并加自检）、test_business_rules 57 项、test_action_library 77 项、test_catalog_independent 51 硬断言、test_validation_split 97 样例/507 断言，以及 test_action_http/test_references/test_property_sources/test_upgrade_impact/test_storage；前端 npm run typecheck 0；npm run build 通过（仅既有 chunk 体积警告）；tests/*.test.mjs 37 个中 36 个通过。；反例先行：R01 新用例修复前 0/3 报 Cannot access 'flowState' before initialization；R03 反例修复前实测 200 并新增 v4；A01 修复前正式 post_publish 接受对象 content/数组 effect 返回 200。；隔离实例 18921（.runtime/acceptance-data、专属 venv、假账号 acceptfix）浏览器复验：注册进入无初始化异常；规则空必填阻断/合法保存并读回/注入非法 content 编辑不崩溃且给字段原因；动作只填名称被阻断；图谱编辑清空业务定义被阻断且保留输入；空壳编排绑定属性→校验 error「编排输出「功率」尚未绑定来源节点输出」→发布 422，改合法编排→零 error→发布 v1；同 requestId 重试 idempotentReplay:true 且不新增版本。；既有失败（范围外、非本次引入）：tests/mapping_forms.test.mjs 在实施前基线上同样失败（git stash 对照），属已登记延期项 P02；test_catalog_independent 仍打印 2 项规格观察，不在本批范围。
-- 下一步：Codex 独立验收 codex/acceptance-fixes 最新提交（建议按 R01→A02 复验，重点核对 R03 两条窗口用例与 R02 的合法编排对照）。；验收通过后停在「待用户授权集成」；不得据此自行合并 main。；隔离实例 18921 与 .runtime/acceptance-data 保留供复验，如需清理请明确指示。；未测项：真实 MySQL/Redis 探测、Excel/WPS 原生下拉与 1000 行截断、跨进程并发压测、主工作台 18765（本批不重启/不部署 dist）。
-- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/验收修复执行指令.md；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §12.4；文档/接口文档/02-本体区接口.md §4.9、03-项目区接口.md §2.2、README.md 变更记录；workbench/project_validation.py、workbench/project_routes.py、workbench/workflow.py、frontend/src/App.vue、frontend/src/ontology/recordFields.ts、frontend/src/ontology/legacyGraph/legacyBridge.js；tests/app_client_mount.test.mjs（新增）

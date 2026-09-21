@@ -1148,10 +1148,16 @@ function syncPanelTarget(){
    建议、依据与上下文摘要；不共用同一段 SOC 文字。
    ===================================================================== */
 const UN='__unsure__';
+/* 原值是否"空/占位"：单段前缀占位，或合并串每一段都以占位括号结尾 */
+function isPlaceholderOld(v){
+  var sv=String(v==null?'':v).trim();
+  if(!sv)return true;
+  if(/^（(空|未|待|无)/.test(sv))return true;
+  var segs=sv.split('；');
+  return segs.length>1&&segs.every(function(x){return /（(空|未|待|无)[^）]*）\s*$/.test(x.trim());});
+}
 function sug(o){ /* 依据 §5.2：仅当原值为空/占位时才允许默认勾选 */
-  var sv=String(o.old==null?'':o.old).trim();
-  var ph=!sv||/^（(空|未|待|无)/.test(sv);
-  o.defChecked=!!o.defChecked&&ph;o.fields=o.fields||[];return o;}
+  o.defChecked=!!o.defChecked&&isPlaceholderOld(o.old);o.fields=o.fields||[];return o;}
 function privBuf(){return BUFFERS[curEditKey()]||{};}
 
 const SCEN={
@@ -1169,8 +1175,8 @@ const SCEN={
   fill:function(t,ans,buf){
     const notes=['上下文仅包含已有对象名称与定义；建议不会创造新的设备层级、对象或链接。'];
     if(/电池包|BMS|捆在|一组电池簇|充放电/.test(t)){
-      return {suggestions:[sug({label:'业务定义',old:'一组电池。',neu:'由若干电池包并联组成、配置 BMS、可整体参与充放电的储能单元，是储能设备的组成部分。',source:SRC.USER,defChecked:false,fields:['def'],
-        reason:'按你提供的说明整理（已有值替换，默认不勾选）。未新增对象或层级。',
+      return {suggestions:[sug({label:'业务定义',old:buf.def||'（空）',neu:'由若干电池包并联组成、配置 BMS、可整体参与充放电的储能单元，是储能设备的组成部分。',source:SRC.USER,defChecked:false,fields:['def'],
+        reason:'按你提供的说明整理'+(buf.def?'（已有值替换，默认不勾选）':'（默认不勾选，需你手动勾选采纳）')+'。未新增对象或层级。',
         apply:function(b){b.def='由若干电池包并联组成、配置 BMS、可整体参与充放电的储能单元，是储能设备的组成部分。';}})],notes:notes};
     }
     return {noValid:true,notes:['原型根据你的输入匹配预置场景返回示例，并非真实模型理解。可点击下方示例带入，或换一种描述。']};},
@@ -1560,33 +1566,71 @@ const SCEN={
         questions:[],
         suggestions:[sug({label:'来源说明（整理）',old:buf.desc||'（空）',neu:org,source:SRC.USER,defChecked:true,fields:['desc'],
           reason:'仅把你的需求原文登记为说明，便于后续人工配置；不虚构查询流程或编排。',apply:function(b){b.desc=org;}}),
-          sug({label:'编排绑定',old:'（未选）',neu:'（无可选项）',source:SRC.FLOW,defChecked:false,fields:['flowId'],pending:'无兼容编排：绑定待补充；不生成虚构编排。'})]};
+          sug({label:'编排绑定',old:buf.flowId?((SAVED.prj.flows.find(function(f){return f.id===buf.flowId;})||{}).name||buf.flowId):'（未选）',neu:'（无可选项）',source:SRC.FLOW,defChecked:false,fields:['flowId'],pending:'无兼容编排：绑定待补充；不生成虚构编排。'})]};
     }
     if(/s_attr_scada|采样规则|sample_table|scada/.test(t)){
+      const ATTR_LB={cluster_code:'簇编号',storage_id:'业务设备ID',capacity:'额定容量'};
+      function attrLb(v){if(ATTR_LB[v])return ATTR_LB[v];const p=SAVED.ont.props.find(function(x){return 'prop:'+x.id===v;});return p?p.name:v;}
+      function bindOld(k){const src=(buf.bind||{})[k]||'';const v=(buf.bindv||{})[k]||'';
+        if(!src)return '（待绑定）';
+        if(src==='const')return v?'固定值 '+v:'固定值（空）';
+        if(src==='attr')return '属性 '+(v?attrLb(v):'（未选）');
+        if(src==='instid')return '实例编号';
+        return src;}
       sugs.push(sug({label:'取值规则说明（整理）',old:buf.desc||'（空）',neu:'三步查询：① s_attr_scada 按 model_name/attr_name/model_id 定位 scada_table、scada_id；② 按测点元数据解析 sample_table_name、sample_field_name；③ 按 record_time 在时间范围内取采样值。',source:SRC.USER,defChecked:true,fields:['desc'],
         reason:'把你的描述整理成结构化说明——即使编排不可用也能保留。',apply:function(b){b.desc='三步查询：① s_attr_scada 按 model_name/attr_name/model_id 定位 scada_table、scada_id；② 按测点元数据解析 sample_table_name、sample_field_name；③ 按 record_time 在时间范围内取采样值。';}}));
       if(DEMO.flow==='text'){
-        sugs.push(sug({label:'选择编排：通用SOC采样查询',old:'（未选）',neu:'通用SOC采样查询',source:SRC.FLOW,defChecked:false,fields:['flowId'],
+        sugs.push(sug({label:'选择编排：通用SOC采样查询',old:buf.flowId?(SAVED.prj.flows[0].name||buf.flowId):'（未选）',neu:'通用SOC采样查询',source:SRC.FLOW,defChecked:false,fields:['flowId'],
           blocked:'输出类型不符（演示）：编排输出声明已改为 文本<字符串>，与属性「SOC采样值」的时间序列类型不兼容，禁止采纳绑定。'}));
+      }else if(buf.flowId==='f_soc'){
+        notes.push('编排已选择「通用SOC采样查询」且输出类型兼容：无需变更，本原型不重复生成相同建议。');
       }else{
-        sugs.push(sug({label:'选择编排：通用SOC采样查询',old:'（未选）',neu:'通用SOC采样查询',source:SRC.FLOW,defChecked:true,fields:['flowId'],
+        sugs.push(sug({label:'选择编排：通用SOC采样查询',old:buf.flowId?(SAVED.prj.flows.find(function(f){return f.id===buf.flowId;})||{}).name||buf.flowId:'（未选）',neu:'通用SOC采样查询',source:SRC.FLOW,defChecked:true,fields:['flowId'],
           reason:'已有编排输入签名匹配你的三步规则，输出 时间序列<数值> 与属性类型兼容。仅复用已有编排，不新建。',apply:function(b){b.flowId='f_soc';}}));
       }
       if(!ans.consts)qs.push({qid:'consts',q:'model_name 与 attr_name 的常量取值？需要你资料中登记的标识（可点“＋参数”式补充或直接填写）。',free:true,ph:'例如 storage_cluster / SOC',opts:[]});
-      if(ans.consts&&ans.consts!==UN&&/[\/／]|,|\s\S+/.test(ans.consts+'')){
-        const parts=(ans.consts||'').split(/[\/／,，\s]+/).filter(Boolean);
-        const mn=parts[0]||'storage_cluster',an=parts[1]||'SOC';
-        sugs.push(sug({label:'输入 model_name（固定值）',old:'（待绑定）',neu:mn,source:SRC.USER,defChecked:true,fields:['flowId'],
-          reason:'你确认的常量标识。',apply:function(b){b.bind.model_name='const';b.bindv=b.bindv||{};b.bindv.model_name=mn;}}));
-        sugs.push(sug({label:'输入 attr_name（固定值）',old:'（待绑定）',neu:an,source:SRC.USER,defChecked:true,fields:['flowId'],
-          reason:'你确认的常量标识。',apply:function(b){b.bind.attr_name='const';b.bindv=b.bindv||{};b.bindv.attr_name=an;}}));
+      const raw=ans.consts===UN?null:String(ans.consts==null?'':ans.consts).trim();
+      const toks=raw===null?[]:raw.split(/[\/／,，\s]+/).filter(Boolean);
+      const tokOnlySep=raw!==null&&raw!==''&&toks.length===0;
+      const delim=raw!==null&&/[\/／,，]/.test(raw);
+      const posClear=toks.length===2||(toks.length===1&&delim);
+      if(toks.length===1&&!delim){
+        sugs.push(sug({label:'输入 model_name（固定值）',old:bindOld('model_name'),neu:'（待确认）',source:SRC.SUG,defChecked:false,fields:['bind.model_name'],
+          pending:'只看到一个标识“'+toks[0]+'”，无法确定它是 model_name 还是 attr_name：请按“model_name / attr_name”顺序填写，或用“＝”标注归属；不静默截取或猜测。'}));
+        sugs.push(sug({label:'输入 attr_name（固定值）',old:bindOld('attr_name'),neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['bind.attr_name'],
+          pending:'依赖上一项的确认。'}));
+      }else if(posClear){
+        const mn=toks[0];
+        if(buf.bind&&buf.bind.model_name==='const'&&buf.bindv&&buf.bindv.model_name===mn){
+          notes.push('model_name 已按你提供的常量配置（'+mn+'）：无需变更。');
+        }else{
+          sugs.push(sug({label:'输入 model_name（固定值）',old:bindOld('model_name'),neu:'固定值 '+mn,source:SRC.USER,defChecked:true,fields:['bind.model_name'],
+            reason:'仅采用你明确提供的第一项标识；不改动其他参数绑定。',apply:function(b){b.bind=b.bind||{};b.bindv=b.bindv||{};b.bind.model_name='const';b.bindv.model_name=mn;}}));
+        }
+        if(toks.length===1){
+          sugs.push(sug({label:'输入 attr_name（固定值）',old:bindOld('attr_name'),neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['bind.attr_name'],
+            pending:'你尚未明确提供 attr_name：不补造示例值 SOC；采纳 model_name 不会连带填入本项。'}));
+        }else{
+          const an=toks[1];
+          if(buf.bind&&buf.bind.attr_name==='const'&&buf.bindv&&buf.bindv.attr_name===an){
+            notes.push('attr_name 已按你提供的常量配置（'+an+'）：无需变更。');
+          }else{
+            sugs.push(sug({label:'输入 attr_name（固定值）',old:bindOld('attr_name'),neu:'固定值 '+an,source:SRC.USER,defChecked:true,fields:['bind.attr_name'],
+              reason:'仅采用你明确提供的第二项标识；不改动其他参数绑定。',apply:function(b){b.bind=b.bind||{};b.bindv=b.bindv||{};b.bind.attr_name='const';b.bindv.attr_name=an;}}));
+          }
+        }
       }else{
-        sugs.push(sug({label:'输入 model_name / attr_name',old:'（待绑定）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['flowId'],
-          pending:ans.consts===UN?'常量取值“暂不确定”：不替你编造模型标识。':'依赖上方问题的回答。'}));
+        const why=tokOnlySep?'只看到分隔符，没有可确认的标识。':(toks.length>2?'出现 '+toks.length+' 个片段，无法确定哪个是 model_name、哪个是 attr_name。':(ans.consts===UN?'常量取值选择了“暂不确定”。':'依赖上方问题的回答。'));
+        sugs.push(sug({label:'输入 model_name / attr_name',old:'model_name：'+bindOld('model_name')+'；attr_name：'+bindOld('attr_name'),neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['flowId'],
+          pending:why+'请按“model_name / attr_name”两项分别提供；仅明确提供的内容会成为建议，不自动补全示例值。'}));
       }
-      sugs.push(sug({label:'输入 model_id（实例编号）',old:'（待绑定）',neu:'实例编号',source:SRC.SUG,defChecked:true,fields:['flowId'],
-        reason:'model_id 随实例变化，表单已支持“实例编号”来源。',apply:function(b){b.bind.model_id='instid';}}));
-      sugs.push(sug({label:'输入 start_time / end_time（运行时时间范围）',old:'（待绑定）',neu:'（待配置）',source:SRC.SUG,defChecked:false,fields:['flowId'],
+      if(buf.bind&&buf.bind.model_id==='instid'){
+        notes.push('model_id 已绑定“实例编号”：无需变更。');
+      }else{
+        sugs.push(sug({label:'输入 model_id（实例编号）',old:bindOld('model_id'),neu:'实例编号',source:SRC.SUG,defChecked:true,fields:['bind.model_id'],
+          reason:'model_id 随实例变化，表单已支持“实例编号”来源。',apply:function(b){b.bind=b.bind||{};b.bind.model_id='instid';}}));
+      }
+      sugs.push(sug({label:'输入 start_time / end_time（运行时时间范围）',old:'（待配置）',neu:'（待配置）',source:SRC.SUG,defChecked:false,fields:['flowId'],
         pending:'当前表单不提供“运行时输入”绑定项：明确显示为待配置，不发明正式已支持能力。'}));
       notes.push('编排输出若与属性类型不符将禁止采纳（可用顶部“已有编排演示：输出改为文本”试验）。');
       return {questions:qs,suggestions:sugs,notes:notes};
@@ -1616,7 +1660,7 @@ const SCEN={
     if(/名字差不多|同名|都叫 ?id|id 对 ?id/.test(t)){
       return {notes:['两端字段同名或相似不构成关联依据：请提供映射说明（哪个字段对应终点哪个标识）。'],
         questions:[{qid:'pair',q:'两端的关联依据是什么？',free:true,ph:'例如 簇表 storage_id = 设备登记编号',opts:[]}],
-        suggestions:[sug({label:'起点关联字段',old:'（未选）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['startField'],pending:'缺少你的资料支持。'})]};
+        suggestions:[sug({label:'起点关联字段',old:buf.startField||'（未选）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['startField'],pending:'缺少你的资料支持。'})]};
     }
     if(/storage_id/.test(t)&&(/登记|编号|设备/.test(t)||ans.pair)){
       sugs.push(sug({label:'起点关联字段',old:buf.startField||'（未选）',neu:'storage_id',source:SRC.USER,defChecked:true,fields:['startField'],
@@ -1629,7 +1673,7 @@ const SCEN={
       return {suggestions:sugs,notes:notes};
     }
     qs.push({qid:'pair',q:'两端的关联依据是什么？（需提供资料支持的字段对）',free:true,ph:'例如 storage_id = 设备登记编号',opts:[]});
-    return {questions:qs,suggestions:[sug({label:'起点/终点关联字段',old:'（未选）',neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['startField'],pending:'等待你的字段对说明。'})],notes:['不以同名推断正确关联。']};},
+    return {questions:qs,suggestions:[sug({label:'起点/终点关联字段',old:'起点：'+(buf.startField||'（未选）')+'；终点：'+(buf.endField||'（未选）'),neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['startField'],pending:'等待你的字段对说明。'})],notes:['不以同名推断正确关联。']};},
   check:function(buf){
     const issues=[];
     if(!buf.startField)issues.push({field:'startField',f:'起点关联字段',d:'未配置：链接映射无法建立两端实例对应。'});
@@ -1671,9 +1715,16 @@ const SCEN={
       reason:'你选择用实例主键；请再次确认接口侧确实接受实例主键。',apply:function(b){b.pStorageSrc='pk';}}));
     else sugs.push(sug({label:'参数 storageId 绑定',old:srcLabel(buf.pStorageSrc||''),neu:'（待补充）',source:SRC.SUG,defChecked:false,fields:['pStorageSrc'],
       pending:ans.eq===UN?'等价关系“暂不确定”：不默认实例ID=业务ID。':'依赖上方等价关系问题的回答。'}));
-    const powOld=buf.pPowerSrc==='const'?('请求体 · 固定值 '+(buf.pPowerVal||'')+'（'+(buf.pPowerType||'数值')+'）'):(buf.pPowerSrc?(buf.pPowerSrc==='query'?'URL查询参数':'')+'已配置为'+buf.pPowerSrc:'（未绑定）');
-    sugs.push(sug({label:'参数 power（固定值）',old:powOld,neu:'请求体 · 固定值 0（数值）',source:SRC.USER,defChecked:true,fields:['pPowerSrc'],
-      reason:'你说明 power=0 表示停止。',apply:function(b){b.pPowerSrc='const';b.pPowerVal='0';b.pPowerType='xsd:double';}}));
+    const POW_TY={'xsd:double':'数值','xsd:string':'文本','xsd:boolean':'是-否'};
+    const powPos=buf.pPowerPos==='query'?'Query':'请求体';
+    const powOld=buf.pPowerVal?powPos+' · 固定值 '+buf.pPowerVal+'（'+(POW_TY[buf.pPowerType]||'数值')+'）':'（未填固定值）';
+    const powNew=powPos+' · 固定值 0（数值）';
+    if(powOld===powNew){
+      notes.push('参数 power 已与你的资料一致（'+powOld+'）：无需变更，本原型不重复生成相同建议。');
+    }else{
+      sugs.push(sug({label:'参数 power（固定值）',old:powOld,neu:powNew,source:SRC.USER,defChecked:true,fields:['pPowerSrc'],
+        reason:'你说明 power=0 表示停止；原值取自当前参数行，已有值需你明确勾选才会替换（参数位置不变）。',apply:function(b){b.pPowerSrc='const';b.pPowerVal='0';b.pPowerType='xsd:double';}}));
+    }
     const descSegs=[];
     descSegs.push('调用 setPower 将目标储能单元功率设为 0');
     if(ans.eq==='attr')descSegs.push('storageId 传业务设备ID（storage_id）');
@@ -1855,7 +1906,7 @@ function resultHTML(p,buf,checkMode){
       h+='<div class="sug-card'+(s.blocked?' blocked':s.pending?' pending':'')+'">'
        +'<div class="sug-top"><input type="checkbox" data-sug="'+i+'" '+(defv&&!disabled?'checked':'')+(disabled?' disabled':'')+' aria-label="采纳建议：'+esc(s.label)+'">'
        +'<span class="sug-field">'+esc(s.label)+'</span><span class="sug-src '+(SRC_CLS[s.source]||'')+'">'+esc(s.source)+'</span></div>';
-      h+='<div class="sug-diff">'+(s.old&&String(s.old).trim()&&!/（空|（未选|（未绑定|（待|（无/.test(String(s.old).slice(0,4))?'<div class="old">原值：'+esc(trunc(s.old,60))+'</div>':'<div class="old none">原值：'+esc(s.old||'（空）')+'</div>')
+      h+='<div class="sug-diff">'+(!isPlaceholderOld(s.old)?'<div class="old">原值：'+esc(trunc(s.old,60))+'</div>':'<div class="old none">原值：'+esc(s.old||'（空）')+'</div>')
        +'<div class="new">建议：'+esc(trunc(s.neu,220))+'</div></div>';
       if(s.reason)h+='<div class="sug-reason">依据：'+esc(s.reason)+'</div>';
       if(s.blocked)h+='<div class="sug-block">禁止采纳：'+esc(s.blocked)+'</div>';
