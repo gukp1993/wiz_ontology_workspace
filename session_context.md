@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`dd72713228b436e0`
+上下文版本：`e42d24b437e5f8a4`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,41 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### R02-项目发布检查被引用编排配置有效性(worktree/test) · zcode · 已实施，待验收
+
+时间：2026-09-21T04:41:28.234505+00:00；记录：`.collaboration/entries/000149-e9a2fe678d09.json`
+
+修复 R02：project_validation._check_flow_binding 在既有结构核对后对被项目引用的编排调用 flows.check_flow 纯配置检查（不传 project_connections/llm_meta/credential_ids，不执行 SQL/Python、不探测连接）；errors 逐条转项目阻断项，单条消息含属性定位（属性来源 ot.prop：前缀）+编排标识（名称(flowId)）+具体原因；warnings 不阻断；check_flow 结果按引用编排 id 在一次 validate 内缓存（400 属性引用同一编排仅调用 1 次）；未引用编排不检查。引用不存在编排的文案保留「不存在或已删除」并补（flowId）。发布路径经 projects.validate_project 同一函数自动生效。
+
+- 决定：金样沿用既有机制增量：make_validation_golden 播种固定 flowId 编排（gldbadflow00001/gldokflow000001，幂等 seed_golden_flows），test_validation_split import 同模块并再调 seed_golden_flows() 保证回放侧同构；新增 57_flow_binding_output_unbound（阻断）与 58_flow_binding_config_valid（放行）两样例；不存在编排文案采用后缀「（flowId）」而非插入 id，保持既有子串「引用的函数编排不存在或已删除」可匹配（旧测试 test_project_flow_source 38 步全过）
+- 验证：tests/test_validation_split.py → 金样 99 样例 517 断言全部通过 exit 0；金样重生成 diff：对备份仅 1 处纯插入（47301a47302,47749），0 行删除，旧 97 样例逐字节不变；新增 tests/test_project_flow_binding_check.py 14 步全过 exit 0（反例阻断/对照放行/只查一次/未引用不阻断/仅警告不阻断/发布同函数断言）；回归全过 exit 0：test_project_flow_source 38 步、test_action_http 74、test_action_library 61、test_registered_validation、test_identity_required、test_property_sources、test_inline_sql、test_query_rules、test_catalog_independent；性能演示：400 属性引用同一编排 check_flow 仅 1 次调用，validate 63ms
+- 下一步：交 Codex 独立验收（deep_reverify_r02_a01 场景应转为阻断）；README 变更记录行与 workflow.py 侧改动由协调者统一处理；未执行 git 写命令
+- 依据/文档：workbench/project_validation.py 与 tests/test_project_flow_binding_check.py；tests/make_validation_golden.py + tests/test_validation_split.py；tests/fixtures/validation_golden.json；文档/接口文档/03-项目区接口.md §2.2
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### test分支 产品缺陷A01修复：规则content与动作v2 effect选填字段类型校验 · zcode · 已实施，待验收
+
+时间：2026-09-21T04:35:06.100771+00:00；记录：`.collaboration/entries/000148-c99d83032871.json`
+
+worktree/test 分支按验收记录§4 A01 完成修复（未提交，等协调者统一处理其余文件后一起走提交流程）。workflow.py：_business_rule_errors 增 content 类型校验（L74-81）、definition_errors 动作 v2 分支增 effect 类型校验（L181-187）；缺键/null/空串/空白串放行（O3-03 选填语义不变），数字/布尔/数组/对象报单条错误（含名称/标识/字段名/当前类型/修复建议），不经 str() 隐式转换；v1 动作 effect 必填与规则 output 只保留不校验口径不动。validate/save(200+errors)/publish(422) 经 model_routes.validate 共用同一 definition_errors。
+
+- 决定：错误文案单条含字段定位与文本类型原因：规则 「{label}」({id})：content 提供时必须为文本（当前类型 dict），请改为文本或删除该字段；动作侧同构；导入路径核对：本体 Excel 导入（OntologyImport.vue）经 form-save→saveCoordinator→/api/save 走同一校验，无独立写路径；config_packages.import_transaction 为配置迁移快照直写属既有迁移设施，不在 A01 范围
+- 验证：.runtime/venv/bin/python tests/test_business_rules.py → 46 项断言全部通过，退出码 0（原基线 40 项 + 新增 6 项）；.runtime/venv/bin/python tests/test_action_library.py → 61 项断言全部通过，退出码 0（原基线 55 项 + 新增 6 项）；新建 tests/test_rule_action_field_types.py → 54 项断言全部通过，退出码 0；直接函数调用演示：content={'x':1}/effect=['a'] 各返回恰好一条含「必须为文本」错误；content=None/''/缺键 → 零错误；旁证回归：test_property_sources、test_value_shape、test_time_series_type、business_rule_model.test.mjs、action_model.test.mjs 全部通过
+- 下一步：验收记录中 57/77 项断言数与本 worktree 基线（d6c73c2 与 HEAD 字节一致的 40/55）不符，已在交付报告说明，请验收方按实际输出判定；接口文档 README 变更记录行由协调者统一登记（README.md 本轮禁改）；deep_reverify_scenarios.py 的 A01 场景为缺陷复现分类器，修复后该场景应从 KNOWN_DEFECT 翻转为 PASS，由验收方独立复跑
+- 依据/文档：workbench/workflow.py；tests/test_rule_action_field_types.py；tests/test_business_rules.py；tests/test_action_library.py；文档/接口文档/02-本体区接口.md §4.9/§4.10
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### D-Q02-01 页面口径修复（OntologyRelease.vue 快照文案） · zcode · 已实施，待验收
+
+时间：2026-09-21T04:26:07.970780+00:00；记录：`.collaboration/entries/000147-b3bac1ccb517.json`
+
+仅改 frontend/src/ontology/OntologyRelease.vue 文案：快照区改述为迁移导入的 release-ZIP 工件、发布版本指向上方「已发布版本」且不可在此恢复；区块标题改「迁移导入的快照（N）」，空态补澄清，版本卡去掉「不可变快照」措辞。恢复功能/确认/按钮行为未动，未改其他文件。
+
+- 决定：遵守 D-Q02-01 恢复能力延期决定：只修页面口径，不实现恢复改版；版本列表沿用现有标题「已发布版本」保持措辞一致
+- 验证：npm run typecheck 通过（vue-tsc 0 错误）；npm run build 成功（built in 3.80s，chunk 警告为既有）；grep 确认旧文案「每次发布都会留」已不存在；git status 仅 OntologyRelease.vue 被修改
+- 下一步：待 Codex 独立验收 D-Q02-01 页面口径部分；恢复能力改版仍处延期，不在本轮范围
+- 依据/文档：frontend/src/ontology/OntologyRelease.vue
 
 ### codex/test G轮整改独立复验 · codex · 已验证
 
@@ -117,35 +152,3 @@
 - 验证：tests/deep_verdicts_test.py 23/23 通过（正确阻断/实际缺陷/500/无关4xx/前置失败/空响应/网络失败各有反例），退出码 0。；tests/deep_results_index.py 只读原始日志重算：14 有效批次、被替代 94 行、断言 187、唯一场景 187、根因 9；替代关系与根因引用逐条机器核对（曾捕获 3 处人工行号偏差并修正）。；reverify-20260921T0958Z（18951）：15 条 pass 11/known 3/info 1；A01 前置合法→追加非法→发布快照保留原值；R02 前置全成功、validate 未拦截、publish 200 版本 0→1，负对照 422 被拦截。；regress-20260921T1005Z(22 条)与 T1008Z(54 条)：修订后 deep_ontology_o3o4o5/deep_project_chain 全链路可运行。；隔离与清理：env -u WIZ_DATABASE_URL、库落 .runtime/reverify-data（已删）；18951 按 PID+cwd 停止并释放端口，保留 .runtime/reverify-evidence；18931 未触碰仍未停止。
 - 下一步：Codex 独立复验：核对 deep_verdicts.py/deep_results_index.py 可重算，reverify-20260921T0958Z 的 A01/R02 分类与负对照，三份文档与 结果索引.md 数字一致。；复验重跑须另起新合成数据根与空闲端口（勿用 18765/8765），脚本支持 Q02_BASE/Q03_BASE 覆盖，勿指向 18931 与真实根。；验收通过后停在「待用户授权集成」；集成合并需用户明确授权由 Codex 串行组合重验，产品缺陷修复另行安排。
 - 依据/文档：提交 6b4665ec603166b728558d0c6caa1f5cbfbe11c3（codex/test）；被验业务 SHA d6c73c2；文档/需求/20260921_系统全方位深度测试/结果索引.md；文档/需求/20260921_系统全方位深度测试/测试报告.md；缺陷清单.md；测试计划.md（继续验证区）；tests/deep_verdicts.py；deep_verdicts_test.py；deep_reverify_scenarios.py；deep_reverify_r02_a01.py；deep_results_index.py
-
-### codex/test 深度测试继续验证指令 · codex · 需求已交付
-
-时间：2026-09-21T01:41:12.218469+00:00；记录：`.collaboration/entries/000137-87389e169b27.json`
-
-交付继续验证指令，供其他harness按S1-S3修订报告/新增deep测试判定并针对性复跑；本轮仅文档，不执行复验或修业务。
-
-- 决定：复用codex/test，不合并main；报告验收与产品缺陷修复分开。；明确运行批次/分类统计、A01/R02判定反例、延期边界与临时环境清理。
-- 依据/文档：文档/需求/20260921_系统全方位深度测试/继续验证指令.md
-
-### codex/test 系统全方位深度测试独立验收 · codex · 已验证
-
-时间：2026-09-21T01:35:57.842518+00:00；记录：`.collaboration/entries/000136-6312c36e211e.json`
-
-独立验收测试交付暂不通过：主要业务缺陷真实，但报告数字/批次归属不一致、部分deep脚本判定可能误报通过，需要修订后复核；非要求先修业务。已交付验收记录。
-
-- 决定：仅审验测试成果，不改业务/原测试，不合并main。；D-Q02-01限定新发布资产恢复断层，发布与版本读回正常；R02分级需解释，A02旧UI不可达不等于全图谱已验。
-- 验证：18941新合成环境HTTP复现A01/R02/D1/D2/D3，抽验CAS409/currentRevision、413、未登录401。；生产浏览器复现R01错误但仍能操作；甲乙对象复现撤销提示陈旧且实际撤销正确。；差异只含测试文档/脚本/交接；mapping_forms基线失败复现。；本轮PID13537停止、18941释放、accept-data清理；原18931与其他环境未操作。
-- 下一步：执行者按验收记录S1-S3修订统计、脚本判定与缺陷范围后交复核，无需全面重测或先修业务。
-- 依据/文档：文档/需求/20260921_系统全方位深度测试/验收记录.md；被验交付3d58d20；业务基线d6c73c2
-
-### system-deep-test 全方位深度测试执行与交付（Q00-Q08） · codex · 已验证
-
-时间：2026-09-21T01:16:28.247683+00:00；记录：`.collaboration/entries/000135-58501560ea5f.json`
-
-在 worktree/test（codex/test，业务SHA d6c73c2零修改）完成独立深度测试：Q02本体34断言、Q03项目+编排74断言、Q05可靠性/边界~75断言、Q04浏览器生产入口实测；Q06性能按用户指令中途取消（仅留有限样本，无统计结论）。总体结论：不通过（存在P1新缺陷），主干CAS/幂等/隔离/脱敏全部符合契约。新发现D-Q02-01(P1在线发布不写release-zip致快照恢复断链)、D1(P2 POST缺Origin放行与README403口径矛盾)、D2(P2损坏库回传内部异常文本)、D3(P3跨账号错误码口径)、Q04-01(P3撤销按钮label陈旧)；基线复现并升级证据A01/R01/R02(根因project_validation.py:512)，A02重定性为本树UI生产入口不可达(死代码)。已提交4d4e497（测试脚本+两份报告+执行记录+子任务entries），证据JSONL留.runtime不入Git。未合并main、未清理；18931(PID56914)保留运行，18932/18933/18939已按PID+cwd确认后停止释放。
-
-- 决定：Q06以用户指令取消为准，已采样本标注n=1仅供参照，不预写性能结论；删除→撤销疑点经受控复测排除（有确认框、撤销正确恢复并落库），原判为协调者误读；/api/releases语义为release-ZIP工件列表而非版本历史（Q03澄清），但D-Q02-01定性不变：在线发布永不写工件→恢复链路对新资产不可达且文档标可用；D1/D3按'文档bug或实现bug'流程交owner裁定，测试侧不改文档；视觉/宽度/缩放/画布/键盘类因应用内浏览器隐藏记环境阻塞，不判缺陷也不判通过
-- 验证：本体链34断言31通过+A01复现+D-Q02-01（tests/deep_ontology_o1o2/o3o4o5/o6o7.py）；项目+编排74断言73通过+R02复现（tests/deep_project_chain/deep_flow_chain.py）；I1-I9全过：kill -9注入integrity_check=ok、63端点未登录401、密钥字节扫描0明文（tests/deep_integrity_*）；UI删除/撤销/重做/登录退出受控复测+API交叉核对（q04/REPORT.md）；server-18931.log全程0命中500；mapping_forms.test.mjs基线失败单列未修
-- 下一步：交回用户安排修复：优先D-Q02-01→A01→D1裁定→R01→D2（缺陷清单前五项）；集成/合并需用户明确授权后由Codex串行组合重验；18931与test-data*保留待处置；如需补全Q06：tests/deep_perf.py已就绪，须独占实例运行
-- 依据/文档：文档/需求/20260921_系统全方位深度测试/测试报告.md；文档/需求/20260921_系统全方位深度测试/缺陷清单.md；文档/需求/20260921_系统全方位深度测试/测试计划.md（实际执行记录）；提交4d4e497；被验业务SHA d6c73c2
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
