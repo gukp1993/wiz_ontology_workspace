@@ -23,7 +23,7 @@
   R2 传输失败/无状态码/空响应体      → test_error
   R3 status >= 500                  → test_error
   R4 status == 期望拦截码：
-       诊断未命中（只查约定诊断字段，见 diag_text）→ test_error（拒绝理由与目标无关）
+       诊断未命中（只查**阻断错误**，见 blocking_diag_messages）→ test_error（拒绝理由与目标无关）
        要求版本零新增但版本不可读        → test_error（证据不足）
        拒绝却已新增版本                  → new_defect_reproduced（拦截未生效，独立缺陷）
        否则 → product_pass
@@ -37,6 +37,22 @@
 诊断匹配（F03）：只从约定诊断字段（errors/diagnostics/error/report/check/items 等）
 取文本，不搜索整份响应，避免回显载荷里的 "flow/类型" 等词造成误判；
 diagnostic_term_groups 支持「字段定位 + 具体原因」两组都必须命中（组内 OR、组间 AND）。
+
+诊断消息边界（G01/R1）：**列表的每个元素各自成条**（元素是标量→该标量即一条；
+元素是 dict/list→递归）；**只有「信封列表的直接元素」且其全部值都是标量的 dict**
+（叶子条目）才把这些标量合并成一条消息——这是为了 errors[].name +
+errors[].message 这类同一条目内的定位与原因能联合命中；含任何嵌套 dict/list 的
+dict、以及嵌套列表里的元素/未登记键下的元素，一律不得合并自身标量，改为递归其
+嵌套容器；递归穿过**任意未登记键**（未知键不阻断下钻，也不会退化成「整棵子树合
+一条」）。若按已登记键名划边界，中间夹一层未登记键就会退回「整棵子树标量 join」，
+把两条无关诊断拼成同一条，凑出「定位+原因」的假命中。
+
+阻断证据（G02/R2/R3/R4）：warnings/warning、note/notes/detail/details 只是提示或
+补充说明，可提取（报告用）但**不得**作为「已阻断/拦截针对目标」的证据；条目
+level/severity/status 显式声明非阻断取值的条目同样不算。判定路径统一用
+blocking_diag_messages（只取阻断信封与阻断级别条目）；diag_messages 仍返回全量诊断
+供报告使用。级别取值按「**同一条目子树内最近一层**」向下查找（R4：条目 dict 内嵌
+dict 里的 level 也算），不跨条目生效——其它条目的提示不会把这条真实错误说成非阻断。
 
 校验接口观察判定用 classify_validate_observation（F02）：必须先过传输/状态码/响应结构
 （errors 必须是数组）再判是否拦截，500 或结构不符一律 test_error，不得按文案记通过。
@@ -111,12 +127,25 @@ def _body_present(response):
 
 
 # ---------------------------------------------------------------------------
-# 诊断文本提取（F03 + 对抗验证加固）
+# 诊断文本提取（F03 + 对抗验证加固 + G01/G02 修订 + R1–R4 修订）
 #
 # 只有「诊断信封」（errors/diagnostics/reasons/issues…）内的文本才算错误说明。
 # 顶层其它键（field/text/code/description…）与状态清单 items[] 的字段一律**不收集**：
 # 真实接口会把每个条目（无论有无问题）都回显 items[].name/id/kind，把它们当诊断，
 # 会让「定位组」无条件命中，从而把无关错误误判成正确拦截。
+#
+# 消息边界（R1，取代「按已登记键名划边界」）：
+#   **列表的每个元素各自成条**（标量→该标量即一条；dict/list→递归）；
+#   **只有「信封列表的直接元素」且其全部值都是标量**时才把这些标量合并成一条消息——
+#   这是 errors[].name + errors[].message 能联合命中的唯一合法形态；
+#   含任何嵌套 dict/list 的 dict 不合并自身标量，改为递归其嵌套容器；
+#   嵌套列表里的元素、未登记键下的元素同样不合并（否则双层包装仍可拼接）；
+#   递归穿过**任意未登记键**：遇到未知键继续下钻，绝不把整棵子树拼成一条。
+#
+# 阻断 / 非阻断（G02/R2/R3/R4）：warnings/warning、note/notes/detail/details 只是
+# 提示或补充说明，可以提取（报告用），但**不得**作为「检查已阻断」或「拦截针对目标」
+# 的证据；条目的 level/severity/status 声明非阻断取值时同理（R2 的 items[].status）。
+# 判定函数一律走 blocking_diag_messages。
 # ---------------------------------------------------------------------------
 
 # 信封键：其子树承载「为什么被拒」
@@ -125,6 +154,20 @@ _ENVELOPE_KEYS = {
     'diagnostics', 'diagnostic', 'problems', 'problem', 'violations', 'violation',
     'warnings', 'warning', 'detail', 'details', 'note', 'notes', 'report', 'check',
 }
+# 非阻断信封键：只是提示/补充说明，可提取但不得作为「已阻断/拦截针对目标」的证据
+# （G02 warnings；R3 note/notes/detail/details）
+_NON_BLOCKING_KEYS = {'warnings', 'warning', 'note', 'notes', 'detail', 'details'}
+# 判定「条目是否阻断」时向下查找的字段（R4：最近一层）
+_MARKER_KEYS = ('level', 'severity', 'status')
+# 明确表示「非错误」的取值：条目声明这些取值时不算阻断证据（G02 级别 + R2 状态）
+#   level/severity：warning/warn/info… 只是提示
+#   status（project_validation 的 items[]）：unconfigured=待补全、valid=正常
+_NON_BLOCKING_LEVELS = {
+    'warning', 'warn', 'info', 'information', 'notice', 'hint', 'debug', 'trace', 'none',
+    'unconfigured', 'valid', 'pending', 'ok',
+}
+# 明确表示「阻断」的取值：同一层与其它取值冲突时优先（保守：不因冲突声明漏掉真实阻断）
+_BLOCKING_LEVELS = {'invalid', 'error', 'failed', 'fail', 'fatal', 'critical', 'blocked', 'unhealthy'}
 # 状态清单键：其条目是「逐项状态回显」，只下钻其中真正的错误字段
 _STATUS_LIST_KEYS = {'items', 'results', 'rows', 'entries', 'checks'}
 # 诊断子树内不参与匹配的键（大小写不敏感）：类型/标识/状态/回显载荷
@@ -141,19 +184,108 @@ def _is_ignored(key):
     return str(key).lower() in _IGNORE_KEYS
 
 
-def diag_messages(response):
-    """返回诊断文案列表：**一条消息 = 一个诊断条目**（不是每个标量各成一条）。
+def _declared_marker(node):
+    """节点**自身**直接声明的 level/severity/status 取值（小写）；未声明返回 None。
 
-    为什么按「条目」而不是按「标量」：真实接口里一个错误条目的定位与原因是同一对象的
-    两个字段（如 {"name":"activePower","message":"未绑定"}），必须能在同一条消息内同时
-    命中「定位」与「原因」两组诊断词；而 {"errors":["消息甲","消息乙"]} 这种多条目形态
-    必须各自独立成条，防止两条互不相关的消息各贡献一半拼出假命中。
-
-    只从「诊断信封」取文本：根层与状态清单（items[]）里只下钻信封键；状态清单条目的
-    name/id/kind/status 等回显字段不收集（真实接口会为每个条目回显这些字段，收集它们
-    会让定位组无条件命中）。不使用整体文本兜底，非 JSON 响应不参与诊断匹配。
+    同一节点同时声明多个取值时：阻断取值优先（如 status=invalid 与 level=warning 并存
+    按阻断处理，保守取「不放过真实阻断」）；声明了取值但取值未知的，按阻断处理。
     """
+    values = []
+    for key in _MARKER_KEYS:
+        value = node.get(key)
+        if isinstance(value, str) and value.strip():
+            values.append(value.strip().lower())
+    if not values:
+        return None
+    for value in values:
+        if value in _BLOCKING_LEVELS:
+            return value
+    for value in values:
+        if value in _NON_BLOCKING_LEVELS:
+            return value
+    return values[0]
+
+
+def _nearest_marker(node):
+    """在**同一条目子树内**按层（BFS）查找最近的 level/severity/status 声明（R4）。
+
+    就近优先：条目自身声明的 status=invalid 压过更深处的 level=warning；返回最近一层
+    的取值（可能是内嵌 dict 里的 level），找不到返回 None（调用方按「未声明 → 阻断」
+    处理）。忽略键（kind/state/payload…）的子树不下钻，与文本提取口径一致。
+    只在本条目子树内查找：兄弟条目 / 远端后代的提示不会把这条真实错误说成非阻断。
+    """
+    queue = [node]
+    while queue:
+        nxt = []
+        for item in queue:
+            if isinstance(item, dict):
+                marker = _declared_marker(item)
+                if marker is not None:
+                    return marker
+                for key, value in item.items():
+                    if _is_ignored(key):
+                        continue
+                    if isinstance(value, (dict, list)):
+                        nxt.append(value)
+            elif isinstance(item, list):
+                for sub in item:
+                    if isinstance(sub, (dict, list)):
+                        nxt.append(sub)
+        queue = nxt
+    return None
+
+
+def _entry_level(node):
+    """条目声明的严重级别（level/severity/status，小写）；未声明返回空串。
+
+    R4：向下找**最近一层**的声明（条目 dict 内嵌 dict 里的 level 也算），但只在
+    **同一条目子树内**生效——别处条目的 warning 不会把这条真实错误说成非阻断。
+    """
+    if not isinstance(node, (dict, list)):
+        return ''
+    return _nearest_marker(node) or ''
+
+
+def _is_blocking_entry(node):
+    """条目是否算阻断错误：只有**显式声明**非阻断取值才排除。
+
+    R2：除 level/severity 外同时认 status —— project_validation 的 items[] 用 status
+    表达严重性：'invalid'=阻断、'unconfigured'=待补全（不阻断）、'valid'=正常；
+    flows.check_flow 的 diagnostics[] 仍是 level。大小写不敏感。
+    未声明任何取值（或声明了未知取值）时按阻断处理，避免把真实阻断当成提示漏掉。
+    """
+    return _entry_level(node) not in _NON_BLOCKING_LEVELS
+
+
+def _is_container(node):
+    """dict 是否为「容器/包装」：含**任何**嵌套 dict/list（非忽略键）。
+
+    R1 修订：不再按已登记键名（report/check…）划边界——中间夹一层未登记键就会退回
+    「整棵子树标量 join」。容器自身不是诊断条目：其标量字段逐条成消息、绝不与兄弟
+    字段合并，内部嵌套容器继续递归；列表元素边界在递归中一路保留（G01）。
+    全部值都是标量且位于**信封列表直接元素**位置的 dict 才是可合并的叶子条目
+    （{"name":"activePower","message":"未绑定"}），整条拼成**一条**消息——同条目内的
+    定位与原因必须能联合命中（合法对照）；位置限制的理由见 walk_entry。
+    """
+    if not isinstance(node, dict):
+        return False
+    for key, value in node.items():
+        if _is_ignored(key):
+            continue
+        if isinstance(value, (dict, list)):
+            return True
+    return False
+
+
+def _collect_diag_messages(response, blocking_only=False):
+    """诊断文案提取主逻辑；blocking_only=True 时只取阻断错误（G02/R2/R3/R4）。"""
     messages = []
+
+    def emit(text, blocking):
+        """append 一条消息；blocking_only 时非阻断消息（提示/待补全）不进入证据。"""
+        text = str(text).strip()
+        if text and (not blocking_only or blocking):
+            messages.append(text)
 
     def item_text(node):
         """把一个诊断条目内的全部标量拼成一条消息（忽略键整棵跳过）。"""
@@ -174,16 +306,80 @@ def diag_messages(response):
         rec(node)
         return ' '.join(out).strip()
 
-    def from_envelope(value):
+    def is_blocking(node, ctx):
+        """条目/包装的阻断判定：子树内最近一层声明决定，未声明沿用 ctx（默认阻断）。"""
+        marker = _nearest_marker(node) if isinstance(node, (dict, list)) else None
+        if marker is None:
+            return ctx
+        return marker not in _NON_BLOCKING_LEVELS
+
+    def walk_entry(node, ctx, entry=False):
+        """一个诊断条目（信封列表的元素 / 包装内的值）→ 若干条消息。
+
+        R1：只有**信封列表的直接元素**且其**全部值都是标量**时才合并成一条
+        （errors[].name+message / diagnostics[].message 形态——同条目内定位与原因
+        必须能联合命中）。含嵌套 dict/list 的一律按包装递归；不在该位置的 dict
+        （嵌套列表里的元素、未登记键下的元素）同样不合并，自身标量逐条成消息、
+        绝不与兄弟字段合并——否则 `{'errors': [[{'a':…,'b':…}]]}` 这类双层包装
+        仍能把两条无关诊断拼成一条，凑出「定位+原因」假命中。
+        """
+        if isinstance(node, list):
+            for sub in node:
+                walk_entry(sub, ctx)
+            return
+        if isinstance(node, dict):
+            blocking = is_blocking(node, ctx)
+            if entry and not _is_container(node):
+                emit(item_text(node), blocking)
+            else:
+                walk_mapping(node, blocking)
+            return
+        emit(node, ctx)
+
+    def walk_mapping(node, ctx):
+        """包装/映射（含嵌套容器的 dict）：递归其值，自身标量与兄弟字段绝不合并。
+
+        R1：穿过**任意未登记键**继续下钻；遇到信封键按条目边界递归（列表元素各自成条）。
+        """
+        blocking = is_blocking(node, ctx)
+        for key, value in node.items():
+            if _is_ignored(key):
+                continue
+            low = str(key).lower()
+            if low in _NON_BLOCKING_KEYS:
+                if not blocking_only:
+                    walk_collection(value, False)  # 提示/补充说明：只进报告用全量诊断
+            elif low in _ENVELOPE_KEYS:
+                walk_envelope(value, blocking)
+            elif low in _STATUS_LIST_KEYS:
+                from_status_list(value)
+            else:
+                walk_collection(value, blocking)
+
+    def walk_collection(value, ctx):
+        """未登记键下的值：列表元素各自成条、dict 继续当包装下钻、标量自成一条。"""
+        if isinstance(value, list):
+            for sub in value:
+                walk_entry(sub, ctx)  # 未登记键下的条目不在信封列表位置：不合并自身标量
+        elif isinstance(value, dict):
+            walk_mapping(value, ctx)
+        else:
+            emit(value, ctx)
+
+    def walk_envelope(value, ctx):
+        """信封值 → 消息：列表的每个元素各自成条（G01/R1 的边界约束就在这里）。
+
+        信封值本身是 dict 时按包装递归（R1 复现：{'errors': {'e1':…,'e2':…}} 必须拆成
+        两条，不能合并成一条）——只有信封列表的直接元素才可能是可合并的叶子条目
+        （entry=True）；嵌套列表里的元素不算，见 walk_entry。
+        """
         if isinstance(value, list):
             for item in value:
-                text = item_text(item)
-                if text:
-                    messages.append(text)
+                walk_entry(item, ctx, True)
+        elif isinstance(value, dict):
+            walk_mapping(value, ctx)
         else:
-            text = item_text(value)
-            if text:
-                messages.append(text)
+            emit(value, ctx)
 
     def from_status_list(value):
         if not isinstance(value, list):
@@ -191,12 +387,18 @@ def diag_messages(response):
         for item in value:
             if not isinstance(item, dict):
                 continue
+            blocking = is_blocking(item, True)
+            if blocking_only and not blocking:
+                continue  # R2：items[].status='unconfigured'/'valid'（或 level=warning）只是待补全/提示
             for k, v in item.items():
                 if _is_ignored(k):
                     continue
                 low = str(k).lower()
-                if low in _ENVELOPE_KEYS:
-                    from_envelope(v)
+                if low in _NON_BLOCKING_KEYS:
+                    if not blocking_only:
+                        walk_collection(v, False)
+                elif low in _ENVELOPE_KEYS:
+                    walk_envelope(v, blocking)
                 elif low in _STATUS_LIST_KEYS:
                     from_status_list(v)
 
@@ -206,17 +408,50 @@ def diag_messages(response):
             if _is_ignored(key):
                 continue
             low = str(key).lower()
-            if low in _ENVELOPE_KEYS:
-                from_envelope(value)
+            if low in _NON_BLOCKING_KEYS:
+                if not blocking_only:
+                    walk_collection(value, False)
+            elif low in _ENVELOPE_KEYS:
+                walk_envelope(value, True)
             elif low in _STATUS_LIST_KEYS:
                 from_status_list(value)
             # 其它顶层键是载荷回显：整棵跳过，不作兜底搜索
     elif isinstance(payload, list):
         for item in payload:
-            text = item_text(item)
-            if text:
-                messages.append(text)
+            walk_entry(item, True, True)  # 根就是信封列表：元素即条目
     return messages
+
+
+def diag_messages(response):
+    """返回全部诊断文案：**一条消息 = 一个诊断条目**（不是每个标量各成一条）。
+
+    为什么按「条目」而不是按「标量」：真实接口里一个错误条目的定位与原因是同一对象的
+    两个字段（如 {"name":"activePower","message":"未绑定"}），必须能在同一条消息内同时
+    命中「定位」与「原因」两组诊断词；而 {"errors":["消息甲","消息乙"]} 这种多条目形态
+    必须各自独立成条，防止两条互不相关的消息各贡献一半拼出假命中。
+
+    只从「诊断信封」取文本：根层与状态清单（items[]）里只下钻信封键；状态清单条目的
+    name/id/kind/status 等回显字段不收集（真实接口会为每个条目回显这些字段，收集它们
+    会让定位组无条件命中）。不使用整体文本兜底，非 JSON 响应不参与诊断匹配。
+
+    嵌套容器（report/check/未登记包装键）进入后同样按条目成条，不跨条目拼接
+    （G01/R1）：列表元素各自成条，只有全标量 dict 才合并，穿透任意未登记键。
+    本函数**包含 warning/note/detail** 等提示（报告用）；判定「是否被阻断」请用
+    blocking_diag_messages。
+    """
+    return _collect_diag_messages(response, blocking_only=False)
+
+
+def blocking_diag_messages(response):
+    """只取「阻断错误」的诊断文案（G02/R2/R3/R4）。
+
+    warning 只说明「有个提示」，note/detail 只是补充说明，items[].status='unconfigured'
+    只说明「配置待补全」：都不能证明目标依赖已被拒绝/阻断，因此不参与通过判定。
+    只有 errors（数组元素各自成条）、error、diagnostics 等信封里的阻断项，以及状态
+    清单中未声明非阻断取值的条目，才算阻断证据（级别取值在**同一条目子树内**就近查找，
+    未声明按阻断处理）。
+    """
+    return _collect_diag_messages(response, blocking_only=True)
 
 
 def diag_text(response):
@@ -224,12 +459,15 @@ def diag_text(response):
     return ' | '.join(diag_messages(response))
 
 
-def _diag_hit(response, groups, not_required=False):
+def _diag_hit(response, groups, not_required=False, blocking_only=False):
     """诊断命中判定：**必须由同一条诊断消息**同时满足所有组（组内 OR、组间 AND）。
 
     对抗验证发现：早期实现把所有诊断文案拼成一整串再找词，两条互不相关的消息
     可以各贡献一半，拼出「字段定位 + 具体原因」的假命中。因此这里按消息独立判定：
     存在一条消息，它对每一组都至少命中一个词，才算命中。
+
+    blocking_only=True（G02）：只拿阻断错误当证据——目标内容只出现在 warning 里，
+    不能证明「检查已阻断」或「拦截针对目标」，此时按未命中处理。
 
     未提供诊断依据时不放行；确需跳过必须显式 `diagnostic_not_required=True`。
     """
@@ -242,8 +480,11 @@ def _diag_hit(response, groups, not_required=False):
             return True, '调用方显式声明无需诊断核对（diagnostic_not_required=True）'
         return False, ('未提供诊断依据（diagnostic_terms/diagnostic_term_groups 均为空），'
                        '无法确认拒绝是否针对目标')
-    messages = diag_messages(response)
+    messages = blocking_diag_messages(response) if blocking_only else diag_messages(response)
     if not messages:
+        if blocking_only and diag_messages(response):
+            return False, ('响应只见非阻断诊断（warning 等），不能证明拒绝/阻断针对目标：'
+                           '目标内容未出现在任何阻断错误里')
         return False, '响应中取不到诊断文案（无约定诊断字段），不能判定拒绝是否针对目标'
     best = None
     for message in messages:
@@ -412,7 +653,9 @@ def classify_guard_attempt(precondition_ok, response, expect=None, precondition_
         return _mk(PRODUCT_PASS, ok_reason % (version_before, version_after), detail)
 
     if status in block_set:
-        hit, why = _diag_hit(response, groups, expect.get('diagnostic_not_required') is True)
+        # G02：拒绝理由必须来自阻断错误；只出现在 warning 里的目标内容不能证明拦截针对目标
+        hit, why = _diag_hit(response, groups, expect.get('diagnostic_not_required') is True,
+                             blocking_only=True)
         if not hit:
             return _mk(TEST_ERROR, '被拒绝但诊断与目标无关（HTTP %s），不能算校验正确：%s'
                        % (status, why), detail)
@@ -449,8 +692,12 @@ def classify_validate_observation(precondition_ok, response, expect=None, precon
 
       status 非 int / 非期望码 / >=500  → test_error
       json 非对象 / errors 字段缺失或非数组 → test_error（结构不符）
-      出现**同一条消息内**命中全部诊断组的 error → product_pass（检查确实拦住了）
+      出现**同一条阻断错误内**命中全部诊断组 → product_pass（检查确实拦住了）
       有 error 但诊断无关 / 无 error  → 缺陷复现或 test_error（见下）
+
+    G02 修订：通过判定只用阻断错误当证据（errors 数组，或 error/diagnostics 里
+    level=error 的条目）——目标内容只出现在 warnings 里不能证明目标依赖被阻断；
+    按 error 条数走的结构检查仍以 `errors` 数组为准（沿用 03 分册契约）。
 
     expect: ok_status(int|序列, 默认 200)、diagnostic_terms / diagnostic_term_groups、
             known_defect(bool)、detail(str)
@@ -502,7 +749,10 @@ def classify_validate_observation(precondition_ok, response, expect=None, precon
                    '检查未拦截（HTTP %s errors 为空）：未出现针对目标的阻断诊断%s'
                    % (status, '' if not groups else '（要求的诊断：%s）'
                       % '；'.join('|'.join(g) for g in groups)), detail)
-    hit, why = _diag_hit(response, groups, expect.get('diagnostic_not_required') is True)
+    # G02：通过判定只认阻断错误（errors / level=error 的诊断）；warnings 只是提示，
+    # 不能证明「检查确实拦住了目标依赖」——否则无关 error + 目标 warning 会假通过。
+    hit, why = _diag_hit(response, groups, expect.get('diagnostic_not_required') is True,
+                         blocking_only=True)
     if hit:
         return _mk(PRODUCT_PASS, '检查已阻断且诊断针对目标（errors=%d 条）：%s' % (len(errs), why), detail)
     return _mk(TEST_ERROR, '检查有错误但诊断与目标无关（不能算拦住了该依赖）：%s' % why, detail)

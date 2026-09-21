@@ -324,6 +324,266 @@ case('对抗：precondition_ok 传非布尔（真值字符串）不得算前置�
                               {'block_status': 422, 'diagnostic_terms': ['未绑定']}),
      V.TEST_ERROR)
 
+# ======================================================================
+# G01（高）：嵌套容器不得把「不同诊断」拼成一条 —— 元素边界必须贯穿 report/check
+# 反例来源：独立验收用 {'report': {'errors': ['activePower', '输出未绑定']}} 配两组
+# 拿到 product_pass（同一条消息凑出「定位+原因」）。下面同时锁死合法对照：
+# 同一条目内的多字段仍必须能联合命中。
+# ======================================================================
+_G01 = [['activePower'], ['输出未绑定']]
+
+case('G01 顶层 errors 两条不同 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['activePower', '输出未绑定']}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('G01 report 内两条不同 errors 各含一半 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'report': {'errors': ['activePower', '输出未绑定']}}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('G01 report 内同一条 error 含定位+原因 → product_pass（对照）',
+     V.classify_guard_attempt(True, resp(422, {'report': {'errors': ['属性 X.activePower 引用编排输出未绑定']}}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+case('G01 check.diagnostics 两条各含一半 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'check': {'diagnostics': [
+         {'level': 'error', 'message': '字段 activePower 的应用方式未选择'},
+         {'level': 'error', 'message': '输出未绑定'}]}}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('G01 check.diagnostics 同一条目含定位+原因 → product_pass（对照）',
+     V.classify_guard_attempt(True, resp(422, {'check': {'diagnostics': [
+         {'level': 'error', 'message': '字段 activePower 的输出未绑定'}]}}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+case('G01 定位与原因分居 report/check 两处 → test_error（跨信封不得拼接）',
+     V.classify_guard_attempt(True, resp(422, {'report': {'errors': ['activePower 未配置']},
+                                               'check': {'errors': ['输出未绑定']}}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('G01 report 内 items[].issues 两条各含一半 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'report': {'items': [
+         {'kind': 'propertySource', 'id': 'X.activePower', 'issues': ['activePower 未配置']},
+         {'kind': 'propertySource', 'id': 'X.y', 'issues': ['输出未绑定']}]}}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('G01 深一层 report.errors 同一条仍联合命中 → product_pass（对照）',
+     V.classify_guard_attempt(True, resp(422, {'report': {'report': {'errors': ['activePower 输出未绑定']}}}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+# 提取层直接锁定：条目边界不丢、且不跨条目拼接
+_msg = V.diag_messages(resp(422, {'report': {'errors': ['activePower', '输出未绑定']}}))
+case('G01 diag_messages 保留 report.errors 条目边界', {
+    'result': V.PRODUCT_PASS if _msg == ['activePower', '输出未绑定'] else 'mismatch',
+    'reason': 'diag_messages=%r' % (_msg,)}, V.PRODUCT_PASS)
+
+# ======================================================================
+# G02（高）：warning 不得替无关 error 证明「已阻断 / 拦截针对目标」
+# 反例来源：{'errors': ['名称重复'], 'warnings': ['activePower 输出未绑定']} 配两组
+# 曾被判 product_pass —— 目标内容只出现在提示里，不能证明目标依赖被阻断。
+# ======================================================================
+
+case('G02 errors 无关 + warnings 命中 → test_error',
+     V.classify_validate_observation(
+         True, resp(200, {'errors': ['名称重复'], 'warnings': ['activePower 输出未绑定']}),
+         {'ok_status': (200,), 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('G02 errors 命中目标 → product_pass（对照）',
+     V.classify_validate_observation(
+         True, resp(200, {'errors': ['属性 X.activePower 引用编排输出未绑定']}),
+         {'ok_status': (200,), 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+case('G02 只有 warnings 命中、errors 为空 → 缺陷复现（不得 product_pass）',
+     V.classify_validate_observation(
+         True, resp(200, {'errors': [], 'warnings': ['activePower 输出未绑定']}),
+         {'ok_status': (200,), 'diagnostic_term_groups': _G01}),
+     V.NEW_DEFECT)
+case('G02 只有 warnings 命中（已知基线）→ known_defect_reproduced',
+     V.classify_validate_observation(
+         True, resp(200, {'errors': [], 'warnings': ['activePower 输出未绑定']}),
+         {'ok_status': (200,), 'diagnostic_term_groups': _G01, 'known_defect': True}),
+     V.KNOWN_DEFECT)
+case('G02 guard：拒绝码但目标只在 warning → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['名称重复'], 'warnings': ['activePower 输出未绑定']}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('G02 guard：errors 命中目标 → product_pass（对照）',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['属性 X.activePower 引用编排输出未绑定']}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+case('G02 check.diagnostics level=warning 条目不算阻断证据 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['名称重复'], 'check': {'diagnostics': [
+         {'level': 'warning', 'message': 'activePower 输出未绑定'}]}}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('G02 check.diagnostics level=error 同一条目命中 → product_pass（对照）',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['名称重复'], 'check': {'diagnostics': [
+         {'level': 'error', 'message': 'activePower 输出未绑定'}]}}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+# 提取层直接锁定：全量诊断含 warning，阻断诊断不含 warning
+_all = V.diag_messages(resp(200, {'errors': ['名称重复'], 'warnings': ['activePower 输出未绑定']}))
+_blk = V.blocking_diag_messages(resp(200, {'errors': ['名称重复'], 'warnings': ['activePower 输出未绑定']}))
+case('G02 blocking_diag_messages 排除 warning 条目', {
+    'result': V.PRODUCT_PASS if (_all == ['名称重复', 'activePower 输出未绑定'] and _blk == ['名称重复'])
+              else 'mismatch',
+    'reason': 'all=%r blocking=%r' % (_all, _blk)}, V.PRODUCT_PASS)
+
+# ======================================================================
+# R1（独立对抗验证）：未登记包装键不得把两条无关诊断重新拼成一条
+# 反例来源：条目边界只在**已登记键**上生效，中间夹一层未登记键 / 信封值是 dict /
+# dict 里套 list，就退回「整棵子树标量 join」，凑出「定位+原因」假命中。
+# 修法：列表每个元素各自成条；只有「全部值都是标量的 dict」才合并成一条；含嵌套
+# 容器的一律递归其嵌套容器（穿透任意未登记键），自身标量不再成组。
+# ======================================================================
+
+case('R1 信封值直接是 dict（errors:{e1,e2}）不得拼成一条 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': {'e1': 'activePower', 'e2': '输出未绑定'}}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R1 未登记包装键（report.wrapper.errors）不得拼成一条 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'report': {'wrapper': {'errors': ['activePower', '输出未绑定']}}}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R1 同一列表元素内嵌两个条目 dict 不得拼成一条 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': [
+         {'entry_1': {'msg': 'activePower'}, 'entry_2': {'msg': '输出未绑定'}}]}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R1 同一 dict 内两个 list 不得拼成一条 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': [
+         {'a_list': ['activePower'], 'b_list': ['输出未绑定']}]}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R1 容器自身两个标量字段不得拼成一条 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'report': {'title': 'activePower', 'reason_text': '输出未绑定'}}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+# 合法对照：只要定位与原因在**同一条**消息里，穿过未登记键仍必须命中
+case('R1 未登记包装键 + 全标量叶子条目（name+message）→ product_pass（对照）',
+     V.classify_guard_attempt(True, resp(422, {'report': {'wrapper': {'errors': [
+         {'name': 'activePower', 'message': '未绑定'}]}},
+         'title': '校验未通过'}),
+         {'block_status': 422, 'diagnostic_term_groups': [['activePower'], ['未绑定']]}),
+     V.PRODUCT_PASS)
+case('R1 信封 dict 的单条文案含定位+原因 → product_pass（对照）',
+     V.classify_guard_attempt(True, resp(422, {'errors': {'e1': '属性 X.activePower 引用编排输出未绑定'}}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+# 位置限制（合并只允许「信封列表的直接元素 + 全标量」）：再包一层就不得合并
+case('R1 双层信封列表 [[{a,b}]] 不得合并 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': [[{'a': 'activePower', 'b': '输出未绑定'}]]}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R1 包装内的全标量 dict（errors.e1:{a,b}）不得合并 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': {'e1': {'a': 'activePower', 'b': '输出未绑定'}}}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R1 check.diagnostics[].内嵌 dict 不得合并 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'check': {'diagnostics': [
+         {'level': 'error', 'info': {'a': 'activePower', 'b': '输出未绑定'}}]}}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R1 双层信封列表内单条含定位+原因 → product_pass（对照）',
+     V.classify_guard_attempt(True, resp(422, {'errors': [[{'a': '属性 X.activePower 引用编排输出未绑定'}]]}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+case('R1 未登记包装键下单条含定位+原因 → product_pass（对照）',
+     V.classify_guard_attempt(True, resp(422, {'check': {'diagnostics': [
+         {'level': 'error', 'wrapped': {'a': '属性 X.activePower 引用编排输出未绑定'}}]}}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+# 提取层直接锁定：未登记包装键下的两条诊断仍是两条，且不丢条目边界
+_r1 = V.diag_messages(resp(422, {'report': {'wrapper': {'errors': ['activePower', '输出未绑定']}}}))
+case('R1 diag_messages 穿透未登记包装键且保留条目边界', {
+    'result': V.PRODUCT_PASS if _r1 == ['activePower', '输出未绑定'] else 'mismatch',
+    'reason': 'diag_messages=%r' % (_r1,)}, V.PRODUCT_PASS)
+
+# ======================================================================
+# R2（独立对抗验证，真实可达）：items[].status 语义必须纳入阻断判定
+# project_validation 用 status 表达严重性：invalid=阻断、unconfigured=待补全、valid=正常。
+# 未声明 status 时维持「按阻断处理」，避免把真实拦截判死。
+# ======================================================================
+
+_R2_ITEMS = {'errors': ['数据连接名称重复：主数据库'],
+             'items': [{'kind': 'propertySource', 'id': 'Station.activePower',
+                        'status': 'unconfigured', 'issues': ['activePower 输出未绑定']}]}
+case('R2 validate：items[].status=unconfigured 不算阻断证据 → test_error',
+     V.classify_validate_observation(True, resp(200, _R2_ITEMS),
+                                     {'ok_status': (200,), 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R2 guard：items[].status=unconfigured 不算阻断证据 → test_error',
+     V.classify_guard_attempt(True, resp(422, _R2_ITEMS),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R2 validate：items[].status=invalid 且 issues 命中 → product_pass（对照）',
+     V.classify_validate_observation(
+         True, resp(200, {'errors': ['数据连接名称重复：主数据库'],
+                          'items': [{'kind': 'propertySource', 'id': 'Station.activePower',
+                                     'status': 'invalid', 'issues': ['activePower 输出未绑定']}]}),
+         {'ok_status': (200,), 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+case('R2 validate：items[] 未声明 status 且 issues 命中 → product_pass（对照，不得判死）',
+     V.classify_validate_observation(
+         True, resp(200, {'errors': ['数据连接名称重复：主数据库'],
+                          'items': [{'kind': 'propertySource', 'id': 'Station.activePower',
+                                     'issues': ['activePower 输出未绑定']}]}),
+         {'ok_status': (200,), 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+case('R2 guard：items[].status=error 且 issues 命中 → product_pass（对照）',
+     V.classify_guard_attempt(
+         True, resp(422, {'errors': ['名称重复'],
+                          'items': [{'status': 'error', 'issues': ['activePower 输出未绑定']}]}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+case('R2 guard：items[].status=VALID（大小写不敏感）不算阻断证据 → test_error',
+     V.classify_guard_attempt(
+         True, resp(422, {'errors': ['名称重复'],
+                          'items': [{'status': 'VALID', 'issues': ['activePower 输出未绑定']}]}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+
+# ======================================================================
+# R3（独立对抗验证）：note/notes/detail/details 是补充说明，不得当阻断证据
+# ======================================================================
+case('R3 guard：note 里的目标内容不算阻断证据 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['名称重复'], 'note': 'activePower 输出未绑定'}),
+                              {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R3 validate：details 里的目标内容不算阻断证据 → test_error',
+     V.classify_validate_observation(
+         True, resp(200, {'errors': ['名称重复'], 'details': {'note': ['activePower 输出未绑定']}}),
+         {'ok_status': (200,), 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+_r3_all = V.diag_messages(resp(422, {'errors': ['名称重复'], 'note': 'activePower 输出未绑定'}))
+_r3_blk = V.blocking_diag_messages(resp(422, {'errors': ['名称重复'], 'note': 'activePower 输出未绑定'}))
+case('R3 diag_messages 保留 note（报告用），blocking 不含它', {
+    'result': V.PRODUCT_PASS if (_r3_all == ['名称重复', 'activePower 输出未绑定'] and _r3_blk == ['名称重复'])
+              else 'mismatch',
+    'reason': 'all=%r blocking=%r' % (_r3_all, _r3_blk)}, V.PRODUCT_PASS)
+
+# ======================================================================
+# R4（独立对抗验证）：level/severity/status 要向下找最近一层，但只在同一条目子树内
+# ======================================================================
+case('R4 条目内嵌 dict 的 level=warning 使该条非阻断 → test_error',
+     V.classify_guard_attempt(
+         True, resp(422, {'errors': ['名称重复'],
+                          'report': {'detail': {'level': 'warning'}, 'message': 'activePower 输出未绑定'}}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.TEST_ERROR)
+case('R4 条目自身 level=error 压过内嵌 warning → product_pass（对照，就近优先）',
+     V.classify_guard_attempt(
+         True, resp(422, {'errors': [{'level': 'error', 'report': {'detail': {'level': 'warning'}},
+                                      'message': 'activePower 输出未绑定'}],
+                          'warnings': ['无关提示']}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+case('R4 兄弟条目的 warning 不得否掉本条目 → product_pass（对照，不跨条目生效）',
+     V.classify_guard_attempt(
+         True, resp(422, {'errors': [{'level': 'error', 'message': 'activePower 输出未绑定'}],
+                          'check': {'diagnostics': [{'level': 'warning', 'message': 'activePower 无关提示'}]}}),
+         {'block_status': 422, 'diagnostic_term_groups': _G01}),
+     V.PRODUCT_PASS)
+
 # 12) 旧枚举映射与汇总（含 crash 行按 test_error 归并）case('旧枚举 pass→product_pass', {'result': V.to_result('pass'), 'reason': ''}, V.PRODUCT_PASS)
 case('旧枚举 fail→缺陷复现', {'result': V.to_result('fail'), 'reason': ''}, V.NEW_DEFECT)
 rows = [{'case': 'A', 'verdict': 'pass'}, {'case': 'B', 'verdict': 'known'},

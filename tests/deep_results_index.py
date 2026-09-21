@@ -30,6 +30,9 @@ DOC = REPO / '文档/需求/20260921_系统全方位深度测试/结果索引.md
 
 BUSINESS_SHA = 'd6c73c29a19d97ad8da22ad3d8a8f3c0615e3b40'
 
+# `tests/deep_results_index_test.py` 的用例数（仅用于文档 §5 如实标注，改测试时同步改这一行）。
+TEST_CASE_COUNT = 51
+
 # 有效批次口径：同一次脚本运行连续写入的行区间（1-based，闭区间）。
 # status: valid=该批次结论有效；superseded=被后续完整批次替代（保留原始行，不计入统计）。
 BATCHES = [
@@ -200,9 +203,85 @@ def is_tool_error_row(row):
     return bool(TOOL_ERROR_KINDS.search(kind) or TOOL_ERROR_KINDS.search(title)
                 or 'Traceback (most recent call last)' in evidence)
 
+
+def normalize_kind(kind):
+    """kind 归一化：去掉首尾空白并小写（用于兼容 `' info'` / `'INFO '` 之类变体）。"""
+    return str(kind or '').strip().lower()
+
+
+def is_info_kind(kind):
+    """kind 是否声明为说明行：归一化后**以 info 开头**。
+
+    有效批次侧（业务证据过滤）用前缀判定是**保守**方向：任何自称 info 的 kind 都不算业务证据，
+    只会导致覆盖判定报错（响亮失败），不会把说明行算成通过。**缺 kind 键或 kind 为空不算 info**
+    —— 正常业务判定行允许不带 kind，不能因此被误排除。
+    """
+    return normalize_kind(kind).startswith('info')
+
+
+def is_declared_info_row(row):
+    """被替代批次里该行是否「本身就是说明行」（`infoOnlyRows`）。
+
+    这里用**严格相等**（归一化后 kind == 'info'）或 legacy verdict 为 info：被替代侧判错会把
+    真实业务场景变成「无需覆盖」，属于静默少要求覆盖，所以不采用前缀判定（避免 `information`
+    之类前缀被误当成说明行）。
+    """
+    return row.get('legacyVerdict') == 'info' or normalize_kind(row.get('kind')) == 'info'
+
+
+# 真实业务判定结果集合：只有这四类表示「该场景真的跑出了业务结论」。
+# blocked（用例阻塞、场景没跑完）/ test_error（工具错误）/ not_tested（未执行）/
+# info（说明行）/ 空值都不是业务证据，不能证明被替代批次的场景已被覆盖。
+BUSINESS_EVIDENCE_RESULTS = frozenset({V.PRODUCT_PASS, V.KNOWN_DEFECT, V.NEW_DEFECT, V.STATIC_PASS})
+
+
+def is_business_evidence_row(row):
+    """有效批次里的该条记录是否可作为**业务覆盖证据**。
+
+    必须是**真实业务判定行**（S1 加固：原判定只看「不是 info」，过宽且可被绕过）：
+    - 必须有 caseId：缺 caseId / 空串的行无法归属场景，一律排除；
+    - 必须有 result 且取值属于 `BUSINESS_EVIDENCE_RESULTS`：`blocked`/`test_error`/
+      `not_tested`/`''`/缺 result 一律排除 —— blocked 表示该场景根本没跑完，
+      不能用来证明场景被覆盖（真实数据 O4-07a 即此情形，见 COVERAGE_UNCONFIRMED）；
+    - kind 去掉空白并小写后仍为 info 的说明行不算证据（`' info'`、`'INFO '` 等变体同样排除）；
+      缺 kind 键**不算** info，正常行不因此被误伤；
+    - 记录自身声明为工具错误/异常中断的行不算证据（与 crash 豁免同一判定）。
+
+    info 说明行/阻塞行/工具错误行都不得充当覆盖，也不得顶替拆分（一拆多）或
+    别名（任选其一）路径上的业务场景：该过滤被三条路径共用（G03）。
+    """
+    if not str(row.get('caseId') or '').strip():
+        return False
+    result = row.get('result')
+    if not isinstance(result, str) or result not in BUSINESS_EVIDENCE_RESULTS:
+        return False
+    if is_info_kind(row.get('kind')):
+        return False
+    if is_tool_error_row(row):
+        return False
+    return True
+
+
 # 旧编号被拆成多个子用例：**全部子用例**都必须出现在有效批次（一拆多，F04）。
 CASE_ID_SPLITS = {
     'O4-07': {'O4-07a', 'O4-07b'},
+}
+
+# 显式登记的「未确认」覆盖缺口（F04「无法归属项标未确认」口径，S3 修订）。
+#
+# 键 = (文件, runLabel, 被替代编号, 缺失项)：
+#   - 缺失项 = 拆分路径上缺业务证据的子用例编号（`CASE_ID_SPLITS` 的子项）；
+#   - 缺失项 = None 表示同编号 / 别名路径上该编号整体只有 info 说明行或完全缺失。
+# 命中登记的缺口**不抛异常**，但必须在返回结构的 `unconfirmed` 与文档 §2.2 覆盖表里列为
+# 「未确认」并写明原因，不能混进「全部已覆盖」。**未登记的真实缺口仍然报错退出**：
+# 登记只能由人手工写进本文件才生效，数据不能自动把自己标成未确认。
+COVERAGE_UNCONFIRMED = {
+    ('q02/o3o4o5-rules-publish.jsonl', 'q02-o3o4o5-1', 'O4-07', 'O4-07a'):
+        '有效批次 q02-o3o4o5-2 的 O4-07a 行（第 29 行）为 blocked：restore「成功路径」因 D-Q02-01'
+        '（versions.publish 不写 release-zip 附件 → 在线新资产无快照可恢复）无法成立，'
+        '用例被阻塞、场景没跑完，是阻塞行而不是业务证据（既非通过也非缺陷复现）；'
+        '同批 O4-07b 已按错误路径（400/409）独立验证为产品通过。该子场景**未确认**，'
+        '不等于已覆盖，需在修复 D-Q02-01 后补跑成功路径才能确认。',
 }
 
 # 旧编号对应多个**等价**编号：命中任意一个即可（任选其一）。
@@ -272,12 +351,14 @@ def classify_row(row, rel, line_no):
     - 工具中断只按 kind 判定（含「中断/异常/crash/error/traceback」），**不按 case 名**：
       业务场景名里出现 crash 不能豁免；
     - 旧枚举只在 LEGACY_MAP 内映射；**枚举外的 verdict 一律 test_error**，
-      不再用「默认 product_pass」兜底（拼写错误/新枚举不得悄悄算成通过）。
+      不再用「默认 product_pass」兜底（拼写错误/新枚举不得悄悄算成通过）；
+    - S2 加固：info 语义**只由 verdict 决定**（`kind == 'info'` 仅作兼容补充，且只在 verdict
+      本身不是 fail/blocked/known 时生效）—— `verdict == 'fail'` 的行不得因为 kind 写了 info
+      就被降级成说明行，否则真实失败会在统计里消失。
     """
     override = RECLASSIFY.get('%s#%d' % (rel, line_no))
     if override:
         return override['result']
-    kind = str(row.get('kind') or '')
     verdict = row.get('verdict')
     if 'kind' not in row:
         raise AssertionError('证据行缺少 kind 字段（%s#%d），无法判定' % (rel, line_no))
@@ -287,11 +368,13 @@ def classify_row(row, rel, line_no):
         return V.BLOCKED
     if verdict == 'known':
         return V.KNOWN_DEFECT
-    if verdict == 'info' or kind == 'info':
-        return V.INFO
+    # info 语义只适用于真正的说明行：fail 行（真实失败）不得因 kind 含 info 而降级；
+    # 判断顺序上 fail 分支放在 info 兼容分支之前（S2）。
     if verdict == 'fail':
         # 有效批次内的 fail：Q05 首跑的断言 fail 已在有效批次 pass，这里只剩 D1 缺陷复现
         return V.NEW_DEFECT
+    if verdict == 'info' or is_info_kind(row.get('kind')):
+        return V.INFO
     if verdict == 'pass':
         return V.PRODUCT_PASS
     raise AssertionError('证据行 verdict 不在已知枚举内（%s#%d: %r），'
@@ -307,7 +390,16 @@ def validate_superseded_coverage(batches):
       有效批次里 —— 只覆盖其中一个不能算替代完成（独立复验 F04 指出的漏检）；
     - `CASE_ID_ALTERNATIVES`（任选其一）：旧编号对应多个**等价**编号，命中任意一个即可；
     - 其余 caseId 必须原样出现在同文件的某个有效批次里；
-    - 出现无法归属的场景即报错退出（对应「无法归属项标未确认」的强制口径）。
+    - 未被覆盖的场景**报错退出**；只有在 `COVERAGE_UNCONFIRMED` 里**显式登记**的缺口例外：
+      它不抛异常，但必须在返回结构的 `unconfirmed` 里逐项写明原因（文档 §2.2 同表列出），
+      不得混进「全部已覆盖」（对应「无法归属项标未确认」的口径）。
+
+    「业务覆盖」只有一种口径（G03 修订，S1 加固）：有效批次里只有**真实业务判定行**
+    （`is_business_evidence_row`：有 caseId、result 属 product_pass/known_defect_reproduced/
+    new_defect_reproduced/static_check_pass、且不是 info 说明行也不是工具错误行）才算业务证据；
+    同编号、拆分、任选其一三条路径共用同一过滤集合 `valid_business_cases` 判定。
+    blocked / test_error / not_tested / 空 result / info 行都只影响覆盖判定（导致未覆盖或未确认），
+    不会被当作业务通过。
     """
     checked = []
     by_file = {}
@@ -317,17 +409,32 @@ def validate_superseded_coverage(batches):
         if entry['status'] == 'valid':
             continue
         valid_cases = set()
-        valid_rows = {}
+        valid_business_cases = set()
         for other in by_file[entry['file']]:
             if other['status'] == 'valid':
                 for c in other['cases']:
                     valid_cases.add(c['caseId'])
-                    valid_rows.setdefault(c['caseId'], []).append(c)
-        crash, info_only, uncovered, split_detail = [], [], [], []
+                    if is_business_evidence_row(c):
+                        valid_business_cases.add(c['caseId'])
+        crash, info_only, uncovered, split_detail, unconfirmed = [], [], [], [], []
+
+        def record_gap(case_id, missing, message):
+            """登记一处覆盖缺口：显式登记的未确认项不报错但必须列出，未登记的一律报错。"""
+            key = (entry['file'], entry['runLabel'], str(case_id),
+                   None if missing is None else str(missing))
+            reason = COVERAGE_UNCONFIRMED.get(key)
+            if reason is None:
+                uncovered.append('%s（如需标未确认，请在 COVERAGE_UNCONFIRMED 显式登记并写明原因）'
+                                 % message)
+                return
+            unconfirmed.append({'case': str(case_id), 'missing': missing, 'reason': reason,
+                                'registryKey': list(key)})
+
         for case in entry['cases']:
             cid = str(case['caseId'])
-            # 被替代批次里本身只是说明行（如会话建立）的不是业务场景，无需业务覆盖，但须列出
-            if case.get('legacyVerdict') == 'info' or str(case.get('kind') or '').lower() == 'info':
+            # 被替代批次里本身只是说明行（如会话建立）的不是业务场景，无需业务覆盖，但须列出；
+            # 用 is_declared_info_row（严格相等）而不是前缀判定，避免静默少要求覆盖。
+            if is_declared_info_row(case):
                 info_only.append(cid)
                 continue
             # 工具错误行（套件异常中断/堆栈）没有对应业务场景，允许无覆盖但必须列出；
@@ -338,33 +445,36 @@ def validate_superseded_coverage(batches):
                 continue
             if cid in valid_cases:
                 # 有效批次里命中同一 caseId 的行还必须是**业务判定行**，不能被 info 说明行顶替
-                rows = valid_rows.get(cid) or []
-                if any(not str(r.get('kind') or '').lower().startswith('info') and r.get('result') != V.INFO
-                       for r in rows):
+                if cid in valid_business_cases:
                     continue
-                uncovered.append('%s（有效批次仅有 info 说明行，不能作为业务覆盖）' % cid)
+                record_gap(cid, None, '%s（有效批次仅有非业务判定行——info 说明行/阻塞行/'
+                                      '工具错误行，不能作为业务覆盖）' % cid)
                 continue
             required = CASE_ID_SPLITS.get(cid)
             if required is not None:
-                missing = sorted(required - valid_cases)
+                # 子用例同样必须是业务判定行：info 行不能顶上缺失的子用例（G03）
+                missing = sorted(required - valid_business_cases)
                 split_detail.append({'superseded': cid, 'required': sorted(required),
                                      'missing': missing})
-                if missing:
-                    uncovered.append('%s（拆分后缺：%s）' % (cid, '、'.join(missing)))
+                for child in missing:
+                    record_gap(cid, child, '%s（拆分后缺：%s）' % (cid, child))
                 continue
             alternatives = CASE_ID_ALTERNATIVES.get(cid)
             if alternatives is not None:
-                if alternatives & valid_cases:
+                # 任选其一也必须在**业务**记录里命中，info 行不代表等价场景被执行（G03）
+                if alternatives & valid_business_cases:
                     continue
-                uncovered.append('%s（等价编号均缺失：%s）' % (cid, '、'.join(sorted(alternatives))))
+                record_gap(cid, None, '%s（等价编号均缺失：%s）' % (cid, '、'.join(sorted(alternatives))))
                 continue
-            uncovered.append(cid)
+            record_gap(cid, None, cid)
         assert not uncovered, \
-            '被替代批次 %s 有未被有效批次覆盖的场景：%s（请补替代关系或修正批次登记）' % (entry['runLabel'], uncovered)
+            '被替代批次 %s 有未被有效批次覆盖的场景：%s（请补替代关系或修正批次登记；' \
+            '确属无法归属的场景才可在 COVERAGE_UNCONFIRMED 显式登记为未确认）' % (entry['runLabel'], uncovered)
         checked.append({'runLabel': entry['runLabel'], 'file': entry['file'],
                         'supersededCases': len(entry['cases']),
                         'toolErrorCrashRows': crash, 'infoOnlyRows': info_only,
-                        'uncovered': uncovered, 'splitCoverage': split_detail})
+                        'uncovered': uncovered, 'unconfirmed': unconfirmed,
+                        'splitCoverage': split_detail})
     return checked
 
 
@@ -489,16 +599,31 @@ def render_markdown(index):
     lines.append('')
     lines.append('### 2.2 被替代批次的覆盖核对（机器强制）')
     lines.append('')
-    lines.append('| 被替代批次 | 被替代记录 | 无对应业务的工具错误行 | 本身即说明行 | 未覆盖场景 |')
-    lines.append('|---|---|---|---|---|')
+    lines.append('| 被替代批次 | 被替代记录 | 无对应业务的工具错误行 | 本身即说明行 | '
+                 '未覆盖场景（硬缺口） | 未确认（显式登记，写明原因） |')
+    lines.append('|---|---|---|---|---|---|')
     for item in index.get('supersededCoverage', []):
-        lines.append('| %s | %d | %s | %s | %s |' % (item['runLabel'], item['supersededCases'],
-                                                     '、'.join(item['toolErrorCrashRows']) or '—',
-                                                     '、'.join(item.get('infoOnlyRows') or []) or '—',
-                                                     '、'.join(item['uncovered']) or '无（全部已覆盖）'))
+        unconfirmed = item.get('unconfirmed') or []
+        if item['uncovered']:
+            uncovered_txt = '、'.join(item['uncovered'])
+        elif unconfirmed:
+            uncovered_txt = '无（其余场景已覆盖；%d 项未确认见右列）' % len(unconfirmed)
+        else:
+            uncovered_txt = '无（全部已覆盖）'
+        unconfirmed_txt = '；'.join(
+            '%s：%s' % (u['missing'] or u['case'], u['reason']) for u in unconfirmed) or '—'
+        lines.append('| %s | %d | %s | %s | %s | %s |' %
+                     (item['runLabel'], item['supersededCases'],
+                      '、'.join(item['toolErrorCrashRows']) or '—',
+                      '、'.join(item.get('infoOnlyRows') or []) or '—',
+                      uncovered_txt, unconfirmed_txt))
     lines.append('')
     lines.append('覆盖核对失败时生成器直接报错退出，不允许用「被替代」掩盖记录。')
-    lines.append('业务场景不能由 info 说明行顶替；`*-crash` 行的中断豁免要求 kind 确为工具错误。')
+    lines.append('业务场景不能由 info 说明行顶替；只有「真实业务判定行」算业务证据 —— '
+                 'blocked（用例阻塞、场景没跑完）/test_error/not_tested/空 result 都不算，'
+                 '`*-crash` 行的中断豁免要求 kind 确为工具错误。')
+    lines.append('「未确认」是 `COVERAGE_UNCONFIRMED` 里人工显式登记的缺口（含原因），'
+                 '不计入已覆盖；未登记的真实缺口仍报错退出，登记无法由数据自动产生。')
     lines.append('')
     lines.append('## 3. 有效批次的分类统计（按新分类）')
     lines.append('')
@@ -535,11 +660,19 @@ def render_markdown(index):
     lines.append('## 5. 本轮继续验证的新批次（2026-09-21 修订后）')
     lines.append('')
     lines.append('本次端口 18951、数据根 `.runtime/reverify-data`（全新合成根，未写 18931 / 真实根）。')
-    lines.append('修订后的判定函数：`tests/deep_verdicts.py`；自测 `tests/deep_verdicts_test.py`（41 项）与')
-    lines.append('`tests/deep_results_index_test.py`（12 项，覆盖替代/覆盖/拆分核对器）。')
+    lines.append('修订后的判定函数：`tests/deep_verdicts.py`；自测 `tests/deep_verdicts_test.py`（82 项）与')
+    lines.append('`tests/deep_results_index_test.py`（%d 项，覆盖替代/覆盖/拆分/工具错误豁免/'
+                 '业务证据过滤/未确认登记）。' % TEST_CASE_COUNT)
     lines.append('第二轮（按 S1–S3 独立复验 F01–F05 整改）：拒绝分支同样要求版本零新增且版本可读，')
     lines.append('诊断只从约定诊断字段取文本（含诊断键下的字符串列表），校验接口须先过状态码/响应结构，')
     lines.append('一拆多的子用例必须全部覆盖。详见 缺陷清单.md 的「复验整改」段。')
+    lines.append('第三轮（按 F01–F05 独立验收 G01–G03 整改）：嵌套容器保留诊断条目边界、'
+                 'warning 不得替无关错误证明阻断、覆盖核对三条路径共用「有效业务证据」过滤。')
+    lines.append('第四轮（S1–S3 覆盖判定加固）：业务证据只认有 caseId 且 result 属'
+                 '「真实业务判定集合」的行（blocked/test_error/not_tested/空 result/'
+                 '大小写与前导空格变体 info 一律不算）；`classify_row` 不再把 `fail` 行因 kind 含 '
+                 'info 降级成说明行；O4-07a（阻塞行）按 `COVERAGE_UNCONFIRMED` 显式登记为**未确认**，'
+                 'O4-07b 仍为已覆盖。')
     lines.append('')
     lines.append('### 5.1 本轮运行日志（工具错误一并登记）')
     lines.append('')
@@ -613,6 +746,10 @@ def main():
     print('断言记录=%d 唯一场景=%d 缺陷根因=%d' %
           (index['totals']['assertionRecords'], index['totals']['scenarioUniqueCases'],
            index['totals']['defectRootCauseCount']))
+    unconfirmed = [(item['runLabel'], u['case'], u['missing'] or u['case'])
+                   for item in index['supersededCoverage'] for u in item.get('unconfirmed') or []]
+    print('未确认覆盖缺口 %d 项（COVERAGE_UNCONFIRMED 显式登记，不计入已覆盖）：%s' %
+          (len(unconfirmed), '；'.join('%s 的 %s（缺失项 %s）' % t for t in unconfirmed) or '无'))
     print('完整索引（含逐行分类）：%s' % full)
     if args.write_doc:
         DOC.write_text(render_markdown(index), encoding='utf-8')
