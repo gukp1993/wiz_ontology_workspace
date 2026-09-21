@@ -18,6 +18,7 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-21 | **08 分册 V2-4 格式黑名单三层（G20）**：新增 `POST /api/build-task-filter`（任务级过滤设置，任务 token CAS）与 `GET /api/build-materials?view=filter` 过滤报告视图；`build-upload-init` 命中黑名单 → 422 `BLACKLISTED`；ZIP 展开响应附 `filtered[]` 逐项命中规则；capabilities 新增 `blacklist` 枚举；Task 新增 `filter` 字段。判定优先级 硬>白名单>软>自定义追加，硬黑名单为安全边界不可配置，被过滤文件必须可见（计数+清单+命中规则）。详见 08 §13 | `/api/build-task-filter`（新增）、`/api/build-upload-init`、`/api/build-upload-complete`、`/api/build-materials?view=filter`、`/api/build-capabilities` | zcode |
 | 2026-09-21 | **深度测试分支集成（codex/test → main 合并）**：A01/R02 两侧独立修复统一口径——行为取 main 侧（B01/B02/C01 演进版：项目校验时编排依赖上下文按三态协议传入，连接集合恒为已知），报错文案统一为深度测试分支的富格式（A01：`规则/动作 「名称」(id)：content/effect 提供时必须为文本（当前类型 X）`；R02：`属性来源 对象.属性：引用的编排 名称(flowId) 配置无效：原因`，不存在编排补 id 定位）。金样按合并后实现重建（100 样例），详见 02 §4.9、03 §2.2 | POST /api/validate、/api/save（errors）、/api/publish；/api/project-validate、/api/project-publish（errors 文案） | zcode |
 | 2026-09-21 | 集成验收P3文案纠正：元数据仍统一读取并缓存；未声明依赖时不以对应目录读取失败阻断。仅修正文档，不改变实现。 | 03 §2.2、04 §2.2 | codex |
 | 2026-09-21 | **C01 空白依赖引用漏检修复（B01/B02 第二轮独立验收补充）**：依赖声明判据统一为**原始值的非空字符串**（与检查器底层口径一致，不做 `strip()` 归一）——`providerId`/`credentialId` 为纯空白（空格/Tab/换行）时属「已声明但无效」，必须照常装载上下文：目录可读 → 报「不存在或已被删除」，读取失败 → 报「读取失败」阻断，两条路径均不得跳过检查后放行发布（修复前：模型空集合/读取异常两态均 200 并新增版本）；键缺失/`None`/空字符串仍按未声明走兼容路径、不被无关故障误伤；不 trim/不重写既有 ID，只读兼容语义与编排编辑页 `None` 未知上下文行为不变。详见 03 §2.2、04 §2.2 | POST /api/project-validate、/api/project-publish（errors/422 语义） | zcode |

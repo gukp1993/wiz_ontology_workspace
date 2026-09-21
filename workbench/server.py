@@ -124,6 +124,7 @@ POST_ROUTES = {
     # 从物料自动构建本体（08 分册）：长任务一律返回 runId，后台执行不持锁
     '/api/build-task-create': build_routes.post_task_create,
     '/api/build-task-rename': build_routes.post_task_rename,
+    '/api/build-task-filter': build_routes.post_task_filter,
     '/api/build-task-delete': build_routes.post_task_delete,
     '/api/build-upload-init': build_routes.post_upload_init,
     '/api/build-upload-chunk': build_routes.post_upload_chunk,

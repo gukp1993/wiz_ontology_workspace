@@ -69,9 +69,88 @@ def task_view(row):
         'scopeRevision': int(row['scope_revision']),
         'currentBatch': row['current_batch'] or '',
         'deliveryOntologyId': row['delivery_ontology_id'] or '',
+        # V2-4（08 §13）：任务级过滤设置（'.' 前缀小写后缀；softExts=None 表示用默认软名单）
+        'filter': filter_spec_view(row),
         'createdAt': row['created_at'],
         'updatedAt': row['updated_at'],
     }
+
+
+def filter_spec_view(row):
+    """filter_json 列 → 任务过滤设置视图；缺列/坏 JSON 按未配置处理（迁移前旧行兼容）。"""
+    try:
+        raw = row['filter_json']
+    except (KeyError, IndexError):
+        return {'allowExts': [], 'softExts': None, 'excludeExts': []}
+    value = _loads(raw if raw is not None else '{}', {})
+    soft = value.get('softExts')
+    return {
+        'allowExts': [str(item) for item in value.get('allowExts') or []],
+        'softExts': [str(item) for item in soft] if isinstance(soft, list) else None,
+        'excludeExts': [str(item) for item in value.get('excludeExts') or []],
+    }
+
+
+def filter_report_view(row):
+    """filter_report_json 列 → 被过滤文件报告视图（G20：计数 + 清单 + 命中规则）。"""
+    try:
+        raw = row['filter_report_json']
+    except (KeyError, IndexError):
+        return {'items': [], 'counts': {'hard': 0, 'soft': 0, 'custom': 0, 'total': 0},
+                'truncated': False}
+    value = _loads(raw if raw is not None else '{}', {})
+    items = [item for item in value.get('items') or [] if isinstance(item, dict)]
+    counts = value.get('counts') if isinstance(value.get('counts'), dict) else {}
+    return {
+        'items': items,
+        'counts': {
+            'hard': int(counts.get('hard') or 0),
+            'soft': int(counts.get('soft') or 0),
+            'custom': int(counts.get('custom') or 0),
+            'total': int(counts.get('total') or 0),
+        },
+        'truncated': bool(value.get('truncated')),
+    }
+
+
+def set_task_filter(conn, task_id, owner_user_id, spec, now=None):
+    """写入任务过滤设置（不推进任务 revision；调用方先用 touch_task 做 CAS）。"""
+    conn.execute(sto.text('UPDATE wb_build_tasks SET filter_json = :f, updated_at = :n '
+                          'WHERE task_id = :t AND owner_user_id = :o'),
+                 {'f': _dumps(spec), 'n': now or sto.utcnow(), 't': task_id,
+                  'o': owner_user_id or ''})
+
+
+def append_filter_events(conn, task_id, owner_user_id, events, max_items=500, now=None):
+    """登记被过滤文件事件（G20）：计数累加、清单保留最近 max_items 条、超限置 truncated。
+
+    事件形状：{'path': str, 'layer': 'hard'|'soft'|'custom', 'rule': str, 'size': int}；
+    同一任务累计（跨多次上传/展开），最近事件排在前面。失败不抛——过滤报告是辅助可见性，
+    不应让上传/展开主流程回滚（与 blob 文件删除失败不回滚同一原则）。
+    """
+    try:
+        row = _task_row(conn, task_id, owner_user_id)
+        if row is None:
+            return
+        report = filter_report_view(row)
+        merged = list(events or []) + report['items']
+        counts = {'hard': 0, 'soft': 0, 'custom': 0, 'total': 0}
+        for item in merged:
+            layer = str(item.get('layer') or '')
+            key = layer if layer in ('hard', 'soft', 'custom') else 'hard'
+            counts[key] = counts.get(key, 0) + 1
+            counts['total'] += 1
+        payload = {
+            'items': merged[:max_items],
+            'counts': counts,
+            'truncated': bool(report.get('truncated') or len(merged) > max_items),
+        }
+        conn.execute(sto.text('UPDATE wb_build_tasks SET filter_report_json = :r, updated_at = :n '
+                              'WHERE task_id = :t AND owner_user_id = :o'),
+                     {'r': _dumps(payload), 'n': now or sto.utcnow(), 't': task_id,
+                      'o': owner_user_id or ''})
+    except Exception:
+        return
 
 
 def get_task(conn, task_id, owner_user_id):

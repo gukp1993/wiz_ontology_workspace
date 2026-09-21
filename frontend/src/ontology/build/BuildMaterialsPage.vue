@@ -7,13 +7,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  abortUpload, conflictRevision, errorMessage, fetchMaterialGroups, fetchMaterialsPage, fetchRun,
-  materialRevisionToken, retryMaterial, scanMaterials, setMaterialExcluded, uploadFile,
+  abortUpload, conflictRevision, errorMessage, fetchMaterialFilter, fetchMaterialGroups,
+  fetchMaterialsPage, fetchRun, materialRevisionToken, retryMaterial, scanMaterials,
+  setMaterialExcluded, uploadFile,
 } from './api'
 import {
   KIND_LOCATOR_LABELS, PARSE_STATE_TONE, RUN_STATE_LABELS, RUN_STATE_TONE, STAGE_LABELS, coverageOf,
   formatBytes, labelOf, materialKindLabel, parseStateLabel, runErrorText, toneOf,
-  type BuildRun, type Material, type MaterialGroup, type RunStage, type RunState,
+  type BuildRun, type FilterReport, type Material, type MaterialGroup, type RunStage, type RunState,
 } from './types'
 import { filterByExtensions, parseExtensionFilter } from './uploadFilter'
 
@@ -85,6 +86,19 @@ const totalMaterials = computed(() => groupsTotal.value)
 const excludedTotal = computed(() => stateSum('excluded'))
 const activeCount = computed(() => totalMaterials.value - excludedTotal.value)
 const detailFolderLabel = computed(() => detailFolder.value === null ? '' : (detailFolder.value === '' ? '(根目录)' : detailFolder.value))
+
+// ─── 过滤报告（08 §13 / G20）：被黑名单过滤的文件计数 + 清单 + 命中规则 ──────
+const filterReport = ref<FilterReport | null>(null)
+const filterOpen = ref(false)
+const FILTER_LAYER_LABELS: Record<string, string> = { hard: '硬黑名单', soft: '软黑名单', custom: '任务追加' }
+async function loadFilterReport() {
+  try {
+    const r = await fetchMaterialFilter(props.taskId)
+    filterReport.value = r.report
+    if (r.report.counts.total > 0) filterOpen.value = true
+  } catch { /* 报告读取失败不打断清单主流程；展开时会看到空态 */ }
+}
+function layerLabel(layer: string): string { return FILTER_LAYER_LABELS[layer] || layer }
 function stateSummary(byParseState: Record<string, number>): string {
   const order: Array<[string, string]> = [['success', '成功'], ['partial', '部分成功'], ['failed', '失败'], ['pending', '待扫描'], ['running', '解析中'], ['excluded', '已排除']]
   const parts = order.filter(([key]) => (byParseState[key] || 0) > 0).map(([key, label]) => label + ' ' + byParseState[key])
@@ -116,6 +130,7 @@ async function loadMaterials() {
   loading.value = true; listError.value = ''
   try {
     await loadAggregates()
+    await loadFilterReport()
     if (viewMode.value === 'flat') await loadFlatPage()
     if (detailFolder.value !== null) await loadDetailPage()
   } catch (e) {
@@ -127,6 +142,7 @@ async function loadMaterials() {
 async function refreshAfterMutation() {
   // 排除/重试后的最小刷新：聚合必刷，当前打开的视图与详情按需刷新
   await loadAggregates()
+  await loadFilterReport()
   if (viewMode.value === 'flat') await loadFlatPage()
   if (detailFolder.value !== null) await loadDetailPage()
 }
@@ -211,7 +227,7 @@ function addFiles(files: File[]) {
 }
 
 async function syncMaterialsAfterUpload() {
-  try { await loadAggregates() } catch { /* 聚合读取失败不覆盖上传结果；用户可手动刷新 */ }
+  try { await loadAggregates(); await loadFilterReport() } catch { /* 聚合读取失败不覆盖上传结果；用户可手动刷新 */ }
 }
 
 async function runRow(row: UploadRow) {
@@ -412,6 +428,7 @@ watch(() => props.taskId, () => {
   run.value = null; runId.value = ''; runError.value = ''; ack.value = false; expandedId.value = ''
   groups.value = []; groupsTotal.value = 0; flatItems.value = []; flatTotal.value = 0; flatOffset.value = 0
   detailFolder.value = null; detailItems.value = []; detailTotal.value = 0
+  filterReport.value = null; filterOpen.value = false
   uploads.value = []
   void init()   // 上传循环（若有）结束后会从新队列继续，无需重置 busy
 })
@@ -639,6 +656,27 @@ const blockedReason = computed(() => {
       </label>
     </template>
     <p v-if="totalMaterials && !scannedAnything" class="bt-note">还没有扫描：先点击下方「扫描物料」识别材料内容。</p>
+
+    <!-- 过滤报告（08 §13 / G20）：被黑名单过滤的文件必须可见，不许静默消失 -->
+    <div v-if="filterReport && filterReport.counts.total > 0" class="bt-filterreport">
+      <button type="button" class="row-link" :aria-expanded="filterOpen" @click="filterOpen = !filterOpen">
+        {{ filterOpen ? '▾' : '▸' }} 被过滤文件 {{ filterReport.counts.total }} 个
+        <span class="bt-sub">（硬黑名单 {{ filterReport.counts.hard }} · 软黑名单 {{ filterReport.counts.soft }} · 任务追加 {{ filterReport.counts.custom }}）{{ filterReport.truncated ? ' · 清单仅保留最近 500 条' : '' }}</span>
+      </button>
+      <div v-if="filterOpen" class="bt-tablewrap">
+        <table class="bt-table">
+          <thead><tr><th scope="col">文件</th><th scope="col">命中层级</th><th scope="col">命中规则</th><th scope="col">大小</th></tr></thead>
+          <tbody>
+            <tr v-for="(item, i) in filterReport.items" :key="'f' + i">
+              <td>{{ item.path }}</td>
+              <td>{{ layerLabel(item.layer) }}</td>
+              <td><span class="bt-sub">{{ item.rule }}</span></td>
+              <td>{{ formatBytes(item.size) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
   <!-- 文件夹详情（分页）：具体文件的上传与解析情况在这里看 -->
@@ -763,6 +801,9 @@ const blockedReason = computed(() => {
 .bt-pill-info{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
 .bt-extfilter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 0;font-size:13px}
 .bt-extfilter input{flex:1;min-width:240px;padding:7px 10px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--paper)}
+.bt-filterreport{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.bt-filterreport .row-link{font-size:13px}
+.bt-filterreport table{min-width:640px}
 .bt-pager{display:flex;align-items:center;gap:12px;justify-content:flex-end;margin:10px 0}
 .bt-detail{width:min(1080px, 94vw);max-height:86vh;display:flex;flex-direction:column}
 .bt-detail .bt-tablewrap{flex:1;overflow:auto}

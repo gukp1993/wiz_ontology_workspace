@@ -46,6 +46,7 @@ import auth_client  # noqa: E402
 from workbench import model_format  # noqa: E402
 from workbench import storage  # noqa: E402
 from workbench.ontology_build import alignment  # noqa: E402
+from workbench.ontology_build import blacklist as blacklist_domain  # noqa: E402
 from workbench.ontology_build import materials as materials_domain  # noqa: E402
 from workbench.ontology_build import protocol  # noqa: E402
 from workbench.ontology_build import runner  # noqa: E402
@@ -941,6 +942,106 @@ def flow_revision_contracts():
           '物料排除按 String(materialRevision) 通过并推进修订', actual=(status, _short(excluded)))
 
 
+# --- 回归流：V2-4 格式黑名单三层（G20） ---------------------------------------------
+def flow_blacklist_filter():
+    """硬>白名单>软>自定义追加；直传拒绝 422 BLACKLISTED；ZIP 展开过滤报告可见。"""
+    status, caps = api('/api/build-capabilities')
+    bl = caps.get('blacklist') or {}
+    check('exe' in (bl.get('hard') or {}).get('exts', []) and '.doc' in (bl.get('softDefaults') or []),
+          'capabilities 公开黑名单枚举（硬层后缀 + 默认软名单）', actual=_short(bl))
+
+    status, created = api('/api/build-task-create', {'name': '黑名单三层回归'})
+    task_id = require((created.get('task') or {}).get('id'), '黑名单回归任务创建失败')
+    _, detail = api('/api/build-task', query='?taskId=' + task_id)
+    revision = (detail.get('task') or {}).get('revision')
+
+    # ① 直传硬黑名单（.exe）→ 422 BLACKLISTED，报告可见且规则含「硬黑名单」
+    status, body = api('/api/build-upload-init',
+                       {'taskId': task_id, 'relPath': 'lib/exploit.exe', 'size': 10})
+    check(status == 422 and body.get('code') == 'BLACKLISTED' and '硬黑名单' in str(body.get('error')),
+          '直传 .exe 命中硬黑名单 → 422 BLACKLISTED（安全边界）', actual=(status, _short(body)))
+    _, report = api('/api/build-materials', query='?taskId=%s&view=filter' % task_id)
+    rep = report.get('report') or {}
+    check(int((rep.get('counts') or {}).get('hard') or 0) == 1
+          and (rep.get('items') or [{}])[0].get('layer') == 'hard'
+          and '硬黑名单' in str((rep.get('items') or [{}])[0].get('rule')),
+          '被过滤文件进入过滤报告（计数 + 层级 + 命中规则，G20 不静默消失）',
+          actual=_short(rep))
+
+    # ② 直传默认软黑名单（.doc）→ 422，message 指明软黑名单（任务级可覆盖）
+    status, body = api('/api/build-upload-init',
+                       {'taskId': task_id, 'relPath': 'docs/legacy.doc', 'size': 10})
+    check(status == 422 and body.get('code') == 'BLACKLISTED' and '软黑名单' in str(body.get('error')),
+          '直传 .doc 命中默认软黑名单 → 422（提示可任务级覆盖）', actual=(status, _short(body)))
+
+    # ③ 任务级过滤设置：白名单 .doc（越过软名单）+ 追加排除 .foo；revision=任务 token
+    status, saved = api('/api/build-task-filter',
+                        {'taskId': task_id, 'revision': revision,
+                         'filter': {'allowExts': ['.doc'], 'excludeExts': ['foo']}})
+    check(status == 200 and (saved.get('filter') or {}).get('allowExts') == ['.doc']
+          and (saved.get('filter') or {}).get('excludeExts') == ['.foo'],
+          'build-task-filter 保存白名单与自定义追加（后缀规范化为 .ext）', actual=(status, _short(saved)))
+    _, detail = api('/api/build-task', query='?taskId=' + task_id)
+    revision = (detail.get('task') or {}).get('revision')
+    status, stale = api('/api/build-task-filter',
+                        {'taskId': task_id, 'revision': revision[:-4] + 'beef',
+                         'filter': {}})
+    check(status == 409 and stale.get('code') == 'REVISION_CONFLICT',
+          'build-task-filter 任务 token 不匹配 → 409（§0 口径）', actual=(status, _short(stale)))
+    # 白名单越过软名单：.doc 现在可以 init（登记后随即放弃，不入库）
+    status, init_doc = api('/api/build-upload-init',
+                           {'taskId': task_id, 'relPath': 'docs/legacy.doc', 'size': 10})
+    check(status == 200, '白名单 .doc 越过软黑名单：上传会话可建立', actual=(status, _short(init_doc)))
+    if status == 200:
+        api('/api/build-upload-abort', {'uploadId': init_doc.get('uploadId')})
+    # 白名单不越过硬黑名单：.exe 仍被拒
+    status, body = api('/api/build-upload-init',
+                       {'taskId': task_id, 'relPath': 'lib/exploit2.exe', 'size': 10})
+    check(status == 422 and body.get('code') == 'BLACKLISTED',
+          '白名单不越过硬黑名单：.exe 仍 422 BLACKLISTED', actual=(status, _short(body)))
+    # 自定义追加：.foo → 422 且 message 含「任务级追加」
+    status, body = api('/api/build-upload-init',
+                       {'taskId': task_id, 'relPath': 'custom/a.foo', 'size': 10})
+    check(status == 422 and '任务级追加' in str(body.get('error')),
+          '自定义追加后缀 .foo → 422（命中规则可见）', actual=(status, _short(body)))
+
+    # ④ ZIP 展开过滤：正常条目登记，硬/软/自定义命中条目进 filtered 且报告累计
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        archive.writestr('readme.md', '# 过滤回归\n')
+        archive.writestr('lib/libfoo.so', b'\x7fELF')
+        archive.writestr('node_modules/index.js', 'module.exports = 1')
+        archive.writestr('media/song.mp3', b'ID3')
+        archive.writestr('config.foo', 'x')
+    zip_bytes = buffer.getvalue()
+    status, result = _upload_bytes(zip_bytes, task_id, 'blackpkg.zip')
+    materials = result.get('materials') or []
+    filtered = result.get('filtered') or []
+    layers = sorted(item.get('layer') for item in filtered)
+    check(status == 200 and len(materials) == 1
+          and materials[0].get('relPath') == 'blackpkg.zip/readme.md',
+          'ZIP 展开仅登记未过滤条目（readme.md）', actual=(status, [m.get('relPath') for m in materials]))
+    check(len(filtered) == 4 and layers == ['custom', 'hard', 'hard', 'soft'],
+          'ZIP 被过滤条目逐项携带 layer（硬/软/自定义各层命中）',
+          actual=[(item.get('path'), item.get('layer')) for item in filtered])
+    _, report = api('/api/build-materials', query='?taskId=%s&view=filter' % task_id)
+    counts = (report.get('report') or {}).get('counts') or {}
+    check(int(counts.get('hard') or 0) == 4 and int(counts.get('soft') or 0) == 2
+          and int(counts.get('custom') or 0) == 2 and int(counts.get('total') or 0) == 8,
+          '过滤报告跨上传累计计数（硬 4 · 软 2 · 自定义 2）', actual=counts)
+
+    # ⑤ 黑名单单元口径：优先级与硬层豁免（不走 HTTP）
+    verdict = blacklist_domain.evaluate('report.doc', spec={'softExts': []})
+    check(verdict['filtered'] is False,
+          '任务软名单覆盖为空数组时 .doc 不再被软名单过滤', actual=verdict)
+    verdict = blacklist_domain.evaluate('node_modules/report.doc', spec={'allowExts': ['.doc']})
+    check(verdict['filtered'] is True and verdict['layer'] == 'hard',
+          '白名单不能越过硬黑名单目录（node_modules）', actual=verdict)
+    verdict = blacklist_domain.evaluate('a.doc', spec={'allowExts': ['.doc'], 'excludeExts': ['.doc']})
+    check(verdict['filtered'] is False and verdict['bypassed'] is True,
+          '白名单同时命中软与自定义时放行并标记 bypassed', actual=verdict)
+
+
 # --- 白盒与小单元：D13 fencing / D02 / D08 / D19 / D12 ------------------------------
 def flow_lease_fencing(task_id):
     """D13：lease 条件写回与重试轮换（存储层白盒）+ runner 阶段边界失配。"""
@@ -1414,7 +1515,7 @@ def main():
           and not db_rows("SELECT 1 FROM wb_build_uploads WHERE rel_path LIKE '%evil%'"),
           '上传路径穿越被拒（400 INVALID_ARGUMENT）且未登记上传会话', actual=(status, evil))
     status, big = api('/api/build-upload-init',
-                      {'taskId': task_id, 'relPath': 'big.bin',
+                      {'taskId': task_id, 'relPath': 'big.dat',
                        'size': protocol.FILE_BYTES + 1024})
     check(status == 422 and big.get('code') == 'LIMIT_EXCEEDED'
           and not db_rows("SELECT 1 FROM wb_build_uploads WHERE rel_path = 'big.bin'"),
@@ -1461,7 +1562,7 @@ def main():
     blob = bytes((3 + i * 31) % 256 for i in range(4096)) * (total_bytes // 4096 + 1)
     blob = blob[:total_bytes]
     status, init = api('/api/build-upload-init',
-                       {'taskId': bound_id, 'relPath': 'notes/big.bin', 'size': len(blob)})
+                       {'taskId': bound_id, 'relPath': 'notes/big.dat', 'size': len(blob)})
     upload_id = require(init.get('uploadId'), '多分片上传 init 失败：%s' % _short(init))
     check(status == 200 and init.get('chunkBytes') == protocol.CHUNK_BYTES
           and init.get('maxChunks') == 2,
@@ -1555,6 +1656,7 @@ def main():
     flow_rules_actions_delivery()
     # D05/D10 路由层：五类写端点 revision 口径与交付令牌必填
     flow_revision_contracts()
+    flow_blacklist_filter()
     flow_lease_fencing(task_id)
     return 0
 

@@ -8,7 +8,8 @@ import { getJson, postJson, SaveRequestError } from '../../app/http'
 import type {
   BuildCapabilities, BuildDelivery, BuildRun, BuildTask, Candidate, CandidateDetail,
   CandidateDiff, CandidateListResult, DeliveryPrecheck, DeliveryResult, Material,
-  MaterialGroup, MergePreview, MergeResult, ScopeMessage, ScopeModel,
+  MaterialFilterView, MaterialGroup, MergePreview, MergeResult, ScopeMessage, ScopeModel,
+  TaskFilterSpec,
 } from './types'
 
 // ── 端点（08 分册路径；仅此处维护字符串，页面不拼接口地址） ────────────────
@@ -18,6 +19,7 @@ const EP = {
   taskCreate: '/api/build-task-create',
   task: '/api/build-task',
   taskRename: '/api/build-task-rename',
+  taskFilter: '/api/build-task-filter',
   taskDelete: '/api/build-task-delete',
   uploadInit: '/api/build-upload-init',
   uploadChunk: '/api/build-upload-chunk',
@@ -120,6 +122,11 @@ export async function renameTask(taskId: string, name: string, revision: string)
   return await postJson(EP.taskRename, { taskId, name, revision }) as { task: BuildTask }
 }
 
+/** 08 §13.3：保存任务级过滤设置（软名单覆盖/自定义追加/白名单）。revision = 任务 token（CAS）。 */
+export async function saveTaskFilter(taskId: string, revision: string, filter: Partial<TaskFilterSpec>): Promise<{ task: BuildTask; filter: TaskFilterSpec }> {
+  return await postJson(EP.taskFilter, { taskId, revision, filter }) as { task: BuildTask; filter: TaskFilterSpec }
+}
+
 export async function deleteTask(taskId: string, confirmName: string): Promise<{ ok: boolean; note?: string; deleted?: Record<string, number> }> {
   return await postJson(EP.taskDelete, { taskId, confirmName }) as { ok: boolean; note?: string; deleted?: Record<string, number> }
 }
@@ -154,6 +161,11 @@ export async function abortUpload(uploadId: string): Promise<{ ok: boolean }> {
 /** 08 §12.1：按顶层目录分组的物料汇总（view=groups）。 */
 export async function fetchMaterialGroups(taskId: string): Promise<{ groups: MaterialGroup[]; total: number; revision: number }> {
   return await getJson(EP.materials + query({ taskId, view: 'groups' })) as { groups: MaterialGroup[]; total: number; revision: number }
+}
+
+/** 08 §13.4：被过滤文件报告（计数 + 清单 + 逐项命中规则；G20 可见性）。 */
+export async function fetchMaterialFilter(taskId: string): Promise<MaterialFilterView> {
+  return await getJson(EP.materials + query({ taskId, view: 'filter' })) as MaterialFilterView
 }
 
 /** 08 §12.1：按顶层目录分页取物料明细；folder 缺省 = 全量（兼容旧行为）。 */

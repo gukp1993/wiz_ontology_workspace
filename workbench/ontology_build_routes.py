@@ -9,6 +9,7 @@
 """
 
 from workbench.ontology_build import delivery as delivery_domain
+from workbench.ontology_build import blacklist as blacklist_domain
 from workbench.ontology_build import materials as material_domain
 from workbench.ontology_build import protocol
 from workbench.ontology_build import review as review_domain
@@ -119,6 +120,13 @@ def get_capabilities(query):
         'limits': protocol.LIMITS,
         'ocr': {'available': False,
                 'reason': '未配置 OCR 服务；扫描页 PDF 将逐页报告失败，不假称解析成功'},
+        # V2-4（08 §13）：黑名单三层枚举（硬层完整公开；软层为默认值，任务可覆盖）
+        'blacklist': {
+            'hard': {'exts': sorted(blacklist_domain.HARD_EXTS),
+                     'dirs': sorted(blacklist_domain.HARD_DIRS),
+                     'note': '安全边界，不可配置；任何白名单不能越过'},
+            'softDefaults': blacklist_domain.effective_soft_exts(None),
+        },
         'provider': ref,
         'parserVersion': protocol.PARSER_VERSION,
         'promptVersion': protocol.PROMPT_VERSION,
@@ -157,6 +165,12 @@ def get_materials(query):
         if 'view' in query and query['view'][0] == 'groups':
             groups, total = store.list_material_groups(conn, task_id, owner_id)
             return {'groups': groups, 'total': total,
+                    'revision': int(row['material_revision'])}, 200
+        if 'view' in query and query['view'][0] == 'filter':
+            # V2-4（08 §13）：被过滤文件报告——计数 + 清单 + 逐项命中规则（G20 可见性）。
+            return {'filter': store.filter_spec_view(row),
+                    'softDefaults': blacklist_domain.effective_soft_exts(None),
+                    'report': store.filter_report_view(row),
                     'revision': int(row['material_revision'])}, 200
         # folder 显式出现（含空串=根目录组）才过滤；不出现保持旧行为全量兼容
         if 'folder' in query:
@@ -270,6 +284,34 @@ def post_task_rename(payload):
         return {'task': tx.run(lambda conn: task_domain.rename_task(conn, task_id, name, revision))}, 200
 
 
+def post_task_filter(payload):
+    """任务级过滤设置（V2-4，08 §13）：软名单覆盖 + 自定义追加排除 + 后缀白名单。
+
+    * `revision` 是任务 token（同 build-task-rename，§0）：必填，缺失/空串 400，不匹配 409；
+    * `filter.softExts` 缺省/None = 用默认软名单；显式数组（含空数组）= 整体覆盖默认软名单；
+    * 后缀一律规范化为 '.ext' 小写形态；硬黑名单不受本设置影响（安全边界）。
+    """
+    task_id = _text(payload, 'taskId')
+    revision = _text(payload, 'revision', limit=80)
+    raw_filter = payload.get('filter')
+    if raw_filter is None:
+        raw_filter = {}
+    if not isinstance(raw_filter, dict):
+        raise ValueError('参数 filter 必须是对象')
+    spec = blacklist_domain.normalize_spec(raw_filter)
+    owner_id = _owner()
+    with sto.write_tx() as tx:
+        def body(conn):
+            row = store.require_task(conn, task_id, owner_id)
+            if row is None:
+                raise sto.NotFound('生成任务不存在')
+            store.touch_task(conn, task_id, owner_id, expected_revision=revision, status=None)
+            store.set_task_filter(conn, task_id, owner_id, spec)
+            return store.get_task(conn, task_id, owner_id)
+        task = tx.run(body)
+    return {'task': task, 'filter': spec}, 200
+
+
 def post_task_delete(payload):
     # 08 §12.2：物理删除任务及全部关联行与 blob 文件；已创建的本体草稿不删除。
     task_id = _text(payload, 'taskId')
@@ -302,13 +344,25 @@ def post_upload_init(payload):
     rel_path = _text(payload, 'relPath', limit=512)
     size = _int_arg(payload, 'size', low=1)
     owner_id = _owner()
-    with sto.write_tx() as tx:
-        def body(conn):
-            row = store.require_task(conn, task_id, owner_id)
-            if row is None:
-                raise sto.NotFound('生成任务不存在')
-            return material_domain.upload_init(conn, owner_id, task_id, rel_path, size)
-        return tx.run(body), 200
+    try:
+        with sto.write_tx() as tx:
+            def body(conn):
+                row = store.require_task(conn, task_id, owner_id)
+                if row is None:
+                    raise sto.NotFound('生成任务不存在')
+                return material_domain.upload_init(conn, owner_id, task_id, rel_path, size)
+            return tx.run(body), 200
+    except material_domain.Blacklisted as exc:
+        # V2-4（08 §13）：命中黑名单的上传在独立短事务里登记过滤事件（G20 可见性）——
+        # 主事务已回滚，事件不能写在被回滚的事务里；登记失败不改变 422 结论。
+        event = exc.event if isinstance(exc.event, dict) else {
+            'path': rel_path, 'layer': 'hard', 'rule': str(exc), 'size': 0}
+        try:
+            with sto.write_tx() as tx2:
+                tx2.run(lambda conn: store.append_filter_events(conn, task_id, owner_id, [event]))
+        except Exception:
+            pass
+        raise
 
 
 def post_upload_chunk(payload):

@@ -26,8 +26,20 @@ export interface BuildTask {
   currentBatch: string
   /** 已交付本体的 id，未交付为 '' */
   deliveryOntologyId: string
+  /** 任务级过滤设置（08 §13 黑名单三层；'.' 前缀小写后缀；softExts=null=用默认软名单） */
+  filter: TaskFilterSpec
   createdAt: string
   updatedAt: string
+}
+
+/** 08 §13：任务级过滤设置（黑名单三层中的「可配置」部分；硬黑名单不受影响）。 */
+export interface TaskFilterSpec {
+  /** 用户后缀白名单：越过软名单与自定义追加，不越过硬黑名单 */
+  allowExts: string[]
+  /** 软名单整体覆盖；null = 用默认软名单 */
+  softExts: string[] | null
+  /** 任务级追加排除后缀 */
+  excludeExts: string[]
 }
 
 // ── §1.2 Material ──────────────────────────────────────────────────────────
@@ -159,11 +171,19 @@ export interface BuildLimits {
 export interface OcrCapability { available: boolean; reason: string }
 export interface BuildProviderRef { id: string; name: string; model: string }
 
+/** 08 §13：能力接口公开的黑名单枚举（硬层完整；软层为默认值，任务可覆盖）。 */
+export interface BlacklistInfo {
+  hard: { exts: string[]; dirs: string[]; note: string }
+  softDefaults: string[]
+}
+
 export interface BuildCapabilities {
   limits: BuildLimits
   ocr: OcrCapability
   /** 为 null 时范围对话/生成不可启动（422），页面必须引导先去配置模型 */
   provider: BuildProviderRef | null
+  /** 黑名单三层枚举（08 §13；2026-09-21 新增） */
+  blacklist?: BlacklistInfo
   parserVersion: string
   promptVersion: string
 }
@@ -491,4 +511,27 @@ export interface MaterialGroup {
   total: number
   byParseState: Record<string, number>
   bytes: number
+}
+
+// ── 08 §13 黑名单三层：过滤事件与报告 ─────────────────────────────────────
+/** 被过滤文件事件（layer：hard=安全边界 / soft=默认软名单 / custom=任务追加）。 */
+export interface FilterEvent {
+  path: string
+  layer: 'hard' | 'soft' | 'custom'
+  rule: string
+  size: number
+}
+
+export interface FilterReport {
+  items: FilterEvent[]
+  counts: { hard: number; soft: number; custom: number; total: number }
+  truncated: boolean
+}
+
+/** GET /api/build-materials?view=filter 响应（08 §13.4）。 */
+export interface MaterialFilterView {
+  filter: TaskFilterSpec
+  softDefaults: string[]
+  report: FilterReport
+  revision: number
 }
