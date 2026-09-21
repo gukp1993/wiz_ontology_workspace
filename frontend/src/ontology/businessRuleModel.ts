@@ -2,6 +2,8 @@
 // workflow.businessRules 规则（2026-09-20 精简：名称/业务定义必填、规则内容选填；历史 output 零丢失）
 // + workflow.businessRuleAssociations 单一引用集合。
 // 对象类型统一为完整稳定 @id（含 mg: 前缀）；缺失键按空数组读取。
+import { collectFieldErrors } from './recordFields'
+
 export interface RuleAssociation { objectTypeId: string; ruleId: string }
 
 // 编辑/新建表单字段（2026-09-20 精简）：不再提供「输出结果」输入；历史 output 见 RULE_LEGACY_FIELDS。
@@ -53,4 +55,26 @@ export function commitRuleAssociations(state: any, rows: RuleAssociation[]) {
     seen.add(key)
     return true
   })
+}
+
+// --- 记录级校验（2026-09-20 字段精简验收修复 A01，与 workflow.py `_business_rule_errors` 镜像） ---
+
+/** 规则字段错误（键 → 文案）：名称/业务定义必填文本，规则内容选填文本。 */
+export function ruleFieldErrors(record: any): Record<string, string> {
+  return collectFieldErrors([
+    ['name', '规则名称', record?.name, true],
+    ['description', '业务定义', record?.description, true],
+    ['content', '规则内容', record?.content, false],
+  ])
+}
+
+/** 规则记录是否可以保存（字段错误为空）。 */
+export const ruleRecordValid = (record: any) => Object.keys(ruleFieldErrors(record)).length === 0
+
+/** 编辑草稿初始值：文本原样；非文本旧值保留原值（由 ruleFieldErrors 报「必须是文本」，
+ *  不静默转成字符串、不清洗——用户在字段里改写后即可保存）。 */
+export function ruleDraftOf(rule: any): Record<string, any> {
+  const draft: Record<string, any> = {}
+  for (const [key] of RULE_FIELDS) draft[key] = rule ? rule[key] ?? '' : ''
+  return draft
 }

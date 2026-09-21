@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`81614f17a42d64eb`
+上下文版本：`d5a2fb5d07073a97`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,6 +22,70 @@
 
 ## 最近交接（新 → 旧）
 
+### acceptance-fixes集成与清理 · codex · 已验证
+
+时间：2026-09-21T01:55:09.206669+00:00；记录：`.collaboration/entries/000139-5737457d876b.json`
+
+用户授权合并main及清理；基线92573c3隔离合入5e5ce5f，唯一共享摘要冲突已从双方entries重建，组合回归与build通过，待快进main及清理。归档C01独立验收报告，纠正不读取无关目录的P3文案。
+
+- 决定：用户明确允许两项无重叠main未提交文档保留原样，不代提交或stash；不更新或重启主服务18765
+- 验证：后端全量40/40、原独立43/43、客户端mount3/3及A02通过；npm build通过；未重演浏览器
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §15；文档/需求/20260920_本体与项目统一维护体验改版/C01独立验收报告_20260921.md
+
+### acceptance-fixes：交付 C01 修复的独立验收执行指令 · zcode · 需求已交付
+
+时间：2026-09-21T01:44:50.260627+00:00；记录：`.collaboration/entries/000138-36841ee35010.json`
+
+按用户要求交付可直接复制给其他 harness/人工验收者的 C01 独立验收指令：文档/需求/20260920_本体与项目统一维护体验改版/独立验收执行指令_20260921_C01.md（提交 233eaac，纯文档）。指令自包含：被验业务提交 1ec22a7（父 113e224 业务等价 9d0fa6f）、C01 根因与四组空白 ID 修复前后对照表、10 步必做验证（反例复跑 42/42、git archive 9d0fa6f 反例有效性、92 项新增断言、边界自扩展、金样 98/515 且旧样例逐字节不变、run.py all 40/40、原五项 43/43、diff 范围与四个业务文件零 diff、文档-代码一致性、可选 HTTP）、只读边界（不改文件/不合并/不重启 18921）与交付格式。未改业务代码。
+
+- 决定：验收指令写成仓库内可持久文件而非仅 /tmp，避免 /tmp 清理后丢失；同时对 /tmp 原报告提供自包含回退。；指令明确标注 18921 未重启、未加载本轮修复，禁止以其实测判定 C01，也禁止重启它；活服务验证须自起自关 ≥18931 隔离实例。；指令要求反例有效性必须亲跑（9d0fa6f 副本应失败 25 项），并允许验收方自建等价反例，避免只复跑既有用例。
+- 验证：提交前核对：git diff 1ec22a7..HEAD -- workbench/ tests/ 为空；113e224..1ec22a7 仅含 project_validation.py + 4 个测试文件 + 金样 + 3 份接口文档 + 开发计划 + 交接记录；flows/flow_http/project_routes/projects 零 diff；9d0fa6f..113e224 业务零 diff。；指令中引用的实测计数均来自本轮亲跑：反例修复后 42/42；扩展断言 92/92；9d0fa6f 副本 67 通过/25 失败；金样 98 样例/515 断言；run.py all 40/40；原五项 43/43。；git status 干净、git diff --check 通过。
+- 下一步：用户将该指令全文交给 Codex 或其他 harness 执行独立验收。；验收通过后停在「待用户授权集成」；本轮无合并授权。
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/独立验收执行指令_20260921_C01.md；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §14.5；提交 1ec22a7（修复主体）、233eaac（本指令）
+
+### acceptance-fixes：C01 空白依赖引用漏检修复（B01/B02 第二轮验收补充） · zcode · 已实施，待验收
+
+时间：2026-09-21T01:38:19.847606+00:00；记录：`.collaboration/entries/000137-48ec23555317.json`
+
+按 /tmp/B01B02_独立验收_20260921/修复指令.md 补修 C01 并自测通过，提交待独立验收。根因：适配层 _flow_declares_provider/_flow_references_credential 用 .strip() 判「是否声明依赖」，底层 flows/flow_http 用原始非空字符串判「有没有引用」，纯空白 providerId/credentialId 因此被当成未声明→跳过检查→目录读取失败时 fail-open 放行。修复：新增 _raw_id_present 作为唯一声明判据（bool(str(impl.get(key) or ''))，不 trim），空白 ID 按「已声明但无效」处理——目录可读判不存在、读取失败按三态转阻断；键缺失/None/空串仍按未声明。文档先行（04 §2.2 判据段、03 §2.2 空白 ID 条、README 行），未合并 main、未重启 18765、未改真实数据。
+
+- 决定：声明判据统一为原始值的非空字符串（与检查器底层逐字一致），不 strip、不 trim、不重写既有 ID；空白 ID 不得被降级为「未声明」。；键缺失/None/空字符串仍按未声明：不读取无关目录、不被无关故障误伤，保持既有兼容语义与编辑页 None 未知上下文行为。；HTTP 节点识别沿用 flows._check_body 分派口径（node.kind or impl.language），不新造识别规则。；金样采用增量追加：只加 57_c01_blank_provider_reference（固定 flowId 播种），旧 97 样例逐字节不变；新增 check_c01_samples 结构断言防止误删后「重新生成即通过」。
+- 验证：反例先复现（隔离根，验收方脚本）：provider 空白两态 errors=[] 且 200 新增 v1；credential 空白读取失败态同型 200 v1——与验收报告 C01 四组表一致。；反例有效性：git archive 9d0fa6f 解到 /tmp 跑新断言 → 67 通过 / 25 失败；修复后同文件 92/92 全绿。；新增覆盖：空白矩阵（空格/Tab/换行/混合 × provider/credential × 空集合/读取失败 16 项）、非空集合对照 2 项、真正未填写三态 6 项、正常 ID 三态对照 2 项、动作绑定路径 1 项、发布路由四组 20 项（422/零版本/revision 不推进/重复请求/不回显注入原文）、改正 ID 后可恢复发布 2 项。；串行回归（本树 venv，清继承 WIZ_*）：test_flow_dependency_context 92/92、test_project_flow_source 44 步、test_publish_guards 16 步、test_publish_guards_adversarial 135/135、test_validation_split 98 样例/515 断言、test_business_rules 57、test_action_library 77、test_catalog_independent 51 硬断言；原五项独立脚本 codex_reacceptance_backend_20260920 43/43；tests/run.py all 40/40。
+- 下一步：Codex/独立 harness 验收本提交，重点复跑四组空白 ID 反例（修复前 200、修复后 422 零写入）与空白矩阵边界。；验收通过后停在「待用户授权集成」；本轮无合并授权，不得自行合并 main 或清理 worktree。；未测：浏览器（前端零改动，18921 未重启仍跑上一被验代码）、真实 MySQL/Redis、真实项目故障注入；mapping_forms 既有失败与辅助填写原型属范围外。
+- 依据/文档：/tmp/B01B02_独立验收_20260921/修复指令.md 与 验收报告.md（C01 / P2）；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §14.5（本轮实施与复验记录）；文档/接口文档/03-项目区接口.md §2.2、04-编排与LLM接口.md §2.2、README.md 变更记录（C01 行）；workbench/project_validation.py（_raw_id_present/_flow_declares_provider/_flow_references_credential）；tests/test_flow_dependency_context.py、tests/test_validation_split.py、tests/golden_c01_flow.py、tests/fixtures/validation_golden.json
+
+### acceptance-fixes：B01/B02 外部harness验收指令交付 · codex · 需求已交付
+
+时间：2026-09-21T01:16:51.169803+00:00；记录：`.collaboration/entries/000136-bb724d0bb774.json`
+
+应用户要求交付可直接复制给其他 harness 的 B01/B02 独立验收执行指令（纯文档，无业务改动）：文档/需求/20260920_本体与项目统一维护体验改版/独立验收执行指令_20260921_B01B02.md。内容自包含：被验树/分支/SHA（业务9d0fa6f，文档HEAD 6516f51）、只读边界与禁止项（不改文件/不合并/不触碰18921/端口≥18931自起自关/临时产物进/tmp）、三态判定标准、8步必做验证（含git archive反例有效性与已知命令）、第一轮验收P3四项要求抽查、交付格式与不写context record的约定；明确14:00另一ticket与mapping_forms既有失败为范围外。
+
+- 验证：指令文件内路径、命令与SHA均按当前被验树实况核对（HEAD 6516f51、9d0fa6f..HEAD 业务diff为空已实测）。
+- 下一步：用户可将该文件全文交给其他 harness 做第二轮独立验收；结果按同格式返回后由协调者核对迭代。；仍停在待用户授权集成；未合并main、未重启18765、未改真实数据。
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/独立验收执行指令_20260921_B01B02.md
+
+### acceptance-fixes B01/B02 独立验收 · codex · 已验证
+
+时间：2026-09-21T01:13:19.982863+00:00；记录：`.collaboration/entries/000135-7f2774ed5f87.json`
+
+子代理只读独立验收被验提交9d0fa6f：通过，无本批引入P1/P2。必测矩阵M01-M13全过：新测试38/38、run.py all 40/40（金样逐字节等价）、原五项独立脚本43/43、前端37/38（唯一失败mapping_forms为基线既有P02范围外）；git archive 6955e76副本复跑新测试24过/14败证明反例有效（失败项恰为B01空连接发布200与B02提供方/凭据读取异常发布200）；自起18932真实HTTP端到端13/13（validate报错、publish 422零版本、改合法后200）。文档-代码三态协议逐条一致，flows/flow_http/project_routes零diff，密钥不回显。验收全程未改项目文件、未触碰18921、未合并main。结论与4项P3登记已写入开发计划§14.4（含P3-2更正实施者23/15为24/14记录偏差）。
+
+- 决定：P3-1空白串providerId/credentialId在目录读取失败时的窄窗fail-open不在本批修复：修它会产生新业务提交使已验收SHA作废需重验；登记为后续独立修复项（统一strip口径）。；P3-4金样未新增空连接样例不判违规：本轮指令要求核对金样不盲目生成，金样逐字节等价即通过，登记为建议。；验收方浏览器未逐屏实测（后端校验缺陷，以真实HTTP+路由函数+进程内三层证据替代），18921不写入。
+- 验证：被验树验收结束HEAD=9d0fa6f、git status干净；18921（PID 82961）只读确认存活且加载被验代码。；验收报告全文见本轮交接与 文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §14.4。
+- 下一步：停在待用户授权集成；如授权合并，按AGENTS串行集成重验（含P3-1是否另起ticket由用户决定）。；18921与worktree保留至集成指令；未重启18765、未改真实数据。
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §14.4；被验提交 9d0fa6f（codex/acceptance-fixes）
+
+### acceptance-fixes：B01/B02 编排依赖上下文三态修复 · codex · 已实施，待验收
+
+时间：2026-09-21T00:55:40.307519+00:00；记录：`.collaboration/entries/000134-7563caf68a87.json`
+
+按补充修复指令_20260921修复B01/B02并提交（待独立验收，未合并main）。B01：去掉 connections or None 空列表降级，已知空集合按真实协议传给 check_flow；B02：依赖目录读取失败改为 _READ_FAILED 哨兵，仅当被检编排实际声明该维度依赖（providerId/HTTP credentialId）时输出定位到编排的阻断 error，读取失败不冒充引用不存在、不回显异常原文；同一 validate_project 缓存保留读取状态且顺序无关；编排配置检查全局语义未改。接口文档先行修订（03 §2.2、04 §2.2 三态协议表、README 变更记录）。
+
+- 决定：依赖上下文三态冻结：已知集合（含空）→存在性判定；None/未知→跳过并保留编辑页warning；读取失败→仅被检编排声明该依赖时阻断。；B02 阻断文案含依赖类别与请稍后重试，不含异常原文；llm 读取失败时该维度按 None 传给 check_flow 再前置阻断消息。；账号未配置模型（llm_meta==[] 且编排未声明 providerId）仍降级跳过，不制造误报。；修复前先固化反例：B01 空连接引用Redis编排发布200 v1、B02 凭据/提供方目录读取异常发布200 v1，均为修复前实测证据。
+- 验证：tests/test_flow_dependency_context.py（新增）：修复前23通过/15失败复现两缺陷，修复后38/38，含顺序无关、无连带阻断、密钥不回显、恢复后发布v1、发布路由422边界。；python3 tests/run.py all → 40/40（新文件已被 unit 组收集）；test_validation_split 金样逐字节等价；test_publish_guards 16、test_project_flow_source 44、adversarial 135/135、business_rules 57、action_library 77 定向回归全过。；前端六套件 node --import ./tests/ts_hooks.mjs 全过（本批未改前端源码）。；18921 隔离实例（.runtime/venv、.runtime/acceptance-data、假账号b01qoderfix）浏览器复验：校验页阻断提示+条目定位+发布按钮 disabled，真实 HTTP 422；恢复为合法编排后发布 v1；console 0。；未测项（已在开发计划§14.3如实标注）：B02 浏览器内故障注入不可行（以路由/单元层证据替代）、编排画布逐屏点击未做。
+- 下一步：交子代理独立验收本提交（对照补充修复指令必测矩阵与验收报告_20260921），不通过则原分支继续修复。；验收通过后停在待用户授权集成；本轮未合并main、未重启18765、未改真实数据；18921 保留供复验。
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/补充修复指令_20260921.md；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §14.3；workbench/project_validation.py；tests/test_flow_dependency_context.py；文档/接口文档/03-项目区接口.md；文档/接口文档/04-编排与LLM接口.md；文档/接口文档/README.md
+
 ### 本体与项目辅助填写交互原型制作与验收循环 · zcode · 已实施，待验收
 
 时间：2026-09-21T01:00:23.378534+00:00；记录：`.collaboration/entries/000133-2dfe15d07508.json`
@@ -33,6 +97,16 @@
 - 下一步：用户介入验收原型；确认后另议正式实现范围（右侧面板窄屏呈现、本体/项目优先级、复杂编排自动生成是否另立需求）。
 - 依据/文档：文档/需求/20260920_本体与项目辅助填写/交互原型_v1.html；文档/需求/20260920_本体与项目辅助填写/需求说明.md
 
+### acceptance-fixes 20260921独立验收 · codex · 已验证
+
+时间：2026-09-20T16:12:50.325785+00:00；记录：`.collaboration/entries/000133-76cc046675e9.json`
+
+被验HEAD 1db8901/业务3f85cf2：原五项反例通过，但新增B01/B02两项P1使非法依赖编排正式发布成功，本轮暂不通过。仅报告与指令，未改业务代码、未合并main。
+
+- 验证：前端六套、后端五套定向回归及npm build通过；隔离SQLite、假账号、正式路由函数：空连接引用Redis发布200 v1；显式模型依赖元数据读取异常发布200 v2；本轮未做浏览器逐屏、真实业务连接或跨进程压测
+- 下一步：原worktree按补充修复指令修复B01/B02并交独立验收
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/验收报告_20260921.md；文档/需求/20260920_本体与项目统一维护体验改版/补充修复指令_20260921.md；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §14
+
 ### system-deep-test环境与测试指令 · codex · 需求已交付
 
 时间：2026-09-20T16:05:33.930212+00:00；记录：`.collaboration/entries/000132-9d1caa107fc6.json`
@@ -41,6 +115,17 @@
 
 - 决定：基于main d6c73c2，无其他分支未合入修复；测试harness只测试报告，不改业务代码、不合并。
 - 依据/文档：worktree/test/文档/需求/20260921_系统全方位深度测试/执行指令.md；worktree/test/文档/需求/20260921_系统全方位深度测试/测试计划.md
+
+### acceptance-fixes：合并验收五项修复（R01/R02/R03/A01/A02）独立复验 · codex · 已验证
+
+时间：2026-09-20T15:43:39.514910+00:00；记录：`.collaboration/entries/000132-deff257622ab.json`
+
+独立验收通过：被验SHA 3f85cf2（HEAD f5bea60，基线 b0fb7c0）。新增两份隔离验收脚本（后端43项+桥层12项全过）；前端node 7套件+后端6套件及补充回归在清空WIZ_*环境后独立复跑全过；npm build通过；18921隔离实例（假账号codexrv）浏览器验收覆盖登录零console、规则/动作必填与空格阻断、非法旧值编辑不崩溃并字段定位报错、旧模板output零丢失、导入冲突整批不写、合法发布1.0.0读回。验收记录追加至开发计划§13。未合并main、未更新主工作台、未清理worktree。
+
+- 决定：mapping_forms.test.mjs 失败判定为既有失败（main同失败、输入文件本批未触碰、§11.4延期项P02），非本批引入，不阻断验收；adversarial夹具改造判定为加强断言（补合法编排+自检assert），非放松；浏览器新观察：首条规则保存后列表当次会话不即时刷新——该push路径与基线逐字节相同，判定非本批引入，登记为范围外规格观察；项目区发布UI逐屏与图谱弹窗逐屏点击以官方路由级/桥级证据替代并在§13如实标注
+- 验证：git status干净（仅本harness两份untracked验收脚本），验收全程HEAD=f5bea60无新增业务提交；tests/codex_reacceptance_backend_20260920.py 43项断言全过（R02校验/路由、R03窗口注入409零写入+重试/回放/冲突、A01发布422零版本等）；tests/codex_reacceptance_a02_20260920.mjs 12项断言全过（domainSaveNode桥层：空格阻断、记录未变、0事件、非文本拒绝、历史键零丢失）；隔离实例 http://127.0.0.1:18921 假账号codexrv浏览器验收，console 0消息；服务资源指纹 index-GpdZRyRU.js 与fresh build一致
+- 下一步：等待用户授权集成/合并；本轮未合并main、未重启18765、未清理worktree与18921实例（PID 27586，保留待指令）
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §13；tests/codex_reacceptance_backend_20260920.py；tests/codex_reacceptance_a02_20260920.mjs
 
 ### 本体与项目辅助填写原型委托需求 · codex · 需求已交付
 
@@ -53,99 +138,13 @@
 - 下一步：其他harness按执行指令制作独立原型并自检，用户交回后按A01至A17验收。
 - 依据/文档：文档/需求/20260920_本体与项目辅助填写/需求说明.md；文档/需求/20260920_本体与项目辅助填写/执行指令.md
 
-### acceptance-fixes环境与修复指令 · codex · 需求已交付
+### acceptance-fixes：合并验收五项修复（R01/R02/R03/A01/A02） · zcode · 已实施，待验收
 
-时间：2026-09-20T10:07:25.055603+00:00；记录：`.collaboration/entries/000130-c41ccb18eab1.json`
+时间：2026-09-20T14:17:44.240128+00:00；记录：`.collaboration/entries/000131-fba222697401.json`
 
-按用户要求从main b0fb7c0创建worktree/acceptance-fixes，分支codex/acceptance-fixes；修复计划和完整指令已在该分支提交，未开始业务开发。
+五项验收问题全部修复并自测通过，提交 codex/acceptance-fixes，等 Codex 独立验收；未合并 main、未重启主工作台、未改真实数据。R01 App.vue watch 移到 flowState 声明后并新增真实客户端 mount 回归(3/3)；R02 复用 flows.check_flow 把被引用编排自身结构错误纳入项目校验阻断（属性来源与动作绑定两条路径，上下文按真实协议传；夹具修正为合法编排）；R03 目录 payload 与依赖令牌改同一次读取（消除窗口，反例先复现 200 再修成 409）；A01 记录级文本校验（必填必为文本、content/effect 合法选填文本、非文本受控报错、正式发布路由 422 零版本、前端不再 trim 崩溃）；A02 图谱保存复用同一校验（失败零写入零事件）。A02 由子代理实施、协调者汇总。
 
-- 决定：只覆盖合并验收R01-R03/A01-A02；实施后交独立验收，不自动合并main。；端口18921创建时检查可用并登记，尚未启动；隔离数据与Python环境均在该树.runtime。
-- 验证：Git工作树创建成功，任务登记加锁写入公共Git目录；文档diff检查通过。
-- 依据/文档：worktree/acceptance-fixes/文档/需求/20260920_本体与项目统一维护体验改版/验收修复执行指令.md；worktree/acceptance-fixes/文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md
-
-### 规则动作字段精简独立验收并合并记录 · codex · 已验证
-
-时间：2026-09-20T09:57:12.318295+00:00；记录：`.collaboration/entries/000129-2fb2a7d94131.json`
-
-字段精简需求暂不通过：非文本content/effect可发布、图谱业务定义必填可绕过。独立记录合并到统一维护开发计划11.6，保留上轮11.5结论。未修改业务代码。
-
-- 决定：本次统一缺陷编号A01/A02，前次R01-R03未复验不关闭；原需求开发计划仅补归档链接。
-- 验证：构建通过；规则/动作模型、Excel导入27项、图谱桥接回归通过；后端规则40项、动作库与动作HTTP74项通过。；正式发布路由函数在隔离存储接受对象content与数组effect，200并读回发布快照；图谱桥接空定义返回成功并触发changed。；模板与需求原件逐字节一致，四页/表头/冻结/下拉公式和业务空白区检查通过；未做本轮浏览器与Excel原生验收。
-- 下一步：修复统一清单问题后补独立复验及浏览器导入闭环。
-- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md；文档/需求/20260920_规则动作字段精简与Excel模板同步/开发计划.md
-
-### 执行 20260920_规则动作字段精简与Excel模板同步 执行指令 · zcode · 已实施，待验收
-
-时间：2026-09-20T09:17:31.560193+00:00；记录：`.collaboration/entries/000128-fd06303c7ef5.json`
-
-规则/动作字段精简与 Excel 模板同步全部实施并提交（b690a1a）：规则 name/description 必填、content 选填、不再提供新 output 输入；动作 effect 文案改「预期效果」且选填（存储键不变）；历史 output 读取/编辑/保存/发布/配置导出导入零丢失，有值时只读展示「历史补充说明（原输出结果）」。接口文档先行（02 §4.9/§4.10 + README 变更记录），后端 workflow.py 单条保存只校验该记录，前端三字段表单与对象页、图谱关联详情统一口径，Excel 新表头（规则三列、动作预期效果）并保留旧「输出结果」「业务效果」别名，新旧效果都非空且不同阻断该批。新模板 ontology-import-rule-action-v1.xlsx（与需求原件逐字节相同）替换三个下载入口，旧模板留作回归输入。验收中另修两个真实缺口：无缓存值公式单元格（openpyxl t=z+f）原被当空单元格跳过导致公式校验不触发；图谱节点详情缺历史 output 行。
-
-- 决定：单条保存只校验该记录的名称/业务定义；不因其他历史不完整定义阻断无关草稿保存（发布仍检查全部定义）。；历史 output 不进编辑草稿、不参与必填，仅按「键存在才写入」透传——legacyBridge 曾无条件写 trim(data.output)，表单省略该键时会清空历史值，已修并用断言锁定。；新旧效果列并存是合法逐行合并场景，不计入「表头重复」；都非空且不同才阻断该批，绝不择一丢弃。；无缓存值的公式单元格按公式处理（hasFormula 即算有内容），业务表与额外 Sheet 检查同一口径，已登记 02 §4.10。；图谱/预览的 fieldEntries 末尾追加非空 LEGACY_FIELDS 条目（带 legacy 标记），与规则库、对象页历史区口径一致；NodeEditModal 保留自己的只读块不重复渲染。
-- 验证：python3 tests/run.py all → 39/39（quick 3、http 10、unit 28）。；ontology_import 27/27（含新增无缓存值公式阻断 4 断言）；legacy_graph_bridge 全过（含新增历史行 4 断言）；business_rule_model、action_model、ont_list_unified 全过；typecheck 0；npm run build 通过。；新模板结构复核：与需求原件 SHA-256 相同，表头准确、零业务行、冻结首行、H 列隐藏、属性下拉与 IF 联动、浅灰 #F2F4F7 / 11pt / 行高 26。；隔离实例 18895（/tmp/wiz_ra，账号 tester）：R01–R11 逐项浏览器通过——两字段保存与读回、缺定义报「请填写业务定义」、三处历史补充说明一致、旧 output 经改名+发布 v1.0.0+配置包导出导入回环保留、空 effect 动作关联、新旧模板导入、冲突与公式行精确拦截且零写入、时间序列与残留观测值拦截、随机后缀重命名、三入口下载新模板。
-- 下一步：Codex 独立验收：建议按 R01–R11 复验，重点核对无缓存值公式口径与图谱历史行这两处验收期修复。；未验证项见开发计划 §7.5：Excel/WPS 原生下拉点击、1000 行上限截断、历史动作显式转 v2 演练；主工作台 18765 未重启、dist 未部署。；隔离实例 18895 与 /tmp/wiz_ra 保留供复验，如需清理请明确指示。
-- 依据/文档：提交 b690a1a；文档/需求/20260920_规则动作字段精简与Excel模板同步/开发计划.md §7；文档/接口文档/02-本体区接口.md §4.9/§4.10；文档/接口文档/README.md 变更记录；frontend/src/ontology/{businessRuleModel,excelImport,importPlan}.ts、legacyGraph/shared/fields.js；workbench/workflow.py；frontend/public/templates/ontology-import-rule-action-v1.xlsx
-
-### 统一worktree目录位置 · codex · 已确认决定
-
-时间：2026-09-20T08:55:41.168258+00:00；记录：`.collaboration/entries/000127-7732e1989095.json`
-
-AGENTS规定新开发和集成worktree统一位于主仓库worktree/<任务名>/，不与主仓库平级；替换原仓库外规则，.gitignore新增/worktree/。现有工作树未迁移。
-
-- 决定：从子工作树操作仍定位主仓库worktree目录，不再嵌套。；新计划和指令遵循新路径；旧环境实际登记保持，用户要求迁移后再处理。
-- 验证：git diff --check通过；git check-ignore确认worktree/example/probe.txt被忽略。
-- 依据/文档：AGENTS.md；.gitignore
-
-### 固化细粒度任务拆分与多agent并行原则 · codex · 已确认决定
-
-时间：2026-09-20T08:50:05.079340+00:00；记录：`.collaboration/entries/000126-22be989cfdfc.json`
-
-AGENTS新增细粒度任务拆分与多agent并行原则：后续开发计划和执行指令先列任务依赖、交付物、文件owner和验收标准，再按独立性分批并行；协调者负责热点文件、串行Git操作及组合验证。
-
-- 决定：尽可能细分到可独立交付和验证的任务，不机械按文件或行数拆分。；支持多agent并行但不扩大业务授权，不自动创建额外worktree，不跳过独立验收与用户合并授权。；本轮仅更新主仓库治理规则，未开发业务功能、未修改已有任务分支。
-- 验证：AGENTS文档差异检查通过；未运行业务构建或测试（仅治理文档修改）。
-- 依据/文档：AGENTS.md
-
-### 从物料自动构建本体：创建独立worktree · codex · 需求已交付
-
-时间：2026-09-20T08:42:58.175117+00:00；记录：`.collaboration/entries/000125-e301dc9bff94.json`
-
-按用户授权仅创建开发环境：codex/ontology-build，独立目录wiz_kq_builder_v2-ontology-build，基于最新已提交main 4a12fead6356d5d6cc5f778c84963cddef6779f1。登记端口18871及专属空数据根，已同步执行指令和开发计划；分支文档提交78393e8。未开始业务开发。
-
-- 决定：仅创建环境；安装依赖、初始化数据库、启动服务和实施等待后续开发指令。；主目录现有未提交业务修改未带入或改动；集成合并仍需用户明确授权。
-- 验证：两份登记文档在主目录与worktree内容一致，git diff --check通过。；18871端口空闲，专属数据目录为空，未创建.venv或数据库，未启动服务。
-- 下一步：后续执行者使用已登记worktree内执行指令，不重复创建worktree，不在main开发。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/执行指令.md；文档/需求/20260920_从物料自动构建本体/开发计划.md
-
-### 集成成功后自动清理开发环境约定 · codex · 已确认决定
-
-时间：2026-09-20T08:35:50.005451+00:00；记录：`.collaboration/entries/000124-d510e725ab27.json`
-
-用户要求集成完即删除对应开发环境，已固化到AGENTS、稳定基线和当前自动构建计划/指令。仅规则修改，未删除任何目录或分支。
-
-- 决定：集成并合并授权包含集成验证和main合并成功后的自动清理，无需另发清理指令或等待主服务重启。；清理本任务开发/临时集成worktree、已合并分支、专属依赖/运行产物及登记可丢弃的隔离测试数据；先保存提交/验收证据，停止匹配的服务并释放端口。；未提交/未合并、他人仍写入、未知或需保留数据阻断相关清理并报告，不强制删除；真实主库、原始物料和其他任务不在范围。
-- 验证：三份文档自动清理及保护边界、相对链接检查通过；git diff --check通过。当前只有main工作树，没有执行实际清理。
-- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 创建工作树与集成合并明确提示词约定 · codex · 已确认决定
-
-时间：2026-09-20T08:31:39.494829+00:00；记录：`.collaboration/entries/000123-b63d4d42d13a.json`
-
-按用户最新要求修改AGENTS和共享基线：创建worktree与集成合并均由用户明确触发；同步自动构建需求的计划和指令，定义标准提示词与阶段停止点。未创建工作树或执行合并。
-
-- 决定：默认zcode收到创建指令后创建worktree；仅创建指令不开始开发，后续开发/修复复用同一环境。；Codex独立验收指定提交，通过后停在待用户授权集成；验收通过不隐含合并。；用户明确集成并合并后Codex负责临时集成worktree、普通冲突修复、组合验证和main更新；不重复询问同一授权，不默认重启主服务。；文档模板或其他工具交接不构成执行授权；用户可明确合并多个授权阶段，需求冲突另行确认。
-- 验证：AGENTS/计划/指令的提示词、授权边界和相对链接检查通过；git diff --check通过。无业务代码改动。
-- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 独立分支工作树与串行集成规范固化 · codex · 已确认决定
-
-时间：2026-09-20T08:24:26.103154+00:00；记录：`.collaboration/entries/000122-dcd5e6a120cd.json`
-
-按用户授权将独立分支/worktree/端口/数据与串行集成规范写入AGENTS，并同步共享稳定基线及本体自动构建计划、执行指令。仅文档变更，未创建分支或搬移当前开发。
-
-- 决定：后续业务开发每需求从已提交main创建独立分支和worktree，隔离端口、数据及依赖；当前main未提交任务不自动stash/reset/搬移。；单一集成负责人在临时集成环境合入最新main并验证；main干净且基线未变后快进更新，冲突处理不能直接ours/theirs。；所有后续开发计划与执行指令必须自包含开工、环境登记、验证、合并、启动、回退及清理流程。；纯讨论、需求/原型与治理文档可仅提交自身文档；本规则不是已安装的自动分支/合并服务。
-- 验证：AGENTS及本次计划/指令的隔离、合并、回退关键条款和相对链接检查通过。；git diff --check通过；无业务代码改动，未构建、测试或重启服务。
-- 下一步：后续生成指令采用新规则；正在main开发的任务由原执行者完成阶段或协调迁移，不自动操作。
-- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+- 决定：R02 只把编排「自身结构/配置」错误纳入项目阻断；环境性错误（账号未配置模型、项目侧无凭据上下文）按跳过处理，避免误拒合法编排；编排显式声明 providerId 而已删除仍检出。；R02 不修改 flows.check_flow 既有语义，只在项目校验侧复用它并缓存（同一编排多处引用只查一次）。；R03 以「校验 payload 与记录代际同一次读取」达成基线一致，不靠长持锁；目录令牌由 _catalog_meta 派生，baseline.catalogs 同步为同一读取。；A01 统一为「缺失/null/空串/空白按未填；非文本受控报错且定位字段」，不做 str()/String() 掩盖、不自动清洗；后端与前端 recordFields/businessRuleModel/actionModel 同口径。；A01 前端编辑遇非法旧值保留原值并给字段级原因，改写后即可保存。
+- 验证：后端 python3 tests/run.py all → 39/39；定向：test_publish_guards 16 步（新增 o/p：payload 读取后目录更新→409 零写入；读取前更新→按新基线校验并发布）、test_project_flow_source 44 步、test_publish_guards_adversarial 135/135（夹具改合法并加自检）、test_business_rules 57 项、test_action_library 77 项、test_catalog_independent 51 硬断言、test_validation_split 97 样例/507 断言，以及 test_action_http/test_references/test_property_sources/test_upgrade_impact/test_storage；前端 npm run typecheck 0；npm run build 通过（仅既有 chunk 体积警告）；tests/*.test.mjs 37 个中 36 个通过。；反例先行：R01 新用例修复前 0/3 报 Cannot access 'flowState' before initialization；R03 反例修复前实测 200 并新增 v4；A01 修复前正式 post_publish 接受对象 content/数组 effect 返回 200。；隔离实例 18921（.runtime/acceptance-data、专属 venv、假账号 acceptfix）浏览器复验：注册进入无初始化异常；规则空必填阻断/合法保存并读回/注入非法 content 编辑不崩溃且给字段原因；动作只填名称被阻断；图谱编辑清空业务定义被阻断且保留输入；空壳编排绑定属性→校验 error「编排输出「功率」尚未绑定来源节点输出」→发布 422，改合法编排→零 error→发布 v1；同 requestId 重试 idempotentReplay:true 且不新增版本。；既有失败（范围外、非本次引入）：tests/mapping_forms.test.mjs 在实施前基线上同样失败（git stash 对照），属已登记延期项 P02；test_catalog_independent 仍打印 2 项规格观察，不在本批范围。
+- 下一步：Codex 独立验收 codex/acceptance-fixes 最新提交（建议按 R01→A02 复验，重点核对 R03 两条窗口用例与 R02 的合法编排对照）。；验收通过后停在「待用户授权集成」；不得据此自行合并 main。；隔离实例 18921 与 .runtime/acceptance-data 保留供复验，如需清理请明确指示。；未测项：真实 MySQL/Redis 探测、Excel/WPS 原生下拉与 1000 行截断、跨进程并发压测、主工作台 18765（本批不重启/不部署 dist）。
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/验收修复执行指令.md；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §12.4；文档/接口文档/02-本体区接口.md §4.9、03-项目区接口.md §2.2、README.md 变更记录；workbench/project_validation.py、workbench/project_routes.py、workbench/workflow.py、frontend/src/App.vue、frontend/src/ontology/recordFields.ts、frontend/src/ontology/legacyGraph/legacyBridge.js；tests/app_client_mount.test.mjs（新增）

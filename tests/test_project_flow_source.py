@@ -322,13 +322,54 @@ deleted = errs({'maxPower': flow_src(D_DELETED, 'out_power')})
 check(has(deleted, '引用的函数编排不存在或已删除') and not has(deleted, '读取失败'),
       '软删除的编排按不存在处理（不是读取失败）', deleted)
 
-# 11) 软删除与「found 用其 state」语义（承接 10c）：编排存在但为空壳时按既有签名规则报告，
-#     不引入新的阻断规则（编排自身 check_flow 的 error 是否阻断属性绑定属 P1 未启用项，见交付报告）
+# 11) 编排自身结构错误阻断属性绑定（R02，2026-09-20 验收修复）：复用 check_flow，不运行节点。
+#     空壳（声明输出但未绑定来源节点）此前只报签名类问题、项目侧可发布，现必须阻断；
+#     合法编排（make_flow 默认 wired=True 的 Python 节点夹具）在无模型配置的隔离账号下
+#     仍通过（提供方为空且编排未声明 providerId → 不按结构错误处理）。
 FLOW_EMPTY_SHELL = make_flow('空壳编排', wired=False,
                              outputs=[{'name': 'power', 'label': '功率', 'type': {'type': 'number'}}])
 shell = errs({'maxPower': flow_src(FLOW_EMPTY_SHELL, 'out_power')})
+check(has(shell, '尚未绑定来源节点输出'),
+      '空壳编排（输出未绑定）必须阻断项目校验（R02）', shell)
 check(not has(shell, '不存在或已删除') and not has(shell, '读取失败'),
-      'found 的空壳编排不得被当成不存在或读取失败', shell)
+      '空壳编排不得被当成不存在或读取失败', shell)
+check(not has(shell, '尚未配置 LLM 提供方'),
+      '未声明 providerId 的编排不因账号无模型配置被判结构错误', shell)
+
+
+def make_broken_impl_flow(name, code=''):
+    """签名（输出声明与绑定）不变、节点实现变坏的编排：用于验证实现失效也能发现。"""
+    fid = make_flow(name, outputs=[{'name': 'power', 'label': '功率', 'type': {'type': 'number'}}])
+    state = flows.read_draft(fid)
+    state.pop('_draft')
+    state['nodes'][0]['implementation'] = {'language': 'python', 'code': code}
+    flows.save_draft(state)
+    return fid
+
+
+FLOW_BAD_CODE = make_broken_impl_flow('实现失效编排', code='def not_main():\n    pass\n')
+bad_impl = errs({'maxPower': flow_src(FLOW_BAD_CODE, 'out_power')})
+check(any('main' in e for e in bad_impl),
+      '签名不变、节点实现失效（缺 main）必须阻断项目校验（R02）', bad_impl)
+check(not has(bad_impl, '不存在或已删除') and not has(bad_impl, '读取失败'),
+      '实现失效不得被误报为不存在/读取失败', bad_impl)
+
+FLOW_SYNTAX = make_broken_impl_flow('语法错误编排', code='def main(:\n    pass\n')
+syntax = errs({'maxPower': flow_src(FLOW_SYNTAX, 'out_power')})
+check(has(syntax, '语法无法解析'), '节点实现语法无法解析必须阻断项目校验（R02）', syntax)
+
+# 11b) 动作绑定引用无效编排同样阻断（R02 覆盖动作实现路径）
+onto_actions_shell = onto()
+onto_actions_shell['workflow'] = {'actions': [{'id': 'act_stop', 'name': '停止充放电'}],
+                                  'actionAssociations': [{'objectTypeId': 'mg:StorageDevice',
+                                                          'actionId': 'act_stop'}]}
+state_shell_binding = proj({'maxPower': dict(FIELD_CODE)})
+state_shell_binding['bindings']['actionBindings'] = [
+    {'id': 'ab_shell', 'objectTypeId': 'StorageDevice', 'actionId': 'act_stop',
+     'implementation': {'kind': 'flow', 'flowId': FLOW_EMPTY_SHELL}}]
+action_shell = validate_project(state_shell_binding, onto_actions_shell)['errors']
+check(has(action_shell, '尚未绑定来源节点输出'),
+      '动作绑定的编排自身无效必须阻断（R02 动作路径）', action_shell)
 
 # 12) 动作绑定的 flow 存在性读取 fail-closed（2026-09-20 v2，03 分册 §2.2） --------------------
 # 编排列表读取失败（非存储不可用）→ 该行 error（不得跳过检查）；存储不可用 → 原样抛出。

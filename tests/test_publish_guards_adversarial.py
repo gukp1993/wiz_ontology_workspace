@@ -294,13 +294,25 @@ def main():
     obj_type, prop_api = scalar_property_and_type(version)
     note(f'夹具：对象类型 {obj_type}，标量属性 {prop_api}')
 
-    # 编排（number 输出）：供依赖重验使用
+    # 编排（number 输出）：供依赖重验使用。
+    # R02（2026-09-20 验收修复）后项目校验会阻断自身结构无效的编排（空壳/未绑定输出），
+    # 夹具必须是一个真正合法的编排：计算节点（formula 模式，不依赖 LLM 配置）+ 输出绑定。
     bind_fixture_user()
     from workbench import flows
     flow_id = flows.create('对抗性守卫编排')['id']
     flow_state = flows.read_draft(flow_id)
-    flow_state['outputs'] = [{'id': 'out1', 'label': '结果', 'type': {'type': 'number'}}]
+    flow_state['nodes'] = [{
+        'id': 'adv_nd_impl', 'kind': 'calc', 'name': '结果计算',
+        'inputs': [], 'outputs': [{'id': 'adv_out_value', 'name': 'value', 'label': '结果',
+                                   'type': {'type': 'number'}}],
+        'implementation': {'mode': 'formula', 'formulas': {'value': '1'}}}]
+    flow_state['outputs'] = [{'id': 'out1', 'name': 'result', 'label': '结果',
+                              'type': {'type': 'number'},
+                              'binding': {'kind': 'node', 'nodeId': 'adv_nd_impl',
+                                          'outputId': 'adv_out_value'}}]
     flows.save_draft(flow_state, expected_token=flows.current_token(flow_id))
+    assert not flows.check_flow(flows.read_draft(flow_id))['errors'], \
+        '对抗性守卫编排夹具自身必须合法（R02 后项目校验复用 check_flow）'
 
     MYSQL_CONN = {'id': 'adv-conn-01', 'name': '对抗业务库', 'engine': 'mysql',
                   'host': '127.0.0.1', 'port': 3306, 'username': 'reader', 'tls': 'none',

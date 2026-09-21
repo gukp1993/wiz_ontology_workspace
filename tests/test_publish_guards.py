@@ -285,6 +285,82 @@ def main():
     revision = published2['revision']
     ok('f', f"发布依赖重验：窗口内目录变化 → 409 DEPENDENCY_CHANGED 零写入（复核 {calls['n']} 次）；随后 v3 成功")
 
+    # o) R03（2026-09-20 验收修复）：目录在「校验 payload 已读、目录依赖令牌未读」之间更新
+    #    → 必须 409 DEPENDENCY_CHANGED 零写入；绝不允许用旧 payload 校验、按新代际提交。
+    #    注入点在路由依赖探测的第一次调用里、且在实际读取之前（即原实现第二次读目录的时刻）：
+    #    修复前实现会因「校验用旧 payload + 提交按新代际」返回 200 并新增版本。
+    base_cat = [{'name': 't1', 'kind': 'table', 'fields': [
+        {'name': 'id', 'dataType': 'bigint', 'key': 'pri', 'comment': ''}]}]
+    changed_cat = [{'name': 't1', 'kind': 'table', 'fields': [
+        {'name': 'id', 'dataType': 'bigint', 'key': 'pri', 'comment': ''},
+        {'name': 'extra', 'dataType': 'double', 'key': '', 'comment': ''}]}]
+    _write_catalog(pid, tables=base_cat)
+    state_r03 = json.loads(json.dumps(state_changed))
+    state_r03['projectMeta']['note'] = 'R03 窗口测试'
+    status, saved = request('POST', '/api/project-save', {'state': state_r03, 'revision': revision})
+    check(status == 200, '保存 R03 用例草稿应 200', actual=(status, saved))
+    revision = saved['revision']
+    labels_before = [i.get('version') for i in
+                     request('GET', f'/api/project-releases?project={pid}')[1].get('items', [])]
+    calls_o = {'n': 0}
+
+    def probing_before(conn, state):
+        calls_o['n'] += 1
+        if calls_o['n'] == 1:
+            # payload 与目录代际的同一次读取已完成；此刻改写目录 = 命中 R03 窗口
+            _write_catalog(pid, tables=changed_cat)
+        return real_probe(conn, state)
+
+    with _mock.patch.object(_projects, 'dependency_probe', probing_before):
+        denied_r03, status = _routes.post_project_write(
+            {'state': json.loads(json.dumps(state_r03)), 'revision': revision,
+             'requestId': 'req-r03-1'}, '/api/project-publish')
+    check(status == 409 and isinstance(denied_r03, dict)
+          and denied_r03.get('reason') == 'DEPENDENCY_CHANGED',
+          'R03：payload 读取后、提交复核前目录变化必须 409（不得返回 200 出版本）',
+          actual=(status, denied_r03))
+    labels_after = [i.get('version') for i in
+                    request('GET', f'/api/project-releases?project={pid}')[1].get('items', [])]
+    check(labels_after == labels_before, 'R03 拒绝路径不得写入任何版本（release 列表不变）',
+          actual=(labels_before, labels_after))
+    status, back = request('GET', f'/api/project-state?project={pid}')
+    check(back['revision'] == revision, 'R03 拒绝路径不得推进草稿 revision（零部分写入）',
+          actual=(back['revision'], revision))
+    ok('o', 'R03：payload 与依赖令牌读取窗口内目录变化 → 409 零写入（修复前为 200 新增版本）')
+
+    # p) R03 对照：目录在 payload 读取**之前**更新 → 校验所用 payload 与记录的代际来自
+    #    同一次读取（新内容），不得报 DEPENDENCY_CHANGED，也不得沿用旧 payload 校验。
+    real_meta = _routes._catalog_meta
+    seen = {}
+    real_validate = _routes._validate_with_degraded
+
+    def meta_after_update(project_id):
+        # 模拟「本次校验读取之前」目录已被刷新：payload 与代际同一次读取，均为新内容
+        _write_catalog(pid, tables=changed_cat)
+        return real_meta(project_id)
+
+    def capturing_validate(state_in, ontology_state, degraded):
+        seen['catalogs'] = json.loads(json.dumps(
+            (state_in.get('bindings') or {}).get('catalogs') or {}))
+        return real_validate(state_in, ontology_state, degraded)
+
+    with _mock.patch.object(_routes, '_catalog_meta', meta_after_update), \
+         _mock.patch.object(_routes, '_validate_with_degraded', capturing_validate):
+        control, status = _routes.post_project_write(
+            {'state': json.loads(json.dumps(state_r03)), 'revision': revision,
+             'requestId': 'req-r03-2'}, '/api/project-publish')
+    check(status == 200 and isinstance(control, dict) and control.get('version'),
+          'R03 对照：payload 读取前更新目录 → 同基线校验后正常发布（不得误报 409）',
+          actual=(status, control))
+    seen_fields = [f.get('name') for f in
+                   (seen.get('catalogs', {}).get('conn-mysql-01') or {}).get('tables', [{}])[0]
+                   .get('fields', [])] if seen.get('catalogs') else []
+    check('extra' in seen_fields,
+          'R03 对照：校验使用读取前已更新的新 payload（与记录代际同一读取基线）',
+          actual={'seen_catalogs': str(seen)[:200], 'fields': seen_fields})
+    revision = control['revision']
+    ok('p', f"R03 对照：payload 读取前更新的目录按同一基线校验并发布 {control.get('version')}")
+
     # g) 保存边界：删除仍被引用的连接 → 422 REFERENCE_IN_USE
     state_ref = json.loads(json.dumps(state_changed))
     state_ref['bindings']['object_bindings'] = [{
@@ -375,6 +451,8 @@ def main():
     # m) 损坏目录缓存：校验必须出 error、发布必须阻断（F 独立 QA 复现的 P0 回归）
     _write_catalog(pid, tables=[{'name': 'broken_probe', 'kind': 'table', 'fields': []}])
     _inprocess_bind()
+    labels_m_before = [item.get('version') for item in
+                       request('GET', f'/api/project-releases?project={pid}')[1].get('items', [])]
     _corrupt_catalog(pid, 'conn-mysql-01')
     state_ok = json.loads(json.dumps(state_all_del))
     status, report_broken = request('POST', '/api/project-validate',
@@ -388,7 +466,7 @@ def main():
     check(status == 422, '损坏目录缓存 → 发布必须 422 阻断', actual=(status, denied_pub))
     status, releases = request('GET', f'/api/project-releases?project={pid}')
     labels = [item.get('version') for item in releases.get('items', [])]
-    check(not any(lv in ('v4', 'v5') for lv in labels), '损坏目录下不得产出任何新版本', actual=labels)
+    check(labels == labels_m_before, '损坏目录下不得产出任何新版本', actual=(labels_m_before, labels))
     ok('m', f'损坏目录缓存：校验报 error（{errs[0][:30]}…）、发布 422 阻断、零新版本')
 
     # n) 存储层目录读取失败：GET 与 POST 同为 503（F 独立 QA 复现的 P0：GET 曾落 500）

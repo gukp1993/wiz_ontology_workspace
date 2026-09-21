@@ -31,9 +31,13 @@ async function loadTs(rel) {
   return await import(pathToFileURL(file).href)
 }
 
-// 预编译被依赖模块（editorModel / businessRuleModel）到 /tmp 同名规则
+// 预编译被依赖模块（editorModel / businessRuleModel / actionModel）到 /tmp 同名规则。
+// A01（2026-09-20 验收修复）后 businessRuleModel/actionModel 依赖 recordFields，
+// 一并预编译，保持相对依赖改写规则一致（新增纯模块时须同步加入本清单）。
 const fsmod = await import('node:fs')
 for (const [name, rel] of [['editorModel', 'frontend/src/ontology/editorModel.ts'],
+                           ['recordFields', 'frontend/src/ontology/recordFields.ts'],
+                           ['actionModel', 'frontend/src/ontology/actionModel.ts'],
                            ['businessRuleModel', 'frontend/src/ontology/businessRuleModel.ts']]) {
   const src = readFileSync(resolve(rel), 'utf8')
   const out = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } })

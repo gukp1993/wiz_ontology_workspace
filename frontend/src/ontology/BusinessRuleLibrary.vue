@@ -17,7 +17,7 @@ import OntDrawer from '../shared/OntDrawer.vue'
 import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
 import { useOntTable } from './ontList'
-import { objectsOfRule, RULE_FIELDS, RULE_LEGACY_FIELDS, rulesOf } from './businessRuleModel'
+import { objectsOfRule, RULE_FIELDS, RULE_LEGACY_FIELDS, rulesOf, ruleFieldErrors } from './businessRuleModel'
 import { externalDependencies, externalDependencyTarget, ruleDeleteCheck } from './dependencyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
@@ -117,10 +117,12 @@ function openEdit(id = '') {
   const rule: any = id ? rows.value.find((r: any) => r.id === id) : null
   if (id && !rule) return
   // draft 只承载三字段；历史 output 单独只读展示（legacyOutput），不进 draft、不参与 dirty 比较。
+  // A01（20260920 验收修复）：文本原样、非文本旧值保留原值（由 validate 报「必须是文本」），
+  // 不再 `rule[k] || ''` 掩盖或直接 trim 崩溃。
   draft.value = rule
-    ? Object.fromEntries(RULE_FIELDS.map(([k]) => [k, rule[k] || '']))
+    ? Object.fromEntries(RULE_FIELDS.map(([k]) => [k, rule[k] ?? '']))
     : Object.fromEntries(RULE_FIELDS.map(([k]) => [k, '']))
-  legacyOutputSource.value = rule ? String(rule.output || '') : ''
+  legacyOutputSource.value = typeof rule?.output === 'string' ? rule.output : ''
   baseline = JSON.stringify(draft.value)
   fieldErrors.value = {}
   isNewRule.value = !id
@@ -152,14 +154,11 @@ function backToOrigin() {
   emit('navigate', 'objects', { type, tab: 'rules' })
 }
 function validate(): boolean {
-  const errors: Record<string, string> = {}
-  // 20260920 字段精简：仅规则名称/业务定义必填；规则内容与历史 output 选填。
-  for (const [key, label] of RULE_FIELDS) {
-    if (key === 'content') continue
-    if (!String(draft.value[key] || '').trim()) errors[key] = `请填写${label}`
-  }
-  fieldErrors.value = errors
-  return !Object.keys(errors).length
+  // 20260920 字段精简 + A01 验收修复：名称/业务定义必填文本，规则内容选填文本。
+  // 口径在 ruleFieldErrors（与后端 _text_field_errors 镜像）；非文本旧值给字段级原因，
+  // 不 String() 掩盖、不自动清洗。
+  fieldErrors.value = ruleFieldErrors(draft.value)
+  return !Object.keys(fieldErrors.value).length
 }
 async function saveEdit() {
   if (saving.value || !draft.value) return
@@ -172,7 +171,7 @@ async function saveEdit() {
   const targetId = editId.value
   const name = draft.value.name.trim()
   // 只提交三字段；历史 output 不进入 payload —— 保存时对既有记录原地保留（见下方 mutate）。
-  const payload = Object.fromEntries(RULE_FIELDS.map(([k]) => [k, draft.value[k].trim()]))
+  const payload = Object.fromEntries(RULE_FIELDS.map(([k]) => [k, String(draft.value[k] ?? '').trim()]))
   const list0 = props.state.workflow.businessRules = Array.isArray(props.state.workflow.businessRules) ? props.state.workflow.businessRules : []
   const existed = list0.some((x: any) => x === Object(x) && x.id === targetId)
   const r = await formSave.submitForm('ontology', () => {

@@ -45,8 +45,48 @@ def business_rule_associations(state):
     return [dict(r) for r in rows if isinstance(r, dict) and isinstance(r.get('objectTypeId'), str) and isinstance(r.get('ruleId'), str)]
 
 
+def _json_type_name(value):
+    """报错文案里的 JSON 类型名（布尔先于数值判断——bool 是 int 的子类）。"""
+    if isinstance(value, bool):
+        return '布尔值'
+    if isinstance(value, (int, float)):
+        return '数值'
+    if isinstance(value, dict):
+        return '对象'
+    if isinstance(value, list):
+        return '数组'
+    return type(value).__name__
+
+
+def _text_field_errors(value, title, label, required):
+    """记录级文本字段校验（20260920 字段精简验收修复 A01）。
+
+    规则/动作的文本字段统一口径：
+    - 必填（规则名称/业务定义、动作名称/业务定义）：去首尾空白后非空**文本**；
+    - 选填（规则内容 content、动作预期效果 effect）：缺失/null/空串/纯空白按未填处理；
+    - 任何非文本值（对象/数组/数值/布尔）一律受控报错，绝不 `str()` 掩盖成合法内容，
+      也不在此处修改/清洗原值（保留现场，由使用者改写）。
+    """
+    if value is None:
+        return [f'{label} 缺少{title}'] if required else []
+    if not isinstance(value, str):
+        return [f'{label} 的{title}必须是文本（当前为{_json_type_name(value)}），请修改后再保存']
+    if required and not value.strip():
+        return [f'{label} 缺少{title}']
+    return []
+
+
+def _record_label(record, fallback):
+    """记录报错前缀：名称是有效文本时用名称，否则退回稳定 id（非文本名称不拼进文案）。"""
+    name = record.get('name')
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return fallback
+
+
 def _business_rule_errors(state, classes):
-    """业务规则校验：名称/业务定义必填（20260920 精简；content/output 选填）、标识唯一、引用存在、组合唯一。"""
+    """业务规则校验：名称/业务定义为非空文本（20260920 精简；content 选填文本、output 只保留）、
+    标识唯一、引用存在、组合唯一。"""
     w = state.get('workflow', {})
     rules = w.get('businessRules', [])
     if rules is None:
@@ -59,17 +99,17 @@ def _business_rule_errors(state, classes):
         if not isinstance(rule, dict):
             errors.append(f'业务规则第 {index} 条格式无效')
             continue
-        label = str(rule.get('name') or '').strip() or str(rule.get('id') or f'#{index}')
+        label = _record_label(rule, str(rule.get('id') or f'#{index}'))
         rid = rule.get('id')
         if not isinstance(rid, str) or not rid.strip():
             errors.append(f'规则 {label} 缺少稳定标识')
         elif rid in rule_ids:
             errors.append(f'业务规则存在重复标识：{rid}')
         rule_ids.add(rid if isinstance(rid, str) else '')
-        # 20260920 字段精简：名称/业务定义必填；规则内容与历史 output 选填（output 只保留不校验）
-        for key, title in (('name', '名称'), ('description', '业务定义')):
-            if not str(rule.get(key) or '').strip():
-                errors.append(f'规则 {label} 缺少{title}')
+        # 20260920 字段精简：名称/业务定义必填文本；规则内容选填文本；历史 output 只保留不校验。
+        errors.extend(_text_field_errors(rule.get('name'), '名称', f'规则 {label}', True))
+        errors.extend(_text_field_errors(rule.get('description'), '业务定义', f'规则 {label}', True))
+        errors.extend(_text_field_errors(rule.get('content'), '规则内容', f'规则 {label}', False))
     assoc = w.get('businessRuleAssociations', [])
     if assoc is not None and not isinstance(assoc, list):
         errors.append('对象规则引用必须是列表')
@@ -155,9 +195,11 @@ def definition_errors(state):
     ids=[]
     for kind in ('functions','actions','interfaces'):
         for n in w.get(kind,[]):
-            ids.append(n['id']);label=n.get('name') or n['id']
-            if not n.get('name','').strip():errors.append(f'{label} 缺少名称')
-            if not n.get('description','').strip():errors.append(f'{label} 缺少业务描述')
+            ids.append(n['id']);label=_record_label(n, n['id'])
+            # A01（20260920 验收修复）：名称/业务描述必须是文本——非文本受控报错，
+            # 不再裸调 .strip()（description=null 曾抛 AttributeError 被外层吞成泛化文案）。
+            errors.extend(_text_field_errors(n.get('name'), '名称', label, True))
+            errors.extend(_text_field_errors(n.get('description'), '业务描述', label, True))
             if n.get('status') not in ('experimental','active','deprecated'):errors.append(f'{label} 状态无效')
             if kind=='interfaces':
                 for ref in n.get('properties',[]):
@@ -170,6 +212,9 @@ def definition_errors(state):
                 continue
             if kind=='actions' and is_action_v2(n):
                 # 20260920 字段精简：仅名称/业务定义必填（循环前段已校验），预期效果（effect）选填。
+                # A01（20260920 验收修复）：选填字段仍须是文本——对象/数组/数值/布尔受控报错，
+                # 缺失/null/空串按未填处理；绝不改键、不清洗、不参与其他比较。
+                errors.extend(_text_field_errors(n.get('effect'), '预期效果', label, False))
                 continue
             if kind=='functions' and n.get('guide_version')==2:
                 for key,title in (('input_description','输入'),('logic','计算规则'),('output_description_text','输出')):

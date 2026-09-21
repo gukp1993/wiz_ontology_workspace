@@ -1,6 +1,8 @@
 // 动作库与对象动作关联的纯辅助（20260917 需求），与后端 workbench/workflow.py 镜像：
 // 本体侧 workflow.actions（definitionVersion 2 为本期简化动作）+ workflow.actionAssociations
 // 单一关联集合；项目侧 bindings.actionBindings 引用项目固定发布版本中的有效关联。
+import { collectFieldErrors } from './recordFields'
+
 export interface ActionAssociation { objectTypeId: string; actionId: string }
 
 export const isActionV2 = (a: any) => !!a && a.definitionVersion === 2
@@ -62,3 +64,17 @@ export function commitAssociations(state: any, rows: ActionAssociation[]) {
     return true
   })
 }
+
+// --- 记录级校验（2026-09-20 字段精简验收修复 A01，与 workflow.py 动作分支镜像） ---
+
+/** v2 动作字段错误（键 → 文案）：名称/业务定义必填文本；预期效果（effect）选填文本。 */
+export function actionFieldErrors(record: any): Record<string, string> {
+  return collectFieldErrors([
+    ['name', '动作名称', record?.name, true],
+    ['description', '业务定义', record?.description, true],
+    ['effect', '预期效果', record?.effect, false],
+  ])
+}
+
+/** v2 动作记录是否可以保存（字段错误为空）。 */
+export const actionRecordValid = (record: any) => Object.keys(actionFieldErrors(record)).length === 0

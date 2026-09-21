@@ -1,0 +1,23 @@
+{
+  "ticket": "38e845a2b40b40519dcdaa10fc1cedf4",
+  "task": "acceptance-fixes：B01/B02 外部harness验收指令交付",
+  "status": "ready",
+  "summary": "应用户要求交付可直接复制给其他 harness 的 B01/B02 独立验收执行指令（纯文档，无业务改动）：文档/需求/20260920_本体与项目统一维护体验改版/独立验收执行指令_20260921_B01B02.md。内容自包含：被验树/分支/SHA（业务9d0fa6f，文档HEAD 6516f51）、只读边界与禁止项（不改文件/不合并/不触碰18921/端口≥18931自起自关/临时产物进/tmp）、三态判定标准、8步必做验证（含git archive反例有效性与已知命令）、第一轮验收P3四项要求抽查、交付格式与不写context record的约定；明确14:00另一ticket与mapping_forms既有失败为范围外。",
+  "decisions": [],
+  "verification": [
+    "指令文件内路径、命令与SHA均按当前被验树实况核对（HEAD 6516f51、9d0fa6f..HEAD 业务diff为空已实测）。"
+  ],
+  "next": [
+    "用户可将该文件全文交给其他 harness 做第二轮独立验收；结果按同格式返回后由协调者核对迭代。",
+    "仍停在待用户授权集成；未合并main、未重启18765、未改真实数据。"
+  ],
+  "references": [
+    "文档/需求/20260920_本体与项目统一维护体验改版/独立验收执行指令_20260921_B01B02.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-21T01:16:51.169803+00:00",
+  "sequence": 136,
+  "filename": "000136-bb724d0bb774.json",
+  "record_hash": "45497cefac2c30b3be73d75a5b49d67bc91aaac8cacb69c5f90f5e343378af9a",
+  "context_advanced": false
+}

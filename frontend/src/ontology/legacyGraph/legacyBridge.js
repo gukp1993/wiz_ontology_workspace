@@ -13,11 +13,12 @@
 import { reactive } from 'vue'
 import { graphSignature } from '../ontologyGraphModel'
 import {
-  effectiveAssociations, commitAssociations,
+  effectiveAssociations, commitAssociations, actionFieldErrors,
 } from '../actionModel'
 import {
-  ruleAssociationsOf, commitRuleAssociations,
+  ruleAssociationsOf, commitRuleAssociations, ruleFieldErrors,
 } from '../businessRuleModel'
+import { textFieldError } from '../recordFields'
 import { effectiveProperty, localProperties, referencesOf } from '../propertyModel'
 import { graphReferences } from '../editorModel'
 import { actionDeleteCheck, linkDeleteCheck, objectDeleteCheck, propertyDeleteCheck, ruleDeleteCheck, sharedDeleteCheck } from '../dependencyModel'
@@ -246,8 +247,27 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
     const target = { obj: '对象', sp: '共享属性', pp: '私有属性', rule: '规则', action: '动作' }[family]
     if (!target) return { error: '未知节点类型' }
     const labelBefore = nodeNameOf(nodeId)
+    // A02（20260920 验收修复）：规则/动作保存须与规则/动作库、后端 workflow.py 同一记录级口径，
+    // 且任何失败都必须发生在领域变更与 before-change 事件之前（保持用户输入、不留撤销点、不持久化）。
+    const isRecordKind = target === '规则' || target === '动作'
+    if (isRecordKind) {
+      // name 参数就是写进 r.name/a.name 的显示名：非文本/缺失先给字段级原因，避免后续 name.trim()
+      // 抛异常或把对象写成 [object Object]（blank 仍交给下方 nameDuplication 给出原有「名称不能为空」）。
+      const nameTitle = target === '规则' ? '规则名称' : '动作名称'
+      const argNameError = name === undefined || name === null ? `请填写${nameTitle}` : textFieldError(name, nameTitle, false)
+      if (argNameError) return { error: argNameError, fieldErrors: { name: argNameError } }
+    }
     const dup = nameDuplication(target, domainId, name)
     if (dup) return { error: dup }
+    if (isRecordKind) {
+      // 记录级校验：名称与业务定义必填文本；规则内容/动作预期效果选填文本；非文本值受控报错。
+      // data 是表单提交的记录载荷（NodeEditModal.collectData 与之同步）；data 缺 name 键时以参数
+      // 补齐（写入值本就来自参数），不因缺键误报必填。
+      const payload = data && typeof data === 'object' ? ('name' in data ? data : { ...data, name }) : { name }
+      const fieldErrors = target === '规则' ? ruleFieldErrors(payload) : actionFieldErrors(payload)
+      const fieldMessages = Object.values(fieldErrors)
+      if (fieldMessages.length) return { error: fieldMessages.join('；'), fieldErrors }
+    }
     emitBeforeChange({ actionLabel: `修改${target}「${labelBefore}」`, target: { kind: target, id: domainId } })
     if (target === '对象') {
       const n = graph().find(x => x['@id'] === domainId)
@@ -271,6 +291,7 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
     } else if (target === '规则') {
       const r = (s.workflow.businessRules || []).find(x => x.id === domainId)
       if (!r) return { error: '定义已不存在' }
+      // 校验已在上方完成（名称/业务定义必填文本、规则内容选填文本），此处写入不再有 String() 掩盖风险。
       r.name = name; r.description = trim(data.description)
       // 20260920 字段精简：content/历史 output 选填。仅当 data 显式携带该键时才写入——
       // 表单已不再提供 output 输入，若按下标无条件赋值会把历史值清成空串（违反零丢失）。
