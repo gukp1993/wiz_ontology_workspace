@@ -1007,7 +1007,6 @@ def flow_generate_resume():
     check(int(fact_count) > protocol.LLM_BATCH_FACTS,
           '夹具事实数 > %d（将切出多个抽象批次）' % protocol.LLM_BATCH_FACTS, actual=fact_count)
 
-    saved_remaining = FakeLlm.extract_fail_remaining
     FakeLlm.extract_fail_remaining = 1   # 第 1 个抽取请求 500：批 1 失败、批 2 成功
     attempts_before = FakeLlm.extract_attempts
     try:
@@ -1061,14 +1060,12 @@ def flow_generate_resume():
 
     # abstract 重跑模式：复用确定性产物、重跑全部批次（失败注入先制造一次失败运行）
     status, regen = api('/api/build-regenerate', {'taskId': task_id})
-    batch2 = require(regen.get('batchId'), '再生成未返回 batchId')
     run2 = poll_run(task_id, require(regen.get('runId'), '再生成未返回 runId'))
     check(run2.get('state') == 'succeeded', '无失败注入的再生成成功', actual=run2.get('error'))
     FakeLlm.extract_fail_remaining = 1
     attempts_before = FakeLlm.extract_attempts
     try:
         status, regen2 = api('/api/build-regenerate', {'taskId': task_id})
-        batch3 = require(regen2.get('batchId'), '再生成(2)未返回 batchId')
         run_id3 = require(regen2.get('runId'), '再生成(2)未返回 runId')
         run3 = poll_run(task_id, run_id3)
         check(run3.get('state') == 'failed', '注入后再生成失败（待 abstract 重试）',
@@ -1265,7 +1262,7 @@ def flow_image_ocr():
             from PIL import Image
             Image.new('RGB', (8, 8), (200, 30, 30)).save(str(png_path), format='PNG')
         except Exception as exc:  # noqa: BLE001
-            raise Abort('Pillow 不可用，无法生成 PNG 夹具：%s' % exc)
+            raise Abort('Pillow 不可用，无法生成 PNG 夹具：%s' % exc) from None
         (fixture_dir / 'chart.svg').write_text(
             '<svg xmlns="http://www.w3.org/2000/svg">'
             '<text>设备额定容量 500kWh</text><text x="0" y="20">SOC 采样周期 5 秒</text></svg>',
@@ -1281,7 +1278,7 @@ def flow_image_ocr():
             writer.write(pdf_buffer)
             (fixture_dir / 'scan.pdf').write_bytes(pdf_buffer.getvalue())
         except Exception as exc:  # noqa: BLE001
-            raise Abort('pypdf 不可用，无法生成扫描 PDF 夹具：%s' % exc)
+            raise Abort('pypdf 不可用，无法生成扫描 PDF 夹具：%s' % exc) from None
 
         uploads = {}
         for name in ('device.png', 'chart.svg', 'blank.svg', 'scan.pdf'):

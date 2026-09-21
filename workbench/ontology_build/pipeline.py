@@ -266,7 +266,6 @@ def _llm_fallback_result(item, provider):
     usage 是本次已消耗的模型调用累计（含失败切片），由调用方并入 run.usage。
     """
     from workbench.ontology_build.parsers import textline as textline_mod
-    from workbench.ontology_build.parsers.base import Fact
     rel = item['relPath']
     try:
         content = textline_mod.read_text_lines(item['path'])
