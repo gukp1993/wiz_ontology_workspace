@@ -4,7 +4,11 @@
      （20260920 字段精简：前两项必填，预期效果选填；effect 存储键不变）
      三个必填业务字段；不选对象、不配输入参数/提交条件/审批/验收。历史动作只读保留（旧字段
      不丢失、不自动转换），编辑入口显式确认后转换为新格式。编辑/删除走 T00：form-guard
-     离开保护 + form-save.submitForm 一次落盘。 -->
+     离开保护 + form-save.submitForm 一次落盘。
+     20260921（T7，O5）：编辑表单接入「✦ 辅助填写」面板（assist/AssistPanel + workflowBindings）：
+     采纳只改本地草稿，不触发表单保存；手改字段经 setField→assistTouched 通知面板置过期；
+     目标切换（openNew/openEdit/openConvert 换 draft 引用）由面板 watch 重开；关闭编辑器面板
+     一并收起。新建动作已预生成 id 直接作为面板 targetId。历史格式转换编辑同样只覆盖三字段白名单。 -->
 <script setup lang="ts">
 import { ref, computed, watch, inject, onBeforeUnmount } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
@@ -12,6 +16,9 @@ import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
 import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
+import AssistPanel from '../assist/AssistPanel.vue'
+import { actionAssistBinding } from '../assist/workflowBindings'
+import type { AssistApi } from '../assist/useAssistPanel'
 import { actionsOf, isActionV2, objectsOfAction, actionFieldErrors } from './actionModel'
 import { useOntTable } from './ontList'
 import { actionDeleteCheck, externalDependencies, externalDependencyTarget } from './dependencyModel'
@@ -91,7 +98,7 @@ const guard = { isDirty: () => dirty.value, discard: () => closeEditor() }
 watch(mode, m => { m === 'edit' ? guardApi.register(guard) : guardApi.unregister(guard) })
 onBeforeUnmount(() => guardApi.unregister(guard))
 
-function closeEditor() { mode.value = 'list' }
+function closeEditor() { mode.value = 'list'; assistOpen.value = false } // 辅助面板随编辑器收起（binding 置空由 watch 兜底）
 function openDetail(id: string) { message.value = ''; blockedDeps.value = []; detailId.value = id }
 function openRefs(id: string) { refsId.value = id }
 function goObject(objectTypeId: string) { emit('navigate', 'objects', { type: objectTypeId, tab: 'actions' }) }
@@ -216,6 +223,32 @@ function goExternal(dep: any) {
   blockedDeps.value = []
   emit('navigate', target.view, { ...target.focus, returnTo })
 }
+
+// ─── 辅助填写（2026-09-21 T7，O5）：动作编辑表单接入 AI 建议 ───
+// 面板挂在编辑表单一侧，binding 由 assist/workflowBindings 工厂构造（白名单快照与合并）。
+// 边界：采纳只改本地草稿（「已填入，尚未保存」由面板提示），绝不触发表单保存；持久化仍由
+// 用户点「保存定义」走 form-save 链路（含既有校验与撤销记录）。目标 id：openNew 已预生成动作
+// id，直接作为 targetId（后端按该新动作提供上下文）；编辑既有动作指向其 id。切换目标
+// （openNew/openEdit/openConvert 换 draft 引用）binding 对象随之更新，由面板 watch 重开；
+// 关闭编辑器（含 rows 变化退回列表）面板一并收起。
+const assistApi = inject<AssistApi>('assist-api') // 测试注入桩；缺省 null → 面板内部用 defaultAssistApi()
+const assistOpen = ref(false)
+const assistPanelRef = ref<{ notifyDraftChanged(): void } | null>(null)
+const assistTouchTick = ref(0) // 手改字段次数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
+const assistBinding = computed(() => {
+  if (mode.value !== 'edit' || !draft.value) return null
+  const record = actionById(editId.value)
+  return actionAssistBinding(draft.value, {
+    targetId: editId.value, // openNew 已预生成；异常为空时由工厂兜底 ''
+    contextTitle: record ? '维护「' + (record.name || '未命名动作') + '」的动作定义' : '新建动作定义',
+  })
+})
+watch(assistBinding, b => { if (!b) assistOpen.value = false })
+function toggleAssist() { assistOpen.value = !assistOpen.value }
+// 手改字段 → 通知面板：旧建议过期、解除撤销保护；采纳/撤销写草稿由面板自管草稿指纹，
+// 不经此路径（指纹自检保证面板自身写入不会误伤）。
+function assistTouched() { assistTouchTick.value++; assistPanelRef.value?.notifyDraftChanged() }
+function setField(key: 'name' | 'description' | 'effect', value: string) { draft.value[key] = value; assistTouched() }
 </script>
 <template>
 <!-- 列表态：页头 + 标准表格。页头只在列表态渲染（2026-09-20 用户反馈「动作返回图谱与其他节点样式不统一」）：
@@ -274,13 +307,15 @@ function goExternal(dep: any) {
      从图谱跳入时在表单卡左上角给出「← 返回图谱」，与对象/属性/规则编辑表单一致。 -->
 <section v-else class="card detail-card action-form" :key="'edit-' + editId">
   <EditorHead :canvas-return="canvasReturn" back-label="← 返回动作列表" @back-to-graph="backToGraph" @close="closeEditor"/>
+  <div class="lib-assist-row"><button type="button" :aria-pressed="assistOpen" @click="toggleAssist">✦ 辅助填写</button></div>
   <div class="detail-heading"><div><span class="eyebrow">{{ editingExisting ? '编辑动作' : '新建动作' }}</span><h2>{{ draft.name || '未命名动作' }}</h2></div><span class="status-pill">仅三项业务字段</span></div>
   <div class="form-grid">
-    <Field label="动作名称" class="full" :model-value="draft.name" required example="停止充放电" @update:model-value="draft.name = $event"/>
-    <Field label="业务定义" type="textarea" class="full" :model-value="draft.description" required example="请求目标对象停止当前充电或放电。" help="这个动作有什么用途。" @update:model-value="draft.description = $event"/>
-    <Field label="预期效果" type="textarea" class="full" :model-value="draft.effect" rows="4" example="设备退出充放电运行状态。" help="操作成功后期望出现的业务状态变化（选填）；不是接口响应结构，不会执行指令。" @update:model-value="draft.effect = $event"/>
+    <Field label="动作名称" class="full" :model-value="draft.name" required example="停止充放电" @update:model-value="setField('name', $event)"/>
+    <Field label="业务定义" type="textarea" class="full" :model-value="draft.description" required example="请求目标对象停止当前充电或放电。" help="这个动作有什么用途。" @update:model-value="setField('description', $event)"/>
+    <Field label="预期效果" type="textarea" class="full" :model-value="draft.effect" rows="4" example="设备退出充放电运行状态。" help="操作成功后期望出现的业务状态变化（选填）；不是接口响应结构，不会执行指令。" @update:model-value="setField('effect', $event)"/>
   </div>
   <p class="field-help">不需要先选择作用对象（在对象建模中关联），也不维护参数清单——修改名称、调整归属等操作所需信息由项目实现配置。</p>
+  <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="lib-assist-panel" :binding="assistBinding" :api="assistApi ?? undefined" @close="assistOpen = false"/>
   <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
   <div class="detail-footer"><div class="tools"><button type="button" class="primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存定义' }}</button><button type="button" @click="closeEditor">取消</button></div>
     <span>保存直接写入本体草稿；已发布版本需重新发布后更新。</span></div>
@@ -335,4 +370,7 @@ function goExternal(dep: any) {
 .blocked-deps{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:6px 0 0}
 .technical-section p{margin:8px 0;line-height:1.7}
 .param-line{border-bottom:1px solid var(--line);padding:8px 0;font-size:13px}
+/* 辅助填写（T7）：入口行贴 EditorHead（写法同 ObjectWorkspace 的 ow-assist-row），面板挂表单尾部 */
+.lib-assist-row{display:flex;margin:-6px 0 12px}
+.lib-assist-panel{margin-top:16px}
 </style>

@@ -22,6 +22,9 @@ import type {MembershipRuleView} from './bindingModel'
 import SourcePreview from './SourcePreview.vue'
 import type {RelationView,DbSourceView} from './bindingModel'
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
+import AssistPanel from '../assist/AssistPanel.vue'
+import {linkMappingAssistBinding} from '../assist/identityLinkBindings'
+import type {AssistApi} from '../assist/useAssistPanel'
 const props=defineProps<{projectState:any;refState:any;b:any}>()
 const emit=defineEmits(['before-change','changed','edit-state','setup-end','goto-object'])
 function before(){emit('before-change')}
@@ -109,6 +112,28 @@ let draftBaseline=''
 const draftChanged=computed(()=>{if(!draft.value)return false;return JSON.stringify(draft.value)!==draftBaseline||noteDraft.value!==noteBaseline.value})
 function dirty(){return draftChanged.value}
 const editingMembership=computed(()=>!!draft.value?.membership)
+// ── 辅助填写（2026-09-21 T8，P5 链接映射）：表字段关联编辑态挂 AssistPanel，采纳只改本地草稿 ──
+// binding 由 assist/identityLinkBindings 的 linkMappingAssistBinding 构造（白名单四字段 + note 映射
+// noteDraft；relation/targetType/membership 不在辅助范围）。成员模式编辑器不提供辅助入口（成员规则
+// 不加白名单）。边界与本体区一致：采纳绝不触发表单保存（含 form-save/commit-now/touch），持久化
+// 由用户点「保存」走既有 submitForm 链路（说明随保存经既有 commitDesc 落盘，两端共用）；手改字段
+// 经 assistTouched 通知面板置过期；编辑器关闭面板收起，切换编辑目标以新 binding 重开。
+const assistApi=inject<AssistApi|null>('assist-api',null) // 测试注入桩；缺省 null → 面板内部用 defaultAssistApi()
+const assistOpen=ref(false)
+const assistPanelRef=ref<{notifyDraftChanged():void}|null>(null)
+const assistTouchTick=ref(0) // 手改字段次数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
+const assistBinding=computed(()=>{
+  const d=draft.value
+  if(!d||editingMembership.value)return null
+  return linkMappingAssistBinding(()=>draft.value,noteDraft,{
+    targetId:String(d.relation||''),
+    contextTitle:'维护链接映射「'+linkLabel(d.relation)+'」',
+  })
+})
+watch(assistBinding,b=>{if(!b)assistOpen.value=false})
+function toggleAssist(){assistOpen.value=!assistOpen.value}
+// 手改字段 → 通知面板：旧建议过期、解除撤销保护；采纳/撤销写草稿由面板自管草稿指纹，不经此路径。
+function assistTouched(){assistTouchTick.value++;assistPanelRef.value?.notifyDraftChanged()}
 // 当前草稿链接的集合端方向：'out' 出向 / 'in' 入向（成员=另一端）。
 const draftDir=computed(()=>{const rid=draft.value?.relation;const n=relations.value.find(x=>x['@id'].slice(3)===rid);return n?memberSideOfLink(n).dir:''})
 function pendingLinkLabel(r:any){
@@ -156,7 +181,7 @@ function normalizeMembershipDraft(){
   for(const id of ids)if(!d.membership.some((r:MembershipRuleView)=>r.sourceInstance===id))d.membership.push({sourceInstance:id,scope:'filtered',conditions:[]})
 }
 watch(registeredInstances,()=>{if(editingMembership.value)normalizeMembershipDraft()})
-function closeEditor(){draft.value=null;editIndex.value=-1;editingIsNew.value=false;message.value='';switchMsg.value='';saving.value=false}
+function closeEditor(){draft.value=null;editIndex.value=-1;editingIsNew.value=false;message.value='';switchMsg.value='';saving.value=false;assistOpen.value=false}
 const SWITCH_CONFIRM='当前链接映射有未保存的修改，切换后将放弃这些修改。继续吗？（确定=放弃并切换，取消=继续编辑）'
 async function edit(index:number){if(dirty()&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;openEditor(index as number)}
 async function addLink(r:any){if(!r)return;if(dirty()&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;openNew(r)}
@@ -194,7 +219,11 @@ const originSource=computed(()=>draft.value&&draft.value.sourceId?dbSourceOf(pro
 const originConnection=computed(()=>originSource.value?.connection||props.b.connection||'')
 const originTable=computed(()=>originSource.value?.table||props.b.table||'')
 const originCatalog=computed(()=>originTable.value?tableCatalog(props.projectState,originConnection.value,originTable.value):null)
-function originSourceChanged(v:string){if(!draft.value||v===draft.value.sourceId)return;draft.value.sourceId=v;draft.value.field='';switchMsg.value='已切换起点来源表，请重新选择起点字段。'}
+function originSourceChanged(v:string){if(!draft.value||v===draft.value.sourceId)return;draft.value.sourceId=v;draft.value.field='';switchMsg.value='已切换起点来源表，请重新选择起点字段。';assistTouched()}
+// 起点关联字段手改（含辅助采纳后的重新手改）：更新草稿并通知辅助面板置过期
+function draftFieldChanged(v:string){if(!draft.value||draft.value.field===v)return;draft.value.field=v;assistTouched()}
+// 链接说明手改：草稿即 noteDraft（两端共用一份说明）；辅助采纳路径不走此通知
+function linkNoteChanged(v:string){if(noteDraft.value===v)return;noteDraft.value=v;assistTouched()}
 // 终点来源完全对称：取终点对象绑定的实例来源 + one 来源；无绑定则提供去配置入口。
 const targetBinding=computed(()=>draft.value?bindingOfType(draft.value.targetType):undefined)
 const hasManyTarget=computed(()=>!!targetBinding.value&&dbSourcesOf(targetBinding.value).some(s=>s.cardinality==='many'))
@@ -203,7 +232,9 @@ const targetSource=computed(()=>{const tb=targetBinding.value;return tb&&draft.v
 const targetConnection=computed(()=>targetSource.value?.connection||targetBinding.value?.connection||'')
 const targetTable=computed(()=>targetSource.value?.table||targetBinding.value?.table||'')
 const targetCatalog=computed(()=>targetTable.value?tableCatalog(props.projectState,targetConnection.value,targetTable.value):null)
-function targetSourceChanged(v:string){if(!draft.value||v===draft.value.targetSourceId)return;draft.value.targetSourceId=v;draft.value.targetField='';switchMsg.value='已切换终点来源表，请重新选择终点字段。'}
+function targetSourceChanged(v:string){if(!draft.value||v===draft.value.targetSourceId)return;draft.value.targetSourceId=v;draft.value.targetField='';switchMsg.value='已切换终点来源表，请重新选择终点字段。';assistTouched()}
+// 终点匹配字段手改：更新草稿并通知辅助面板置过期
+function draftTargetFieldChanged(v:string){if(!draft.value||draft.value.targetField===v)return;draft.value.targetField=v;assistTouched()}
 // 刷新表结构：读取失败保留旧选择，不静默清空映射。
 async function refreshCatalog(connectionId:string){
   if(refreshing.value)return
@@ -371,8 +402,9 @@ defineExpose({dirty,discard:closeEditor})
 </template>
 <!-- ===== 表字段关联编辑器（原有） ===== -->
 <template v-else>
+<div class="lm-assist-row"><button type="button" :aria-pressed="assistOpen" @click="toggleAssist">✦ 辅助填写</button></div>
 <h2>配置链接映射</h2>
-<MappingDescription v-model="noteDraft" hint="说明两个对象如何关联，例如通过哪些字段找到对方。两端对象共用这一份说明。"/>
+<MappingDescription :model-value="noteDraft" hint="说明两个对象如何关联，例如通过哪些字段找到对方。两端对象共用这一份说明。" @update:model-value="linkNoteChanged"/>
 <p class="lm-note">{{name(b.object_type)}} → {{linkLabel(draft.relation)}} → {{name(draft.targetType)}}<template v-if="cardinalityOf(draft.relation)"> · {{cardLabel(draft.relation)}}</template></p>
 <p v-if="switchMsg" class="inline-warning" role="status">{{switchMsg}}</p>
 <div class="columns">
@@ -385,7 +417,7 @@ defineExpose({dirty,discard:closeEditor})
 <template v-else>
 <label>起点来源表 *<AppSelect :model-value="draft.sourceId" aria-label="起点来源表" :options="originSourceOptions" @update:model-value="originSourceChanged"/></label>
 <p v-if="hasManyOrigin" class="inline-warning">多条匹配来源不能作为链接字段来源</p>
-<label>起点关联字段 *<AppSelect :key="originConnection+':'+originTable" :model-value="draft.field" searchable aria-label="起点关联字段" :options="fieldOptions(originCatalog)" :disabled="!originCatalog" @update:model-value="draft.field=$event"/></label>
+<label>起点关联字段 *<AppSelect :key="originConnection+':'+originTable" :model-value="draft.field" searchable aria-label="起点关联字段" :options="fieldOptions(originCatalog)" :disabled="!originCatalog" @update:model-value="draftFieldChanged"/></label>
 <template v-if="!originConnection">
 <p class="inline-warning">起点对象已选择表，但尚未配置数据连接，无法读取字段。</p>
 <button @click="setupEnd(b.object_type)">配置{{name(b.object_type)}}数据连接 →</button>
@@ -409,7 +441,7 @@ defineExpose({dirty,discard:closeEditor})
 <template v-else>
 <label>终点来源表 *<AppSelect :model-value="draft.targetSourceId" aria-label="终点来源表" :options="targetSourceOptions" @update:model-value="targetSourceChanged"/></label>
 <p v-if="hasManyTarget" class="inline-warning">多条匹配来源不能作为链接字段来源</p>
-<label>终点匹配字段 *<AppSelect :key="targetConnection+':'+targetTable" :model-value="draft.targetField" searchable aria-label="终点匹配字段" :options="fieldOptions(targetCatalog)" :disabled="!targetCatalog" @update:model-value="draft.targetField=$event"/></label>
+<label>终点匹配字段 *<AppSelect :key="targetConnection+':'+targetTable" :model-value="draft.targetField" searchable aria-label="终点匹配字段" :options="fieldOptions(targetCatalog)" :disabled="!targetCatalog" @update:model-value="draftTargetFieldChanged"/></label>
 <template v-if="!targetConnection">
 <p class="inline-warning">终点对象已选择表，但尚未配置数据连接，无法读取字段。</p>
 <button @click="setupEnd(draft.targetType)">配置{{name(draft.targetType)}}数据连接 →</button>
@@ -425,6 +457,7 @@ defineExpose({dirty,discard:closeEditor})
 <p v-if="cardinalityHint" :class="cardinalityHint.cls">{{cardinalityHint.text}}</p>
 <p class="field-help">只选两端对象已登记的表，沿实例匹配路径找到对象；不手填表名。配置「去配置」离开时草稿会保留，回到本页签自动恢复。</p>
 <p v-if="message" class="inline-error" role="alert">{{message}}</p>
+<AssistPanel v-if="assistOpen&&assistBinding" ref="assistPanelRef" class="lm-assist-panel" :binding="assistBinding" :api="assistApi??undefined" @close="assistOpen=false"/>
 <div class="lm-actions"><button class="primary" :disabled="saving" @click="save">{{saving?'保存中…':'保存'}}</button><button :disabled="saving" @click="closeEditor">取消</button><small class="field-help">保存写入当前项目草稿；取消放弃本次修改。</small></div>
 </template>
 </template>
@@ -436,6 +469,9 @@ defineExpose({dirty,discard:closeEditor})
 .lm-back:hover{color:var(--blue-deep);border-color:transparent}
 .lm-note{background:var(--blue-soft);border:1px solid var(--blue-line);border-radius:7px;padding:10px 14px;font-size:13px;color:var(--muted);margin:12px 0}
 .lm-actions{display:flex;gap:9px;align-items:center;margin-top:20px;flex-wrap:wrap}
+/* 辅助填写（T8 P5）：入口按钮紧贴编辑态页头一行；面板为表单内一张卡片，不挤压既有版式 */
+.lm-assist-row{display:flex;margin:-6px 0 12px}
+.lm-assist-panel{margin-top:16px}
 .lm-inbound{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
 .lm-inbound h3{margin:0 0 4px}
 .lm-inbound-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}

@@ -6,9 +6,11 @@
      不发送任何请求、不做连通性测试、不做返回结果映射或设备控制。
      历史 api（无 schemaVersion）保留 path 旧格式，编辑保存后转成 v2；历史 flow 与未知实现只读保留；
      失效关联保留原配置并提示，需用户确认后移除，不自动删除、不静默迁移。
+     接口映射编辑弹窗接入 AI 辅助填写（2026-09-21 T10）：仅可编辑 api 配置提供入口，采纳只改弹窗
+     本地草稿、绝不自动保存；认证凭据（auth.*）永不出网也永不被建议写入（assist/actionBindingAdapter）。
      保存走既有 form-save；取消/关闭/Esc 有脏表单保护（appConfirm），凭据密钥只写项目受保护凭据库。 -->
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import AppSelect from '../shared/AppSelect.vue'
 import Field from '../shared/EditorField.vue'
 import { appConfirm } from '../shared/appConfirm'
@@ -18,6 +20,9 @@ import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 import { listApiCredentials, saveApiCredential } from './api'
 import MappingDescription from './MappingDescription.vue'
 import { descTextOf, commitDesc } from './bindingModel'
+import AssistPanel from '../assist/AssistPanel.vue'
+import { actionBindingAssistBinding } from '../assist/actionBindingAdapter'
+import type { AssistApi, AssistHostBinding } from '../assist/useAssistPanel'
 import {
   AUTH_TYPE_OPTIONS, BODY_FORMAT_OPTIONS, CONSTANT_TYPE_OPTIONS, IN_LABELS, IN_OPTIONS, METHOD_OPTIONS,
   SOURCE_LABELS, apiContext, apiView, buildPreview, draftFrom, emptyApi, inheritedTypeText, isApiV2,
@@ -120,6 +125,48 @@ const sourceSelectOptions = computed(() => sourceOptions(ctx.value).map(o => ({
   disabled: !!o.disabled,
 })))
 
+// ── 辅助填写（T10 · P6，2026-09-21）：AI 建议只采纳进弹窗本地草稿，绝不自动保存 ──
+// 仅接口映射（可编辑 api 草稿）提供入口；只读查看（历史 flow/未知实现/失效关联）无入口。
+// 白名单与安全边界见 assist/actionBindingAdapter.ts：auth 永不出网、永不被建议写入；
+// 持久化由用户点「保存」走既有 saveApi→form-save 链路（含校验与 409 处理）。
+const assistApi = inject<AssistApi>('assist-api') // 测试注入桩；缺省 undefined → 面板内部用 defaultAssistApi()
+const assistVisible = ref(false)
+const assistBinding = shallowRef<AssistHostBinding | null>(null)
+const assistPanel = ref<{ notifyDraftChanged(): void } | null>(null)
+let assistBaseline = '' // 面板对齐点（打开/采纳/撤销）时的草稿+说明指纹：面板写入不算手改
+const assistFingerprint = () => JSON.stringify(draft.value ?? null) + '|' + noteDraft.value
+function buildAssistBinding(): AssistHostBinding {
+  const inner = actionBindingAssistBinding({
+    projectId: String(props.projectState?.projectId || ''),
+    // 已保存绑定：'<对象类型>:<动作id>'（后端据此出标题并核验归属）；未保存配置传 ''（按「新建动作接口映射」出标题）
+    targetId: meta.value?.binding ? bareType(props.objectType) + ':' + meta.value.actionId : '',
+    contextTitle: meta.value?.binding
+      ? '动作「' + (editingAction.value?.name || meta.value.actionId) + '」的接口映射'
+      : '新建动作接口映射',
+    draft: () => draft.value,
+    note: () => noteDraft.value,
+    setNote: v => { noteDraft.value = v },
+  })
+  return {
+    ...inner,
+    apply: values => { inner.apply(values); assistBaseline = assistFingerprint() },
+    restore: snap => { inner.restore(snap); assistBaseline = assistFingerprint() },
+  }
+}
+function openAssist() {
+  if (!editable.value) return // 只读查看不提供辅助入口（按钮本身也不渲染，这里是双保险）
+  assistBaseline = assistFingerprint()
+  assistBinding.value = buildAssistBinding() // 新 binding 对象：面板 watch 到变化即整卡重置并重取上下文
+  assistVisible.value = true
+}
+function closeAssist() { assistVisible.value = false }
+function toggleAssist() { assistVisible.value ? closeAssist() : openAssist() }
+// 面板写入（apply/restore）以外的草稿/说明变化都算手改：通知面板使旧建议过期、解除撤销保护；
+// 采纳/撤销写草稿先更新 assistBaseline，不会误伤（SSR 下模板 ref 为 null 自动跳过，浏览器生效）。
+watch(assistFingerprint, json => {
+  if (assistVisible.value && json !== assistBaseline) assistPanel.value?.notifyDraftChanged()
+})
+
 function openEditor(row: Row) {
   const impl: any = row.binding ? implOf(row.binding) : null
   const reason: Meta['viewReason'] = row.status === 'stale' ? 'stale' : row.status === 'flow' ? 'flow' : row.status === 'unknown' ? 'unknown' : ''
@@ -130,10 +177,11 @@ function openEditor(row: Row) {
   issues.value = null; message.value = ''; credentialOpen.value = false; credentialMessage.value = ''; credentialDraft.value = { name: '', secret: '' }
   noteDraft.value = editable.value ? descTextOf(props.projectState, 'actions', props.objectType, row.actionId) : ''
   noteBaseline.value = noteDraft.value
+  assistVisible.value = false; assistBinding.value = null // 新编辑目标：辅助面板收起，重开时按新动作重建 binding
   if (editable.value) void loadCredentials()
   void nextTick(() => dialogEl.value?.scrollTo({ top: 0 }))
 }
-function closeNow() { meta.value = null; draft.value = null; issues.value = null; message.value = ''; credentialOpen.value = false; credentialDraft.value = { name: '', secret: '' }; noteDraft.value = ''; noteBaseline.value = '' }
+function closeNow() { meta.value = null; draft.value = null; issues.value = null; message.value = ''; credentialOpen.value = false; credentialDraft.value = { name: '', secret: '' }; noteDraft.value = ''; noteBaseline.value = ''; assistVisible.value = false; assistBinding.value = null }
 /** 用户主动关闭（取消/背板/Esc）：有修改先确认放弃。 */
 async function closeEditor() {
   if (dirty.value && !(await appConfirm({ message: '放弃尚未保存的接口配置？', title: '放弃修改', confirmLabel: '放弃并关闭', danger: true }))) return
@@ -413,7 +461,10 @@ const viewNotice = computed(() => viewReason.value === 'flow'
           <span class="eyebrow">{{ editable ? '项目接口配置' : '只读查看' }}</span>
           <h2>{{ (editable ? '配置接口 · ' : '查看配置 · ') + (editingAction?.name || meta?.actionId || '') }}</h2>
         </div>
-        <button type="button" @click="closeEditor()">关闭</button>
+        <div class="ab-headtools">
+          <button v-if="editable" type="button" class="mini" :aria-pressed="assistVisible" @click="toggleAssist">{{ assistVisible ? '✦ 收起辅助填写' : '✦ 辅助填写' }}</button>
+          <button type="button" @click="closeEditor()">关闭</button>
+        </div>
       </div>
       <div class="ab-modalbody">
         <!-- 1. 只读横幅：本体动作名称与业务定义 -->
@@ -425,6 +476,10 @@ const viewNotice = computed(() => viewReason.value === 'flow'
           <p v-if="!editingAction?.effect && !editingAction?.description" class="muted">本体未填写业务定义。</p>
           <small class="muted">来自项目引用的本体版本，只读；项目里只配置调用它的接口。</small>
         </div>
+
+        <!-- 辅助填写面板（T10）：内嵌弹窗、随卡片滚动；仅可编辑接口配置提供，采纳只改本地草稿 -->
+        <AssistPanel v-if="editable && assistVisible && assistBinding" ref="assistPanel" class="ab-assist-panel"
+                     :binding="assistBinding" :api="assistApi ?? undefined" @close="closeAssist"/>
 
         <template v-if="editable">
           <!-- 2. 基本信息 -->
@@ -572,6 +627,8 @@ const viewNotice = computed(() => viewReason.value === 'flow'
 .ab-dialog{width:min(1160px,95vw);max-height:92vh;padding:0;overflow:auto}
 .ab-modalhead{position:sticky;top:0;z-index:3;background:var(--paper);border-bottom:1px solid var(--line);padding:16px 24px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .ab-modalhead h2{font-size:17px;margin:4px 0 0}
+.ab-headtools{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.ab-assist-panel{margin:0 0 16px}
 .ab-modalbody{padding:18px 24px 22px}
 .ab-modalfoot{position:sticky;bottom:0;z-index:3;background:var(--paper);border-top:1px solid var(--line);padding:12px 24px;display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .ab-footnote{flex:1;min-width:220px;font-size:12px;color:var(--muted)}
