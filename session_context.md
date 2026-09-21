@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`e0feca10552ae4f5`
+上下文版本：`f8842e46ff83f0c6`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### system-deep-test：G 轮整改后的反例闭环复核（交复验前） · zcode · 已实施，待验收
+
+时间：2026-09-21T03:58:00.097470+00:00；记录：`.collaboration/entries/000145-cb4db9e1e829.json`
+
+按 F01F05独立验收记录_20260921.md 的收尾要求「再复验这些反例和必要HTTP链路即可」完成交复验前的闭环复核，提交 b9bd205（仅三份文档，无代码改动；代码整改主体为上一轮 b833538）。复跑验收方自存的 59 项独立反例脚本（independent.py，输出重定向到 /tmp，未覆盖其证据目录）：59/59 全部通过，含其上轮判失败的 4 项（EX nested separate diagnostics / EX warnings cannot prove blocked / EX split info replacements / EX alias info replacement）。复跑 control.py 负对照注入：输出与其上轮记录逐字一致（validate500→整条 test_error；validate200+publish422→product_pass）。真实 HTTP 三链路 gver-targeted/onto/proj（18971 全新隔离实例）分类与前轮逐项一致（15=pass11/known3/info1、22=17/1/1/1/1/1、54=51/2/1）。单测 deep_verdicts_test 107/107、deep_results_index_test 51/51；索引重算 14 批次/被替代 94 行/187 记录/根因 9 不变，O4-07a 未确认项如实单列。三份文档登记复核证据；验收指令注明复验方须把反例脚本复制到 /tmp 改输出路径后亲跑，不得直接引用实施方结果。至此验收记录 G01–G03、G04 及其收尾要求全部处理完毕，停在待 Codex 独立复验。
+
+- 决定：复核用验收方自己的证据脚本而非自造用例：59 项反例脚本复制到 /tmp 改输出路径后执行，不覆盖其证据目录、不改其文件。；验收指令明确要求复验方亲跑该脚本（复制到 /tmp 改路径），不得直接引用实施方结果，也不得写回验收方证据目录。；本轮无代码改动：G01–G03 与 R1–R4 的代码整改已在 b833538 完成并单测锁定，本轮只做反例闭环复核与文档登记。
+- 验证：independent.py 复跑 59/59 通过（TOTAL 59 PASS 59 FAIL 0，退出码 0），含上轮 4 项失败现全部符合期望。；control.py 复跑输出与验收记录 control.txt 逐字一致。；真实 HTTP：gver-targeted 15 条=pass11/known3/info1；gver-onto 22 条=17 pass/1 known/1 new/1 static/1 not_tested/1 blocked；gver-proj 54 条=51 pass/2 known/1 info；与 r14-* 轮逐项一致。；单测 107/107 与 51/51；索引重算数字不变且 O4-07a 未确认项如实单列于结果索引 §2.2。；范围与清理：git diff d6c73c2..HEAD -- workbench frontend tests/fixtures 为空；本轮仅三份文档；18971 按 PID+cwd 确认后停止、端口释放、数据根 .runtime/gfix2-data 已删除；Codex 证据目录 .runtime/f01f05-accept-evidence 与 18931 未触碰。
+- 下一步：用户把 独立验收执行指令_20260921_F01F05.md（已更新）交 Codex 复验：亲跑其 59 项反例、K01–K14 清单、K06b/K06c/K06d 反例与覆盖「已覆盖 vs 未确认」核对。；复验通过后停在「待用户授权集成」；业务缺陷（9 根因）修复另行安排，D-Q02-01 修复后补跑 restore 成功路径把 O4-07a 从未确认转已确认。
+- 依据/文档：提交 b9bd205（复核登记）、b833538（G01–G03+R1–R4 代码整改）、09da5e3（上轮交接）；.runtime/f01f05-accept-evidence/independent.py、control.py（验收方证据，只读复跑）；文档/需求/20260921_系统全方位深度测试/独立验收执行指令_20260921_F01F05.md、缺陷清单.md、测试计划.md
 
 ### system-deep-test：按 F01F05 独立验收 G01-G03 整改 + 第四轮对抗复验（R1-R4） · zcode · 已实施，待验收
 
@@ -140,13 +151,3 @@
 - 下一步：R02(中)按既有缺口交owner裁定：project_validation._check_flow_binding 不调用 flows.check_flow；Q03只测试记录，未改业务代码，未git commit
 - 依据/文档：.runtime/test-evidence/q03/REPORT.md；tests/deep_project_chain.py；tests/deep_flow_chain.py；workbench/project_validation.py:512
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### Q05 深度测试：数据可靠性+账号/接口边界 · zcode · 已实施，待验收
-
-时间：2026-09-21T00:59:10.151882+00:00；记录：`.collaboration/entries/000133-1c391f575ca0.json`
-
-专属实例18932完成I1-I9：约75条断言通过。无跨账号数据泄露、无密码明文回读；kill -9两轮+损坏库副本探测均无半写。缺陷：D1 POST缺Origin被放行与README「缺失或不符403」不符；D2 存储损坏时GET /api/state返回400携带原始Python解析文本（应503/通用500）；D3 跨账号connection-secret返回400、llm-provider-delete对他人id返回200 cleared=true，与06「按不存在404/空」口径不符（实测均无越权效果）。
-
-- 验证：tests/deep_integrity_http.py 59条(58 pass/1 fail=D1)；tests/deep_integrity_restart.py write/verify/freshroots 全过；tests/deep_integrity_fault.py prep/hammer/check/corrupt-* 全过；报告与jsonl证据在 .runtime/test-evidence/q05/
-- 下一步：D1-D3 按「文档bug或实现bug」流程交owner裁定；Q05结束已停止18932并释放端口
-- 依据/文档：.runtime/test-evidence/q05/REPORT.md；tests/deep_integrity_http.py；tests/deep_integrity_restart.py；tests/deep_integrity_fault.py
