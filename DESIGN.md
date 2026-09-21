@@ -172,7 +172,7 @@ components:
 - **信息密度优先**：基准字号 14px，说明与元信息 12–13px，表格一屏能看更多行；靠分隔线与留白分组，不靠大卡片阴影堆叠层级。
 - **克制配色**：一个主色（`--blue` #245cdf）承担品牌、选中、链接与焦点；绿/琥珀/红只表达校验与状态语义。除图形画布外不引入新的装饰色。
 - **零花哨动效**：统一 `--dur` .12s + `--ease` `cubic-bezier(.2,.6,.3,1)`；只在状态变化处给反馈，入场动画与视差一律排除，并尊重 `prefers-reduced-motion`。
-- **唯一取色入口**：`frontend/src/style.css` 的 `:root` 是令牌唯一定义处（37 个）。新增颜色必须先进 `:root` 再由样式引用；组件里写十六进制色视为债务。
+- **唯一取色入口**：`frontend/src/style.css` 的 `:root` 是 **CSS 令牌**唯一定义处（37 个，main 也是 37 个：删零引用死令牌 `--ok-bright`、增 `--paper-float`，**其余值一个都没改**）。新增颜色必须先进 `:root` 再由样式引用；组件里写十六进制色视为债务。唯一例外是图形渲染参数：`shared/graphStyle.ts` 的画布调色板（`FLOW_CATEGORY` / `FLOW_STATE` / `KNOWLEDGE_KIND_FILL` / `KNOWLEDGE_CANVAS` / `CANVAS_WHITE` 等）不是 CSS 令牌而是 cytoscape/SVG 的数据可视编码，见「登记例外」第 2、3 条。
 - **不改令牌值**：本契约的令牌值即当前线上视觉。任何"统一"都是把散落的漂移色收回到既有令牌，**不得为了统一而修改令牌本身**。
 
 覆盖范围：本体区（工作概览、对象建模、共享属性库、校验与发布）、项目区、编排页、"更多工具"辅助页、登录与设置。
@@ -192,17 +192,19 @@ components:
 
 规则：
 
-1. **同一语义只有一个色**。主色族里 #2458d5、#346fe1、#3978c5、#2563b9、#3478d6、#4162d6、#4080d8、#498ae4、#123f82、#2c4a86 等都是**漂移副本**，一律收敛到 `--blue*` 中最贴近角色的一项，不新增令牌。
-2. `--muted` 与 `--paper` 组合已保证 ≥4.5:1；`--faint` 不得用于承载信息的文字，只能用于装饰与已存在等效文本的重复处。
+1. **同一语义只有一个色**。UI 里出现过的 #2458d5、#346fe1、#3478d6、#4162d6、#4080d8、#498ae4、#123f82、#2c4a86、#2a6aca、#286cca、#2e5b96、#315f9d、#3566a8、#2c64b1、#2e67b1、#1c62bb、#1d60bd、#377bdd、#236bc7、#6798da、#a8c2e9、#89aad6 等都是**漂移副本**，一律收敛到角色最贴近的既有令牌，不新增令牌。**按角色选、不按色值最近邻选**：`--blue` 是实心动作/焦点/选中描边色，`--blue-ink` 是选中态与链接的**文字**色（实测白底 `--blue` 5.41:1、`--blue-ink` 7.22:1，两者都过 AA，选 `-ink` 的理由是**与 main 既有 `.ont-filters button.active`、`.property-choice.active` 的分工一致**，不是可达性补救）。此规则**不适用** `shared/graphStyle.ts` 的分类调色板（#3978c5、#2563b9 等在那里是节点分类编码，例外 3）与 `ontology/legacyGraph/**`（独立令牌体系，例外 1）。
+2. 实测对比度（对 `--paper` #ffffff）：`--muted` #5b6d7e = **5.34:1**（过 AA 正文）、`--faint` #8394a5 = **3.11:1**（不过）。`--faint` 不得用于**新增**的承载信息文字，只能用于装饰图形（图标底、chevron、箭头 `→`、清除叉）与已有等效文本的重复处。本轮把两处 3.4:1 的空态文案提到 `--muted`：`tools/InstanceGraph.vue` `.graph-empty`、`tools/KnowledgeCanvas.vue` `.kc-empty`（main 均为 `#789`）。
+   **存量偏差登记，本轮不改值**（main 既有行为，逐处都需判断该文案是否承载信息，属另一次视觉决策）。实测全仓 `(color|fill):var(--faint)` 声明 **27 处**（main 为 10 处全局 + 组件内散布；核对正则必须容忍冒号后空格）。其中 **9 处属规则 2 允许清单的装饰图形/分隔符**（`.step-title::after` 与 `.ftw-path span::after` 的箭头与分隔符、`.app-select-chevron`、`.app-select-search`、`.app-select-clear`、`.ld-row-arrow`、`.empty-state-ico`、`.ont-empty-ico`、`.empty-icon`），**其余 18 处为存量次级文字**（`.rail-hint`、`.user-menu-note`、`.settings-cat`、`.ftw-meta`、`.app-select-empty`、`.app-select-trigger.is-placeholder`、`.imp-limits`、`.conn-secret summary span`、`.optional-label`、`.source-reference summary span`、`.area-entry small`、`.rail .brand small`、`.detail-source`、`.edge-path span`、`.relation-type`、`.property-row span`、`.no-selection`、OntologyDiscover 的 `.muted`）。**这 18 处登记为后续可达性专项，本轮验收不以其计数为门槛**；新增界面禁止用 `--faint` 承载信息。
 3. 语义三元组永远成对使用：`--ok/--ok-soft/--ok-line`（warn、danger 同理），不要跨族拼色。
 4. 白色透明叠层（`#fffffff0`、`#ffffffeb`、`#ffffffed`）是画布上浮层的可读底，收敛到 `--paper` + alpha 变量；不引入新灰。
-5. 边框色不表达层级，只用 `--line`（分隔）与 `--line-2`（可交互控件描边）两级；选中态描边用 `--blue-line`。
+5. 边框色不表达层级，只用 `--line`（分隔）与 `--line-2`（可交互控件描边）两级；选中态描边用 `--blue-line`（`.manager-item.active`/`.ld-row.active`/`.ont-filters button.active`/`.canvas-tools button.active`/`.area-tabs button.active`/`.ow-item.active`/`.library-card.active`/`.property-choice.active` 等 8 处既有 active 均用 `--blue-line`，本轮把 `:148/:150/:151` 三处 `#b9d4f9`、`#bfd7fa`、`#b7cdf1` 收敛过来）。两处登记的例外用法：`button:where(:not(:disabled)):hover` 用 `--blue`（基元 hover 边框，main 既有）；`.space-new:hover` 用 `border-color:transparent`——rail 新建按钮常态是 `--blue-soft` 底 + `--blue-line` 边，hover 时**边框转透明、由 `--blue-soft` 底承载边界**，不是漏写颜色。
 
 ## Typography
 
 - 唯一字族：系统栈 `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif`。**不加载网络字体**，中文优先 PingFang SC。
-- 缩放：`caption 12` / `body-sm 13` / `body-md 14`（基准）/ `heading-md 15` / `heading-lg 17` / `metric-md 22` / `display-lg 48`。行高基准 1.6，标题 1.4–1.5。
-- 字重：正文 400，控件与列表 500，区块标题 600，页面标题与强调数字 650–700。出现 650 之外的奇数字重需先并入既有档位。
+- **允许清单**（新增/修改的字号）：`micro-label 11` / `caption 12` / `body-sm 13` / `body-md 14`（基准）/ `heading-md 15` / `heading-lg 17` / `metric-md 22` / `display-lg 48`；`16` 与 `19` 是 main 既有特殊档（`.ld-title` 16、`.formula` 19），允许沿用。行高基准 1.6，标题 1.4–1.5。
+  **存量越界登记，本轮不改值**：实测全仓（排除 `legacyGraph/`）落在允许清单之外的 `font-size` 字面值为 **18px×7、20px×10、21px×4、23px×4、25px×1、28px×1、32px×1、34px×1**，集中在 `ontology/OntologyHome.vue`、`ontology/OntologyImport.vue`、`ontology/build/*`、`app/LoginView.vue`、`shared/AppSelect.vue`、`tools/*` 与 `style.css`；另有 `10px`（`style.css` 版本号上标、`tools/LlmProviders.vue`）。这些全部是 **main 既有值**，本轮**未新增越界字号**（`OntologyHome .home-welcome h2` 的 20→21 是向 `heading-xl 21` 并档）。核对口径：遍历 `frontend/src/**/*.{vue,css}` 统计 `font-size:(\d+)px` 并剔除允许清单。
+- 字重：正文 400，控件与列表 500，区块标题 600，页面标题与强调数字 650–700。**存量越界登记**：`font-weight:550`（`ontology/BusinessRuleDialog.vue:57` `.brc-field`）不在档位内，是 main 既有值，本轮未引入也未清理。`.mapping-description-title{font-weight:400}` 与 `.ont-badge.kind-*{font-weight:500}` 是**有意的组件级降重**（前者刻意弱化副标题、后者是状态胶囊而非 eyebrow 大写提示），属合规声明而不是漂移副本。
 - 数字一律 `font-variant-numeric: tabular-nums`（统计、表格、结果值），避免数值列跳动。
 - `micro-label`（11px + letter-spacing 1px + 650）只用于 eyebrow / badge / 大写提示，不用于正文。
 - 代码与技术细节用等宽呈现并落在 `--paper-3` 底上；`pre` 必须 `white-space: pre-wrap; word-break: break-word`。
@@ -218,7 +220,7 @@ components:
 - 表单：`.editor-field` 为标签+控件唯一写法；两列用 `.form-grid`（`repeat(2, minmax(0,1fr))`）；必填用 `.required-mark`，可选项标 `.optional-label`，字段说明用 `.field-help`，错误用 `.field-error`。
 - 统一表格用 `.ont-*`：表头列宽 40px 起、单元格 64px、`.ont-clip` 两行截断、`.ont-badge` 状态胶囊、`.ont-empty` 空态、`.ont-drawer` 480px 右侧抽屉 + `.ont-overlay` 遮罩、`.list-pager` 分页。
 - 空间分配靠留白分组（`--r-*` + 12–24px 间距），不嵌套卡片。卡片只有一层：`.card` / `.detail-card`。
-- 响应式断点为 1200 / 1150 / 900 / 850 / 760 / 700 / 620px。窄屏下双栏改为堆叠、rail 变横向、抽屉占满宽。
+- 响应式断点（以 `grep -rn "@media" frontend/src` 命中为准，legacyGraph 除外）：全局 `style.css` 用 1200 / 1150 / 900 / 850 / 800 / 760 / 700 / 640 / 620 与一个 `min-width:761`；组件级另有 1439 / 1100 / 1099 / 1050 / 1000 / 900 / 850 / 800 / 768 / 767 / 760 / 650 / 620 / 600。**这些数值全部是 main 既有值，本轮一条都没改**；把它们收敛到少数几档属于例外 6 的尺寸迁移，不在本轮范围。窄屏下双栏改为堆叠、rail 变横向、抽屉占满宽。
 
 ## Elevation & Depth
 
@@ -227,13 +229,17 @@ components:
 - `--shadow-1` `0 1px 2px rgba(24,44,62,.08)`：极轻的贴合阴影，用于静态块。
 - `--shadow-2` `0 16px 48px rgba(16,40,61,.18)`：只给浮层——`dialog`、`.row-menu-float`、`.user-menu`。
 - 层级主要由 **hairline 边框（`--line`）+ 底色差（`--paper` vs `--paper-2/--bg`）** 表达。给普通卡片加 `--shadow-2` 属于违规。
-- 遮罩统一 `--backdrop` #10283d66。z-index 序：rail 30 < `.modal-backdrop` 100 < `.app-confirm-backdrop` 150。新浮层必须落进这个序里并说明。
+- 遮罩统一 `--backdrop` #10283d66。
+- **全局 z-index 序**（`style.css` + 共享件，实测枚举）：表格 sticky 头 1/2 与 `.ld-tabs` 2（局部堆叠上下文内，不参与全局比较）< rail 30 < topbar 40 < 画布内浮层 5/6/9（`flow/FlowCanvas.vue`、`flow/FlowEditor.vue`，均在画布自身堆叠上下文内）< `.modal-backdrop` 100 = `.ont-overlay` 100 < `.user-menu` 115 < `.row-menu-float` 120 = `ontology/OntologyImport.vue` 预览层 120 < `.app-confirm-backdrop` 150 < `.stale-page-banner` 200 < **`.app-select-panel` 1000**（`shared/AppSelect.vue`；它必须压过一切行内浮层，因为下拉可以在任何容器内展开，且它自己 `position:fixed` 脱离父级堆叠上下文）。
+- 新浮层必须落进这个序里并在本节登记；未登记的自定义浮层按例外处理。`ontology/legacyGraph/**` 的 4/6/15/20/60/90 是它自己作用域内的独立序，不并入。
 - 画布底纹为 `radial-gradient(var(--grid) 1px, transparent 1px)` + `background-size:18px/20px`；`.canvas-hint` 用近透明白底保证可读，`pointer-events:none`。
 
 ## Shapes
 
 - 圆角四档：`--r-sm` 6px（按钮/输入/行/标签页内控件）、`--r-md` 10px（卡片、工作区容器、工具条）、`--r-lg` 14px（对话框、大容器、抽屉）、`--r-pill` 999px（状态胶囊、badge）。正圆用 `50%`（头像、色点）。
-- 同一组件类型只用一档：所有按钮 6px、所有卡片 10px、所有对话框 14px。出现 `4px`/`7px`/`8px` 之类中间值即为漂移，并档到最近的令牌（4→`--r-sm`，7/8→`--r-sm` 或 `--r-md`，看组件类型）。
+- 同一组件类型只用一档：所有按钮 6px、所有卡片 10px、所有对话框 14px。出现 `4px`/`7px`/`8px` 之类中间值即为漂移，**新增与本轮改动的组件必须并档**（4/5→`--r-sm`，7→`--r-sm` 或 `--r-md`，8/9→`--r-md`，看组件类型）。
+- **这条目前是目标而非现状**：全仓仍有 62 处非令牌 `border-radius` 字面值（`4/5/6/7/8/9/10/20px`），其中 11 处（`6px`/`10px`）与令牌值完全相同、可零视觉风险替换，51 处替换即改变渲染像素。它们全部是 **main 既有状态、本轮未触及**（共享件 `AppSelect` 的 7px 触发器 / 9px 面板也在其中）。按例外 6 的口径，圆角属于尺寸档位，整仓并档与 `padding/margin/gap/width` 一起列为后续尺寸专项，本轮验收**不得**以非令牌圆角计数为门槛。
+- **本条本轮已实际执行**：32 处 `border-radius` 中间值并档（3/4/5/7px→`--r-sm`，8/9px→`--r-md`），`.ont-empty-ico` 8px→`50%`（与 `.empty-state-ico` 同为正圆），`outline-offset` 3px→2px 两处归一，阴影 4 处并到 `--shadow-1/--shadow-2`。**每一处的改前/改后实测值都在 `文档/需求/20260921_样式与交互统一/开发计划.md` §9 的附表里**，本文件只写规则、不重复数值清单。例外 6 豁免的是 `padding/margin/gap/width` 那类大批量尺寸迁移，不是本条。
 - 单边圆角（如表头首格）用 `0 0 var(--r-sm) var(--r-sm)` 形式书写，仍是令牌值。
 - 描边宽度统一 1px；选中/焦点用 2px `outline`（`outline-offset:2px`），不要靠加粗边框表达焦点。
 
@@ -246,7 +252,8 @@ components:
 | 次级按钮 `button` | `--paper` 底 + `--line` 边 + `--ink` 字 | 边转 `--blue`、字转 `--blue` | 2px `--focus` 环 + 2px offset | `translateY(1px)` | `opacity:.5; cursor:not-allowed` | 提交中禁用并保留文案 |
 | 主按钮 `.primary` | `--blue` 底白字 | `--blue-deep` 底白字 | 同上 | 同上 | 同上 | 同上 |
 | 破坏性按钮 `.danger-btn` | `--paper` 底 + `--danger-line` 边 + `--danger` 字 | `--danger-soft` 底 + `--danger` 边与字 | 同上 | 同上 | 同上 | 与 `.mini` 并列用于行内删除 |
-| 输入 / `textarea` / `AppSelect` | `--paper` 底 + `--line-2` 边 | 边框不变（避免与焦点混淆） | 2px `--focus` 环 + 2px offset | — | `--paper-2` 底 `--muted` 字 | 错误时 `.field-error` 文本 |
+| 原生 `input` / `textarea` / `select` | `--paper` 底 + `--line-2` 边 | 边框不变（避免与焦点混淆） | 2px `--focus` 环 + 2px offset | — | `--paper-2` 底 `--muted` 字 | 错误时 `.field-error` 文本 |
+| `AppSelect` 触发器 | 同上 | 边框转 `--blue-line`（rail 深色区另有覆盖） | **全局 `button:focus-visible` 的 2px `--focus` 环是焦点主指标**；组件额外把边框转 `--blue-line` 只是加强边界提示，不能单独充当焦点指示 | — | 同 `:disabled` 基元 | — |
 | 只读输入 `[readonly]` | `--paper-2` 底 `--muted` 字 | — | 环保留（可选中） | — | — | — |
 | 链接式操作 `.row-link` | 无边框、`--blue-ink` 字 | 转 `--blue-deep` + 下划线 | 同上 | — | 隐藏或禁用 | `.danger` 用 `--danger` |
 | 行/列表项 `.ld-row` `.manager-item` | 透明底 | `--paper-2` 底 | 同上 | — | — | 选中态 `--blue-soft` 底 + `--blue-line` 边 + `--blue-ink` 字 |
@@ -256,14 +263,28 @@ components:
 | 保存状态 `.save-pill` | 五态：`saved`/`saving`/`dirty`/`form`/`editing`/`error`/`conflict` | — | 可点击时带环 | — | — | `error`/`conflict` 用 danger 三元组 |
 | 空态 `.empty-state` `.ont-empty` `.empty` | `--muted` 字 + 图标 + 一句解释 + **一个主操作** | — | — | — | — | 骨架用 `.skeleton`，不用 spinner 堆叠 |
 
+### 本轮登记进契约的共享语义类（此前只存在于代码，未登记）
+
+| 类 | 位置 | 语义 | 备注 |
+|---|---|---|---|
+| `.danger-btn`（+ `:where(:not(:disabled)):hover`） | `style.css` | **实心描边**破坏性按钮：`--paper` 底 / `--danger` 字 / `--danger-line` 边，hover 换 `--danger-soft` 底 | 由 `BuildTasksPage` 的 `.bt-danger-btn` 与 `.danger-ghost` 上收。全局 `.danger` 是**文字色工具类**（带 `font-size:12px; margin-top:12px`），绝不能当按钮类用 |
+| `.editor-field{--app-select-gap:8px}` | `style.css` | 字段容器内的 `AppSelect` 上间距 | `AppSelect` 自带 `margin-top:var(--app-select-gap,5px)`。**用继承自定义属性而不是写 `.editor-field .app-select{margin-top:8px}`**：后者与组件 scoped 规则同为 (0,2,0) 且组件样式注入更晚，写了也不生效。原生 `select` 在 `.editor-field` 内历史是 8px，迁到 `AppSelect` 后靠这个属性保持不变，独立使用仍是 5px |
+| `.sk-row/.sk-title/.sk-line/.sk-text/.sk-label/.sk-nav/.sk-w45…w96` | `style.css` | 骨架占位尺寸 | 从 14 处内联 `style` 上收为类，`例外 4` 清单因此缩短。`OntologyHome` 原 220px 标题骨架并入统一的 200px（见 §9 附表） |
+| `.ont-filters,.ld-filters`（含 `button`、`button.active`） | `style.css` | 列表筛选胶囊 | 与 `.ont-badge` 同用 `--r-pill`；`.ld-filters` 的独有值只剩 `padding:10px 14px`，其余并档，计算结果与改前逐项相同 |
+| `.property-pill.is-warn` | `style.css` | 属性胶囊的 warn 态：`--warn-soft` 底 + `--warn` 字 | 与 `.property-pill` 默认（blue-soft/blue-ink）成对 |
+| `.canvas-hint` | `style.css` | 画布左下提示 chip 的唯一实现 | 本轮把 `.kc-hint`(`#ffffffed`/5px/5px 8px)、`.graph-hint`(`#ffffffdd`/11px/`--faint`)、`.canvas-note`(无描边/`#ffffffeb`) 三套副本并到这一条（`--paper-float`/`--r-sm`/`5px 12px`/`--muted` + 1px `--line` 描边）。三处旧类名在模板中已无引用（实测 `grep` 命中 0） |
+| `.row-menu-list button.danger:not(:first-child)` | `style.css` | 行菜单内破坏性项的分隔线 | 首项不加 `border-top/padding-top/下半圆角`（main 无条件加，首项恰好是删除项时会顶出一段无意义分隔）；同时 `margin-top:0` 压住全局 `.danger` 的 12px |
+
 交互态硬性要求：
 
 1. **键盘焦点永不可见性为零**：任何自定义 `button/div/input/select/textarea/[tabindex]` 都不得 `outline:none` 而不补等效 2px `--focus` 环。
+   非 legacyGraph 的 `outline:none` 全量只有 2 处，均在 `shared/AppSelect.vue`，且各自有等效补偿，登记为合规：`:178` 搜索框内层 `input` 由父级 `.app-select-search:focus-within` 补 `border-color:var(--blue)` + `inset 0 0 0 1px var(--focus)`（面板 `overflow:hidden`，外描边环会被裁掉，故改用**合计 2px 的等效焦点反馈**：1px 边框换色 + 1px 内描边环，不是字面意义的第二条完整 2px 环）；`:183` `.app-select-options` 是 `role="listbox"` 容器，键盘导航走 `aria-activedescendant`，焦点由 `.app-select-option.is-active{background:var(--paper-2)}` 表达。
+   **焦点环全量登记**（实测口径：`outline\s*:\s*2px solid var\(--focus\)`，排除 `legacyGraph/`）：**9 处**用 `--focus` 描边环——`style.css` 的基元 `button/input/select/textarea:focus-visible` 与 `.app-select-trigger:focus-visible`（`.space` 深色区另覆盖）、`tools/KnowledgeCanvas.vue`、`tools/InstanceGraph.vue`、`tools/KnowledgeDetails.vue`、`ontology/FunctionManager.vue`、`ontology/ObjectWorkspace.vue`、`project/ImplementationManager.vue`、`flow/NodeConfig.vue`；另有 **3 处 `0 0 0 1px var(--blue)` 是"选中环"不是焦点环**（`tools/KnowledgeExplorer.vue` `.ke-presets button.active`、`tools/OntologyDiscover.vue` `.resource-item.selected`、`project/PropertySources.vue` `.ps-card.selected`），因 `--blue` 与 `--focus` 同值，登记为选中语义保持 `--blue`、不改值。
 2. hover 与 focus 必须可区分：hover 改色，focus 改环。
 3. disabled 一律 `opacity:.5` + `cursor:not-allowed`，并靠 `:disabled` 属性选择器实现，不用改色模拟。
 4. 破坏性操作必须二次确认（`shared/appConfirm`），确认按钮 danger 语义、取消按钮次级语义。
-5. 异步控件在 pending 期间禁用并显示进行中文案，防止重复提交。
-6. 错误反馈位置固定：字段级 `.field-error` 紧跟控件，页面级 `#feedback` / `.inline-error`，全局用 toast；同一错误不重复出现在两处。
+5. 异步控件在 pending 期间禁用并显示进行中文案，防止重复提交。**本条约束的是本轮新增/改动的控件**；main 存量按钮的 pending 文案不统一（部分只禁用不改文案），本轮未逐处核对，不在通过判据内。
+6. 错误反馈**唯一归属**：字段级 `.field-error` 紧跟控件、页面级 `#feedback` / `.inline-error`、全局 toast 三级各有分工，同一错误只在其中一处出现（位置由归属层级决定，不是字面固定坐标）。
 7. `@media (prefers-reduced-motion: reduce)` 内取消动画与位移。
 
 ## Do's and Don'ts
@@ -292,16 +313,20 @@ components:
 1. **`frontend/src/ontology/legacyGraph/**`**：旧编辑器移植代码，自带 `.legacy-editor-root` 作用域令牌（绿色 accent、`--panel/--canvas/--soft/--amber`）。已从扫描 `code.exclude` 中排除，不改造也不要求并入。
 2. **图形/画布几何值**：cytoscape 样式（`frontend/src/shared/graphStyle.ts`）与 SVG/画布里的 `border-width:2.2`、`font-size:12.5`、节点宽高、`arrow-scale` 等，是渲染参数不是设计令牌；像素值允许存在，但**同一色值全站只允许一份定义**（GRAPH_STYLE 与 PREVIEW_GRAPH_STYLE 的公共基础块必须提取共享）。
 3. **域分类调色板**：图谱按节点/连线类型着色的分类色（实体/属性/规则/动作等）属于数据可视编码，不并入业务语义色族；必须集中定义在 `graphStyle.ts` 一处，页面不得另起同角色副本。
-4. **动态 CSS 变量注入（穷举清单，共 14 处）**：`--c`（单项强调色）、`--ld-h`（列表行高）等通过内联 `style` 绑定的运行时几何/数据值，允许保留，但只允许承载"随数据变化的值"，静态样式一律走类名。当前全量清单（新增内联样式必须落在此表内，否则按债务处理）：
+4. **运行时内联样式（穷举清单，共 14 处 `:style` 绑定）**：通过内联 `style` 绑定的运行时几何/数据值允许保留，但只允许承载"随数据变化的值"，静态样式一律走类名。全仓唯一的自定义 CSS 变量注入是 `--ld-h`（列表行高）；其余 13 处直接绑几何/颜色属性，不再有 `--c` 之类单项强调色变量（那是本条早期的错误举例，已更正）。当前全量清单（新增内联样式必须落在此表内，否则按债务处理；行号会随改动漂移，核对以 `grep -rn ":style=" frontend/src --include="*.vue"` 命中为准，排除 `legacyGraph/`）：
    - 数据驱动颜色：`tools/KnowledgeCanvas.vue:41`、`tools/InstanceGraph.vue:87`（`background:item.color`，来自 `graphStyle.ts` 分类调色板）。
    - 百分比宽度：`tools/InstanceCharts.vue:25`（柱长）、`ontology/build/BuildProgressPage.vue:311`、`ontology/build/BuildMaterialsPage.vue:397/416`（进度条）。
    - 浮层定位：`App.vue:1110`、`shared/RowMenu.vue:69`、`shared/AppSelect.vue:147`（菜单/下拉的 `left/top`，由触发元素质心算出）。
    - 表格列宽与行高：`shared/OntologyList.vue:38/39`（`minWidth`/`c.width`）、`ontology/ObjectWorkspace.vue:718`（`--ld-h`）。
    - 画布与分栏几何：`flow/FlowCanvas.vue:229`（节点 `x/y`）、`flow/FlowEditor.vue:541`（检视栏拖拽宽度）。
 5. **原生语义元素即基元（已登记的设计系统决策）**：本项目的 Button / Input / Textarea / Dialog 不设包装组件——它们由 `style.css` 的全局元素规则统一上令牌（含 `.primary`、`.mini`、`.danger`、`.danger-btn`、`:disabled`、`:focus-visible` 等状态），页面直接写 `<button class="primary">` 是**规范用法**，不是绕过组件库。必须复用的是承载行为的复合件：`AppSelect`（下拉，含键盘与样式一致性）、`RowMenu`、`OntDrawer`、`ListPager`、`SearchField`、`EditorField`、`EditorLayout`、`EditorHead`、`AppError`、`OntologyList`、`shared/appConfirm`。因此 `design.qa.yaml` 的 `components.rawElementPolicy` 只对 `select` 要求设计系统组件，其余登记为 `allow-raw`。页面里出现第 5 套自写下拉/抽屉/分页/确认框仍是违规。
-6. **像素→尺寸令牌迁移不在本轮范围**：`px-magic-number` 类命中的绝大多数是 `padding/margin/gap/width` 的具体像素值。把 9px 收进"既有档位"必然改变实际像素（9→8 或 10），属于**视觉改动**而不是漂移收敛，与「不改令牌值、保持现有风格」的硬约束直接冲突。本轮只收敛色值、组件复用与交互态；尺寸登记为后续专项治理，验收不得以 `px-magic-number` 计数作为通过门槛。
+6. **像素→尺寸令牌迁移不在本轮范围**：`px-magic-number` 类命中的绝大多数是 `padding/margin/gap/width` 的具体像素值。把 9px 收进"既有档位"必然改变实际像素（9→8 或 10），属于**视觉改动**而不是漂移收敛，与「不改令牌值、保持现有风格」的硬约束直接冲突。本轮只收敛色值、组件复用与交互态；尺寸登记为后续专项治理，验收不得以 `px-magic-number` 计数作为通过门槛。具体到 `.field-help`（字段说明行）：main 即有约 48 种 `margin` 字面值组合（含 `4px 0 0 6px` 这类四值写法与 `margin-top:-20px` 这类负值），是这条口径最大的存量来源之一；本轮只保证 `.editor-field .field-help{margin:6px 0}` 这一条全局默认存在，未逐处并档。
 7. **扫描器误报（`custom-shadow` / `tailwind-arbitrary-value` 两条规则）**：
-   - `custom-shadow` 的正则是 `/\bbox-shadow\s*:|shadow-\[[^\]]+\]/g`——它匹配的是**属性名本身**，不看值。全站 18 处命中逐条核对为 `var(--shadow-1|2)`（10 处）、结构性内描边与令牌组合（`inset 3px 0 var(--blue)` 选中条、`inset 0 0 0 1px var(--line-2),var(--shadow-1)` 等 5 处）、焦点/选中描边环 `0 0 0 1px var(--blue)`（2 处）与 `none`（1 处），**没有一处一次性阴影值**。因此该计数不是债务量，核对方式是看命中行的值是否走令牌；不得为了清零误报而删掉合法阴影用法。
-   - `tailwind-arbitrary-value` 的正则 `/(?:[A-Za-z0-9_:/-]+-\[[^\]]+\])/g` 会匹配 JS 正则字面量与注释里的字符类（如 `/--[^\n]/`、`ESS-[0-9]`）。本项目**不使用 Tailwind**，4 处命中全部是这类误报，与样式无关。
+   - `custom-shadow` 的正则是 `/\bbox-shadow\s*:|shadow-\[[^\]]+\]/g`——它匹配的是**属性名本身**，不看值。全站 19 处 `box-shadow` 声明逐条核对为：`var(--shadow-1|2)`（9 处）、`inset` 结构性内描边与令牌组合（6 处：`inset 3px 0 0 var(--blue)` 与 `inset 3px 0 var(--blue)`/`transparent` 选中条、`inset 0 0 0 1px var(--line-2),var(--shadow-1)` 标签页、`inset 0 0 0 1px var(--blue)` 与 `inset 0 0 0 1px var(--focus)` 两处描边/焦点环）、`0 0 0 1px var(--blue)` 选中环（2 处）、`none`（1 处），以及**唯一 1 处一次性值** `8px 0 20px #1b32531a`（`flow/FlowEditor.vue` 的 `.flow-list` 侧栏方向性阴影——它在 main 就是这个字面值，本轮曾误并进 `--shadow-2`（0 16px 48px 的居中浮层阴影，几何语义不同）并已回退成逐字节等于 main，见 §9）。除此之外**没有第二处一次性阴影值**。因此该计数不是债务量，核对方式是看命中行的值是否走令牌；不得为了清零误报而删掉合法阴影用法。 处）、焦点/选中描边环 `0 0 0 1px var(--blue)`（2 处）与 `none`（1 处），**没有一处一次性阴影值**。因此该计数不是债务量，核对方式是看命中行的值是否走令牌；不得为了清零误报而删掉合法阴影用法。
+   - `tailwind-arbitrary-value` 的正则 `/(?:[A-Za-z0-9_:/-]+-\[[^\]]+\])/g` 会匹配 JS 正则字面量与注释里的字符类（如 `/--[^\n]/`、`ESS-[0-9]`）。本项目**不使用 Tailwind**，6 处命中（`style.css:94`、`app/LoginView.vue:81`、`ontology/OntologyImport.vue:475/476`、`ontology/ObjectWorkspace.vue:742/744`）全部是这类误报——分别是注释里的 `/* 说明→落地 */`、`/--[^\n]/` 之类字符类与 `EM[0-9]` 形态，与样式无关。
    - 另外 `audit-design-debt.mjs` 把结果 `sortFindings().slice(0, 1000)`，而 `px-magic-number` 单类就有 2700+ 条，因此报告里的 `summary` 分类计数**在截断后不可信**（会低估排在后面的类别）。需要可信分类计数时按同源正则不截断地统计，并固定 `code.exclude` 口径（见 `legacyGraph/**` 与 `shared/graphStyle.ts` 两条排除）。
-8. **空态类名的历史三名并存（`.empty` / `.empty-state` / `.ont-empty`）**：`.empty` 被 `legacyGraph/` 内 5 个文件覆盖依赖，删除会破坏旧编辑器空态，故三者短期共存。已在 `style.css` 里把 `.empty` 与 `.empty-state` 合并为同一条声明（同值、单一定义处），杜绝两份内边距漂移；**新增页面一律用 `.empty-state`**，不得再新增第四种空态实现。
+8. **空态类名的历史三名并存（`.empty` / `.empty-state` / `.ont-empty`）**：三者**值不同、各有依赖，故不合并**——`.empty{padding:45px}`、`.empty-state{padding:44px 24px}`、`.ont-empty{padding:70px 20px}`（统一表格内空态，垂直留白更大是刻意的）。`.empty` 不能并进 `.empty-state`：它有约 12 处非 legacy 使用（`App.vue` 教学卡、`tools/InstanceCharts|InstanceMap|DefinitionManager`、`shared/EditorLayout`、`flow/FlowEditor|FlowList`、`ontology/build/BuildReviewPage`、`project/LinkMappings|ProjectValidation` 等），改成 `44px 24px` 会让这些空态左右各少 21px 内边距，属视觉回归（`legacyGraph/` 里的 `.empty` 自带 scoped 覆盖，不受全局规则影响）。本轮曾把前两者错误地"合并为同一条声明"并声称同值，**已回退为 main 各自的值**。约束只有一条：**新增页面一律用 `.empty-state`**，不得再新增第四种空态实现。
+9. **尺寸档位并档本轮已执行（不是待办）**：`border-radius` 中间值并档 32 处、`outline-offset` 归一 2 处、阴影并到 `--shadow-*` 4 处，均**改变了实际渲染像素**（如 7px→`--r-sm` 6px、8px→`--r-md` 10px）。这与例外 6「不为统一而改令牌值」不冲突：改的是**组件声明**，`:root` 令牌值一个没动；但它是视觉改动而非纯漂移收敛，因此**每一处的改前/改后实测值必须查表**——完整 135 行决议值前后对照在 `文档/需求/20260921_样式与交互统一/开发计划.md` §9 附表（由 `/tmp` 侧脚本 `visual-delta.mjs` 对 `main` 与分支两份 `style.css`+全部组件 `<style>` 展开 `:root` 变量后生成，非手抄）。例外 6 豁免的是 `padding/margin/gap/width` 那类大批量迁移，验收**不得**以 `px-magic-number` 计数为门槛，但**可以**要求 §9 附表覆盖每一条 radius/offset/shadow 并档。
+10. **类的归属迁移必须附对照表**：本轮把若干组件 `<style>` 里的规则上收到 `style.css`（`.canvas-hint` 三份副本合并、`.sk-*` 骨架尺寸 14 处内联上收、`.danger-btn`/`.ont-filters`/`.property-pill.is-warn` 等）。上收会改变特异性和注入顺序，也可能留下模板里指向已删类的悬挂引用。因此规则：**任何类在 scoped↔global 之间移动、或改名/合并导致旧类消失时，必须同步给出改前/改后决议值对照行，并用脚本核对全仓再无该类的引用**（`grep -rn "旧类名" frontend/src` 命中数为 0 才可删）。CSS 类名不受 vue-tsc 类型检查，漏核对不会有编译错误提示。本轮开发过程中该规则被违反过一次（上收全局的选择器抢不过组件 scoped 规则），已在末次提交前按本条核对并收口；后续轮次一律按本条执行。
+
+11. **容器规则把 `.editor-field` 的外边距归零的两处（main 既有，非本轮引入）**：`app/LoginView.vue` 的 `.login-form .editor-field{margin:0 0 14px}` 与 `style.css` 的 `.library-toolbar .editor-field{margin:0}`（后者实测无命中——`.library-toolbar` 内当前没有 `.editor-field`，是 main 遗留的死规则，本轮不清理以免牵连其它 `:0/2,0` 选择器）。由于 `--app-select-gap` 走继承、与容器 `margin` 无关，这两处内的 `AppSelect` 上间距从 main 的 5px 变为 8px（与同容器内原生 `input` 的 8px 一致），是该修复的**预期视觉变化**，已列入 §9 对照说明；`LoginView` 当前未在该容器使用 `AppSelect`，实际无渲染差异。
