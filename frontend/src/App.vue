@@ -493,7 +493,7 @@ watch(view, () => closeUserMenu(false))
 // --- 从物料生成本体（20260920，本体区子入口 view=build）：A01〜A06 六页装配 ---
 // 生成任务（ontology/build/）是账号级资源，不隶属当前选中本体，也不改写本体草稿：
 // 本视图独立于本体草稿加载态渲染，未选本体也能进入（需求 G01）。页面契约（只读）：
-// A01 无 props、emit open-task(taskId)/enter-ontology（不带本体 id）；A02〜A06 传 taskId，A04 另传可选 runId。
+// A01 无 props、emit open-task(taskId)/enter-ontology(ontologyId?)；A02〜A06 传 taskId，A04 另传可选 runId。
 type BuildStage = 'tasks' | 'materials' | 'scope' | 'progress' | 'review' | 'save'
 /** 步骤条（原型 shell 的 .steps）：A05 评审页没有向前 emit，故由 App 提供 评审初稿↔保存新本体 入口。 */
 const BUILD_STEPS: { stage: BuildStage; label: string }[] = [
@@ -521,8 +521,27 @@ function rememberBuildSource(ontology: string, task: string) {
   prefSet(BUILD_SOURCE_KEY, JSON.stringify(next)) // 未登录/存储不可用时静默降级，仅本次会话有效
 }
 function openBuildTask(taskId: string) { buildTaskId.value = taskId; buildRunId.value = ''; buildStage.value = 'materials' }
-/** A01「进入对象建模」：emit 不带本体 id，按现有切页进入对象建模（要换本体用侧栏本体选择器）。 */
-function enterBuildOntology() { void navigate('objects') }
+/**
+ * A01 进入对象建模。三种入口（B.4 回链修复）：
+ *  · 不带本体 id（页头「进入对象建模」、空态「先看看现有对象建模」）：原行为，直接进当前本体的对象建模页；
+ *  · 带 id 且就是当前本体：同样直接进对象建模，不做无谓重载；
+ *  · 带 id 且与当前不同（任务行的「查看已创建本体」）：复用 switchOntology——它已包含
+ *    requestLeave/guardUnsaved 未保存守卫，成功后整页载入目标本体的 #objects（含本体内存状态清空），
+ *    因此这里不再额外 navigate；被取消/正忙时不切换，自然停在生成视图。
+ *  · 该带 id 却拿到空值（数据缺 deliveryOntologyId 的异常情况）：退回原行为并给出可读提示。
+ */
+async function enterBuildOntology(targetOntologyId?: string) {
+  if (targetOntologyId === undefined) { void navigate('objects'); return }
+  const target = String(targetOntologyId).trim()
+  if (!target) {
+    // 提示在导航之后给出：navigate 会清空上一条提示（换页即清），先提示会被自己清掉。
+    await navigate('objects')
+    notify('该任务没有可用的已创建本体 id，已进入当前本体的对象建模页；请从侧栏选择目标本体。')
+    return
+  }
+  if (target === ontologyId) { await navigate('objects'); return }
+  await switchOntology(target)
+}
 function onBuildGenerated(runId: string) { buildRunId.value = runId || ''; buildStage.value = 'progress' }
 /** A05 的 saved 按需求前进入 A06（该页只声明未触发；一旦触发说明已创建，A06 会只读展示交付结果）。 */
 function onBuildReviewSaved() { buildStage.value = 'save' }

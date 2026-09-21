@@ -1,5 +1,8 @@
 <!-- ─── A05 评审初稿（20260920 从物料自动构建本体）──────────────────────────────
      契约：文档/接口文档/08-从物料自动构建本体接口.md §7「候选评审」。
+     属性数据类型：服务端只接受**平铺** fields.dataType（字符串枚举）+ fields.valueType（仅时间序列，
+     取值 = protocol.VALUE_TYPES）；读写一律经 ./candidateFields（枚举/标签/读取/载荷唯一来源），
+     本页不再自带类型表，也不发送嵌套对象 {type,valueType}。
      布局基准：原型 交互原型_v1.html 的 reviewPage()——三栏 reviewgrid：
        左「候选定义」列表（类型/决定/证据状态筛选 + 名称搜索 + 合并勾选）
        中「定义编辑」（按类型的字段、保存/取消、纳入/暂缓/排除、依赖与问题）
@@ -16,6 +19,10 @@ import { appConfirm } from '../../shared/appConfirm'
 import { getJson, postJson, SaveRequestError } from '../../app/http'
 import type { Candidate } from './types'
 import { DECISION_LABELS, EVIDENCE_STATUS_LABELS, TYPE_LABELS } from './types'
+import {
+  PROPERTY_DATA_TYPES, VALUE_TYPES, buildPropertyFields, isPropertyDataType, isValueType,
+  propertyDataTypeLabel, readPropertyFields, valueTypeLabel,
+} from './candidateFields'
 import * as buildApi from './api'
 
 const props = defineProps<{ taskId: string }>()
@@ -128,8 +135,6 @@ async function requestResolveDiff(taskId: string, candidateId: string, choice: '
 const TYPE_FALLBACK: Record<string, string> = { object: '对象', property: '属性', link: '链接', rule: '规则', action: '动作' }
 const DECISION_FALLBACK: Record<string, string> = { include: '拟纳入', defer: '暂缓', exclude: '已排除' }
 const STATUS_FALLBACK: Record<string, string> = { supported: '有依据', inferred: '推断待确认', conflict: '来源冲突', insufficient: '材料不足' }
-const DATA_TYPE_LABELS: Record<string, string> = { text: '文本', number: '数值', boolean: '是或否', dateTime: '时间', array: '数组', struct: '结构体', timeSeries: '时间序列' }
-const VALUE_TYPE_LABELS: Record<string, string> = { text: '文本', number: '数值', boolean: '是或否', dateTime: '时间' }
 const QUALITY_LABELS: Record<string, string> = { high: '高', medium: '中', low: '低' }
 const LOCATOR_KIND_LABELS: Record<string, string> = { code: '源码', ddl: 'DDL', docx: '文档', pdf: 'PDF', xlsx: '表格', md: 'Markdown' }
 const TYPE_KEYS = Object.keys(TYPE_FALLBACK)
@@ -144,8 +149,10 @@ const decisionLabel = (key: string) => labelFrom(DECISION_LABELS, key, DECISION_
 const statusLabel = (key: string) => labelFrom(EVIDENCE_STATUS_LABELS, key, STATUS_FALLBACK)
 const qualityLabel = (key: string) => QUALITY_LABELS[key] || key
 
-const DATA_TYPE_OPTIONS = Object.keys(DATA_TYPE_LABELS).map(key => ({ value: key, label: DATA_TYPE_LABELS[key] }))
-const VALUE_TYPE_OPTIONS = Object.keys(VALUE_TYPE_LABELS).map(key => ({ value: key, label: VALUE_TYPE_LABELS[key] }))
+// 属性数据类型/观测值类型：枚举与中文名唯一来源是 ./candidateFields（与后端 protocol 一致的平铺口径），
+// 这里只把它摊成下拉选项；页面不再自带一份「看起来像」的类型表（旧表 text/number/boolean/dateTime 会被后端拒）。
+const DATA_TYPE_OPTIONS = PROPERTY_DATA_TYPES.map(value => ({ value, label: propertyDataTypeLabel(value) }))
+const VALUE_TYPE_OPTIONS = VALUE_TYPES.map(value => ({ value, label: valueTypeLabel(value) }))
 const ONE_MANY_OPTIONS = [
   { value: '', label: '未定（需依据）' },
   { value: 'one', label: '一（one）' },
@@ -631,20 +638,15 @@ function toEvidenceItem(entry: Record<string, unknown>): EvidenceItemView {
 }
 
 // ── 编辑（按候选类型显示字段）────────────────────────────────────────────────
-function readDataType(fields: Record<string, unknown>): { type: string; valueType: string } {
-  const raw = fields.dataType
-  if (typeof raw === 'string') return { type: raw, valueType: '' }
-  const node = asRecord(raw)
-  return { type: str(node.type), valueType: str(node.valueType) }
-}
-
+// 数据类型读取走 ./candidateFields.readPropertyFields：服务端存的是**平铺** fields.dataType +
+// 平铺 fields.valueType（旧实现只读 dataType，字符串时永远读不到观测值类型）。此处不再自带读取逻辑。
 function resetDraft(item: CandidateView) {
-  const dataType = readDataType(item.fields)
+  const dataType = readPropertyFields(item.fields)
   const cardinality = asRecord(item.fields.cardinality)
   const next: DraftState = {
     name: item.name,
     definition: item.definition,
-    dataType: dataType.type,
+    dataType: dataType.dataType,
     valueType: dataType.valueType,
     content: str(item.fields.content),
     effect: str(item.fields.effect),
@@ -666,14 +668,24 @@ async function saveEdit() {
   if (!item || !form || saving.value) return
   if (!form.name.trim()) { editError.value = '请填写名称。'; return }
   if (!form.definition.trim()) { editError.value = '请填写业务定义。'; return }
-  if (item.type === 'property' && form.dataType === 'timeSeries' && !form.valueType) {
-    editError.value = '时间序列必须选择观测值类型。'
-    return
+  if (item.type === 'property') {
+    // 数据类型必须落在协议枚举内：不在枚举里（历史脏值）时不允许原样发出去，请用户重新选择。
+    if (form.dataType && !isPropertyDataType(form.dataType)) {
+      editError.value = '数据类型不在协议允许的取值内（' + PROPERTY_DATA_TYPES.join('、') + '）。请重新选择后再保存。'
+      return
+    }
+    if (form.dataType === 'timeSeries') {
+      if (!form.valueType) { editError.value = '时间序列必须选择观测值类型。'; return }
+      if (!isValueType(form.valueType)) {
+        editError.value = '观测值类型不在协议允许的取值内（' + VALUE_TYPES.join('、') + '）。请重新选择后再保存。'
+        return
+      }
+    }
   }
   const fields: Record<string, unknown> = { name: form.name.trim(), definition: form.definition.trim() }
   if (item.type === 'property') {
-    if (form.dataType === 'timeSeries') fields.dataType = { type: 'timeSeries', valueType: form.valueType }
-    else if (form.dataType) fields.dataType = form.dataType
+    // 平铺写入：{dataType}（timeSeries 追加 {valueType}）；绝不发嵌套对象 {type,valueType}（服务端会拒）。
+    Object.assign(fields, buildPropertyFields(form.dataType, form.valueType))
   }
   if (item.type === 'rule') fields.content = form.content
   if (item.type === 'action') fields.effect = form.effect

@@ -601,16 +601,36 @@ def flow_timeseries_delivery():
           and (to_ts.get('candidate') or {}).get('fields', {}).get('valueType') == 'double',
           '属性改为 timeSeries/double 保存成功', actual=(status, _short(to_ts)))
     revision = (to_ts.get('candidate') or {}).get('revision', capacity['revision'])
+    # R3-04 后：非法观测值类型在**保存**这一步就被拒绝（与交付同枚举），
+    # 而不是先写进候选再等预检报错。断言拒绝文案给出允许枚举，且库里的值未被改写。
     status, dirty = api('/api/build-candidate-update',
                         {'candidateId': capacity['id'], 'fields': {'valueType': 'text'},
                          'revision': revision})
-    revision = (dirty.get('candidate') or {}).get('revision', revision)
+    check(status == 400 and 'double' in str(dirty.get('error') or ''),
+          '非法观测值类型在保存时被拒并列出允许枚举（D02/R3-04）',
+          actual=(status, _short(dirty)))
+    status, kept = api('/api/build-candidates', query='?taskId=%s&batch=%s' % (task_id, batch_id))
+    kept_value = next((c.get('fields', {}).get('valueType')
+                       for c in (kept.get('items') or []) if c['id'] == capacity['id']), None)
+    check(kept_value == 'double', '被拒的非法值没有写进候选（仍是 double）', actual=kept_value)
+    # 预检兜底：绕过编辑接口直接往库里塞一个非法观测值，预检必须确定性拦下。
+    with sqlite3.connect(str(TMP / 'data' / 'workbench.sqlite3')) as conn:
+        conn.execute("UPDATE wb_build_candidates SET fields_json = "
+                     "replace(fields_json, '\"valueType\": \"double\"', '\"valueType\": \"text\"') "
+                     "WHERE candidate_id = ?", (capacity['id'],))
+        conn.commit()
     status, pre = api('/api/build-deliver-precheck', {'taskId': task_id})
     codes = {issue.get('code') for issue in (pre.get('issues') or [])}
     check(status == 200 and pre.get('ok') is False
           and 'OBSERVATION_VALUE_TYPE_INVALID' in codes,
-          '旧枚举值 text 不再合法：预检 ok=false 且确定性报 INVALID（D02）',
+          '库里残留的旧枚举值 text 仍被预检拦截：ok=false 且报 INVALID（D02 兜底）',
           actual=(status, pre.get('ok'), sorted(codes)))
+    # 还原为合法值，继续走「修正后预检通过 → 交付」的正常链路
+    with sqlite3.connect(str(TMP / 'data' / 'workbench.sqlite3')) as conn:
+        conn.execute("UPDATE wb_build_candidates SET fields_json = "
+                     "replace(fields_json, '\"valueType\": \"text\"', '\"valueType\": \"double\"') "
+                     "WHERE candidate_id = ?", (capacity['id'],))
+        conn.commit()
     status, fixed = api('/api/build-candidate-update',
                         {'candidateId': capacity['id'], 'fields': {'valueType': 'double'},
                          'revision': revision})

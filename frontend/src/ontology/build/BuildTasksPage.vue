@@ -11,8 +11,10 @@ import {
   type BuildCapabilities, type BuildTask, type Tone,
 } from './types'
 
-// 与 App 的契约：进入任务（A02）与进入对象建模；本页不自行切换路由
-const emit = defineEmits<{ (e: 'open-task', taskId: string): void; (e: 'enter-ontology'): void }>()
+// 与 App 的契约：进入任务（A02）与进入对象建模；本页不自行切换路由。
+// enter-ontology 允许携带目标本体 id（B.4 回链）：交付行的「查看已创建本体」带上
+// row.task.deliveryOntologyId，App 侧据此在必要时先切本体再进对象建模；不带参就是原行为。
+const emit = defineEmits<{ (e: 'open-task', taskId: string): void; (e: 'enter-ontology', ontologyId?: string): void }>()
 
 const caps = ref<BuildCapabilities | null>(null)
 const capsError = ref('')
@@ -273,7 +275,8 @@ async function submitDelete() {
             <td>{{ formatTime(row.task.updatedAt) }}</td>
             <td class="bt-ops">
               <button type="button" class="row-link" @click="emit('open-task', row.task.id)">{{ row.task.status === 'delivered' ? '查看任务' : '继续' }}</button>
-              <button v-if="row.task.deliveryOntologyId" type="button" class="row-link" @click="emit('enter-ontology')">查看已创建本体</button>
+              <!-- B.4 回链：必须带上该任务交付的本体 id，否则点了任务 B 仍会停在当前选中的本体 A -->
+              <button v-if="row.task.deliveryOntologyId" type="button" class="row-link" @click="emit('enter-ontology', row.task.deliveryOntologyId)">查看已创建本体</button>
               <button type="button" class="row-link danger" @click="openDelete(row.task)">删除</button>
             </td>
           </tr>
