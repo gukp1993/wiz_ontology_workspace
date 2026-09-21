@@ -23,7 +23,10 @@ import json
 from workbench import llm_client
 from workbench.ontology_build import protocol
 
-MAX_TOKENS = 4000
+# 2026-09-21 实测修正：MiniMax-M3 等推理模型的思考 token 计入输出预算，
+# 4000 在抽取类结构化输出上必然截断（finish_reason=length）。放宽到 16000；
+# 正式可配置化与按模型适配待样本校准（开发计划 §1 规模未定项）。
+MAX_TOKENS = 16000
 HISTORY_LIMIT = 20
 HISTORY_CHARS = 1200
 QUESTION_LIMIT = 6
