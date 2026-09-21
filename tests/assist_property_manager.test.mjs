@@ -5,7 +5,9 @@
 // 同一 binding 对象（面板与状态机的集成缝）验证。
 // 覆盖：binding 快照白名单映射、apply 复用 setRange/setObservation 写路径（与手动 UI 等价、
 // 联动不残留）、formatting 整组写/清、采纳只改本地草稿（formSave 间谍零调用、不开影响确认）、
-// 显式保存与共享高影响确认冒烟、共享引用只读态无入口、手改后面板过期与撤销保护解除。
+// 显式保存与共享高影响确认冒烟、共享引用只读态无入口、手改后面板过期与撤销保护解除；
+// 默认勾选门控（需求 §3.5）：ready 建议仅在宿主对应字段旧值为空时默认勾选，替换真实旧值
+// 默认 checked=false、显式 setChecked 后才采纳（④b2/⑤f0/⑦a0/⑦e0）。
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
@@ -235,6 +237,8 @@ async function adoptedPanel(binding, { suggestions }) {
   assertName('④a 私有属性 binding 指向本体属性目标', binding.targetKind === 'property' && binding.targetId === 'mg:p_power')
   const { panel, stub } = await adoptedPanel(binding, { suggestions: [sug('s1', '名称与定义', { label: '有功功率', comment: '储能簇可充放功率上限' })] })
   assertName('④b 生成请求携带白名单快照', JSON.stringify(Object.keys(stub.calls.generate[0].draft).sort()) === JSON.stringify(['comment', 'dataType', 'formatting', 'label']), JSON.stringify(stub.calls.generate[0].draft))
+  assertName('④b2 门控：建议字段宿主旧值非空时 ready 建议默认 checked=false（替换真实旧值需显式勾选）', panel.checked.value['s1'] === false, JSON.stringify(panel.checked.value))
+  panel.setChecked('s1', true) // 用户显式勾选才替换旧值
   assertName('④c 采纳成功且草稿更新', panel.adopt() === true && m.api.draft.value['rdfs:label'] === '有功功率' && m.api.draft.value['rdfs:comment'] === '储能簇可充放功率上限')
   assertName('④d 采纳绝不触发表单保存（间谍零调用）', m.saved() === 0)
   assertName('④e 采纳不开共享影响确认、无错误', m.api.impactOpen.value === false && m.api.error.value === '')
@@ -261,6 +265,8 @@ async function adoptedPanel(binding, { suggestions }) {
   s.api.openAssist()
   assertName('⑤e 共享属性库 binding 同样面向 sharedProperty', s.api.assistBinding.value.targetKind === 'sharedProperty' && s.api.assistBinding.value.targetId === 'mg:shared_soc')
   const { panel } = await adoptedPanel(s.api.assistBinding.value, { suggestions: [sug('s1', '业务定义', { comment: '共享SOC统一口径v2' })] })
+  assertName('⑤f0 门控：替换非空共享定义（旧 comment 非空）默认不勾', panel.checked.value['s1'] === false)
+  panel.setChecked('s1', true)
   assertName('⑤f 共享定义采纳只改本地草稿', panel.adopt() === true && s.api.draft.value['rdfs:comment'] === '共享SOC统一口径v2' && s.saved() === 0)
   assertName('⑤g 采纳本身不开影响确认', s.api.impactOpen.value === false)
   await s.api.save() // 高影响（业务定义变化）：打开确认弹窗，不落盘
@@ -298,6 +304,8 @@ async function adoptedPanel(binding, { suggestions }) {
   const panel = useAssistPanel(stub.api)
   await panel.open(binding)
   await panel.generate()
+  assertName('⑦a0 门控：替换非空 comment 的 ready 建议默认不勾', panel.checked.value['s1'] === false)
+  panel.setChecked('s1', true)
   assertName('⑦a 采纳后可撤销且未过期', panel.adopt() === true && panel.canUndo.value === true && panel.stale.value === false)
   m.api.setLabel('手改名称') // UI 写路径改草稿（面板写入之外）
   assertName('⑦b 面板读到漂移后的草稿', binding.draft().label === '手改名称')
@@ -306,6 +314,8 @@ async function adoptedPanel(binding, { suggestions }) {
 
   await panel.refreshContext() // 重取上下文：令牌绑定手改后的草稿
   await panel.generate()       // 消费编排的第二批建议（s2）
+  assertName('⑦e0 门控：重生成后替换非空 comment 仍默认不勾', panel.checked.value['s2'] === false)
+  panel.setChecked('s2', true)
   assertName('⑦e 重取上下文并重新生成后可再采纳', panel.stale.value === false && panel.adopt() === true && panel.canUndo.value === true && m.api.draft.value['rdfs:comment'] === '再定义')
   m.api.setComment('手改定义')
   panel.notifyDraftChanged() // PropertyManager 深度 watch 手改时调用的同一入口

@@ -7,8 +7,10 @@
 // ② 规则编辑打开 → 入口与面板出现、目标标题、上下文请求体（新建 targetId 空串）；
 // ③ 采纳只改本地草稿且绝不触发表单保存 / 'changed' emit、出现「尚未保存」提示；
 // ④ 手改后采纳被草稿指纹拦下、撤销失效、手改通知已发出；⑤ 规则历史 output 只读区不受辅助影响；
-// ⑥ 规则切换编辑目标以新 binding 重开、关闭编辑器面板收起；⑦ 动作新建（预生成 id）targetId 非空；
-// ⑧ 动作编辑已有（targetId=该 id）采纳同上、setField 手改通知；⑨ 动作切换目标与关闭收起。
+// ⑥ 规则切换编辑目标以新 binding 重开、关闭编辑器面板收起；⑦ 动作新建（预生成 id）targetId
+// 传空串（DEF-02 新约定：后端按「新建动作定义」出上下文）；⑧ 动作编辑已有（targetId=该 id）
+// 采纳同上、setField 手改通知；⑨ 动作切换目标与关闭收起。默认勾选门控（需求 §3.5）在 ③/⑦/⑧/⑩
+// 断言：ready 建议仅在宿主对应字段旧值为空时默认勾选，替换真实旧值默认 checked=false、显式勾选后采纳。
 // 已知边界：SSR 渲染不执行 onMounted（面板自动取上下文）与模板 ref 填充（notify 通道），
 // 这两处由「驱动面板暴露的状态机 + 手改计数 + typecheck」覆盖，浏览器实链路留给独立验收。
 import assert from 'node:assert/strict'
@@ -240,6 +242,10 @@ try {
       assert.equal(ctx.assist.calls.generate.length, 1)
       assert.equal(ctx.assist.calls.generate[0].contextToken, 'tok-1')
       assert.deepEqual(ctx.assist.calls.generate[0].draft, { name: '储能SOC计算规则', description: '按统一统计范围计算储能设备剩余电量占比。', content: 'soc = 剩余电量 / 额定容量 × 100' }, 'generate 携带当前草稿')
+      // 默认勾选门控（§3.5）：编辑既有规则，name/description/content 旧值均非空 → ready 默认不勾
+      assert.equal(ctx.panel.checked.value['s1'], false, '门控：宿主旧值非空（name/description）时 ready 建议默认 checked=false')
+      assert.equal(ctx.panel.checked.value['s2'], false, '门控：宿主旧值非空（content）时 ready 建议默认 checked=false')
+      ctx.panel.setChecked('s1', true); ctx.panel.setChecked('s2', true) // 替换真实旧值需显式勾选
       assert.equal(ctx.panel.adopt(), true)
       assert.equal(ctx.api.draft.value.name, '储能SOC计算规则（修订）')
       assert.equal(ctx.api.draft.value.description, '新业务定义。')
@@ -322,12 +328,12 @@ try {
     const actx = mountLibrary(ActionLib)
     await actx.initial
 
-    await check('⑦ 动作新建（预生成 id）：targetId 非空；采纳只改草稿且零保存', async () => {
+    await check('⑦ 动作新建（预生成 id）：targetId 空串（DEF-02）；采纳只改草稿且零保存', async () => {
       actx.api.openNew()
       assert.match(actx.api.editId.value, /^action_/, 'openNew 已预生成动作 id')
       assert.equal(actx.api.assistBinding.value.targetKind, 'action')
-      assert.equal(actx.api.assistBinding.value.targetId, actx.api.editId.value, '预生成 id 直接作为面板 targetId')
-      assert.ok(actx.api.assistBinding.value.targetId !== '', 'targetId 非空')
+      assert.equal(actx.api.assistBinding.value.targetId, '', '新建动作未入库，binding 按新约定传空 targetId（预生成 id 保留在编辑器状态）')
+      assert.notEqual(actx.api.editId.value, '', '预生成 id 非空')
       let page = await actx.html()
       assert.match(page, /✦ 辅助填写/, '动作编辑表单头应有辅助入口')
       actx.api.toggleAssist()
@@ -337,13 +343,14 @@ try {
       await actx.panel.open(actx.api.assistBinding.value)
       const body = actx.assist.calls.context.at(-1)
       assert.equal(body.space, 'ontology'); assert.equal(body.targetKind, 'action')
-      assert.equal(body.targetId, actx.api.editId.value, '上下文请求携带预生成 id')
+      assert.equal(body.targetId, '', '上下文请求按新约定携带空 targetId（新建动作）')
       assert.deepEqual(body.draft, { name: '', description: '', effect: '' })
       actx.assist.genQueue.push({ suggestions: [
         { id: 'a1', label: '动作名称与业务定义', fieldKeys: ['name', 'description'], proposed: { name: '停止充放电', description: '请求目标对象停止当前充电或放电。', input: '越权字段不应落入' }, state: 'ready' },
         { id: 'a2', label: '预期效果', fieldKeys: ['effect'], proposed: { effect: '设备退出充放电运行状态。' }, state: 'ready' },
       ] })
       await actx.panel.generate()
+      assert.equal(actx.panel.checked.value['a1'], true, '门控反向：新建动作旧值全空，ready 建议默认勾选')
       assert.equal(actx.panel.adopt(), true)
       assert.equal(actx.api.draft.value.name, '停止充放电')
       assert.equal(actx.api.draft.value.description, '请求目标对象停止当前充电或放电。')
@@ -370,6 +377,8 @@ try {
         { id: 'a3', label: '业务定义', fieldKeys: ['description'], proposed: { description: '急停指令：请求目标对象立即停止充放电。' }, state: 'ready' },
       ] })
       await actx.panel.generate()
+      assert.equal(actx.panel.checked.value['a3'], false, '门控：替换已有动作非空 description 的 ready 建议默认 checked=false')
+      actx.panel.setChecked('a3', true)
       assert.equal(actx.panel.adopt(), true)
       assert.equal(actx.api.draft.value.description, '急停指令：请求目标对象立即停止充放电。')
       assert.equal(actx.formSave.saves.length, 0, '采纳绝不触发表单保存')
@@ -386,10 +395,10 @@ try {
       assert.equal(actx.api.assistOpen.value, true, '面板保持展开')
       const newId = actx.api.editId.value
       assert.ok(newId !== 'action_1' && newId.startsWith('action_'), '新目标为另一个预生成 id')
-      assert.equal(actx.api.assistBinding.value.targetId, newId)
+      assert.equal(actx.api.assistBinding.value.targetId, '', '新建动作 targetId 为空串（DEF-02）')
       await actx.panel.open(actx.api.assistBinding.value)
       const last = actx.assist.calls.context.at(-1)
-      assert.equal(last.targetId, newId)
+      assert.equal(last.targetId, '')
       assert.deepEqual(last.draft, { name: '', description: '', effect: '' }, '新建目标草稿为空')
       actx.api.closeEditor()
       assert.equal(actx.api.assistOpen.value, false, 'closeEditor 收起面板')
@@ -409,6 +418,8 @@ try {
     await r.panel.open(r.api.assistBinding.value)
     r.assist.genQueue.push({ suggestions: [{ id: 'z1', label: '名称', fieldKeys: ['name'], proposed: { name: '零保存确认' }, state: 'ready' }] })
     await r.panel.generate()
+    assert.equal(r.panel.checked.value['z1'], false, '门控：替换既有规则非空名称的 ready 建议默认 checked=false')
+    r.panel.setChecked('z1', true)
     assert.equal(r.panel.adopt(), true)
     assert.equal(r.formSave.saves.length, 0)
     assert.equal(r.changed(), 0)

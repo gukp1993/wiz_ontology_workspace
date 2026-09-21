@@ -7,7 +7,8 @@
 // 复合组整组替换、redis 连接/来源形态、快照就地恢复）；② 配置态入口出现与目标上下文请求体；
 // ③ 采纳只改本地草稿（draft+说明）且 form-save 零调用、保存直通落库；④ 手改通知与草稿指纹拦截；
 // ⑤ database/redis/flow 三类 kind 的采纳结构断言（flow 写 flow/output 不触发编排详情拉取）；
-// ⑥ aggregate/computed/registered/none 无入口、目标切换与关闭收起。
+// ⑥ aggregate/computed/registered/none 无入口、目标切换与关闭收起；⑥ database 另断言默认勾选
+// 门控（§3.5）：宿主旧值非空的 ready 建议默认 checked=false，旧值为空默认勾选。
 // 已知边界：SSR 渲染不执行 onMounted 与模板 ref 填充（面板自动取上下文、assistTouched 里的
 // notifyDraftChanged 通道），后者由「手改计数 + 面板状态机指纹自检 + typecheck」覆盖，浏览器
 // 实链路留给独立验收（与 assist_object_workspace.test.mjs 同一边界）。
@@ -394,6 +395,11 @@ try {
       { id: 'd2', label: '取值字段', fieldKeys: ['result.valueField'], proposed: { 'result.valueField': 'rated_power' }, state: 'ready' },
     ] })
     await ctx.panel.generate()
+    // 默认勾选门控（需求 §3.5）：lookup.match 旧模板行非空（数组长度 1）→ 默认不勾；
+    // result.valueField 旧值为空串 → 默认勾选。替换旧行需显式勾选。
+    assert.equal(ctx.panel.checked.value['d1'], false, '门控：宿主旧值非空（lookup.match 非空数组）时 ready 建议默认 checked=false')
+    assert.equal(ctx.panel.checked.value['d2'], true, '门控反向：宿主旧值为空串（result.valueField）时 ready 建议默认勾选')
+    ctx.panel.setChecked('d1', true)
     assert.equal(ctx.panel.adopt(), true)
     assert.deepEqual(ctx.api.draft.value.lookup.match, [{ field: 'cluster_id', operator: 'eq', value: { kind: 'identityKey' } }], '匹配条件整组替换（旧行清除）')
     assert.equal(ctx.api.draft.value.result.valueField, 'rated_power')
