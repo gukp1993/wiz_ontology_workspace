@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`07e9a63bae03c1a2`
+上下文版本：`fbb021a14eee8656`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### assist-fill-production · zcode · 已验证
+
+时间：2026-09-21T19:06:44.918388+00:00；记录：`.collaboration/entries/000168-c67aec98bfd7.json`
+
+第三轮独立复验通过：上轮唯一 P1（assist-context 新增请求字段 ontologyId 未登记接口文档）由 53ef04a 闭环。fe1179f..HEAD 仅该 1 提交，改动仅 04-编排与LLM接口.md 与 README.md 各 1 行、纯追加（2 insertions/0 deletions）。三方一致核对：04 §5.1 请求表 ontologyId 行（可选/省略空=默认 storage/不可见或属他人 404 NOT_FOUND/签入 contextToken 并参与一致性校验）＝README 变更记录行（含 409 CONTEXT_STALE 口径、provide('ontology-id') 透传、指向 04 §5.1）＝实现（assist_service.py:96-101 required=False 省略→storage 并透传 build_context、:134 generate 从 token 取 ontologyId；assist_context.py:648 令牌签入、:669-672 check_generate 比较不等则 ContextStale；404 经 workspaces.describe 按 owner 过滤 asset None→WorkspaceNotFound→404）。抽查上轮通过项确认纯文档提交无行为影响：tests/test_assist_context.py 14/14、tests/test_assist_api.py 10/10（18912 空闲自起自清，测试后端口释放、EXIT 均 0）。HEAD=53ef04a，git status --porcelain=0，验收全程未修改文件。
+
+- 验证：git log fe1179f..HEAD 仅 53ef04a；diff --stat 仅 04/README 各 +1 行纯追加；04 §5.1/README/assist_service.py/assist_context.py 四点语义比对一致；python3 tests/test_assist_context.py 14/14 EXIT=0；python3 tests/test_assist_api.py 10/10 EXIT=0，18912 自清释放；git status --porcelain | wc -l = 0
+- 下一步：验收通过，状态为待用户授权集成；是否合并 main 由用户明确指令决定
+- 依据/文档：文档/接口文档/04-编排与LLM接口.md §5.1；文档/接口文档/README.md 变更记录 2026-09-22 行；workbench/assist_service.py；workbench/assist_context.py；/tmp/kg_accept_r3/
 
 ### assist-fill-production：建议默认勾选门控测试适配（3 套件） · zcode · 已实施，待验收
 
@@ -141,15 +151,3 @@ T11完成：O1/O2/O2b/O3/O4/O5/P2/S14/S15/三视口通过；P1/P5辅助上下文
 - 验证：node --import ./tests/ts_hooks.mjs tests/assist_panel.test.mjs → 51/51 通过，退出码 0（open/no-model/迟到丢弃/CONTEXT_STALE 恢复/采纳合并/等值剔除/撤销与撤销保护/取消/intent+answers 结构化传输/指纹漂移拦截）；cd frontend && npm run typecheck（vue-tsc --noEmit）→ 退出码 0，新增文件零类型错误；既有 tests/save_queue.test.mjs 复跑退出码 0，无相互影响；git status 确认仅新增三文件；worktree 内他人新文件 workbench/assist_context.py 未触碰
 - 下一步：T4 落地 /api/assist-context、/api/assist-generate 后 defaultAssistApi() 即通（现后端路由未注册）；T5–T10 接入者构造 AssistHostBinding（draft 返回白名单快照、apply 合并建议值、snapshot/restore 支撑撤销），手改字段处调 notifyDraftChanged()，切换目标传新 binding 对象或经 ref 调 open；协调者串行执行 npm run build 与提交；面板尚未被任何表单挂载，属预期
 - 依据/文档：frontend/src/assist/useAssistPanel.ts；frontend/src/assist/AssistPanel.vue；tests/assist_panel.test.mjs；frontend/src/assist/types.ts（T0 冻结，只读）；文档/接口文档/04-编排与LLM接口.md §5
-
-### 深度测试任务 codex/test 分支集成合并 main 并清理工作树 · zcode · 已验证
-
-时间：2026-09-21T06:02:27.886353+00:00；记录：`.collaboration/entries/000156-db86486b16d6.json`
-
-按用户明确指令将 codex/test（深度测试31提交：Q/S/F/G/R多轮整改+A01/R02/D-Q02-01产品修复）合并入 main 并清理。两侧对 A01/R02 各自独立修复，9 文件真冲突已按统一口径解决：行为取 main 演进实现（B01/B02 三态上下文+C01 声明判据），报错文案统一为 test 侧富格式（名称(id)+当前类型；引用的编排 名称(flowId) 配置无效；不存在编排补 id）。金样重建 100 样例；接口文档 02/03/README 同步。集成期间 main 前进（c2c98f2 评审文档+e19c46a 归档他人交接条目），已重新组合为 d10c412 后快进。主服务 18765 未重启未更新，仍在运行合并前代码。
-
-- 决定：合并口径裁定：A01/R02 行为取 main 侧（含 B01/B02/C01 已验收演进），报错文案取 test 侧富格式；main 侧 content/effect 旧子串断言『必须是文本』同步为『必须为文本』（name/description 必填路径不变），未舍弃任何一侧已确认行为；test_project_flow_binding_check 适配三处：§6 夹具按 B01/B02 已知连接集合语义改用有效连接+未引用输入参数制造纯 warning；§4 计数包装器签名适配位置参数调用；docstring 更新为合并后上下文协议——均为测试适配不改判定意图；集成期间他人新提交 c2c98f2 与未提交 entry 000155/session_context.md：按用户既有授权模式原样归档为 e19c46a 后重新组合，未改动其内容；pypdf 两项 D15 失败经 main 对照实验确认为既有环境缺口（依赖在被清理的旧任务 venv 中），非本次合并引入，未擅自安装依赖
-- 验证：后端回归 run.py all 47/49：2 失败为 pypdf 环境缺口（main 树同样 83/85 失败，对照实验在案）；test_ontology_build.py 首次 run.py 偶发连接重置后单独 163/163 与 run.py 复跑均通过；直接相关 7 套件全过：validation_split 金样回放 525 断言等价、business_rules 63、action_library 83、rule_action_field_types 54、project_flow_binding_check 14、flow_dependency_context 92、publish_guards_adversarial 135；前端 npm run build（vue-tsc+vite）通过 4.34s；重组后 quick 组 3/3 哨兵通过；代码内容与已验证 f5ae29e 完全一致（插入提交均纯文档）；清理核对：PID 56914 cwd=worktree/test 确认后停止，18931 无监听；两 worktree、codex/test 与 integration/deep-test 分支已删；git worktree list 仅剩 main；18765 HTTP 200 未动
-- 下一步：主工作台更新需用户另行授权：构建新前端并重启 18765 后深度测试修复才对线上生效；pypdf 缺口如需修复由用户决定安装方式（requirements.txt 已登记 pypdf>=6.1,<7）；深度测试验收报告第6轮之后的收尾状态文档在分支内已合并，A01/R02 已由 Codex 复验（697c9ca），本轮为组合重验非新的独立验收
-- 依据/文档：合并提交 f5ae29e（deep-test 集成主体）/ d10c412（main 最终快进点）；文档/需求/20260921_系统全方位深度测试/（31 提交全部归档）；文档/接口文档/README.md 变更记录新增集成行；tests/fixtures/validation_golden.json（重建，100 样例）
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
