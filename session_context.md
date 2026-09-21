@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`3e3bc73af94dec77`
+上下文版本：`9c7aaf93ebcfb038`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### repo-cleanup 交付独立验收指令与自查回归修复 · zcode · 已实施，待验收
+
+时间：2026-09-21T06:48:12.439457+00:00；记录：`.collaboration/entries/000159-91a024b4c5db.json`
+
+交付前自查发现 ec0c0aa 的 EditorView bridgeState 重命名存在模板回退：brand 副标题 {{ state.graphName }} 重命名后解析到 props.state（无 graphName）导致永远显示『未选择本体』，已修复为 bridgeState.graphName（eeb7097，vue-tsc/eslint/build 复跑全过）。随后交付自包含独立验收指令（文档/需求/20260921_仓库架构整理与代码规范/独立验收指令.md，提交 c1c8d28）：被验提交 b8627db/d7f79ce/ec0c0aa/eeb7097（基线 b4a56a9）、A 文档重组/B 退出跟踪/C lint 与静态/D 回归与语义抽查四组带期望值命令、pypdf 缺口 main 对照判定法、三态判定；通过停在待用户授权集成。
+
+- 决定：自查发现的回归按新修复提交处理不 amend 已交付提交，保持被验提交链可追溯；pypdf 两项 D15 明确为 main 对照实验判定，避免把既有环境缺口误判为本分支缺陷
+- 验证：修复后 vue-tsc 0 错误、eslint 0 error、npm run build 通过（本轮实跑）；验收指令全部期望值来自交付轮实测：tracked 855、评审纪要 6/概念说明 4、回归 48/49、6 个 mjs 套件 OK
+- 下一步：用户将指令交 Codex 执行独立验收；通过后停在待用户授权集成；合并与主服务更新均待用户明确指令
+- 依据/文档：文档/需求/20260921_仓库架构整理与代码规范/独立验收指令.md；提交 eeb7097（自查回归修复）、c1c8d28（验收指令）
 
 ### repo-cleanup 仓库架构整理与代码规范（worktree/repo-cleanup） · zcode · 已实施，待验收
 
@@ -137,14 +148,3 @@ b75f69e整改复验通过；已在临时worktree组合main513d8c2为50596b9，�
 - 验证：git show --stat a8b038b 确认仅含该评审文档 1 文件 95 行；git status 确认他人未跟踪文件未被带入提交
 - 下一步：用户对修正清单及待确认表拍板后，方可按建议补齐 R06/R09/R10 回应并收尾方案文档；会议纪要建议修正导出缺陷后再归档（仍处 awaiting_confirmation）
 - 依据/文档：文档/自动化构建续会纪要评审_20260921.md；commit a8b038b
-
-### system-deep-test：产品缺陷修复 A01/R02/D-Q02-01（按 G 轮验收记录§4，三 agent 并行） · zcode · 已实施，待验收
-
-时间：2026-09-21T04:52:42.844785+00:00；记录：`.collaboration/entries/000150-f539ea230651.json`
-
-按 G轮整改独立复验记录与修复建议_20260921.md §4，用户指示继续修复后以三个并行 agent 完成三项产品缺陷修复（均在 codex/test 分支，待独立验收），业务基线之前的测试交付与统计不受影响。A01（提交 30bd715）：workbench/workflow.py 定义校验对规则 content 与动作 v2 effect 增加类型检查——None/缺键/空串/空白串按未填放行（选填语义不变，未改回必填），对象/数组/数值/布尔报单条错误（含定义名称、字段名、「必须为文本」与当前类型，不经 str() 隐式转换）；validate/save(200+errors)/publish(422 版本零新增) 共用同一检查，Excel/导入经 save 同受兜底；02 §4.9/§4.10 文档先行；测试 +6/+6/新建 54 项。R02（提交 ba0db4d）：project_validation._check_flow_binding 在结构核对后对被引用编排调用 flows.check_flow 纯配置检查（每编排一次缓存，不含连接/LLM/凭据维度），阻断错误逐条转为含对象/属性定位、编排标识与原因的单条阻断项，warnings 不阻断，未引用编排不受影响，不存在编排保留「不存在」语义并补定位；发布路径复用同一校验并受既有依赖快照重验约束；金样新增 2 样例（57/58）旧 97 样例逐字节不变；03 §2.2 文档先行；新增 test_project_flow_binding_check 14 步；并修正 test_publish_guards_adversarial 的编排夹具（补输出技术名与来源绑定，恢复其「可发布」夹具意图，135/135）。D-Q02-01（提交 3279bcd）：按验收记录「不撤销延期、不授权实施」
-
-- 决定：三项修复落在 codex/test 分支（用户指示继续修复的已登记工作树），未新建 worktree；如需独立分支可按提交拣选。；A01 类型检查放进共享定义校验而非各入口分别实现：save 保持「草稿允许不完整」（200+errors），publish 以同一检查 422 拒绝且版本零新增；不改回必填、null/空串按未填与 O3-03 既定语义一致。；R02 只做纯配置检查且按被引用编排缓存：不传 connections/llm_meta/credential_ids，与既有依赖三态协议（B01/B02/C01 系）划清边界；发布一致性依赖既有 baseline.flows 快照重验，不另造机制。；D-Q02-01 只做页面口径修正：延期决定未被撤销，记录明确不授权实施恢复改版；页面不再承诺「每次发布都会留快照」，断链本身保持复现并在缺陷清单注明待用户决定。；修复后 deep 判定脚本为两态兼容（未修记 known_defect_reproduced、已修记 product_pass），历史统计与结果索引不因修复改写。
-- 验证：单测：test_rule_action_field_types 54 项、test_project_flow_binding_check 14 步、test_business_rules 46、test_action_library 61、test_validation_split 99 样例 517 断言（金样 97→99 旧样例逐字节不变）、test_publish_guards_adversarial 135/135（夹具修正后）、deep_verdicts_test 107/107、deep_results_index_test 51/51，均退出 0。；全量回归 tests/run.py all 41/41（其中 test_publish_guards_adversarial 首跑失败系夹具用了损坏编排，R02 修复后被正确拦截，按测试自身「夹具应可发布」断言修正夹具后通过）。；真实 HTTP（18971 全新隔离实例 .runtime/prodfix-data，事后删除）：deep_reverify_r02_a01 15 条=product_pass14/info1（V-A01 与 V-R02-5/6 均翻转为通过，发布 422 版本零新增）；deep_ontology_o3o4o5 22 条=18 pass/1 new(D-Q02-01 仍复现)/1 static/1 blocked/1 not_tested，O3-03 无回归；deep_project_chain 54 条=53 pass/1 info，P8 发布版本数 1→1。；前端：vue-tsc 0 错误、npm build 成功；hooks 套件 save_queue 22/22、business_rule_model、action_model 通过。；范围与清理：git diff d6c73c2..HEAD -- tests/fixtures/validation_golden.json 仅增量（旧样例逐字节不变）；workbench 外无业务越界（frontend 仅文案）；工作树干净；18971 按 PID+cwd 确认后停止、数据根已删除；18931/18765/前轮证据未触碰。
-- 下一步：三项修复交 Codex 独立验收：A01 按 02 §4.9/§4.10 与 record §4 验收清单（各类型 × validate/save/publish/导入）、R02 按 03 §2.2 与验收清单（阻断/放行/负对照/未引用不阻断/发布一致性）、D-Q02-01 核对页面文案与恢复行为不变。；D-Q02-01 是否实施「按发布版本恢复到草稿」由用户决定（验收记录 §4 有方案）；实施后补跑 O4-07a 并移除 COVERAGE_UNCONFIRMED 登记。；其余产品缺陷（D1/D2/D3/R01/Q04-01/mapping_forms 等）按原缺陷清单另行安排；验收通过后停在待用户授权集成。
-- 依据/文档：文档/需求/20260921_系统全方位深度测试/G轮整改独立复验记录与修复建议_20260921.md（§4 修复方案与验收标准）；提交 30bd715（A01）、ba0db4d（R02）、3279bcd（D-Q02-01 口径）、e2a7419（缺陷清单状态）、3141ea5（README 变更记录）；文档/接口文档/02-本体区接口.md §4.9/§4.10；03-项目区接口.md §2.2；README 变更记录；tests/test_rule_action_field_types.py、tests/test_project_flow_binding_check.py、tests/fixtures/validation_golden.json（+2 样例）
