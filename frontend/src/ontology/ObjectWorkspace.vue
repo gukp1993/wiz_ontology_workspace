@@ -14,7 +14,10 @@
      保存走 form-save.submitForm('ontology', mutate) 一次落盘，取消直接丢弃草稿；
      属性表单由 PropertyManager 自带同一契约；浏览态删除仍走撤销快照 + changed。
      20260919：关系画布（ObjectCanvas）按用户要求移除——对象/链接可视化改用「本体图谱」
-     只读视图；「在画布查看」入口与画布来源表单（origin='canvas'）一并移除。 -->
+     只读视图；「在画布查看」入口与画布来源表单（origin='canvas'）一并移除。
+     20260921（T5）：对象/链接表单接入「✦ 辅助填写」面板（assist/AssistPanel + ontologyBindings，
+     O1/O3）：采纳只改本地草稿，不触发表单保存；手改字段经 assistTouched 通知面板置过期；
+     编辑器关闭面板收起，切换编辑目标以新 binding 重开。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
 import LegacyGraphHost from './legacyGraph/LegacyGraphHost.vue'
@@ -38,6 +41,9 @@ import { actionDeleteCheck, objectDeleteCheck, ruleDeleteCheck, sharedDeleteChec
 import { actionsOf, associationsOf, associationsOfObject, commitAssociations } from './actionModel'
 import { commitRuleAssociations, ruleAssociationsOf, rulesOf, rulesOfObject } from './businessRuleModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
+import AssistPanel from '../assist/AssistPanel.vue'
+import { objectAssistBinding, linkAssistBinding } from '../assist/ontologyBindings'
+import type { AssistApi } from '../assist/useAssistPanel'
 
 // focusType/focusProperty：共享属性库「查看引用」/校验问题/旧深链跳转定位
 // （propertyFocusId 存 apiName 或 @id，此处换算为节点 @id；指向共享定义时落到首个引用属性）。
@@ -122,6 +128,7 @@ onBeforeUnmount(() => guardApi.unregister(wsGuard))
 
 function closeEditor() {
   editor.value = null; editorError.value = ''
+  assistOpen.value = false // 辅助面板随编辑器收起（其余直接替换 editor 的路径由下方 watch 兜底）
   restoreListScroll()
 }
 
@@ -240,6 +247,31 @@ async function saveLink() {
   detailTab.value = e.returnTab
   locate(e.id); restoreListScroll()
 }
+
+// ─── 辅助填写（2026-09-21 T5，O1/O3）：对象/链接编辑表单接入 AI 建议 ───
+// 面板挂在编辑表单一侧，binding 由 assist/ontologyBindings 工厂构造（白名单快照与合并）。
+// 边界：采纳只改本地草稿（「已填入，尚未保存」由面板提示），绝不触发表单保存；持久化仍由
+// 用户点表单「保存」走 form-save 链路（含既有校验与撤销记录）。同一屏只服务当前编辑目标：
+// 编辑器关闭（或切到属性表单）面板收起；直接替换编辑目标时 assistOpen 保持、binding 对象
+// 变化由面板 watch 重开为新目标（重新取上下文）。
+const assistApi = inject<AssistApi>('assist-api') // 测试注入桩；缺省 null → 面板内部用 defaultAssistApi()
+const assistOpen = ref(false)
+const assistPanelRef = ref<{ notifyDraftChanged(): void } | null>(null)
+const assistTouchTick = ref(0) // 手改字段次数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
+const assistBinding = computed(() => {
+  const e = editor.value
+  if (!e) return null
+  if (e.kind === 'object') return objectAssistBinding(e.draft, { targetId: e.isNew ? '' : e.id, contextTitle: e.isNew ? '新建对象类型' : '维护「' + typeName(e.id) + '」的对象定义' })
+  if (e.kind === 'link') return linkAssistBinding(e.draft, { targetId: e.isNew ? '' : e.id, contextTitle: e.isNew ? '定义业务链接' : '维护链接「' + (e.draft.label || '未命名链接') + '」' })
+  return null // 属性表单由 PropertyManager 自行接入（T6），不在本页挂面板
+})
+watch(assistBinding, b => { if (!b) assistOpen.value = false })
+function toggleAssist() { assistOpen.value = !assistOpen.value }
+// 手改字段 → 通知面板：旧建议过期、解除撤销保护；采纳/撤销写草稿由面板自管草稿指纹，
+// 不经此路径（指纹自检保证面板自身写入不会误伤）。
+function assistTouched() { assistTouchTick.value++; assistPanelRef.value?.notifyDraftChanged() }
+function setObjectField(key: 'label' | 'comment', value: string) { const d = objectDraft.value; if (!d) return; d[key] = value; assistTouched() }
+function setLinkField(key: 'label' | 'from' | 'to' | 'cardinality' | 'reverseLabel' | 'comment', value: string) { const d = linkDraft.value; if (!d) return; d[key] = value; assistTouched() }
 
 // ─── 从属性库添加（D05：原型 libraryView(true) 挑选态，不再跳库页重选对象） ───
 const sharedDefs = computed(() => graph.value.filter((n: any) => n['@type'] === 'mg:SharedProperty'))
@@ -668,12 +700,14 @@ async function removeNode(id: string, label: string, confirmText?: string) {
     <PropertyManager v-if="editor.kind === 'property'" :key="editor.propertyId || 'new'" :state="state" kind="property" :target-type-id="editor.targetTypeId" :property-id="editor.propertyId" :canvas-return="canvasReturn" @back-to-graph="backToGraph" @close="closeEditor" @saved="onPropertySaved"/>
     <section v-else-if="editor.kind === 'object'" class="card detail-card ow-editor">
       <EditorHead :canvas-return="canvasReturn" back-label="← 返回对象" @back-to-graph="backToGraph" @close="closeEditor"/>
+      <div class="ow-assist-row"><button type="button" :aria-pressed="assistOpen" @click="toggleAssist">✦ 辅助填写</button></div>
       <div class="detail-heading"><div><span class="eyebrow">对象类型</span><h2>{{ editor.isNew ? '新建对象类型' : '维护对象定义' }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
-        <Field label="对象名称" class="full" :model-value="objectDraft?.label || ''" required example="储能簇" @update:model-value="objectDraft && (objectDraft.label = $event)"/>
-        <Field label="业务定义" type="textarea" class="full" :model-value="objectDraft?.comment || ''" required example="说明它是什么，用什么业务边界区分。" help="只需名称和业务定义即可保存；属性与链接在对象内补充。" @update:model-value="objectDraft && (objectDraft.comment = $event)"/>
+        <Field label="对象名称" class="full" :model-value="objectDraft?.label || ''" required example="储能簇" @update:model-value="setObjectField('label', $event)"/>
+        <Field label="业务定义" type="textarea" class="full" :model-value="objectDraft?.comment || ''" required example="说明它是什么，用什么业务边界区分。" help="只需名称和业务定义即可保存；属性与链接在对象内补充。" @update:model-value="setObjectField('comment', $event)"/>
       </div>
+      <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi ?? undefined" @close="assistOpen = false"/>
       <div class="detail-footer">
         <div class="tools"><button type="button" class="primary" :disabled="editorSaving" @click="saveObject">{{ editorSaving ? '保存中…' : '保存' }}</button><button type="button" @click="closeEditor">取消</button></div>
         <span>只影响当前本体草稿；已发布版本不变。</span>
@@ -681,23 +715,25 @@ async function removeNode(id: string, label: string, confirmText?: string) {
     </section>
     <section v-else-if="editor.kind === 'link'" class="card detail-card ow-editor">
       <EditorHead :canvas-return="canvasReturn" back-label="← 返回对象" @back-to-graph="backToGraph" @close="closeEditor"/>
+      <div class="ow-assist-row"><button type="button" :aria-pressed="assistOpen" @click="toggleAssist">✦ 辅助填写</button></div>
       <div class="detail-heading"><div><span class="eyebrow">业务链接</span><h2>{{ editor.isNew ? '定义业务链接' : '维护 · ' + (linkDraft?.label || '未命名链接') }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
       <div class="form-grid">
-        <label>起点对象 *<AppSelect :model-value="linkDraft?.from || ''" aria-label="起点对象" :options="linkTargetOptions" @update:model-value="linkDraft && (linkDraft.from = $event)"/></label>
-        <label>终点对象 *<AppSelect :model-value="linkDraft?.to || ''" aria-label="终点对象" :options="linkTargetOptions" @update:model-value="linkDraft && (linkDraft.to = $event)"/></label>
-        <Field label="正向名称" :model-value="linkDraft?.label || ''" required example="所属设备" help="从起点读到终点的业务含义。" @update:model-value="linkDraft && (linkDraft.label = $event)"/>
-        <Field label="数量关系" type="select" :model-value="linkDraft?.cardinality || 'many-to-one'" :options="cardinalityOptions" required @update:model-value="linkDraft && (linkDraft.cardinality = $event)"/>
+        <label>起点对象 *<AppSelect :model-value="linkDraft?.from || ''" aria-label="起点对象" :options="linkTargetOptions" @update:model-value="setLinkField('from', $event)"/></label>
+        <label>终点对象 *<AppSelect :model-value="linkDraft?.to || ''" aria-label="终点对象" :options="linkTargetOptions" @update:model-value="setLinkField('to', $event)"/></label>
+        <Field label="正向名称" :model-value="linkDraft?.label || ''" required example="所属设备" help="从起点读到终点的业务含义。" @update:model-value="setLinkField('label', $event)"/>
+        <Field label="数量关系" type="select" :model-value="linkDraft?.cardinality || 'many-to-one'" :options="cardinalityOptions" required @update:model-value="setLinkField('cardinality', $event)"/>
       </div>
       <details class="technical-section">
         <summary>反向阅读名称（选填）</summary>
-        <Field label="反向名称" :model-value="linkDraft?.reverseLabel || ''" example="包含储能簇" help="同一条链接的反向表达，不重复建立另一条链接。" @update:model-value="linkDraft && (linkDraft.reverseLabel = $event)"/>
+        <Field label="反向名称" :model-value="linkDraft?.reverseLabel || ''" example="包含储能簇" help="同一条链接的反向表达，不重复建立另一条链接。" @update:model-value="setLinkField('reverseLabel', $event)"/>
       </details>
       <details class="technical-section">
         <summary>更多信息（选填）</summary>
-        <Field label="业务定义" type="textarea" :model-value="linkDraft?.comment || ''" example="用业务语言说明这条关系的含义" @update:model-value="linkDraft && (linkDraft.comment = $event)"/>
+        <Field label="业务定义" type="textarea" :model-value="linkDraft?.comment || ''" example="用业务语言说明这条关系的含义" @update:model-value="setLinkField('comment', $event)"/>
       </details>
       <p class="relation-sentence">{{ typeName(linkDraft?.from) }} → {{ linkDraft?.label || '链接名称' }} → {{ typeName(linkDraft?.to) }}</p>
+      <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi ?? undefined" @close="assistOpen = false"/>
       <div class="detail-footer">
         <div class="tools"><button type="button" class="primary" :disabled="editorSaving" @click="saveLink">{{ editorSaving ? '保存中…' : '保存' }}</button><button type="button" @click="closeEditor">取消</button></div>
         <span>只影响当前本体草稿；已发布版本不变。</span>
@@ -1019,6 +1055,9 @@ async function removeNode(id: string, label: string, confirmText?: string) {
 .ow-more-menu button:hover{background:var(--paper-2)}
 .ow-more-menu .danger{color:var(--danger)}
 .relation-sentence{margin:18px 0 0}
+/* 辅助填写（T5）：入口按钮紧贴表单头一行；面板为表单内一张卡片，不挤压既有版式 */
+.ow-assist-row{display:flex;margin:-6px 0 12px}
+.ow-assist-panel{margin-top:16px}
 /* 对象/链接独立编辑表单：沿用原有版式，撑满右侧工作区（不设宽度上限，也不缩窄画布与数据表） */
 .ow-graph-wrap{display:block}
 .shared-def{margin-top:4px}

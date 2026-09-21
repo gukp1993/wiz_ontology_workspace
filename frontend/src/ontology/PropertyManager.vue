@@ -19,10 +19,13 @@
        已有 integer/dateTime 等精确类型打开再保存不改写；基础类型变化仅清理与旧类型
        绑定的配置（valueType/formatting/valueShape/decimalPlaces），与旧编辑器一致。 -->
 <script setup lang="ts">
-import { ref, computed, inject, onBeforeUnmount } from 'vue'
+import { ref, shallowRef, computed, inject, onBeforeUnmount, watch } from 'vue'
 import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
 import PropertyFormatting from './PropertyFormatting.vue'
+import AssistPanel from '../assist/AssistPanel.vue'
+import { propertyAssistBinding } from '../assist/propertyBinding'
+import type { AssistHostBinding } from '../assist/useAssistPanel'
 import { dataTypeOptionsFor } from './editorModel'
 import { makeProperty, effectiveProperty, localProperties, detachProperty, asShared, propertyDataType, setPropertyDataType, referencesOf } from './propertyModel'
 import { impactFingerprint, sharedImpactOf, type SharedImpact } from './dependencyModel'
@@ -170,6 +173,44 @@ async function toShared() {
   if (ok) { editingShared.value = false; initDraft() }  // 转为共享引用：表单切只读，定义已入共享库
 }
 
+// ── 辅助填写（T6 · O2，2026-09-21）：AI 建议只采纳进本地草稿，绝不自动保存 ──
+// 共享引用只读态（readonly）无入口；就地维护共享定义与共享属性库编辑面向 sharedProperty 场景。
+// 采纳本身不开共享影响确认：高影响确认仍只绑定「显式保存」（需求 11 指纹机制不变）。
+const assistVisible = ref(false)
+const assistBinding = shallowRef<AssistHostBinding | null>(null)
+const assistPanel = ref<InstanceType<typeof AssistPanel> | null>(null)
+let assistBaseline = '' // 面板对齐点（打开/采纳/撤销）的草稿 JSON：面板写入不算手改
+const assistTargetKind = computed<'property' | 'sharedProperty'>(() => (editingShared.value || props.kind === 'shared') ? 'sharedProperty' : 'property')
+const assistTargetId = computed(() => editingShared.value ? sharedRefId.value : props.propertyId) // 新建为空串：后端按「新建属性定义/共享属性定义」出标题
+function buildAssistBinding(): AssistHostBinding {
+  const inner = propertyAssistBinding({
+    draft: () => draft.value,
+    targetKind: assistTargetKind.value,
+    targetId: assistTargetId.value,
+    isTimeSeries: () => selectedType.value === 'timeSeries',
+    setType: setRange,          // 与「数据类型」下拉同一写路径，类型联动保持一致
+    setObsType: setObservation, // 与「观测值类型」下拉同一写路径
+  })
+  return {
+    ...inner,
+    apply: values => { inner.apply(values); assistBaseline = JSON.stringify(draft.value) },
+    restore: snap => { inner.restore(snap); assistBaseline = JSON.stringify(draft.value) },
+  }
+}
+function openAssist() {
+  assistBaseline = JSON.stringify(draft.value)
+  assistBinding.value = buildAssistBinding() // 新 binding 对象：面板 watch 到变化即整卡重置并重取上下文
+  assistVisible.value = true
+}
+function closeAssist() { assistVisible.value = false }
+function toggleAssist() { assistVisible.value ? closeAssist() : openAssist() }
+// 转为共享后表单整体变只读：收起面板，避免只读态残留可写建议入口
+watch(readonly, r => { if (r) closeAssist() })
+// 面板写入（apply/restore）以外的草稿变化都算手改：通知面板使结果过期、解除撤销保护
+watch(() => (draft.value ? JSON.stringify(draft.value) : ''), json => {
+  if (assistVisible.value && json !== assistBaseline) assistPanel.value?.notifyDraftChanged()
+})
+
 // ── 校验与保存 ──
 function validate(): string {
   const d = draft.value
@@ -222,6 +263,10 @@ async function doSave() {
 <section class="card detail-card prop-form">
   <!-- 头部返回控件走共享 EditorHead（2026-09-20 全局统一）：与其他编辑表单同一位置、同一写法 -->
   <EditorHead :canvas-return="props.canvasReturn" :back-label="'← ' + (kind === 'property' ? '返回对象' : '返回共享属性库')" @back-to-graph="emit('back-to-graph')" @close="emit('close')"/>
+  <!-- 辅助填写入口（T6）：共享引用只读态不提供；采纳只写本地草稿，保存仍由用户显式触发 -->
+  <div v-if="!readonly" class="assist-entry">
+    <button type="button" class="mini" @click="toggleAssist">{{ assistVisible ? '✦ 收起辅助填写' : '✦ 辅助填写' }}</button>
+  </div>
   <div class="detail-heading">
     <div><p class="prop-form-context">{{ kind === 'shared' || editingShared ? '共享属性库' : contextName }}</p><h2>{{ title }}</h2></div>
   </div>
@@ -267,6 +312,9 @@ async function doSave() {
     <span>只影响当前本体草稿；已发布版本不变。</span>
   </div>
 
+  <!-- 辅助填写面板（T3 状态机 + T6 宿主 binding）：采纳只改本地草稿，保存与影响确认仍由用户显式触发 -->
+  <AssistPanel v-if="assistVisible && assistBinding" ref="assistPanel" :binding="assistBinding" @close="closeAssist"/>
+
   <!-- 影响确认（20260920 需求 11）：字段前后值 + 受影响对象 → 属性；勾选后才提交当前草稿。 -->
   <div v-if="impactOpen" class="modal-backdrop" @click.self="cancelImpact">
     <section class="modal-card prop-impact" role="dialog" aria-modal="true" aria-label="确认共享修改影响">
@@ -305,6 +353,7 @@ async function doSave() {
 <style scoped>
 .prop-form-context{margin:0 0 3px;font-size:14px;font-weight:600;color:var(--ink-2)}
 .prop-error{margin:0 0 12px}
+.assist-entry{margin:-4px 0 10px}
 .prop-fields{border:0;padding:0;margin:0;min-width:0}
 .prop-form :deep(.form-grid .editor-field.full){grid-column:1/-1}
 .prop-more button{margin-top:10px}
