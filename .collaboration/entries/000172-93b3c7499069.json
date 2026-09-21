@@ -1,0 +1,28 @@
+{
+  "ticket": "f1501698e3ae48fb836f8d46d700d993",
+  "task": "交付三项增量与生成实测交接指令（用户将转交其他 harness）",
+  "status": "decision",
+  "summary": "用户要把在途任务交其他 harness。先稳定现场：protocol.py 限额放宽已落盘并重启 18881 生效（capabilities 实测 fileBytes=268435456），契约 08 §12 与限额预备已提交（工作树 9e66460）。随后交付自包含交接指令（main 仓库 文档/需求/20260920_从物料自动构建本体/交接指令_三项增量与生成实测_20260921.md，commit 见 git log）：任务一三项增量（契约已冻结，后端/前端文件归属可并行）、任务二 chuangzhiyuan2.zip 生成实测全链路（177MB/13724 条目，限额已放宽，MiniMax 需切默认）、多 harness 顺序约束（18881 运行中不得重启）、安全边界与验收要求。",
+  "decisions": [
+    "现场稳定优先于交接：限额修改补落、18881 重启验证后才写交接文档，保证文档描述与实际状态一致。",
+    "任务二优先于任务一的集成重启（真实模型生成运行中不能重启 18881），顺序约束写入指令 §3。"
+  ],
+  "verification": [
+    "18881 capabilities 实测 fileBytes=268435456/taskBytes=536870912/entries=20000；admin 登录 200；工作树提交 9e66460 后仅剩 session_context.md 自动摘要未提交。"
+  ],
+  "next": [
+    "由用户把交接指令交给其他 harness 执行；本会话不再推进这两项任务，避免双执行者冲突。",
+    "完成后按指令 §4 交 Codex 独立验收；验收通过停在待用户授权集成。"
+  ],
+  "references": [
+    "交接指令：文档/需求/20260920_从物料自动构建本体/交接指令_三项增量与生成实测_20260921.md",
+    "工作树基线：codex/build-governance@9e66460；实例 18881（admin/admin，限额已放宽）",
+    "素材：/Users/gukepeng/Desktop/ZHDL/code/chuangzhiyuan2.zip（177MB/13724 条目）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T08:05:39.434544+00:00",
+  "sequence": 172,
+  "filename": "000172-93b3c7499069.json",
+  "record_hash": "dbefdbed7f7fe30088f4bd42fad58c4da312ce4e5b95b679fd24f66f869cfc01",
+  "context_advanced": true
+}
