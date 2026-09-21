@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`50cebdcbaeafbba8`
+上下文版本：`2875ba8e4dd41ab3`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,18 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 深度测试任务 codex/test 分支集成合并 main 并清理工作树 · zcode · 已验证
+
+时间：2026-09-21T06:02:27.886353+00:00；记录：`.collaboration/entries/000156-db86486b16d6.json`
+
+按用户明确指令将 codex/test（深度测试31提交：Q/S/F/G/R多轮整改+A01/R02/D-Q02-01产品修复）合并入 main 并清理。两侧对 A01/R02 各自独立修复，9 文件真冲突已按统一口径解决：行为取 main 演进实现（B01/B02 三态上下文+C01 声明判据），报错文案统一为 test 侧富格式（名称(id)+当前类型；引用的编排 名称(flowId) 配置无效；不存在编排补 id）。金样重建 100 样例；接口文档 02/03/README 同步。集成期间 main 前进（c2c98f2 评审文档+e19c46a 归档他人交接条目），已重新组合为 d10c412 后快进。主服务 18765 未重启未更新，仍在运行合并前代码。
+
+- 决定：合并口径裁定：A01/R02 行为取 main 侧（含 B01/B02/C01 已验收演进），报错文案取 test 侧富格式；main 侧 content/effect 旧子串断言『必须是文本』同步为『必须为文本』（name/description 必填路径不变），未舍弃任何一侧已确认行为；test_project_flow_binding_check 适配三处：§6 夹具按 B01/B02 已知连接集合语义改用有效连接+未引用输入参数制造纯 warning；§4 计数包装器签名适配位置参数调用；docstring 更新为合并后上下文协议——均为测试适配不改判定意图；集成期间他人新提交 c2c98f2 与未提交 entry 000155/session_context.md：按用户既有授权模式原样归档为 e19c46a 后重新组合，未改动其内容；pypdf 两项 D15 失败经 main 对照实验确认为既有环境缺口（依赖在被清理的旧任务 venv 中），非本次合并引入，未擅自安装依赖
+- 验证：后端回归 run.py all 47/49：2 失败为 pypdf 环境缺口（main 树同样 83/85 失败，对照实验在案）；test_ontology_build.py 首次 run.py 偶发连接重置后单独 163/163 与 run.py 复跑均通过；直接相关 7 套件全过：validation_split 金样回放 525 断言等价、business_rules 63、action_library 83、rule_action_field_types 54、project_flow_binding_check 14、flow_dependency_context 92、publish_guards_adversarial 135；前端 npm run build（vue-tsc+vite）通过 4.34s；重组后 quick 组 3/3 哨兵通过；代码内容与已验证 f5ae29e 完全一致（插入提交均纯文档）；清理核对：PID 56914 cwd=worktree/test 确认后停止，18931 无监听；两 worktree、codex/test 与 integration/deep-test 分支已删；git worktree list 仅剩 main；18765 HTTP 200 未动
+- 下一步：主工作台更新需用户另行授权：构建新前端并重启 18765 后深度测试修复才对线上生效；pypdf 缺口如需修复由用户决定安装方式（requirements.txt 已登记 pypdf>=6.1,<7）；深度测试验收报告第6轮之后的收尾状态文档在分支内已合并，A01/R02 已由 Codex 复验（697c9ca），本轮为组合重验非新的独立验收
+- 依据/文档：合并提交 f5ae29e（deep-test 集成主体）/ d10c412（main 最终快进点）；文档/需求/20260921_系统全方位深度测试/（31 提交全部归档）；文档/接口文档/README.md 变更记录新增集成行；tests/fixtures/validation_golden.json（重建，100 样例）
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### meeting-46 终版纪要评审并归档 md 文档（本体自动化构建） · zcode · 已实施，待验收
 
@@ -137,16 +149,4 @@ b75f69e整改复验通过；已在临时worktree组合main513d8c2为50596b9，�
 - 验证：tests/test_validation_split.py → 金样 99 样例 517 断言全部通过 exit 0；金样重生成 diff：对备份仅 1 处纯插入（47301a47302,47749），0 行删除，旧 97 样例逐字节不变；新增 tests/test_project_flow_binding_check.py 14 步全过 exit 0（反例阻断/对照放行/只查一次/未引用不阻断/仅警告不阻断/发布同函数断言）；回归全过 exit 0：test_project_flow_source 38 步、test_action_http 74、test_action_library 61、test_registered_validation、test_identity_required、test_property_sources、test_inline_sql、test_query_rules、test_catalog_independent；性能演示：400 属性引用同一编排 check_flow 仅 1 次调用，validate 63ms
 - 下一步：交 Codex 独立验收（deep_reverify_r02_a01 场景应转为阻断）；README 变更记录行与 workflow.py 侧改动由协调者统一处理；未执行 git 写命令
 - 依据/文档：workbench/project_validation.py 与 tests/test_project_flow_binding_check.py；tests/make_validation_golden.py + tests/test_validation_split.py；tests/fixtures/validation_golden.json；文档/接口文档/03-项目区接口.md §2.2
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 本体与项目辅助填写 F01/F02 剩余验收补验（V4–V9 浏览器取证） · zcode · 已验证
-
-时间：2026-09-21T04:35:20.335225+00:00；记录：`.collaboration/entries/000148-9a281e9201ca.json`
-
-按用户指令接手 Codex 受阻的 V4–V9 浏览器补验。开工实核：HEAD=3ec11d4，被验原型与提交 4c2dd9e 逐字节一致（2078 行/4fd7539f…），工作树 clean；V2 静态 17 项复核全 0、V3 单元 28 例复跑全过。并行 5 组只读子agent（headless Chrome+CDP 真实键鼠，端口 19331–19335，各 only /tmp）：V4 解析矩阵 17/17、V5 采纳范围 5 项、V6 缓冲区/保存/取消 4 项、V7 文案 4 项、V8 保留项 8 项、V9 XSS 5 组全过且弹窗 0、非 file 请求 0。未发现违反既定需求的复现缺陷，未修改原型（4c2dd9e 不变）。V7.1 一处简报偏差已裁定：冻结标准只要求 attr_name 卡含冻结句（指令 V4 表格原文即如此），实测满足，判通过不改码。本轮不合并不上线，总判定交用户。
-
-- 决定：V7.1 裁定：冻结判定标准（独立验收指令 V4 表格与 V7.1 正文）只要求 my_model 场景 attr_name 卡 pending 文案含「不补造示例值 SOC；采纳 model_name 不会连带填入本项」，实测逐字满足，判通过；补验简报中「两卡均须含」系简报过严、超出冻结标准，不作为缺陷；model_name 卡「当前两项均无法确认、不能采纳」恰为整改指令允许的补充句，不改代码；未发现复现缺陷即不修改原型：4c2dd9e 仍为被验提交，不追加 §9 记录，验收证据只交付于报告与 /tmp；本轮补验由开发方环境按用户授权执行，不宣称替代 Codex 独立签名；Log 通道统计口径：VE 组以 file:// 相对 fetch 探针证明 Log.entryAdded 通道可采集；其余各组正式跑期间该通道 0 条，VA/VC 因自身探针未命中按约定标注「未知」，汇总分层如实呈现
-- 验证：V4：解析矩阵 17/17 符合（中文分隔符／，、a // b 不合并、=／＝kv 不当常量、片段含空白、my_model SOC 不拆分、暂不确定禁选）；反例：/ SOC 全 DOM 检索「固定值 SOC」仅出现在 attr_name 卡 1 次；V5：/ SOC 采纳变化恰为 bind.attr_name/bindv.attr_name（SAVED 零 diff、含迟到写复核）；my_model / 在预置 attr=const/SOC 后不覆盖；已有属性绑定卡原值「属性 簇编号」删除线+默认不勾；相同常量转 note「已按你提供的常量配置（SOC）：无需变更。」零卡；枚举 21 个面板控件 pending 四字段恒空；V6/V7：采纳只写 BUFFERS；取消编辑回落 SAVED（提示原文逐字命中）；演示保存被必填拦（请填写函数编排。）→选编排后保存 SAVED 恰 3 字段、行状态已配置、reload 复位；未勾字段零改动；kv 引导文案正确；「标注归属」文件与页面 0 命中；禁选与文案一致；V8：F05 无 conn 保存成功且行状态已配置、生成中关面板/切目标作废提示原文命中、手改后撤销禁用、类型联动清 obsType 并恢复、D4 Redis 建议「实例主键（pk）」、R01 旧值「固定值 storage_cluster」两变体（未答/已答 consts）通过；V9：XSS A–E（img/svg/script/属性闭合/重渲染）零注入、__x* 全 undefined、纯文本渲染；弹窗正式计数 0；非 file:// 请求 0；console error/warning/未捕获 0（各组探针自证采集有效）。证据：/tmp/kg_f01f02_accept_20260921/{va,vb,vc,vd,ve}/
-- 下一步：整体验收判定交用户：V1–V3 Codex 独立通过 + V4–V9 本轮补验通过、无复现缺陷、未修改原型；如需 Codex 环境亲测签名可在其浏览器限制解除后复跑 V4–V9；本轮未合并、未推送、未重启主工作台；正式实现范围与既有 P2 清单待用户决定
-- 依据/文档：被验提交 4c2dd9e；原型 2078 行/4fd7539fd00fcf3984bd1bd07b9b8bbb2288fd39e97f13a792ebaf962eafb735（开工/收尾一致，工作树 clean）；/tmp/kg_f01f02_accept_20260921/（va–ve 五组证据 JSON、截图、驱动脚本）；.collaboration/entries/000145-2c5f0904a2e6.json（Codex V1–V3 独立验收：部分覆盖）；文档/需求/20260920_本体与项目辅助填写/独立验收执行指令_20260921_F01F02.md（V1–V9 冻结判定依据）
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
