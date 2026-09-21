@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`eeef47bb9b9fef50`
+上下文版本：`1e828b06ff1edd64`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### meeting-47 续会6纪要评审并闭合事实表三条待验证项（本体自动化构建） · zcode · 已实施，待验收
+
+时间：2026-09-21T06:18:25.228456+00:00；记录：`.collaboration/entries/000158-f0dff3ae464b.json`
+
+评审 meeting-47-export.md（续会6，材料为终版评审，用户未发言），交付 文档/自动化构建续会6纪要评审_20260921.md（87 行，commit 6234244）。判定转机轮：终版评审核心发现（差异核对三类归类、R10 断言、确认机制圈定、三表汇总）全部被接收，防丢项首次有结构性手段（前置完成条件+三态状态值）；回放解环与路由三层证据方案质量高；第二类句式约束升级为'只允许验证范围句式、禁止能力分期句式'。本侧顺手闭合会议三条待验证：R02 晋升输出不含 candidateId（assemble 全新正式 id 组装 @graph、映射存 summary.candidateMap，断言措辞须精确到核心 schema）、R10 幂等完整（requestId+内容指纹重放/不同内容 409/一任务一交付/write_tx 原子）、候选路由=生成端五类全量无显式路径（归第三类增量）——事实表七条代表条目源码结论全部可得。新问题：truncated 第四次复发（纪要截断）、结构化区第四次空、会议核对流程过度精细化（本侧可直接出事实表无需等授权 W11）。8 条待确认建议处置：1/2/4 本侧可直接产出、3 不需要、5 留用户裁决、6 断言挂 G12 为固化既有正确行为（worktree）、7 建议采纳、8 增量立项走需求归档。未验证：candidateId 重生成不复用留批量阶段。纯文档+只读核对，未改代码。
+
+- 验证：R02：ontology_adapter.py:140-148 stable() 全新 id、build_node 正式 id；delivery.py:295-303 summary.candidateMap；candidateId 仅 precheck 错误定位（delivery.py:115/133）；R10：delivery.py:232-307 幂等三分支+回执先于 stale；ontology_build_routes.py:702-713 write_tx 原子；路由：protocol.py 无类型排除、pipeline.py:337/420 仅合法性过滤、alignment.py materialId 仅证据展示——无路由雏形；git show 6234244 仅含该评审文档 1 文件 87 行
+- 下一步：用户可据评审第四节事实表+8条处置意见直接拍板；如授权本侧可产出收尾文档（两条前置补记+三表汇总+试点范围句式改写）与 R02/R10 断言挂测试集（worktree）；增量需求如采纳按需求归档规则立项；导出工具缺陷已四次，建议向工具方反馈
+- 依据/文档：文档/自动化构建续会6纪要评审_20260921.md；commit 6234244
 
 ### 按用户指令删除 resources/ 与 backup-20260918-202932/ · zcode · 已验证
 
@@ -137,13 +147,3 @@ b75f69e整改复验通过；已在临时worktree组合main513d8c2为50596b9，�
 - 验证：单测：test_rule_action_field_types 54 项、test_project_flow_binding_check 14 步、test_business_rules 46、test_action_library 61、test_validation_split 99 样例 517 断言（金样 97→99 旧样例逐字节不变）、test_publish_guards_adversarial 135/135（夹具修正后）、deep_verdicts_test 107/107、deep_results_index_test 51/51，均退出 0。；全量回归 tests/run.py all 41/41（其中 test_publish_guards_adversarial 首跑失败系夹具用了损坏编排，R02 修复后被正确拦截，按测试自身「夹具应可发布」断言修正夹具后通过）。；真实 HTTP（18971 全新隔离实例 .runtime/prodfix-data，事后删除）：deep_reverify_r02_a01 15 条=product_pass14/info1（V-A01 与 V-R02-5/6 均翻转为通过，发布 422 版本零新增）；deep_ontology_o3o4o5 22 条=18 pass/1 new(D-Q02-01 仍复现)/1 static/1 blocked/1 not_tested，O3-03 无回归；deep_project_chain 54 条=53 pass/1 info，P8 发布版本数 1→1。；前端：vue-tsc 0 错误、npm build 成功；hooks 套件 save_queue 22/22、business_rule_model、action_model 通过。；范围与清理：git diff d6c73c2..HEAD -- tests/fixtures/validation_golden.json 仅增量（旧样例逐字节不变）；workbench 外无业务越界（frontend 仅文案）；工作树干净；18971 按 PID+cwd 确认后停止、数据根已删除；18931/18765/前轮证据未触碰。
 - 下一步：三项修复交 Codex 独立验收：A01 按 02 §4.9/§4.10 与 record §4 验收清单（各类型 × validate/save/publish/导入）、R02 按 03 §2.2 与验收清单（阻断/放行/负对照/未引用不阻断/发布一致性）、D-Q02-01 核对页面文案与恢复行为不变。；D-Q02-01 是否实施「按发布版本恢复到草稿」由用户决定（验收记录 §4 有方案）；实施后补跑 O4-07a 并移除 COVERAGE_UNCONFIRMED 登记。；其余产品缺陷（D1/D2/D3/R01/Q04-01/mapping_forms 等）按原缺陷清单另行安排；验收通过后停在待用户授权集成。
 - 依据/文档：文档/需求/20260921_系统全方位深度测试/G轮整改独立复验记录与修复建议_20260921.md（§4 修复方案与验收标准）；提交 30bd715（A01）、ba0db4d（R02）、3279bcd（D-Q02-01 口径）、e2a7419（缺陷清单状态）、3141ea5（README 变更记录）；文档/接口文档/02-本体区接口.md §4.9/§4.10；03-项目区接口.md §2.2；README 变更记录；tests/test_rule_action_field_types.py、tests/test_project_flow_binding_check.py、tests/fixtures/validation_golden.json（+2 样例）
-
-### 本体与项目辅助填写 F01F02 补验材料复核与MD交付 · codex · 受阻
-
-时间：2026-09-21T04:41:44.612449+00:00；记录：`.collaboration/entries/000149-86a9403a109d.json`
-
-独立复跑V1-V3通过（21例）；五份他方测试副本与当前4c2dd9e原型哈希一致，抽核原始字段diff与反例记录未发现新产品缺陷。浏览器策略仍阻塞，V4-V9未亲测，独立结论仍部分覆盖。已输出MD，不建议无依据继续改代码。
-
-- 验证：2078行/4fd7539fd00fcf3984bd1bd07b9b8bbb2288fd39e97f13a792ebaf962eafb735；他方VB脚本错误有后续重跑记录；不是原型异常；VA/VC Log采集能力未知不记全局0
-- 下一步：如要求独立真实点击签名，由获允许的独立验收环境补齐V4-V9；无新增代码整改项。
-- 依据/文档：文档/需求/20260920_本体与项目辅助填写/复验报告_20260921_F01F02.md
