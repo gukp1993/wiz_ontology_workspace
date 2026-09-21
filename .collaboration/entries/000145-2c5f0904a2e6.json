@@ -1,0 +1,25 @@
+{
+  "ticket": "bfbe0e8f98274717b704c926d22ab4b4",
+  "task": "本体与项目辅助填写 F01F02 独立验收 4c2dd9e",
+  "status": "blocked",
+  "summary": "部分覆盖：V1/V2/V3通过，21个独立纯函数用例全过，F01解析层及F02静态文案已修复；浏览器既有策略禁令未解除，V4-V9交互未覆盖，不宣称整体验收通过。",
+  "decisions": [],
+  "verification": [
+    "原型2078行，首尾SHA256 4fd7539fd00fcf3984bd1bd07b9b8bbb2288fd39e97f13a792ebaf962eafb735",
+    "与4c2dd9e逐字节一致；需求说明纯追加；17项禁用词0，JS语法通过；无外部资源引用",
+    "未修改原型、业务文件或需求；未启动服务、未合并。"
+  ],
+  "next": [
+    "由允许访问该原型的独立验收环境完成V4-V9真实点击及console/XSS取证。"
+  ],
+  "references": [
+    "/tmp/codex_f01f02_review_20260921/report.md",
+    "/tmp/codex_f01f02_review_20260921/parse_results.json"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-21T03:41:24.260286+00:00",
+  "sequence": 145,
+  "filename": "000145-2c5f0904a2e6.json",
+  "record_hash": "a8cd2ad76e91ce31061fc7221ad7db87df2926bb0cfc6330ad23d056e22c1092",
+  "context_advanced": false
+}
