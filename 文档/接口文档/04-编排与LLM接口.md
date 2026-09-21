@@ -443,6 +443,10 @@ POST /api/assist-context
   （本体：当前草稿的对象/属性/链接摘要；项目：固定引用版本的定义＋目录缓存元数据＋编排签名；
   **只含元数据，绝不含业务记录、密码、认证头**）。目录缓存读取失败按既有 503
   `STORAGE_UNAVAILABLE` 口径，不降级为空目录。
+- **候选截断显式标记**：候选按类裁剪（每类 ≤60 条、每表字段 ≤100 条），超出时响应携带
+  `definitionsTruncated`/`catalogTruncated`/`flowsTruncated`（context 层）与
+  `catalog[i].fieldsTruncated`、`flows[i].inputsTruncated/outputsTruncated/fieldsTruncated`
+  （条目层，布尔）。被截断的候选不参与 generate 的引用核验，前端应提示"候选已截断"。
 - `modelReady=false`：当前账号未配置默认模型——前端保留输入并提示前往模型设置；
   此时仍可获取上下文，但 generate 会 422。
 - `targetId` 不可见/不存在（含跨账号）：404 `NOT_FOUND`。
@@ -462,7 +466,7 @@ POST /api/assist-generate
 | `mode` | string | 是 | `fill` \| `check` \| `explain` |
 | `draft` | object | 是 | **当前**编辑快照；规范化摘要须与令牌一致，否则 409 |
 | `intent` | string | 否 | 用户意图/资料文字（≤4000 字符） |
-| `answers` | object | 否 | 按 questionId 分别作答：`{"q1":{"value":"…"},"q2":{"unsure":true}}` |
+| `answers` | object | 否 | 按 questionId 分别作答：`{"q1":{"value":"…"},"q2":{"unsure":true}}`；≤8 条，每条仅含 `value`（≤2000 字符）与 `unsure`（布尔） |
 
 **响应** `200`（有效请求但模型无建议时 `status:"empty"`，禁止错误 200 假成功）
 
@@ -485,7 +489,13 @@ POST /api/assist-generate
 - **建议状态**：`ready`（可采纳）｜`pending`（依赖未确认的问题/待补充，禁选）｜
   `blocked`（引用不存在/类型不兼容/参数来源未确认等，禁选并给出原因）。
   待补充/禁选/未知字段不能被采纳修改；采纳由前端在本地 draft 合并后走既有保存链路。
-- **建议结构约束（后端强制校验，违反即 502 或丢弃该条并计入 empty 判定）**：
+- **建议结构约束（分层校验，2026-09-21 T4 冻结）**：
+  * **整体结构违规 → 502 `MODEL_BAD_RESPONSE`**：输出无 JSON、顶层非对象或含未知顶层键、
+    questions/suggestions/issues 形态非法、条数超限（>3/>12/>30）；
+  * **单条违规 → 丢弃该条（响应外不体现，不计入错误）或转为 blocked**：fieldKeys 白名单外、
+    proposed 键与 fieldKeys 不一致、值类型不符、未知枚举、超长、复合组形态非法 → 丢弃；
+    ref 值不在候选集、复合组行内引用越界、formatting 历史样式 → blocked（原因可见）；
+  * 全部建议被丢弃且无其他内容时按 `status:"empty"` 返回，不抛错；
   `fieldKeys` ⊆ 场景白名单；`proposed` 键 = fieldKeys 且值类型与字段种类一致；
   复合组（`params`/`inputs`/`lookup.match`/`parameters`/`formatting`）按各组 schema 整体校验；
   `ref` 类值必须存在于本次上下文候选集（幻觉 ID 拒绝）；`evidenceRefs` 只能引用实际发送给
