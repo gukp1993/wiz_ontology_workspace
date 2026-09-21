@@ -532,6 +532,32 @@ def material_blob_path(conn, owner_user_id, material_id):
 
 # --- ZIP 安全展开 -----------------------------------------------------------------
 
+def delete_task_blob_files(blob_paths):
+    """删除任务登记的 blob 文件（08 §12.2）：路径须落在 blob 目录内防逃逸。
+
+    缺失静默（may have been cleaned）；删除失败逐条记录不抛出——文件清理失败
+    不回滚数据库级联删除。返回 {deleted, missing, errors}。
+    """
+    base = blob_dir().resolve()
+    result = {'deleted': 0, 'missing': 0, 'errors': []}
+    for rel in blob_paths or []:
+        try:
+            target = (base / str(rel or '')).resolve()
+            target.relative_to(base)
+        except (ValueError, OSError) as exc:
+            result['errors'].append('%s: %s' % (rel, exc))
+            continue
+        if not target.is_file():
+            result['missing'] += 1
+            continue
+        try:
+            target.unlink()
+            result['deleted'] += 1
+        except OSError as exc:
+            result['errors'].append('%s: %s' % (rel, exc))
+    return result
+
+
 def zip_bomb_guard(path):
     """打开 Office/压缩包前的低成本防爆检查（只读目录，不解压）。
 

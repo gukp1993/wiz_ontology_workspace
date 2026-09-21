@@ -337,7 +337,11 @@ def finish_success(user_id, run_id, usage=None):
 
 
 def request_cancel(user_id, run_id):
-    """请求取消：只置标记，不保证立即终止已发出的外部请求。"""
+    """请求取消：只置标记，不保证立即终止已发出的外部请求。
+
+    任务级语义（08 §12.3）：同一写事务内若任务处于 generating，回退为 scope
+    （确定范围）——任务列表不得在取消后仍显示「生成中」；已写入的候选/事实保留。
+    """
     def body(conn):
         row = store.get_run(conn, run_id, user_id)
         if row is None:
@@ -346,6 +350,10 @@ def request_cancel(user_id, run_id):
             return
         store.update_run(conn, run_id, user_id, cancel_requested=True, state='cancelled',
                          error='已取消', retryable=True)
+        task = store.require_task(conn, row['task_id'], user_id)
+        if task is not None and task['status'] == 'generating':
+            store.touch_task(conn, row['task_id'], user_id, status='scope',
+                             stage_label=protocol.TASK_STAGE_LABELS['scope'])
     with sto.write_tx() as tx:
         tx.run(body)
 

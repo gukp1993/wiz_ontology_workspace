@@ -154,6 +154,18 @@ def get_materials(query):
         row = store.require_task(conn, task_id, owner_id)
         if row is None:
             raise sto.NotFound('生成任务不存在')
+        if 'view' in query and query['view'][0] == 'groups':
+            groups, total = store.list_material_groups(conn, task_id, owner_id)
+            return {'groups': groups, 'total': total,
+                    'revision': int(row['material_revision'])}, 200
+        # folder 显式出现（含空串=根目录组）才过滤；不出现保持旧行为全量兼容
+        if 'folder' in query:
+            items, total = store.list_materials_page(
+                conn, task_id, owner_id, folder=query['folder'][0],
+                offset=_query_int(query, 'offset', default=0),
+                limit=_query_int(query, 'limit', default=100))
+            return {'items': items, 'total': total,
+                    'revision': int(row['material_revision'])}, 200
         items = store.list_materials(conn, task_id, owner_id)
     return {'items': items, 'revision': int(row['material_revision'])}, 200
 
@@ -259,6 +271,7 @@ def post_task_rename(payload):
 
 
 def post_task_delete(payload):
+    # 08 §12.2：物理删除任务及全部关联行与 blob 文件；已创建的本体草稿不删除。
     task_id = _text(payload, 'taskId')
     confirm = _text(payload, 'confirmName', limit=160)
     owner_id = _owner()
@@ -269,13 +282,17 @@ def post_task_delete(payload):
                 raise sto.NotFound('生成任务不存在')
             if confirm.strip() != str(row['name']).strip():
                 raise ValueError('确认名称与任务名不一致，未删除')
-            store.soft_delete_task(conn, task_id, owner_id)
             delivery = store.get_delivery(conn, task_id, owner_id)
-            note = ''
-            if delivery:
-                note = '任务已删除，但已创建的本体草稿（%s）保留，不随任务删除；原始证据将不可用' % delivery['ontologyId']
-            return {'ok': True, 'note': note}
-        return tx.run(body), 200
+            counts, blob_paths = store.purge_task(conn, task_id, owner_id)
+            return counts, blob_paths, delivery
+        counts, blob_paths, delivery = tx.run(body)
+    cleaned = material_domain.delete_task_blob_files(blob_paths)
+    note = '已创建的本体草稿不随任务删除'
+    if delivery:
+        note += '；该任务此前交付的本体草稿（%s）保留' % delivery['ontologyId']
+    if cleaned['errors']:
+        note += '；%d 个物料文件删除失败（详见服务日志）' % len(cleaned['errors'])
+    return {'ok': True, 'deleted': counts, 'note': note}, 200
 
 
 # ── POST：上传与物料 ────────────────────────────────────────────────────────

@@ -282,6 +282,41 @@ def list_materials(conn, task_id, owner_user_id):
     return [material_view(r) for r in rows]
 
 
+def list_material_groups(conn, task_id, owner_user_id):
+    """按 relPath 顶层目录分组统计（08 §12.1）：folder='' 表示根目录文件。"""
+    rows = conn.execute(sto.text('SELECT rel_path, parse_state, size FROM wb_build_materials '
+                                 'WHERE task_id = :t AND owner_user_id = :o'),
+                        {'t': task_id, 'o': owner_user_id or ''}).mappings().all()
+    groups = {}
+    total = 0
+    for row in rows:
+        rel = row['rel_path'] or ''
+        folder = rel.split('/', 1)[0] if '/' in rel else ''
+        group = groups.setdefault(folder, {'folder': folder, 'total': 0, 'byParseState': {}, 'bytes': 0})
+        group['total'] += 1
+        group['byParseState'][row['parse_state']] = group['byParseState'].get(row['parse_state'], 0) + 1
+        group['bytes'] += int(row['size'] or 0)
+        total += 1
+    return sorted(groups.values(), key=lambda item: -item['total']), total
+
+
+def list_materials_page(conn, task_id, owner_user_id, folder=None, offset=0, limit=100):
+    """分页取物料；folder=None 全量（兼容），folder='src' 等为顶层组精确过滤（''=根目录组）。"""
+    where = 'task_id = :t AND owner_user_id = :o'
+    params = {'t': task_id, 'o': owner_user_id or ''}
+    if folder is not None:
+        where += (" AND (CASE WHEN instr(rel_path, '/') > 0 "
+                  "THEN substr(rel_path, 1, instr(rel_path, '/') - 1) ELSE '' END) = :folder")
+        params['folder'] = folder
+    total = int(conn.execute(sto.text('SELECT COUNT(*) FROM wb_build_materials WHERE ' + where),
+                             params).scalar() or 0)
+    rows = conn.execute(sto.text('SELECT * FROM wb_build_materials WHERE ' + where +
+                                 ' ORDER BY rel_path, material_id LIMIT :l OFFSET :f'),
+                        dict(params, l=max(1, min(int(limit or 100), 500)),
+                             f=max(0, int(offset or 0)))).mappings().all()
+    return [material_view(r) for r in rows], total
+
+
 def update_material(conn, material_id, owner_user_id, parse_state=None, coverage=None,
                     excluded=None, error=None, now=None):
     sets, params = ['updated_at = :n'], {'n': now or sto.utcnow(), 'm': material_id,
@@ -848,6 +883,41 @@ def insert_delivery(conn, task_id, owner_user_id, request_id, payload_digest, on
                  {'d': delivery_id, 't': task_id, 'o': owner_user_id or '', 'r': request_id,
                   'p': payload_digest, 'nid': ontology_id, 'n': now})
     return delivery_id
+
+
+# --- 任务级联物理清理（08 §12.2）------------------------------------------------
+
+def purge_task(conn, task_id, owner_user_id):
+    """物理删除任务及全部关联行；返回 (各类删除计数, blob 相对路径列表)。
+
+    只删行不删文件：blob 文件由调用方在事务提交后经 materials.delete_task_blob_files
+    删除（文件删除失败不回滚数据库）。已交付的本体草稿在 wb_assets 侧，不受影响。
+    """
+    row = _task_row(conn, task_id, owner_user_id)
+    if row is None:
+        raise sto.NotFound('生成任务不存在')
+    blob_paths = [r['blob_path'] for r in conn.execute(
+        sto.text('SELECT DISTINCT blob_path FROM wb_build_blobs '
+                 'WHERE task_id = :t AND owner_user_id = :o'),
+        {'t': task_id, 'o': owner_user_id or ''}).mappings().all()]
+    counts = {}
+    for table in ('wb_build_materials', 'wb_build_facts', 'wb_build_messages',
+                  'wb_build_runs', 'wb_build_batches', 'wb_build_candidates',
+                  'wb_build_review_ops', 'wb_build_uploads', 'wb_build_deliveries',
+                  'wb_build_blobs'):
+        result = conn.execute(sto.text('DELETE FROM ' + table +
+                                       ' WHERE task_id = :t AND owner_user_id = :o'),
+                              {'t': task_id, 'o': owner_user_id or ''})
+        counts[table] = int(result.rowcount or 0)
+    result = conn.execute(sto.text('DELETE FROM wb_build_scopes '
+                                   'WHERE task_id = :t AND owner_user_id = :o'),
+                          {'t': task_id, 'o': owner_user_id or ''})
+    counts['wb_build_scopes'] = int(result.rowcount or 0)
+    result = conn.execute(sto.text('DELETE FROM wb_build_tasks '
+                                   'WHERE task_id = :t AND owner_user_id = :o'),
+                          {'t': task_id, 'o': owner_user_id or ''})
+    counts['wb_build_tasks'] = int(result.rowcount or 0)
+    return counts, blob_paths
 
 
 # --- 交付复用：新建本体资产（与 workspaces 同事务） -------------------------------
