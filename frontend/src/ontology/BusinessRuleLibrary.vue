@@ -93,7 +93,7 @@ function goExternal(dep: any) {
   dialog.value = null
   emit('navigate', target.view, returnTo ? { ...target.focus, returnTo } : target.focus)
 }
-const editTargetName = computed(() => draft.value?.name || '')
+const _editTargetName = computed(() => draft.value?.name || '')
 
 watch(rows, v => {
   if (dialog.value && !v.some((r: any) => r.id === dialog.value!.id)) dialog.value = null
@@ -108,7 +108,7 @@ watch(() => props.focusId, id => {
 
 const dirty = computed(() => mode.value === 'edit' && JSON.stringify(draft.value) !== baseline)
 const guard = { isDirty: () => dirty.value, discard: () => closeEditor() }
-watch(mode, m => { m === 'edit' ? guardApi.register(guard) : guardApi.unregister(guard) })
+watch(mode, m => { if (m === 'edit') guardApi.register(guard); else guardApi.unregister(guard) })
 onBeforeUnmount(() => guardApi.unregister(guard))
 
 function openDetail(id: string) { dialog.value = { kind: 'detail', id }; message.value = '' }

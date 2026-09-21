@@ -22,7 +22,7 @@ import {
 } from '../core/multiGraph.js'
 import { badgePos, initialRootPositions, contentLayout } from '../core/multiLayout.js'
 
-const ANIM = { duration: 420, easing: 'ease-out' }
+const _ANIM = { duration: 420, easing: 'ease-out' }
 // 自动 fit 的缩放上限：内容较少时（如几个根节点）fit 会过度放大，限到 1.0 按原始尺寸展示
 const FIT_ZOOM_CAP = 1.0
 
@@ -46,7 +46,7 @@ export function useMultiGraph() {
     try {
       cy.value.fit(undefined, 70)
       if (cy.value.zoom() > FIT_ZOOM_CAP) cy.value.zoom(FIT_ZOOM_CAP)
-    } catch (e) { /* 空画布忽略 */ }
+    } catch (_e) { /* 空画布忽略 */ }
   }
 
   function scheduleFit() {

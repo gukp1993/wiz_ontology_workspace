@@ -3,7 +3,6 @@
 纯 python3 标准库直跑；WIZ_WORKBENCH_ROOT 挂临时数据根，urlopen 用桩替换，
 绝不发起真实网络请求。运行：python3 tests/test_llm_providers.py
 """
-import io
 import json
 import os
 import shutil

@@ -185,7 +185,7 @@ function restorePending(){
 }
 restorePending()
 const guard={isDirty:()=>dirty(),discard:()=>closeEditor()}
-watch(editingOpen,open=>{emit('edit-state',open);open?formGuard?.register(guard):formGuard?.unregister(guard)},{immediate:true})
+watch(editingOpen,open=>{emit('edit-state',open);if(open)formGuard?.register(guard);else formGuard?.unregister(guard)},{immediate:true})
 onBeforeUnmount(()=>formGuard?.unregister(guard))
 // 起点来源：实例来源 + 一对一/零或一条的补充来源；多条匹配来源不能作为链接字段来源。
 const hasManyOrigin=computed(()=>dbSourcesOf(props.b).some(s=>s.cardinality==='many'))
@@ -316,7 +316,7 @@ defineExpose({dirty,discard:closeEditor})
 <div class="panelhead"><div><strong>{{linkLabel(view.relation)}} → {{name(view.targetType)}}</strong> <span v-if="view.legacy" class="status-pill">旧格式</span> <span v-if="view.membership" class="status-pill">成员规则</span> <span v-if="view.unknownRaw" class="status-pill">未识别结构</span> <span v-if="cardinalityOf(view.relation)" class="status-pill">{{cardLabel(view.relation)}}</span></div><div class="tools"><button v-if="view.membership" :disabled="!registeredInstances.length" @click="membershipPreview=!membershipPreview">预览成员</button><button @click="edit(i as number)">配置</button><button @click="removeLink(i as number)">移除</button></div></div>
 <p class="muted">{{view.membership?membershipSummary(view):(view.unknownRaw?'已按原样保留，请升级后重新配置':('起点 '+summaryOf(b,view.sourceId,view.field)+' → 终点 '+summaryEnd(view)))}}</p>
 <p class="lm-desc" :class="{'muted':!descTextOf(projectState,'links',view.relation)}">{{descTextOf(projectState,'links',view.relation)||'暂无说明（两端共用）'}}</p>
-<SourcePreview v-if="view.membership&&membershipPreview" :project-state="projectState" :object-type="b.object_type" :instances="registeredInstances" :property="null" title="成员预览 · "+linkLabel(view.relation) @close="membershipPreview=false"/>
+<SourcePreview v-if="view.membership&&membershipPreview" :project-state="projectState" :object-type="b.object_type" :instances="registeredInstances" :property="null" :title="'成员预览 · ' + linkLabel(view.relation)" @close="membershipPreview=false"/>
 </section>
 <p v-if="!rows.length" class="empty">尚未配置链接映射；从下方添加以本对象为起点、或终点为本对象（多对一／多对多，按端配置成员规则）的链接。</p>
 <div class="row"><label>添加链接<AppSelect :model-value="''" aria-label="添加链接" placeholder="选择未映射的链接" :options="pendingLinks.map(r=>({value:r['@id'],label:pendingLinkLabel(r)}))" @update:model-value="addLink(relations.find(x=>x['@id']===$event))"/></label></div>

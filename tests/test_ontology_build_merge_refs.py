@@ -398,7 +398,7 @@ def check_e2e_delivery_after_merge():
           '端到端：链接两端也指向主对象稳定 id',
           actual=(link_node.get('rdfs:domain'), link_node.get('rdfs:range')))
     action_rec = (workflow.get('actions') or [{}])[0]
-    rule_rec = (workflow.get('businessRules') or [{}])[0]
+    _rule_rec = (workflow.get('businessRules') or [{}])[0]
     action_assoc = workflow.get('actionAssociations') or []
     rule_assoc = workflow.get('businessRuleAssociations') or []
     check(action_assoc == [{'objectTypeId': main_id, 'actionId': candidate_map.get(items['act-reset']['id'])}]

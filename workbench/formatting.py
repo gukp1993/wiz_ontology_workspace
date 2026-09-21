@@ -1,5 +1,8 @@
 """Display-only formatters; never write formatted output into source properties."""
-import json, os, shutil, subprocess
+import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
@@ -36,7 +39,7 @@ def format_value(value, data_type, config):
     try:
         run=subprocess.run([node,'--permission','--max-old-space-size=64','--eval',script],input=json.dumps({'value':value,'type':data_type,'config':config}),text=True,capture_output=True,timeout=2,env={'PATH':os.environ.get('PATH',''),'TZ':'UTC','LANG':'en_US.UTF-8'})
         result=json.loads(run.stdout)
-    except subprocess.TimeoutExpired:raise ValueError('格式函数运行超时')
-    except (json.JSONDecodeError,OSError):raise ValueError('格式函数运行失败；需要支持 --permission 的 Node.js')
+    except subprocess.TimeoutExpired:raise ValueError('格式函数运行超时') from None
+    except (json.JSONDecodeError,OSError):raise ValueError('格式函数运行失败；需要支持 --permission 的 Node.js') from None
     if result.get('error'):raise ValueError(result['error'])
     return result['formatted']

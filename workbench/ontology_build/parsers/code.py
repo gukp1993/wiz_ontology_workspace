@@ -637,7 +637,7 @@ def _retarget(pending, symbol):
 
 
 def _is_control_flow(stripped):
-    head = re.split(r'[\s(]', stripped, 1)[0]
+    head = re.split(r'[\s(]', stripped, maxsplit=1)[0]
     return head in _JAVA_KEYWORDS
 
 

@@ -4,13 +4,10 @@
 覆盖验收项：A01/A02/A03/A05/A06（A04 由真实库迁移演练覆盖，见 test_storage_transfer.py）。
 运行：python3 tests/test_auth.py
 """
-import json
 import os
 import sqlite3
 import sys
 import tempfile
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -216,7 +213,6 @@ def test_llm_isolation():
 def test_http_contract():
     import subprocess
     import socket
-    import time
 
     probe = socket.socket()
     try:

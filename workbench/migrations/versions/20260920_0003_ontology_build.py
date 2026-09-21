@@ -14,7 +14,6 @@ blob 实体不进库：wb_build_blobs 只登记归属/哈希/相对路径，文�
 workbench/ontology_build/materials.py 管理在 DATA_ROOT/data/ontology-build-blobs/。
 """
 from alembic import op
-import sqlalchemy as sa
 
 revision = '20260920_0003'
 down_revision = '20260918_0002'

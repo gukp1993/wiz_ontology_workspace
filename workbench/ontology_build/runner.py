@@ -29,7 +29,7 @@ import contextlib
 import threading
 import traceback
 
-from workbench import auth, storage
+from workbench import auth
 from workbench.ontology_build import protocol
 from workbench.storage import engine as sto
 from workbench.storage import ontology_build as store

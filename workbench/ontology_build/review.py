@@ -395,7 +395,7 @@ def deliver_blockers(conn, task_id, batch_id=None) -> dict:
     issues = []
     for node in selected:
         counts[node['type']] = counts.get(node['type'], 0) + 1
-        for slot, ref, role in _relation_refs(node):
+        for _slot, ref, role in _relation_refs(node):
             target = _resolve(ref, by_id, by_key)
             # 合并链走到头仍停在「已被合并」的候选上（悬空/成环）时同样不可交付：
             # 解析方返回的是被合并候选本身，validate_candidate 看不出这种情况。

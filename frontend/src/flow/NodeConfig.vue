@@ -9,7 +9,7 @@ import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import TypeEditor from './TypeEditor.vue'
 import BindingEditor from './BindingEditor.vue'
-import { EXEC_DEFAULT_TIMEOUT, EXEC_MAX_TIMEOUT_MS, HTTP_METHODS, NODE_KIND_LABELS, REDIS_COMMAND_OPTIONS, SQL_MAX_ROWS_MAX, TYPE_LABELS, flowTypeToCalcType, outputRemovalImpact, pythonSkeleton, sourceSummary, uid } from './flowModel'
+import { EXEC_DEFAULT_TIMEOUT, EXEC_MAX_TIMEOUT_MS, HTTP_METHODS, REDIS_COMMAND_OPTIONS, SQL_MAX_ROWS_MAX, TYPE_LABELS, flowTypeToCalcType, outputRemovalImpact, pythonSkeleton, sourceSummary, uid } from './flowModel'
 const props = defineProps<{ state: any; node: any; anchor?: string; connections?: any[]; credentials?: any[]; providers?: any[]; providersStatus?: string; connectionsStatus?: string; hasProject?: boolean; focus?: { token: number; parameterId?: string; field?: string } }>()
 const emit = defineEmits(['before-change', 'changed', 'expand-code', 'open-llm-config', 'open-connections', 'retry-providers'])
 const notice = ref('')

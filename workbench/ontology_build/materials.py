@@ -266,7 +266,7 @@ def upload_init(conn, owner_user_id, task_id, rel_path, size):
     try:
         total = int(size)
     except (TypeError, ValueError):
-        raise UploadError('文件大小无效')
+        raise UploadError('文件大小无效') from None
     if total <= 0:
         raise UploadError('文件大小无效')
     if total > protocol.FILE_BYTES:
@@ -290,7 +290,7 @@ def upload_init(conn, owner_user_id, task_id, rel_path, size):
         os.close(handle)
         os.chmod(str(part), 0o600)
     except OSError as exc:
-        raise UploadError('无法创建上传临时文件：%s' % exc)
+        raise UploadError('无法创建上传临时文件：%s' % exc) from exc
     return {'uploadId': upload_id, 'chunkBytes': protocol.CHUNK_BYTES,
             'maxChunks': _max_chunks(total), 'received': 0}
 
@@ -306,20 +306,20 @@ def _decode_chunk(data_b64):
         try:
             raw = data_b64.encode('ascii')
         except UnicodeEncodeError:
-            raise UploadError('分片数据不是合法 base64')
+            raise UploadError('分片数据不是合法 base64') from None
     else:
         raise UploadError('分片数据不是合法 base64')
     try:
         return base64.b64decode(raw, validate=True)
     except (binascii.Error, ValueError):
-        raise UploadError('分片数据不是合法 base64')
+        raise UploadError('分片数据不是合法 base64') from None
 
 
 def _chunk_index(index):
     try:
         value = int(index)
     except (TypeError, ValueError):
-        raise UploadError('分片序号无效')
+        raise UploadError('分片序号无效') from None
     if value < 0:
         raise UploadError('分片序号无效')
     return value
@@ -388,7 +388,7 @@ def upload_chunk(conn, owner_user_id, upload_id, index, chunk_hash, data_b64):
             out.seek(offset)
             out.write(data)
     except OSError as exc:
-        raise UploadError('分片写入失败：%s' % exc)
+        raise UploadError('分片写入失败：%s' % exc) from exc
     os.chmod(str(part), 0o600)
     chunks[str(position)] = actual
     lengths[str(position)] = len(data)
@@ -420,7 +420,7 @@ def upload_complete(conn, owner_user_id, upload_id, final_hash):
         digest = _sha256_file(part)
     except OSError as exc:
         _discard_upload(conn, row)
-        raise UploadError('材料临时文件不可读：%s' % exc)
+        raise UploadError('材料临时文件不可读：%s' % exc) from exc
     if digest != str(final_hash or '').strip().lower():
         # D07 口径：整体摘要与请求携带的 finalHash 不符，最可能是客户端算错了摘要——
         # 这是**可纠正的请求错误**（422 HASH_MISMATCH），不得销毁会话或临时文件，
@@ -443,7 +443,7 @@ def upload_complete(conn, owner_user_id, upload_id, final_hash):
             os.chmod(str(stored), 0o600)
         except OSError as exc:
             _remove_file(part)
-            raise UploadError('材料写入存储失败：%s' % exc)
+            raise UploadError('材料写入存储失败：%s' % exc) from exc
         blob_id = store.create_blob(conn, owner_id, task_id, rel_path, size, digest,
                                     '%s/%s' % (BLOB_SUBDIR, name))
     store.upload_chunks(conn, upload_id, owner_id, {}, received)
@@ -468,7 +468,7 @@ def _complete_zip(conn, row, part, digest):
         os.chmod(str(staged), 0o600)
     except OSError as exc:
         _remove_file(part)
-        raise UploadError('压缩包写入存储失败：%s' % exc)
+        raise UploadError('压缩包写入存储失败：%s' % exc) from exc
     try:
         materials, excluded = expand_zip(conn, owner_id, row['task_id'], staged, row['rel_path'])
     except UploadError:
@@ -661,9 +661,9 @@ def _write_member(archive, info, dest, expected, budget=None):
         _remove_file(dest)
         raise
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError, zlib.error, EOFError,
-            OSError) as exc:
+            OSError):
         _remove_file(dest)
-        raise ZipInvalid('压缩包条目解压失败：%s' % info.filename)
+        raise ZipInvalid('压缩包条目解压失败：%s' % info.filename) from None
     finally:
         if handle is not None:
             os.close(handle)
@@ -675,7 +675,7 @@ def _walk_zip(archive_path, prefix, staging, depth, budget, extracted, excluded,
     try:
         archive = zipfile.ZipFile(str(archive_path))
     except (zipfile.BadZipFile, OSError) as exc:
-        raise ZipInvalid('压缩包无法读取：%s' % exc)
+        raise ZipInvalid('压缩包无法读取：%s' % exc) from exc
     with archive:
         for info in archive.infolist():
             raw_name = str(info.filename or '')
@@ -735,7 +735,7 @@ def _register_extracted(conn, owner_user_id, task_id, extracted, source_group):
                 os.chmod(str(dest), 0o600)
             except OSError as exc:
                 _remove_file(item['path'])
-                raise UploadError('解压文件写入存储失败：%s' % exc)
+                raise UploadError('解压文件写入存储失败：%s' % exc) from exc
             item['stored'] = dest
             blob_id = store.create_blob(conn, owner_user_id, task_id, item['rel_path'],
                                         item['size'], item['hash'],
@@ -768,7 +768,7 @@ def expand_zip(conn, owner_user_id, task_id, zip_path, rel_path):
     try:
         source_group = _sha256_file(source)[:16]
     except OSError as exc:
-        raise UploadError('压缩包不可读：%s' % exc)
+        raise UploadError('压缩包不可读：%s' % exc) from exc
     staging = _ensure_dir(temp_dir() / ('expand-' + sto.new_id()))
     extracted, excluded, used = [], [], set()
     budget = {'bytes': 0, 'entries': 0, 'real': 0}

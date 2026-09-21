@@ -172,7 +172,7 @@ _BLOCKING_LEVELS = {'invalid', 'error', 'failed', 'fail', 'fatal', 'critical', '
 _STATUS_LIST_KEYS = {'items', 'results', 'rows', 'entries', 'checks'}
 # 诊断子树内不参与匹配的键（大小写不敏感）：类型/标识/状态/回显载荷
 _IGNORE_KEYS = {
-    'state', 'data', 'payload', 'revision', 'requestid', 'requestid', 'kind', 'type',
+    'state', 'data', 'payload', 'revision', 'requestid', 'kind', 'type',
     'status', 'level', 'id', 'ids', 'key', 'keys', 'version', 'templateid', 'packagekey',
     'suggestedname', 'scene', 'outputs', 'output', 'nodes', 'connections', 'layout',
     'canvas', 'props', 'effects', 'sceneid', 'flow', 'flowid', 'objecttype', 'objecttypeid',

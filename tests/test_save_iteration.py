@@ -507,7 +507,7 @@ if __name__ == '__main__':
         main()
     except SystemExit:
         raise
-    except Exception as exc:  # 意外异常也要停服并留现场
+    except Exception:  # 意外异常也要停服并留现场
         import traceback
         traceback.print_exc()
         shutdown()

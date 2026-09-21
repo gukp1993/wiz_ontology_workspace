@@ -189,7 +189,7 @@ def save_draft(kind, external_id, payload, payload_format, expected_token=None,
         if conflict.get('head'):
             fresh = _current_head(kind, external_id, owner_user_id)
             raise sto.RevisionConflict(current_revision=(fresh or {}).get('revision_token'),
-                                       message='此内容已有新版本，请刷新后重试')
+                                       message='此内容已有新版本，请刷新后重试') from None
         raise
 
 
@@ -222,7 +222,7 @@ def run_in_write_tx(body):
             fresh = _current_head(conflict.get('kind'), conflict.get('external_id'),
                                   conflict.get('owner_user_id', ''))
             raise sto.RevisionConflict(current_revision=(fresh or {}).get('revision_token'),
-                                       message='此内容已有新版本，请刷新后重试')
+                                       message='此内容已有新版本，请刷新后重试') from None
         raise
 
 

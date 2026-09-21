@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import AppSelect from '../shared/AppSelect.vue'
-import { TYPE_LABELS, TYPE_OPTIONS, uid } from './flowModel'
+import { TYPE_OPTIONS, uid } from './flowModel'
 const props = defineProps<{ decl: any; depth?: number; disabled?: boolean }>()
 const emit = defineEmits(['before-change', 'changed'])
 const depth = computed(() => props.depth ?? 0)

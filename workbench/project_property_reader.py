@@ -595,15 +595,15 @@ def _fetch(cfg, secret, sql, params):
     try:
         connection = _connect(cfg, secret)
     except ImportError as exc:
-        raise PreviewFailed(_classified_message(exc))
+        raise PreviewFailed(_classified_message(exc)) from exc
     except Exception as exc:  # noqa: BLE001 — 驱动/网络错误统一脱敏
-        raise PreviewFailed(_classified_message(exc))
+        raise PreviewFailed(_classified_message(exc)) from exc
     try:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.fetchall()
     except Exception as exc:  # noqa: BLE001
-        raise PreviewFailed(_classified_message(exc))
+        raise PreviewFailed(_classified_message(exc)) from exc
     finally:
         try:
             connection.close()

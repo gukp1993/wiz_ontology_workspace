@@ -88,13 +88,13 @@ def parse_input(text, base):
         try:
             value = json.loads(text)
         except (ValueError, TypeError, RecursionError):
-            raise ValueError('请输入有效 JSON 数组或对象' if base in ('xsd:array', 'xsd:struct') else '请输入数字或 true / false，不要附加单位')
+            raise ValueError('请输入有效 JSON 数组或对象' if base in ('xsd:array', 'xsd:struct') else '请输入数字或 true / false，不要附加单位') from None
     else:
         value = text
     try:
         _bounded_value(value); scalar(value, base)
     except OverflowError:
-        raise ValueError('数值超出支持范围')
+        raise ValueError('数值超出支持范围') from None
     return value
 
 

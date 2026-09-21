@@ -5,11 +5,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import AppSelect from '../shared/AppSelect.vue'
-import TypeEditor from './TypeEditor.vue'
-import { SCALAR_TYPES, TYPE_LABELS, outputCandidates, processingNodes, resolveSourceType, typesCompatible, fieldOf, derivedEdges } from './flowModel'
+import _TypeEditor from './TypeEditor.vue'
+import { SCALAR_TYPES, TYPE_LABELS, outputCandidates, resolveSourceType, typesCompatible, fieldOf, derivedEdges } from './flowModel'
 const props = defineProps<{ state: any; owner: { nodeId: string; input: any }; dialog?: boolean }>()
 const emit = defineEmits(['before-change', 'changed', 'close', 'apply'])
-const ownerNode = computed(() => (props.state.nodes || []).find((n: any) => n.id === props.owner.nodeId))
+const _ownerNode = computed(() => (props.state.nodes || []).find((n: any) => n.id === props.owner.nodeId))
 const source = computed<any>(() => props.owner.input.source)
 const kind = ref<string>(source.value ? source.value.kind : '')
 
@@ -88,8 +88,8 @@ function wouldCreateCycleWithout(state: any, owner: { nodeId: string; input: any
   return false
 }
 
-function beginEdit() { emit('before-change') }
-function doneEdit() { emit('changed') }
+function _beginEdit() { emit('before-change') }
+function _doneEdit() { emit('changed') }
 function setKind(next: string) {
   emit('before-change')
   kind.value = next

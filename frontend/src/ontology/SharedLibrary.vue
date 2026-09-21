@@ -28,7 +28,7 @@ import RowMenu from '../shared/RowMenu.vue'
 import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
 import PropertyManager from './PropertyManager.vue'
-import { listShared, referencesOf, externalReferencesOf, shapeConflict, copyAsPrivate, propertyDataType, dataTypeLabel, propertyTypeLabel, makeProperty, localProperties, effectiveProperty, addReference, asShared, parsePropertyRows } from './propertyModel'
+import { listShared, referencesOf, shapeConflict, copyAsPrivate, propertyDataType, dataTypeLabel, propertyTypeLabel, makeProperty, localProperties, effectiveProperty, addReference, asShared, parsePropertyRows } from './propertyModel'
 import { useOntTable } from './ontList'
 import { externalDependencies, externalDependencyTarget, sharedDeleteCheck } from './dependencyModel'
 

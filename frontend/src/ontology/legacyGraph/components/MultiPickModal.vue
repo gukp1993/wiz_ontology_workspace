@@ -69,7 +69,7 @@ async function load() {
           const items = Array.isArray(rel) ? rel : (rel?.items || [])
           const names = [...new Set(items.map((r) => (typeof r === 'string' ? r : r.version)).filter(Boolean))]
           versions = names.map((v) => ({ key: g.id + '@' + v, name: v }))
-        } catch (e) { /* 单个本体失败不阻塞 */ }
+        } catch (_e) { /* 单个本体失败不阻塞 */ }
         return { id: g.id, name: g.name, versions }
       }),
     )

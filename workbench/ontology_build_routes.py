@@ -7,9 +7,7 @@
 
 契约：文档/接口文档/08-从物料自动构建本体接口.md。
 """
-import json
 
-from workbench import storage
 from workbench.ontology_build import delivery as delivery_domain
 from workbench.ontology_build import materials as material_domain
 from workbench.ontology_build import protocol
@@ -107,7 +105,6 @@ def _run_task(owner_user_id, run_id, job):
 # ── GET ────────────────────────────────────────────────────────────────────
 
 def get_capabilities(query):
-    from workbench import auth
     from workbench import llm_providers
     provider = None
     try:

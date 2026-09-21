@@ -12,7 +12,6 @@
   and/or/not、括号；不追求完整 OGNL。
 """
 import re
-from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
 
 class FlowSqlError(ValueError):

@@ -5,15 +5,11 @@
 
 运行：.runtime/venv/bin/python tests/deep_integrity_http.py
 """
-import io
 import json
 import os
-import re
 import subprocess
 import sys
 import time
-import uuid
-import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +17,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 os.environ['Q02_BASE'] = os.environ.get('Q05_BASE', 'http://127.0.0.1:18932')
 import auth_client  # noqa: E402
 import deep_ontology_client as doc  # noqa: E402
-from deep_ontology_client import Api, Recorder, brief  # noqa: E402
+from deep_ontology_client import Recorder, brief  # noqa: E402
 
 # 证据目录切到 q05（Recorder.dump 读模块全局）
 doc.EVIDENCE_DIR = ROOT / '.runtime/test-evidence/q05'
@@ -173,7 +169,7 @@ def suite_i1(rec):
     results['project_cas'] = pid
     b1 = a1.get('/api/project-state?project=' + pid)
     prev0, pstate0 = b1.json['revision'], b1.json['state']
-    b2 = a2.get('/api/project-state?project=' + pid)
+    _b2 = a2.get('/api/project-state?project=' + pid)
     ps1 = json.loads(json.dumps(pstate0, ensure_ascii=False))
     ps1['name'] = ps1.get('name', 'Q05 CAS项目 ') + '-A1'
     pv1 = a1.post('/api/project-save', {'state': ps1, 'revision': prev0})
@@ -267,7 +263,7 @@ def suite_i5(rec):
     get_paths, post_paths = list(srv.GET_ROUTES.keys()) + ['/api/ontologies'], list(srv.POST_ROUTES.keys())
     free_get, free_post = list(srv.AUTH_FREE_GET), list(srv.AUTH_FREE_POST)
     # 未登录 GET 遍历（免登录端点单独验证）
-    bad401, bad_other = [], []
+    _bad401, bad_other = [], []
     for p in get_paths:
         if p in free_get:
             continue
@@ -288,7 +284,7 @@ def suite_i5(rec):
             continue
         exceptions.append((p, resp.status, brief(resp.json)))
     rec.add('I5-postAll', 'pass' if not exceptions else 'fail',
-            f'未登录 POST 全白名单（除免登录4端点）→ 401 UNAUTHENTICATED',
+            '未登录 POST 全白名单（除免登录4端点）→ 401 UNAUTHENTICATED',
             brief({'exceptions': exceptions}))
     # 免登录端点确不拦：auth-state 200；错误口令 login 401 UNAUTHENTICATED（非会话门）；register 坏体 400
     r = raw_api()
@@ -724,7 +720,7 @@ def main():
         print(f'\n===== {name} =====')
         try:
             fn(rec)
-        except Exception as e:
+        except Exception:
             import traceback
             rec.add(name + '-crash', 'fail', f'{name} 套件异常中断', traceback.format_exc(limit=6))
     path = rec.dump()

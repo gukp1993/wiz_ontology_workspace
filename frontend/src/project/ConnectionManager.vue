@@ -64,7 +64,7 @@ function draftChanged():boolean{
  }catch{return !!password.value.trim()}
 }
 const guard:FormGuardInstance={isDirty:()=>mode.value==='edit'&&draftChanged(),discard:()=>{closeEditor()}}
-watch(mode,m=>{m==='edit'?guardApi.register(guard):guardApi.unregister(guard)},{immediate:true})
+watch(mode,m=>{if(m==='edit')guardApi.register(guard);else guardApi.unregister(guard)},{immediate:true})
 onBeforeUnmount(()=>guardApi.unregister(guard))
 function openEditor(id:string=''){
  const saved=id?findConn(id):null

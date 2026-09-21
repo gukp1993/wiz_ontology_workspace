@@ -2,7 +2,7 @@
 // 职责：字段校验 → 同名决策（跳过 / 保留并自动重命名）→ 生成固定名称与稳定 ID 的导入定义。
 // 随机函数可注入以便确定性测试；预览生成的名称与 ID 在确认时原样使用，不再重新生成。
 import type { ParseIssue, RawCell, RawRow, SheetName } from './excelImport'
-import { HEADERS, HEADER_ALIASES, NAME_COLUMN, OPTIONAL_HEADERS, REQUIRED_HEADERS, SHEETS } from './excelImport'
+import { HEADERS, NAME_COLUMN, REQUIRED_HEADERS } from './excelImport'
 
 export type ImportPolicy = 'skip' | 'rename'
 export type ImportKind = SheetName
@@ -286,7 +286,7 @@ export function buildPlan(rows: RawRow[], ctx: BuildContext): PlanOutcome {
   const createCount = decisions.filter(d => d.disposition === 'create').length
   const renameCount = decisions.filter(d => d.disposition === 'rename').length
   const errorCount = decisions.filter(d => d.disposition === 'error').length
-  const skipCount = decisions.filter(d => d.disposition === 'skip').length
+  const _skipCount = decisions.filter(d => d.disposition === 'skip').length
   return {
     decisions,
     issues,

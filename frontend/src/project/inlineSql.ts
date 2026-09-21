@@ -8,7 +8,7 @@ export type InlineParamBinding =
   { from: 'instanceId' }
 
 const NAME_START = (c: string) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_'
-const NAME_CHAR = (c: string) => NAME_START(c) || (c >= '0' && c <= '9')
+const _NAME_CHAR = (c: string) => NAME_START(c) || (c >= '0' && c <= '9')
 
 // MySQL 语义的词法剥离：字符串／反引号标识符／注释替换为空白（保分隔符语义），供
 // SELECT／分号／{{}}／:参数 检查使用；字符串注释内的伪参数、伪分号不参与判定。

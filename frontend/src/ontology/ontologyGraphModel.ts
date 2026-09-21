@@ -110,9 +110,9 @@ export function buildGraphModel(state: any): GraphModel {
   const edges: GraphEdge[] = []
   const dangling: DanglingRef[] = []
   const objectIds = new Set(objects.map(o => trim(o['@id'])))
-  const sharedIds = new Set(sharedProps.map(s => trim(s['@id'])))
-  const ruleIds = new Set(rules.map(r => trim(r.id)))
-  const actionIds = new Set(actions.map(a => trim(a.id)))
+  const _sharedIds = new Set(sharedProps.map(s => trim(s['@id'])))
+  const _ruleIds = new Set(rules.map(r => trim(r.id)))
+  const _actionIds = new Set(actions.map(a => trim(a.id)))
 
   for (const o of objects) {
     const id = trim(o['@id'])

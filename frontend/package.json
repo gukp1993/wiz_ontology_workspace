@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
@@ -17,6 +19,9 @@
   "devDependencies": {
     "@types/cytoscape": "^3.21.9",
     "@vitejs/plugin-vue": "^5.1.0",
+    "@vue/eslint-config-typescript": "^14.9.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-vue": "^10.11.0",
     "typescript": "5.9.3",
     "vite": "^5.4.0",
     "vue-tsc": "^3.3.11"

@@ -29,12 +29,12 @@ import OntologyList from '../shared/OntologyList.vue'
 import OntDrawer from '../shared/OntDrawer.vue'
 import SearchField from '../shared/SearchField.vue'
 import ListPager from '../shared/ListPager.vue'
-import { localProperties, effectiveProperty, propertyTypeLabel, propertyDataType, dataTypeLabel, valueShapeOf, copyAsPrivate, addReference, shapeConflict } from './propertyModel'
+import { localProperties, effectiveProperty, propertyTypeLabel, propertyDataType, dataTypeLabel, copyAsPrivate, addReference, shapeConflict } from './propertyModel'
 import { useOntTable, type OntTable } from './ontList'
 import { appConfirm } from '../shared/appConfirm'
 import { prefGet, prefSet } from '../app/auth'
-import { graphReferences, shortType } from './editorModel'
-import { actionDeleteCheck, objectDeleteCheck, ruleDeleteCheck, sharedDeleteCheck } from './dependencyModel'
+import { graphReferences } from './editorModel'
+import { objectDeleteCheck } from './dependencyModel'
 import { actionsOf, associationsOf, associationsOfObject, commitAssociations } from './actionModel'
 import { commitRuleAssociations, ruleAssociationsOf, rulesOf, rulesOfObject } from './businessRuleModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
@@ -117,7 +117,7 @@ watch([selected, detailTab, mode, editor], () => { if (message.value) message.va
 
 // T00 离开保护：仅对象/链接草稿注册（属性表单由 PropertyManager 自带；挑选态无本地草稿）。
 const wsGuard = { isDirty: () => { const e = editor.value; return !!e && 'draft' in e && JSON.stringify(e.draft) !== e.original }, discard: () => { editor.value = null } }
-watch(() => { const e = editor.value; return !!e && (e.kind === 'object' || e.kind === 'link') }, open => { open ? guardApi.register(wsGuard) : guardApi.unregister(wsGuard) }, { immediate: true })
+watch(() => { const e = editor.value; return !!e && (e.kind === 'object' || e.kind === 'link') }, open => { if (open) guardApi.register(wsGuard); else guardApi.unregister(wsGuard) }, { immediate: true })
 onBeforeUnmount(() => guardApi.unregister(wsGuard))
 
 function closeEditor() {

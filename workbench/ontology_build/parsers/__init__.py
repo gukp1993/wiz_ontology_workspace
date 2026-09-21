@@ -25,7 +25,7 @@ REGISTRY / parse 已冻结，本包不改动它）。适配器只产出带精确
 * 每个失败/降级都进入 `ParseResult.coverage['failedSegments']` 或 `warnings`，绝不静默跳过。
 """
 
-from workbench.ontology_build import protocol
+from workbench.ontology_build import protocol as protocol  # 再导出：供 parsers 使用方统一从此处取常量
 from workbench.ontology_build.parsers import base
 from workbench.ontology_build.parsers import code
 from workbench.ontology_build.parsers import ddl

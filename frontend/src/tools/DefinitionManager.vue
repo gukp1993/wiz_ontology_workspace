@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {graphReferences} from '../ontology/editorModel'
-import {requestBody} from '../ontology/modelFormat'
+// removed unused import
 import {ref,computed,watch} from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import EditorLayout from '../shared/EditorLayout.vue'
@@ -11,7 +11,7 @@ const props=defineProps({state:Object,kind:String,projectState:Object,focusId:St
 // 页头「← 返回接口「x」」回到原定义继续操作；聚焦接口定义本身仍走 focusId 选中，不自动删除。
 function backToSource(){const r=props.returnTo as any;if(!r)return;emit('navigate',r.view,{...(r.focus||{}),openUsages:true})}
 const query=ref(''),tab=ref('business')
-const selected=ref(''),result=ref(null),message=ref(''),busy=ref(false),objects=ref([]),parameters=ref({}),newProperty=ref('')
+const selected=ref(''),result=ref(null),message=ref(''),busy=ref(false),objects=ref([]),parameters=ref({}),_newProperty=ref('')
 const rows=computed(()=>props.state.workflow[props.kind]),item=computed(()=>rows.value.find(n=>n.id===selected.value))
 const graph=computed(()=>props.state.ontology['@graph']),types=computed(()=>graph.value.filter(n=>n['@type']==='owl:Class')),shared=computed(()=>graph.value.filter(n=>n['@type']==='mg:SharedProperty')),relations=computed(()=>graph.value.filter(n=>n['@type']==='owl:ObjectProperty'))
 const labels={functions:'计算定义',actions:'动作定义',interfaces:'接口定义'}

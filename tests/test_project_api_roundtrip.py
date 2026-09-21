@@ -27,7 +27,6 @@ sys.path.insert(0, str(_Path(__file__).resolve().parent))
 import auth_client
 from pathlib import Path
 
-import yaml
 
 REPO = Path(__file__).resolve().parents[1]
 PORT = 18800
@@ -222,7 +221,7 @@ def redis_scalar_config():
 def discover(version):
     """通过 /api/version-state 动态读取 storage 1.0.0 的类与属性 apiName。"""
     status, payload = request('GET', f'/api/version-state?ontology=storage&version={version}')
-    check(status == 200, f'GET /api/version-state 应 200', actual=(status, payload), expected=200)
+    check(status == 200, 'GET /api/version-state 应 200', actual=(status, payload), expected=200)
     ont = payload['state']['ontology']
     check('objectTypes' in ont, 'version-state 应返回 schema 形态本体', actual=list(ont),
           expected='含 objectTypes/properties')
@@ -495,7 +494,7 @@ if __name__ == '__main__':
         main()
     except SystemExit:
         raise
-    except Exception as exc:  # 意外异常也要停服并留现场
+    except Exception:  # 意外异常也要停服并留现场
         import traceback
         traceback.print_exc()
         shutdown()

@@ -10,7 +10,6 @@ WIZ_WORKBENCH_ROOT=<临时目录>，WIZ_WORKBENCH_PORT=18801，WIZ_DATABASE_URL 
 """
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -112,7 +111,6 @@ def start_server():
 
 def import_seed_into_db():
     """测试进程内直接登记最小本体发布（storage@1.0.0）：免文件种子与 transfer 依赖。"""
-    import tempfile as _tf
     if not os.environ.get('WIZ_WORKBENCH_ROOT'):
         os.environ['WIZ_WORKBENCH_ROOT'] = str(TMP)
     os.environ.setdefault('WIZ_DATABASE_URL', 'sqlite:///' + str(TMP / 'data' / 'test.sqlite3'))
@@ -120,17 +118,16 @@ def import_seed_into_db():
     from workbench import storage
     storage.ensure_ready()
     auth_client.bind_fixture_user()  # 绑定默认测试账号（写 storage asset owner）
-    from workbench import versions, auth as _auth
+    from workbench import versions
     state = {'ontology': ONTO_STATE['ontology'], 'workflow': ONTO_STATE['workflow'],
              'metrics': {'metrics': []}, 'rules': {'rules': []}}
     entry = versions.publish('storage', state, {'changeType': 'initial', 'note': '说明测试种子'}, expected_token=None)
     check(entry.get('version') == '1.0.0', '种子本体发布版本异常', actual=entry)
-    globals()['SEED_VERSION'] = entry['version']
+    return entry['version']
 
 
 def main():
-    import_seed_into_db()
-    version = SEED_VERSION
+    version = import_seed_into_db()
     start_server()
     auth_client.bind_fixture_user()
     _, token = auth_client.register_or_login(BASE)
@@ -152,7 +149,7 @@ def main():
     objects = [o['id'] for o in ONTO_STATE['ontology']['objectTypes']]
     target_obj = objects[0]
     target_prop = 'mg:p_unit_power'
-    other_obj = None  # 种子本体单对象：双对象隔离分支走结构断言
+    _other_obj = None  # 种子本体单对象：双对象隔离分支走结构断言
 
     # D01：四类说明保存/读取回环
     block = {'schemaVersion': 1,

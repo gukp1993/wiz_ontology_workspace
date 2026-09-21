@@ -17,11 +17,11 @@ import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import MappingDescription from './MappingDescription.vue'
 import {isQueryRule,isReusableRule,ruleInputErrors} from './queryRules'
-import {scanSqlParams,inlineSqlErrors,effectiveParams,blankInlineSql} from './inlineSql'
+import {scanSqlParams,inlineSqlErrors,effectiveParams} from './inlineSql'
 import {isCalcFunction,calcRangeOk,calcConstantOk,CALC_TYPE_NAMES} from './calcFunction'
 import {listFlows,loadFlowStateRaw} from '../flow/api'
 import {descTextOf,commitDesc,propertyNodeIdOf,redisSourcesOf,sourceById,commitProperty,propertyView,tableCatalog,tableOptions,fieldOptions,catalogOf,keyTokens,refreshCatalogOf,TIMESTAMP_ENCODINGS,mysqlConnectionsOf,redisConnectionsOf,identityTableOf,databaseSummary,propertyLocalIssues,bindingIdentityOf,registeredInstancesOf} from './bindingModel'
-import SourcePreview from './SourcePreview.vue'
+import _SourcePreview from './SourcePreview.vue'
 import {localProperties,effectiveProperty,valueShapeOf,propertyTypeLabel,signatureDataType,dataTypeLabel} from '../ontology/propertyModel'
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 const props=defineProps<{projectState:any;refState:any;b:any;report?:any}>()
@@ -33,14 +33,14 @@ const graph=computed(()=>props.refState?.ontology?.['@graph']||[])
 const properties=computed(()=>localProperties(graph.value,'mg:'+(props.b?.object_type||'')))
 const key=(p:any)=>p['mg:apiName']||p['@id'].slice(3)
 const label=(p:any)=>effectiveProperty(p,graph.value)['rdfs:label']||key(p)
-const typeNames:Record<string,string>={'xsd:string':'文本','xsd:double':'数值','xsd:decimal':'精确小数','xsd:integer':'整数','xsd:boolean':'是／否','xsd:date':'日期','xsd:dateTime':'日期时间','xsd:array':'数组','xsd:struct':'结构体'}
+const _typeNames:Record<string,string>={'xsd:string':'文本','xsd:double':'数值','xsd:decimal':'精确小数','xsd:integer':'整数','xsd:boolean':'是／否','xsd:date':'日期','xsd:dateTime':'日期时间','xsd:array':'数组','xsd:struct':'结构体'}
 const typeName=(p:any)=>propertyTypeLabel(p,graph.value)
 function commentOf(p:any){return String(effectiveProperty(p,graph.value)?.['rdfs:comment']||'')}
 function suffixOf(p:any){return String(effectiveProperty(p,graph.value)?.['mg:valueSuffix']||'')}
 const connections=computed(()=>props.projectState.connections?.connections||[])
 // ---------- 登记信息 / 关联聚合（方案 §3.3）：仅登记身份对象适用 ----------
 const identityMode=computed(()=>bindingIdentityOf(props.b))
-const registeredInstances=computed(()=>registeredInstancesOf(props.b))
+const _registeredInstances=computed(()=>registeredInstancesOf(props.b))
 const bindingOfType=(t:string)=>props.projectState.bindings.object_bindings.find((x:any)=>x.object_type===t)
 const linkLabelOf=(relationId:string)=>graph.value.find((n:any)=>n['@id']==='mg:'+relationId)?.['rdfs:label']||relationId
 const propLabelOf=(tb:any,api:string)=>{const ps=localProperties(graph.value,'mg:'+tb.object_type);const p=ps.find((x:any)=>key(x)===api);return p?String(label(p)):api}
@@ -75,12 +75,12 @@ const aggregateLinkOptions=computed(()=>graph.value.filter((n:any)=>{
     :!tb.table?('成员对象「'+typeNameOf(tid)+'」未选择来源表'):''
   return {value:n['@id'].slice(3),label:String(n['rdfs:label']||n['@id'].slice(3))+(dir==='in'?'（入向）':''),tid,ok,reason,dir}
 }))
-const aggregateUsable=computed(()=>aggregateLinkOptions.value.filter((o:any)=>o.ok))
-async function gotoSetupTarget(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;emit('setup-end',tid)}
-async function gotoTargetProperties(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;emit('goto-properties',tid)}
-function gotoLinksTab(){emit('go-tab','links')}
+const _aggregateUsable=computed(()=>aggregateLinkOptions.value.filter((o:any)=>o.ok))
+async function _gotoSetupTarget(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;emit('setup-end',tid)}
+async function _gotoTargetProperties(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;emit('goto-properties',tid)}
+function _gotoLinksTab(){emit('go-tab','links')}
 // 成员属性：成员端对象数值属性且已映射为身份表直接字段（字符串/field 直连；严格性由后端校验兜底）
-function memberPropertyOptions(relationId:string){
+function _memberPropertyOptions(relationId:string){
   const tid=memberTidOfRelation(relationId);const tb=bindingOfType(tid)
   if(!tb)return []
   return localProperties(graph.value,'mg:'+tid).filter((p:any)=>{
@@ -93,7 +93,7 @@ function memberPropertyOptions(relationId:string){
     return false
   }).map((p:any)=>({value:key(p),label:label(p)}))
 }
-const aggregatePreview=ref<string|null>(null)
+const _aggregatePreview=ref<string|null>(null)
 function connName(id:string){const c=connections.value.find((x:any)=>x.id===id);return c?(c.name||c.id):id}
 const objectLabel=computed(()=>{const t=graph.value.find((n:any)=>n['@id']==='mg:'+(props.b?.object_type||''));return t?.['rdfs:label']||props.b?.object_type||''})
 function typeNameOf(id:string){const t=graph.value.find((n:any)=>n['@id']==='mg:'+id);return t?.['rdfs:label']||id}
@@ -207,7 +207,7 @@ function declaredShapeOf(implId:string,outputId:string):'scalar'|'timeSeries'{re
 
 function implLabel(implId:string){const impl=implOf(implId);if(!impl)return implId||'未选择实现';const c=contracts.value.find((x:any)=>x.id===impl.contractId);return (impl.name||c?.name||impl.contractId)+(impl.environment?'（'+impl.environment+'）':'')}
 function outputLabel(implId:string,outputId:string){const impl=implOf(implId);const c=contracts.value.find((x:any)=>x.id===impl?.contractId);return isQueryRule(impl)?(impl.result?.type==='scalar'?'查询单值':'查询时间序列'):(c?.outputs||[]).find((o:any)=>o.id===outputId)?.name||outputId||''}
-function outputsOf(implId:string){const impl=implOf(implId);const c=contracts.value.find((x:any)=>x.id===impl?.contractId)
+function _outputsOf(implId:string){const impl=implOf(implId);const c=contracts.value.find((x:any)=>x.id===impl?.contractId)
  if(isCalcFunction(impl))return [{value:String(impl.output?.id||''),label:(impl.output?.name||'计算输出')+' · '+(CALC_TYPE_NAMES[String(impl.output?.type||'')]||impl.output?.type)}]
  return isQueryRule(impl)?[{value:'series',label:impl.result?.type==='scalar'?'查询结果 · 单值':'查询结果 · 时间序列'}]:(c?.outputs||[]).map((o:any)=>({value:o.id,label:o.name+' · '+dataTypeLabel(declaredTypeOf(implId,o.id))}))}
 // 组件级补充校验：bindingModel.propertyLocalIssues 之外的结构规则（computed 输出形态匹配需读实现声明）
@@ -461,7 +461,7 @@ async function openProperty(api:string){if(!draftDirty.value||await appConfirm({
 const formGuard=inject<FormGuardAPI|null>('form-guard',null)
 const formSave=inject<FormSaveAPI|null>('form-save',null)
 const guard={isDirty:()=>draftDirty.value,discard:()=>closeEditor()}
-watch(configuring,open=>{emit('edit-state',open);open?formGuard?.register(guard):formGuard?.unregister(guard)},{immediate:true})
+watch(configuring,open=>{emit('edit-state',open);if(open)formGuard?.register(guard);else formGuard?.unregister(guard)},{immediate:true})
 onBeforeUnmount(()=>formGuard?.unregister(guard))
 defineExpose({dirty:()=>draftDirty.value,discard:closeEditor})
 // 取值方式与连接引擎分开：读取数据源 / 函数编排。
@@ -602,7 +602,7 @@ function declaredRuleInputs(implId:string):{binding:any[];runtime:any[]}|null{
   const rows=(Array.isArray(impl.inputs)?impl.inputs:[]).filter((p:any)=>p&&typeof p==='object')
   return {binding:rows.filter((p:any)=>p.source!=='runtime'),runtime:rows.filter((p:any)=>p.source==='runtime')}
 }
-function selectImplementation(id:string){
+function _selectImplementation(id:string){
  if(isCalcFunction(implOf(id))){
    const fn=implOf(id)
    draft.value.mode='function';draft.value.implementation=id;draft.value.output=String(fn.output?.id||'');draft.value.inputs={}
@@ -616,23 +616,23 @@ function selectImplementation(id:string){
    draft.value.output='series'
  }
 }
-const reusableInput=computed(()=>draft.value?.kind==='computed'&&draft.value.mode!=='inline'&&isReusableRule(implOf(draft.value.implementation)))
-const declaredInputs=computed(()=>{const d:any=draft.value;return d?.kind==='computed'&&d.implementation?declaredRuleInputs(d.implementation):null})
-function setRuleInput(key:string,value:string){draft.value.inputs??={};draft.value.inputs[key]=value}
+const _reusableInput=computed(()=>draft.value?.kind==='computed'&&draft.value.mode!=='inline'&&isReusableRule(implOf(draft.value.implementation)))
+const _declaredInputs=computed(()=>{const d:any=draft.value;return d?.kind==='computed'&&d.implementation?declaredRuleInputs(d.implementation):null})
+function _setRuleInput(key:string,value:string){draft.value.inputs??={};draft.value.inputs[key]=value}
 // ---------- 直接编写 SQL（内联取值）：参数识别、绑定读写、只读输出约定 ----------
 const inlineMode=computed(()=>draft.value?.kind==='computed'&&draft.value.mode==='inline')
-const inlineParams=computed(()=>inlineMode.value?scanSqlParams(String(draft.value.inline?.sql||'')):[])
-const inlineOutputNote=computed(()=>{if(!inlineMode.value)return '';return draftShape.value==='timeSeries'
+const _inlineParams=computed(()=>inlineMode.value?scanSqlParams(String(draft.value.inline?.sql||'')):[])
+const _inlineOutputNote=computed(()=>{if(!inlineMode.value)return '';return draftShape.value==='timeSeries'
   ?'约定返回多行：列名 timestamp 与 value，SQL 应写 ORDER BY 时间列升序。输出约定，尚未执行验证。'
   :'约定返回一行：输出列名 value。输出约定，尚未执行验证。'})
-const constTypes=[{value:'string',label:'文本'},{value:'double',label:'数值'},{value:'boolean',label:'是／否'},{value:'dateTime',label:'日期时间'}]
+const _constTypes=[{value:'string',label:'文本'},{value:'double',label:'数值'},{value:'boolean',label:'是／否'},{value:'dateTime',label:'日期时间'}]
 const instanceIdLabel=computed(()=>identityMode.value==='registered'?'登记实例编号':'当前实例主键（'+(props.b.primary_key||'未配置')+'）')
-const inlineBindingOptions=computed(()=>[
+const _inlineBindingOptions=computed(()=>[
   {value:'',label:'待绑定（请选择来源）'},{value:'constant',label:'固定值'},
   {value:'projectParameter',label:'项目参数'},{value:'instanceId',label:'实例编号 · '+instanceIdLabel.value}])
 function inlineBindingOf(name:string){return draft.value?.inline?.params?.[name]}
-function inlineBindingKind(name:string){const b=inlineBindingOf(name);return b&&typeof b==='object'?String(b.from||''):''}
-function setInlineBinding(name:string,v:string){
+function _inlineBindingKind(name:string){const b=inlineBindingOf(name);return b&&typeof b==='object'?String(b.from||''):''}
+function _setInlineBinding(name:string,v:string){
   const p=draft.value.inline;if(!p.params)p.params={}
   if(!v)delete p.params[name]
   else if(v==='constant')p.params[name]={from:'constant',dataType:'string',value:''}
@@ -669,16 +669,16 @@ function calcCycleExists(api:string,editingView:any):boolean{
 }
 // 计算函数绑定辅助
 const fnOf=(id:string)=>implOf(String(id||''))
-const calcFnOptions=computed(()=>implOptions.value.filter((o:any)=>isCalcFunction(implOf(o.value))))
-const fnInputs=computed(()=>{const d:any=draft.value;return d?.kind==='computed'&&d.mode==='function'?((fnOf(d.implementation)?.inputs||[]) as any[]):[]})
-function fnBindingOf(inputId:string){const d:any=draft.value;return d?.inputs?.[inputId]}
-function setFnBinding(inputId:string,kind:string){
+const _calcFnOptions=computed(()=>implOptions.value.filter((o:any)=>isCalcFunction(implOf(o.value))))
+const _fnInputs=computed(()=>{const d:any=draft.value;return d?.kind==='computed'&&d.mode==='function'?((fnOf(d.implementation)?.inputs||[]) as any[]):[]})
+function _fnBindingOf(inputId:string){const d:any=draft.value;return d?.inputs?.[inputId]}
+function _setFnBinding(inputId:string,kind:string){
   const d:any=draft.value;if(!d.inputs)d.inputs={}
   if(!kind)delete d.inputs[inputId]
   else if(kind==='property')d.inputs[inputId]={from:'property',property:''}
   else d.inputs[inputId]={from:'constant',value:''}
 }
-function fnPropertyOptions(calcType:string){
+function _fnPropertyOptions(calcType:string){
   return properties.value.filter((p:any)=>{
     const api=key(p);if(api===selectedApi.value)return false
     if(valueShapeOf(p,graph.value)==='timeSeries')return false
@@ -759,7 +759,7 @@ function flowPropertyOptions(flowType:string){
     return allowed.includes(range)
   }).map((p:any)=>({value:key(p),label:label(p)+' · '+typeName(p)}))
 }
-const ruleValueTypeMismatch=computed(()=>{
+const _ruleValueTypeMismatch=computed(()=>{
   const d:any=draft.value
   if(!d||d.kind!=='computed'||!d.implementation)return false
   const rule=implOf(d.implementation)
@@ -769,7 +769,7 @@ const ruleValueTypeMismatch=computed(()=>{
   const actual=String(rule.result?.valueType||'')
   return !!target&&!!actual&&target!==actual&&!(['double','decimal','integer'].includes(target)&&actual==='double')
 })
-const implInputRows=computed(()=>{
+const _implInputRows=computed(()=>{
   const d:any=draft.value
   if(!d||d.kind!=='computed'||!d.implementation)return []
   const impl=implOf(d.implementation);if(!impl)return []

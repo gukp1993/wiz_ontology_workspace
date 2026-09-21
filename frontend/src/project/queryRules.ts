@@ -59,7 +59,7 @@ export function queryRuleErrors(rule:any):string[]{
 // 非此模板的历史规则仍使用原编辑器，避免简化时覆盖自定义条件。
 export function scadaFields(rule:any):{modelName:string;attrName:string;modelId:string;timeField:string}|null {
  if(!rule?.steps||rule.steps.length!==3)return null
- const [point,storage,samples]=rule.steps
+ const [point,_storage,samples]=rule.steps
  const modelName=point.where?.find((w:any)=>w.field==='model_name')?.value
  const attrName=point.where?.find((w:any)=>w.field==='attr_name')?.value
  const modelId=point.where?.find((w:any)=>w.field==='model_id')?.value

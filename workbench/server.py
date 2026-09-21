@@ -407,7 +407,7 @@ if __name__ == '__main__':
     try:
         storage.ensure_ready()
     except storage.StorageUnavailable as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from exc
     # WIZ_WORKBENCH_PORT 仅用于自动化测试并行实例；生产固定 18765。
     # 8765 保留给机器上其他服务（如 graph_recall_test_server），本工作台绝不经由该端口提供访问。
     port = int(os.environ.get('WIZ_WORKBENCH_PORT') or 18765)

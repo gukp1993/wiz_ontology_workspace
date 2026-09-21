@@ -5,7 +5,6 @@ draft）+ 不可变快照 + 每快照至多一条的本体版本引用（wb_proj
 ontology/projects、drafts/projects、releases/projects 只是迁移输入与备份。
 表结构目录（catalogs）是服务端派生数据，仍不入草稿/快照（保存前剥离）。
 """
-from datetime import datetime, timezone
 from uuid import uuid4
 import copy
 
