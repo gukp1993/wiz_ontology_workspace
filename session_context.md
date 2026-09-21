@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`db960977807a42c7`
+上下文版本：`07e9a63bae03c1a2`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,27 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### assist-fill-production：建议默认勾选门控测试适配（3 套件） · zcode · 已实施，待验收
+
+时间：2026-09-21T18:31:20.814006+00:00；记录：`.collaboration/entries/000167-fb306b4721ea.json`
+
+按新门控（ready 且宿主旧值非空默认不勾，需求 §3.5）适配 3 个套件并提交 1fb0bba：assist_property_manager 58/58、assist_property_sources 12/12、assist_workflow 11/11，退出码均 0；frontend typecheck 退出码 0。替换型采纳（④⑤⑦/③⑧⑩/⑥ database）保留非空初值并显式 setChecked；每套件新增旧值非空默认 checked=false 断言（property_sources 另加空值默认勾选反向断言）。workflow ⑦⑨ 失败非门控所致，系工作树未提交的 ActionLibrary DEF-02 改动（新建动作 targetId 传空串），已按新约定修正断言。仅改 3 个测试文件，未动产品代码；依赖同工作树未提交产品改动，随产品提交一并集成。
+
+- 决定：替换已有真实旧值的用例保留非空初值并显式 panel.setChecked 后采纳，不改夹具初值；assist_workflow ⑦⑨ 按 DEF-02 新约定断言新建动作 targetId 为空串（该产品改动在工作树未提交，非本任务修改）
+- 验证：node --import ./tests/ts_hooks.mjs tests/assist_property_manager.test.mjs → 58/58 退出 0；node --import ./tests/ts_hooks.mjs tests/assist_property_sources.test.mjs → 12/12 退出 0；node --import ./tests/ts_hooks.mjs tests/assist_workflow.test.mjs → 11/11 退出 0；cd frontend && npm run typecheck → 退出 0
+- 下一步：待产品改动（门控+DEF-02+ontologyId）由负责方提交后，本测试提交 1fb0bba 与之配套进入验收
+- 依据/文档：tests/assist_property_manager.test.mjs；tests/assist_property_sources.test.mjs；tests/assist_workflow.test.mjs；frontend/src/assist/useAssistPanel.ts
+
+### assist-fill-production 默认勾选门控测试适配（worktree/assist-fill-production） · zcode · 已实施，待验收
+
+时间：2026-09-21T18:28:42.606843+00:00；记录：`.collaboration/entries/000166-515ef10cae66.json`
+
+按新门控语义（ready 且宿主旧值为空才默认勾选）适配 3 个辅助填写套件：assist_action_bindings/assist_identity_link/assist_object_workspace。替换已有值的用例保留非空初值并显式 setChecked 后采纳；每套件新增「旧值非空→ready 默认 checked=false」断言，并在 identity_link ②e、action_bindings ⑥d2 补正向断言（旧值为空→默认勾选）。未改任何产品代码。
+
+- 验证：node --import ./tests/ts_hooks.mjs tests/assist_action_bindings.test.mjs → 57/57，退出码 0；node --import ./tests/ts_hooks.mjs tests/assist_identity_link.test.mjs → 16/16，退出码 0；node --import ./tests/ts_hooks.mjs tests/assist_object_workspace.test.mjs → 9/9，退出码 0；cd frontend && npm run typecheck → 退出码 0；git status 核对：本轮仅改动上述 3 个测试文件，产品侧改动（useAssistPanel.ts 等）为此前已有未提交内容
+- 下一步：待 Codex 独立验收本轮测试适配与产品门控实现
+- 依据/文档：tests/assist_action_bindings.test.mjs；tests/assist_identity_link.test.mjs；tests/assist_object_workspace.test.mjs；frontend/src/assist/useAssistPanel.ts
 
 ### assist-fill-production：本体与项目辅助填写正式实现（T0～T12 全量交付） · zcode · 已实施，待验收
 
@@ -132,23 +153,3 @@ T11完成：O1/O2/O2b/O3/O4/O5/P2/S14/S15/三视口通过；P1/P5辅助上下文
 - 下一步：主工作台更新需用户另行授权：构建新前端并重启 18765 后深度测试修复才对线上生效；pypdf 缺口如需修复由用户决定安装方式（requirements.txt 已登记 pypdf>=6.1,<7）；深度测试验收报告第6轮之后的收尾状态文档在分支内已合并，A01/R02 已由 Codex 复验（697c9ca），本轮为组合重验非新的独立验收
 - 依据/文档：合并提交 f5ae29e（deep-test 集成主体）/ d10c412（main 最终快进点）；文档/需求/20260921_系统全方位深度测试/（31 提交全部归档）；文档/接口文档/README.md 变更记录新增集成行；tests/fixtures/validation_golden.json（重建，100 样例）
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### meeting-46 终版纪要评审并归档 md 文档（本体自动化构建） · zcode · 已实施，待验收
-
-时间：2026-09-21T05:54:41.750460+00:00；记录：`.collaboration/entries/000155-d2467d29cdbc.json`
-
-评审 meeting-46-export (3).md（13:50 终版：对话与 13:34 版逐字一致、无新讨论，增量仅为 orchestrator 纪要整理完成/会议结束/进入 awaiting_confirmation），交付 文档/自动化构建续会5终版纪要评审_20260921.md（88 行，commit c2c98f2）。落表复验：R04、范围差异、R06/R09/R10、哈希机制均已进待确认表；但上轮三件事均未修复——R10 断言仍缺且纪要把发言2/11的断言承诺证据静默删除（矛盾被抹平而非暴露）、业务方确认机制圈定连续两轮零回应、哈希口径与确认失效绑定语义仍未明确。结构化区与附录矛盾（待确认建议/行动项区写'无'而附录有7项/多项认领）第三次复现，认定为导出工具系统性缺陷。核心新增发现：修正清单与已合并实现 ab27442 脱节——源码核实 parsers 已含 code/ddl/docx/md/pdf/xlsx 全物料线、CANDIDATE_TYPES 五类含 action、llm.py 已实现、候选 id 与同名保留策略已在，而会议仍按'代码物料/动作/LLM 留二期'口径收尾；建议收尾前必须做差异核对并把修正条目归三类：已实现文档化（R06/R09/R10/R02）/试点范围收窄表述（三项'留二期'）/纯增量需求（哈希口径、确认失效、业务方留痕等，走需求迭代+worktree）。另提示三份待确认表（meeting-45 八行、本次七行、评审补充）须汇总后再拍板。纯文档评审，未改代码/ontology/worktree。
-
-- 验证：源码核实已合并实现范围：workbench/ontology_build/parsers/（code.py 等8个解析器）、protocol.py:69 五类候选含 action、llm.py、review.py 候选id、alignment.py:131 同名保留待确认策略、delivery.py:319 内容哈希派生正式id；对话一致性：13:50 版发言1-36 与上轮13:34版逐字核对一致（上轮grep证据在案），材料版本同为 dcc52eb24f0e；旧导出文件已被清理，依据上轮评审时读取的原文核对；git show c2c98f2 确认仅含该评审文档 1 文件 88 行
-- 下一步：用户拍板前建议：先做修正清单 vs ab27442 差异核对（三类归类）、汇总三份待确认表、处理 R10 断言与确认机制圈定两件遗留；增量需求（哈希口径机制/确认失效/业务方留痕）如获采纳须按 AGENTS 流程走需求迭代与 worktree 开发，会议认领不构成实施授权
-- 依据/文档：文档/自动化构建续会5终版纪要评审_20260921.md；commit c2c98f2；main ab27442（已合并第一版实现）
-
-### 从物料自动构建本体 · 合并main与清理完成 · codex · 已验证
-
-时间：2026-09-21T05:37:31.098602+00:00；记录：`.collaboration/entries/000154-8048650e9ced.json`
-
-按用户再次明确指令，原样归档已有文档/交接后，main快进至ab27442，自动构建开发及临时集成worktree和分支、隔离数据根均已删除。主服务18765未更新，其他test工作树保留。
-
-- 决定：用户在说明main未提交文档阻塞后再次要求执行合并清理，原样归档现有文档以免丢失，未改变其内容结论。
-- 验证：最终业务代码与已验50596b9完全一致；补跑收尾守卫27/27通过。此前组合all复跑47/47、前端构建及挂载通过。；18871服务PID84366核对cwd后停止；18871/18872无监听。Git worktree list只剩main和其他任务test。；真实main数据未迁移；18765 HTTP200，未构建或重启。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收报告_第6轮_20260921.md；ab274424eed101de973884abfdf916b56ba3e546
