@@ -8,7 +8,7 @@ import { getJson, postJson, SaveRequestError } from '../../app/http'
 import type {
   BuildCapabilities, BuildDelivery, BuildRun, BuildTask, Candidate, CandidateDetail,
   CandidateDiff, CandidateListResult, DeliveryPrecheck, DeliveryResult, Material,
-  MergePreview, MergeResult, ScopeMessage, ScopeModel,
+  MaterialGroup, MergePreview, MergeResult, ScopeMessage, ScopeModel,
 } from './types'
 
 // ── 端点（08 分册路径；仅此处维护字符串，页面不拼接口地址） ────────────────
@@ -120,8 +120,8 @@ export async function renameTask(taskId: string, name: string, revision: string)
   return await postJson(EP.taskRename, { taskId, name, revision }) as { task: BuildTask }
 }
 
-export async function deleteTask(taskId: string, confirmName: string): Promise<{ ok: boolean; note?: string }> {
-  return await postJson(EP.taskDelete, { taskId, confirmName }) as { ok: boolean; note?: string }
+export async function deleteTask(taskId: string, confirmName: string): Promise<{ ok: boolean; note?: string; deleted?: Record<string, number> }> {
+  return await postJson(EP.taskDelete, { taskId, confirmName }) as { ok: boolean; note?: string; deleted?: Record<string, number> }
 }
 
 // ── §4 分片上传与物料 ─────────────────────────────────────────────────────
@@ -149,6 +149,18 @@ export async function completeUpload(uploadId: string, finalHash: string): Promi
 
 export async function abortUpload(uploadId: string): Promise<{ ok: boolean }> {
   return await postJson(EP.uploadAbort, { uploadId }) as { ok: boolean }
+}
+
+/** 08 §12.1：按顶层目录分组的物料汇总（view=groups）。 */
+export async function fetchMaterialGroups(taskId: string): Promise<{ groups: MaterialGroup[]; total: number; revision: number }> {
+  return await getJson(EP.materials + query({ taskId, view: 'groups' })) as { groups: MaterialGroup[]; total: number; revision: number }
+}
+
+/** 08 §12.1：按顶层目录分页取物料明细；folder 缺省 = 全量（兼容旧行为）。 */
+export async function fetchMaterialsPage(
+  taskId: string, folder?: string, offset = 0, limit = 100,
+): Promise<{ items: Material[]; total: number; revision: number }> {
+  return await getJson(EP.materials + query({ taskId, folder, offset, limit })) as { items: Material[]; total: number; revision: number }
 }
 
 export async function listMaterials(taskId: string): Promise<{ items: Material[]; revision: number }> {

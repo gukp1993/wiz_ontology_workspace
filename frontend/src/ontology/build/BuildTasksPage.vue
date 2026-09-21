@@ -4,7 +4,7 @@
      边界（与需求一致）：本页只做任务与物料入口，不生成项目映射、不覆盖已有本体、不自动发布。 -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { createTask, deleteTask, errorMessage, fetchCapabilities, fetchTask, listTasks } from './api'
+import { cancelRun, createTask, deleteTask, errorMessage, fetchCapabilities, fetchRun, fetchTask, listTasks } from './api'
 import type { BuildTaskDetail } from './api'
 import {
   TASK_STATUS_LABELS, TASK_STATUS_TONE, formatBytes, formatTime, labelOf, taskStatusLabel, toneOf,
@@ -167,7 +167,29 @@ async function submitNew() {
   } catch (e) { newError.value = errorMessage(e) } finally { creating.value = false }
 }
 
-// ─── 删除：必须输入与任务名一致的确认名（服务端同样校验 confirmName） ───
+// ─── 停止生成任务（08 §12.3）：对最近一次运行调用取消，后端会把任务回退到「确定范围」 ───
+const stoppingId = ref(''), stopError = ref('')
+async function stopTask(t: BuildTask) {
+  if (stoppingId.value) return
+  stoppingId.value = t.id; stopError.value = ''
+  try {
+    const { run } = await fetchRun(t.id)
+    if (!run || !run.id) throw new Error('该任务没有可停止的运行记录')
+    if (run.state !== 'queued' && run.state !== 'running') {
+      notice.value = '任务「' + t.name + '」的最近运行已是「' + run.state + '」状态，无需停止。'
+      return
+    }
+    await cancelRun(t.id, run.id)
+    notice.value = '已请求停止任务「' + t.name + '」的生成；已完成的解析与候选保留，可稍后重试或重新确认范围。'
+    await loadTasks()
+  } catch (e) {
+    stopError.value = '停止失败：' + errorMessage(e)
+  } finally { stoppingId.value = '' }
+}
+
+// ─── 删除：必须输入与任务名一致的确认名（服务端同样校验 confirmName）──
+// 08 §12.2：删除为级联物理清理——任务行、物料、解析证据、对话、运行与批次、候选、blob 文件全部删除；
+// 已创建的本体草稿不删除。确认弹层展示物料数量，删除后展示服务端返回的级联计数。
 const delTarget = ref<BuildTask | null>(null), delInput = ref(''), deleting = ref(false), delError = ref('')
 const delReady = computed(() => !!delTarget.value && delInput.value.trim() === delTarget.value.name)
 function openDelete(t: BuildTask) { delTarget.value = t; delInput.value = ''; delError.value = '' }
@@ -178,7 +200,11 @@ async function submitDelete() {
   deleting.value = true; delError.value = ''
   try {
     const r = await deleteTask(target.id, delInput.value.trim())
-    notice.value = (r.note ? r.note + ' ' : '') + '任务「' + target.name + '」已删除；已创建的本体草稿不随任务删除，删除后原始证据不可用。'
+    const counts = (r.deleted || {}) as Record<string, number>
+    notice.value = '任务「' + target.name + '」已删除并级联清理：'
+      + '物料 ' + (counts.wb_build_materials ?? 0) + ' 份、解析证据 ' + (counts.wb_build_facts ?? 0)
+      + ' 条、生成记录 ' + (counts.wb_build_runs ?? 0) + ' 次。'
+      + (r.note ? r.note + ' ' : '') + '删除后原始证据不可用。'
     delTarget.value = null
     await loadTasks()
   } catch (e) { delError.value = errorMessage(e) } finally { deleting.value = false }
@@ -275,6 +301,8 @@ async function submitDelete() {
             <td>{{ formatTime(row.task.updatedAt) }}</td>
             <td class="bt-ops">
               <button type="button" class="row-link" @click="emit('open-task', row.task.id)">{{ row.task.status === 'delivered' ? '查看任务' : '继续' }}</button>
+              <!-- 08 §12.3：任务级停止——对最近一次运行调用取消，后端同事务把任务回退到「确定范围」 -->
+              <button v-if="row.task.status === 'generating'" type="button" class="row-link" :disabled="stoppingId === row.task.id" @click="stopTask(row.task)">{{ stoppingId === row.task.id ? '停止中…' : '停止' }}</button>
               <!-- B.4 回链：必须带上该任务交付的本体 id，否则点了任务 B 仍会停在当前选中的本体 A -->
               <button v-if="row.task.deliveryOntologyId" type="button" class="row-link" @click="emit('enter-ontology', row.task.deliveryOntologyId)">查看已创建本体</button>
               <button type="button" class="row-link danger" @click="openDelete(row.task)">删除</button>
@@ -308,8 +336,10 @@ async function submitDelete() {
   <div v-if="delTarget" class="modal-backdrop" @click.self="closeDelete">
     <section class="modal-card" role="dialog" aria-modal="true" aria-label="删除生成任务">
       <h2>删除生成任务</h2>
-      <p>将删除任务「{{ delTarget.name }}」及其材料清单、范围、候选与证据。</p>
-      <p class="bt-note warn">已创建的本体草稿不随任务删除，删除后原始证据不可用。</p>
+      <p>将物理删除任务「{{ delTarget.name }}」及其全部关联数据：
+        <template v-if="details[delTarget.id]">物料 {{ details[delTarget.id].materialCount }} 份、</template>
+        解析证据、范围对话、生成与评审记录，均不可恢复。</p>
+      <p class="bt-note warn">已创建的本体草稿不随任务删除；删除后本任务的原始证据不可用。</p>
       <label>请输入任务名以确认删除
         <input v-model="delInput" type="text" :placeholder="delTarget.name" @keydown.enter="submitDelete">
       </label>

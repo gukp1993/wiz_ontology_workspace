@@ -483,3 +483,12 @@ export interface DeliveryResult {
   taskId: string
   deliveredAt: string
 }
+
+// ── 08 §12.1 物料分组（顶层目录汇总） ─────────────────────────────────────
+export interface MaterialGroup {
+  /** 顶层目录名；空串 = 根目录文件（页面显示「(根目录)」） */
+  folder: string
+  total: number
+  byParseState: Record<string, number>
+  bytes: number
+}
