@@ -22,7 +22,7 @@
       <div class="brand">
 
         <h1>本体图谱</h1>
-        <span class="brand-sub">{{ state.graphName || '未选择本体' }}</span>
+        <span class="brand-sub">{{ bridgeState.graphName || '未选择本体' }}</span>
       </div>
 
       <div class="body">
