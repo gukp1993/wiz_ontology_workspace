@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`24f516a75347c92b`
+上下文版本：`7b37bef1da6c3528`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,28 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### Q03 深度测试：项目配置+编排业务链（P1-P9） · codex · 已实施，待验收
+
+时间：2026-09-21T01:09:14.900246+00:00；记录：`.collaboration/entries/000134-3f1de0ed1d0e.json`
+
+专属实例18931完成P1-P9，74条断言：73通过+1基线已知(R02)，未发现新增业务缺陷。三条数据线职责符合设计：本体save/publish/versions、项目CAS/往返无损/缺身份发阻断、编排check纯配置绝不执行+纯本地calc确定结果+错误定位+重复run不脏数据。安全：connection-secret不回显、跨账号读/写他人id一律404、探测不持LOCK。红线遵守：未连真实MySQL/Redis、未执行真实SQL/用户Python、flow-run仅calc、连接探测只打127.0.0.1关闭端口/静默mock并结束关闭。P8.4复现R02(known)：空壳编排(输出未绑定)被项目flow来源引用，project-validate不拦、publish仍成功。
+
+- 决定：两处测试侧纠偏(非业务缺陷)：P1.6误用/api/releases(实为release-ZIP工件列表)改查/api/versions；P6.5破坏性编辑造成deviceCode悬空被/api/save正确422拦截，改删无悬空属性clusterActivePower
+- 验证：tests/deep_project_chain.py 51条(50 pass/1 known=R02)；tests/deep_flow_chain.py 23条全pass；证据jsonl+REPORT.md在 .runtime/test-evidence/q03/
+- 下一步：R02(中)按既有缺口交owner裁定：project_validation._check_flow_binding 不调用 flows.check_flow；Q03只测试记录，未改业务代码，未git commit
+- 依据/文档：.runtime/test-evidence/q03/REPORT.md；tests/deep_project_chain.py；tests/deep_flow_chain.py；workbench/project_validation.py:512
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### Q05 深度测试：数据可靠性+账号/接口边界 · zcode · 已实施，待验收
+
+时间：2026-09-21T00:59:10.151882+00:00；记录：`.collaboration/entries/000133-1c391f575ca0.json`
+
+专属实例18932完成I1-I9：约75条断言通过。无跨账号数据泄露、无密码明文回读；kill -9两轮+损坏库副本探测均无半写。缺陷：D1 POST缺Origin被放行与README「缺失或不符403」不符；D2 存储损坏时GET /api/state返回400携带原始Python解析文本（应503/通用500）；D3 跨账号connection-secret返回400、llm-provider-delete对他人id返回200 cleared=true，与06「按不存在404/空」口径不符（实测均无越权效果）。
+
+- 验证：tests/deep_integrity_http.py 59条(58 pass/1 fail=D1)；tests/deep_integrity_restart.py write/verify/freshroots 全过；tests/deep_integrity_fault.py prep/hammer/check/corrupt-* 全过；报告与jsonl证据在 .runtime/test-evidence/q05/
+- 下一步：D1-D3 按「文档bug或实现bug」流程交owner裁定；Q05结束已停止18932并释放端口
+- 依据/文档：.runtime/test-evidence/q05/REPORT.md；tests/deep_integrity_http.py；tests/deep_integrity_restart.py；tests/deep_integrity_fault.py
 
 ### system-deep-test环境与测试指令 · codex · 需求已交付
 
@@ -127,26 +149,3 @@ AGENTS新增细粒度任务拆分与多agent并行原则：后续开发计划和
 - 验证：AGENTS/计划/指令的提示词、授权边界和相对链接检查通过；git diff --check通过。无业务代码改动。
 - 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 独立分支工作树与串行集成规范固化 · codex · 已确认决定
-
-时间：2026-09-20T08:24:26.103154+00:00；记录：`.collaboration/entries/000122-dcd5e6a120cd.json`
-
-按用户授权将独立分支/worktree/端口/数据与串行集成规范写入AGENTS，并同步共享稳定基线及本体自动构建计划、执行指令。仅文档变更，未创建分支或搬移当前开发。
-
-- 决定：后续业务开发每需求从已提交main创建独立分支和worktree，隔离端口、数据及依赖；当前main未提交任务不自动stash/reset/搬移。；单一集成负责人在临时集成环境合入最新main并验证；main干净且基线未变后快进更新，冲突处理不能直接ours/theirs。；所有后续开发计划与执行指令必须自包含开工、环境登记、验证、合并、启动、回退及清理流程。；纯讨论、需求/原型与治理文档可仅提交自身文档；本规则不是已安装的自动分支/合并服务。
-- 验证：AGENTS及本次计划/指令的隔离、合并、回退关键条款和相对链接检查通过。；git diff --check通过；无业务代码改动，未构建、测试或重启服务。
-- 下一步：后续生成指令采用新规则；正在main开发的任务由原执行者完成阶段或协调迁移，不自动操作。
-- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 统一维护改版v2独立验收 · codex · 已验证
-
-时间：2026-09-20T08:06:47.302898+00:00；记录：`.collaboration/entries/000121-d44011600c1f.json`
-
-基线06eee30独立验收未通过：确认3项P1；已追加开发计划11.5，未修改业务代码。
-
-- 决定：延期UI不列验收项；不能以实施记录全部通过代替独立证据。
-- 验证：构建通过，前端5套定向回归和后端发布/编排/目录/升级专项通过；目录套件仍有2项规格观察。；R01真实App客户端mount抛flowState初始化前访问异常，原SSR测试漏检。；R02空壳编排check_flow报输出未绑定，项目属性校验errors仍为空。；R03目录payload读取后、首次依赖token读取前更新目录，发布返回200并生成v3，预期409零写入。；隔离根与假账号验证，无真实数据修改；未做浏览器视觉验收。
-- 下一步：修复R01-R03后定向复验，校正文档F06/F07通过结论及测试规格观察。
-- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md
