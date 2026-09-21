@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`1e828b06ff1edd64`
+上下文版本：`674b6493569d3463`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,67 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### AGENTS.md 新增规范：新建 worktree 默认同步 main 库快照 · zcode · 已确认决定
+
+时间：2026-09-21T07:07:36.522234+00:00；记录：`.collaboration/entries/000164-7ee869e3e45d.json`
+
+按用户指令在 AGENTS.md §3 启动与数据隔离写入规范（commit 0f287be，main）：新建开发 worktree 时隔离数据根默认用 transfer backup 生成 main 库 WAL 一致性快照直接落位（禁止 cp 活跃库文件），并复制根密钥（0700/0600，否则副本加密凭据不可解密）；快照为时点数据；副本内可按用户要求重置口令；数据根含真实数据与根密钥须登记为不可自动丢弃、清理须用户确认；自动化测试临时隔离根不适用本条仍用空库。原「默认合成数据」句同步改写为指向新规则并保留测试例外。来源背景：build-governance 工作树空库实践（admin 无法登录、加密凭据不可解密）。
+
+- 决定：规范定为开发 worktree 的默认行为（用户指令），并显式划出例外：自动化测试临时根仍空库；用户明确要求空库/合成数据时从其指令。；同步用 transfer backup 一致性快照而非 cp 活跃库文件；根密钥必须随行，否则副本内加密凭据不可用。
+- 验证：git show 0f287be 仅含 AGENTS.md 1 文件 2 增 1 删；落点为 §3 启动与数据隔离；commit 信息含动机与操作细节。
+- 下一步：后续新建 worktree 按此规范执行（快照+根密钥+登记标注不可自动丢弃）；既有 build-governance 数据根已是该形态。
+
+### build-governance 工作树实例搭建 + 从 main 同步数据（用户指令） · zcode · 已实施，待验收
+
+时间：2026-09-21T07:00:42.658671+00:00；记录：`.collaboration/entries/000163-8dd9aef6aa66.json`
+
+用户报 admin/admin 登录失败。核实：新工作树按约定只登记未启动（无 venv/无库/无服务），18881 从未跑过；18765 的 admin 真实密码并非 admin（此前靠已登录会话）。按用户指令从 main 同步：worktree 建 .venv（--system-site-packages）；main 库一致性快照放入隔离数据根；复制根密钥使副本内加密凭据可解密；前端 dist 复制自 main 同 commit 构建产物；副本内重置 admin 密码为 admin（仅隔离副本）；启动 18881 并验证登录成功。main 18765 完全未动（密码/数据原样）。
+
+- 决定：同步方式用 transfer backup 一致性快照直接落位为工作树库（CLI 无 restore 子命令，快照即完整库）；根密钥随行复制，否则副本内模型密钥/连接密码不可解密。；admin/admin 只在隔离副本内重置生效；main 真实库密码重置属真实数据操作，未获指令不做。数据根现含真实数据与根密钥，登记改为不可自动丢弃。
+- 验证：curl POST 18881/api/auth-login admin/admin 返回 admin(isAdmin=true)；前端首页 200；快照含 main 全部数据（11 资产/2 账号）；18765 未受影响。
+- 下一步：用户可访问 http://127.0.0.1:18881 用 admin/admin 登录（数据为 main 同步时点快照，不自动跟随 main）。；若还要把 main 18765 的 admin 密码改为 admin，属真实库重置，需用户明确指令（CLI 已具备）。；后续清理该工作树时数据根含真实数据与根密钥，须用户确认处置。
+- 依据/文档：实例：http://127.0.0.1:18881；工作树：worktree/build-governance；数据根：wiz_kq_builder_v2-build-governance-data（含 keys/wb-root.key 副本）；登记：.git/workbench-tasks/build-governance.json（env_ready_dev_pending）
+
+### 为自动化构建增量/治理创建 worktree（用户明确指令） · zcode · 已确认决定
+
+时间：2026-09-21T06:43:09.984017+00:00；记录：`.collaboration/entries/000162-eb5ae3cbf932.json`
+
+按用户指令从最新已提交 main（452d0ae）创建分支 codex/build-governance 与工作树 worktree/build-governance/，登记端口 18881（已核实空闲）、隔离数据根 wiz_kq_builder_v2-build-governance-data（空）、环境文件 .runtime/task.env、公共登记 .git/workbench-tasks/build-governance.json（created_awaiting_dev）。用途：自动化构建增量/治理（会议增量与 R02/R10 断言挂测试集候选）。仅创建与登记：未装依赖、未建 venv、未建库、未启动服务、未开发；main 未提交内容未带入；既有 assist-fill-production 与 repo-cleanup 工作树未触碰。
+
+- 决定：分支名经用户选择定为 build-governance 方向（codex/build-governance）；工作树按 2026-09-20 约定落在主仓库 worktree/ 目录下；端口选用 18881 避开 18765/8765 与历史任务端口。
+- 验证：git worktree list 含新树且指向 452d0ae[codex/build-governance]；分支名预先核实未占用；/worktree/ 在 .gitignore 第 21 行；登记 JSON 通过 python3 -m json.tool 校验。
+- 下一步：等用户下达开发指令后在原工作树实施；开发授权后步骤：worktree 内建 .venv、source .runtime/task.env、transfer init 建隔离库、起 18881 隔离实例；验收通过停在待用户授权集成。
+- 依据/文档：工作树：/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/build-governance；登记：.git/workbench-tasks/build-governance.json；环境：worktree/build-governance/.runtime/task.env
+
+### 项目能力补齐推进计划表交付 · codex · 需求已交付
+
+时间：2026-09-21T06:36:30.147063+00:00；记录：`.collaboration/entries/000161-b85426020157.json`
+
+交付P00-P13分阶段推进表，先核对基线和储能试点，再决定说明语义、依赖固定、绑定验证及后续消费能力；历史恢复、MCP与动作执行保持待决策/延期，不启动实施。
+
+- 验证：核对依赖顺序、完成标准与授权停止点；未改代码、未创建worktree、未更新服务。
+- 依据/文档：文档/需求/20260921_项目能力补齐推进计划/推进计划表.md
+
+### 主工作台自动构建任务列表 500 修复（主库补 0003 迁移） · zcode · 已实施，待验收
+
+时间：2026-09-21T06:33:31.460177+00:00；记录：`.collaboration/entries/000160-c66fd6397cd9.json`
+
+用户在前端已更新的 18765 上用「从物料生成」，任务列表 500（requestId eacc809718d1）。日志与库核对确认根因：主库 schema 停在 20260918_0002，自动构建迁移 20260920_0003 从未在主库应用（wb_build_* 12 表不存在；能力接口不查这些表所以正常）。按规则先在线备份再执行 transfer init：仅新增 12 张 wb_build_* 表（checkfirst 幂等），alembic 升至 20260920_0003；既有数据不变（wb_assets 11 行、wb_users 2 行迁移前后一致）。无需重启后端。pypdf 仍未安装（PDF 材料会报缺库），保持由用户决定安装方式。
+
+- 决定：真实库操作按 AGENTS 先备份后迁移：transfer backup 产出 data/workbench-before-build-migration-20260921-143248.sqlite3（7086080 字节 WAL 一致快照）。；迁移只用显式 CLI transfer init（真实根唯一合法建表方式），迁移为纯新增表、不碰既有表与数据；服务无需重启（SQLite 新表对运行中连接立即可见）。
+- 验证：日志坐实根因：no such table: wb_build_tasks（正是任务列表查询）。；迁移后 alembic_version=20260920_0003、12 张 wb_build_* 表就位；wb_assets=11 行、wb_users=2 行与迁移前一致；18765 HTTP 200、进程 65311 未动。
+- 下一步：请用户在页面点「重试」或刷新验证任务列表正常；随后即可按六步流程使用（需已在更多工具配置可用模型，capabilities 已显示 MiniMax-M3）。；pypdf 未装：上传 PDF 材料会报「未安装 PDF 解析库」，其余格式不受影响；如需要按 requirements.txt（pypdf>=6.1,<7）安装请用户示意。；备份文件 data/workbench-before-build-migration-20260921-143248.sqlite3 保留，确认功能可用后可自行删除。
+
+### 整合四轮评审为自动化构建方向整合与讨论议程文档 · zcode · 已实施，待验收
+
+时间：2026-09-21T06:25:17.748558+00:00；记录：`.collaboration/entries/000159-d36c6795c56e.json`
+
+按用户要求'结合我们方向给出讨论方向、整合评审意见'，交付 文档/自动化构建方向整合与讨论议程_20260921.md（150 行，commit 9975939；另按惯例归档上轮交接条目 ec10814）。文档整合 meeting-42/45/46/47 四轮评审与本侧源码核对，作为下一轮讨论与拍板唯一输入：一~三节事实基线（能力基线表、R01-R10 最终口径与实现状态、8 条源码事实表——新增 R04 核对：decision/reviewed 与 evidence_status 已分离、来源枚举归增量）；第四节汇总三份待确认表为拍板清单（血缘映射分 A 业务裁决/B 验证执行/C 增量立项/D 文档流程四类，标注三条因能力建成而失义的过时项：首期范围两选一、LLM 留二期、授权 W11 事实表）；第五节讨论方向：重心从方案设计转向'一个裁决（哈希口径）+一套试点'，四议题各附输入已备齐内容与建议倾向，建议拍完即关线转试点执行；第六节不再讨论清单防绕圈；第七节会议机制建议（导出工具缺陷已四次须反馈、分工固定：源码类本侧/业务语义会议侧、关闭条件）；第八节确认记录表落地（三态+追加式）。增量需求建议排序：留痕→哈希机制→确认失效→路由（留痕是触发信号数据地基）。纯文档，无代码改动。
+
+- 验证：R04 新核对：storage/ontology_build.py:636-667 候选含 decision/reviewed/evidence_status 独立字段、protocol.py:176 default_decision 由证据推导可人工改——结构分离已满足；三表合并核对：M45 八行/M46 七行/M47 八行逐条归入 A-D 类或过时项，无遗漏；git show 9975939 仅方向文档 150 行；ec10814 归档交接条目 2 文件
+- 下一步：用户可持本文档直接开会拍板 A/B/C 三类或逐项确认；确认记录表随拍板追加；D1/D2 收尾文档与两条补记本侧可产出（待用户指令）；D3 断言挂测试集走 worktree 授权；拍板后增量需求按需求归档规则立项（建议 20260921_自动化构建治理增量 或并入原需求目录迭代）
+- 依据/文档：文档/自动化构建方向整合与讨论议程_20260921.md；commit 9975939；commit ec10814
 
 ### meeting-47 续会6纪要评审并闭合事实表三条待验证项（本体自动化构建） · zcode · 已实施，待验收
 
@@ -83,67 +144,3 @@
 - 下一步：收尾前三件事：R10 断言加回或明示 G12 覆盖、补确认机制适用范围、明确哈希口径绑定；纪要整理落表后按待确认清单逐条复验再收尾方案文档；正式实施仍需用户明确指令与 worktree 流程
 - 依据/文档：文档/自动化构建续会5纪要评审_20260921.md；commit e031954
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 从物料自动构建本体 · 第6轮复验与授权集成 · codex · 已验证
-
-时间：2026-09-21T05:30:00.988401+00:00；记录：`.collaboration/entries/000152-a0a24ba9a20b.json`
-
-b75f69e整改复验通过；已在临时worktree组合main513d8c2为50596b9，构建/挂载/再次全回归47/47通过。首次回归HTTP连接重置，单独163/163和完整复跑通过，证据保留。用户已授权无问题合并及清理，但main存在其他任务未提交文档，尚未更新main或删除环境。
-
-- 验证：开发分支finish_guard27/27、all46/46；独立终态补测通过。；集成前端review19/19、客户端挂载3/3、build通过，all复跑47/47。；未进行本轮完整浏览器或真实LLM质量验收；未启停18871/18765。
-- 下一步：main清洁或用户授权归档现有文档后继续已授权集成；核对main新SHA补重验，归档开发树交接，合并成功后清理任务环境。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收报告_第6轮_20260921.md
-
-### codex/test 收尾修复与授权集成 · codex · 已实施，待验收
-
-时间：2026-09-21T05:32:18.996387+00:00；记录：`.collaboration/entries/000152-c7576f6d287b.json`
-
-修复动作旧帮助文案与null测试覆盖，54项测试及前端build通过。用户已授权修复后合并main并删除test worktree；main有他人未提交内容且ontology-build-r6在先等待，暂不合并/清理。
-
-- 决定：本次合并清理授权持续有效，无需再次询问；不动他人main未提交文件；不清理尚未合并的test环境；主服务未更新
-- 验证：字段类型54项通过；npm run build通过；git diff --check通过；main513d8c2脏；公共登记ontology-build-r6 verified_pending_main_clean
-- 下一步：main清洁且在先集成结束后，从最新main组合本任务，重验含浏览器，合并并自动清理
-- 依据/文档：文档/需求/20260921_系统全方位深度测试/收尾修复与集成状态_20260921.md
-
-### 本体与项目辅助填写正式实现计划与zcode指令 · codex · 需求已交付
-
-时间：2026-09-21T04:47:43.445446+00:00；记录：`.collaboration/entries/000151-58dbb48eedb6.json`
-
-按用户要求交付正式实现开发计划与执行指令，覆盖11场景、真实模型结构化建议、上下文权限/脱敏/校验、局部draft采纳、显式保存、异步失效保护。仅交付文档，未创建worktree或开发。
-
-- 决定：原型预置响应和斜杠参数解析不移植到生产；生产补充答案按questionId分别绑定。；T0先冻结API与字段映射再按T0-T12任务表分批并行；创建worktree和合并仍需明确授权。
-- 验证：只读核对llm_client、统一HTTP出口、表单draft/保存基础；文档diff检查。
-- 下一步：用户将指令交zcode，明确创建worktree并开发后执行，自测提交交独立验收，不合并。
-- 依据/文档：文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md；文档/需求/20260920_本体与项目辅助填写/执行指令_正式实现.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### codex/test A01 R02产品修复独立复验 · codex · 已验证
-
-时间：2026-09-21T05:27:24.021562+00:00；记录：`.collaboration/entries/000151-bc37ade6440d.json`
-
-验收df90573：A01/R02发布门禁修复通过；D-Q02-01仅文案修正通过，恢复能力保持延期未实现。发现非阻断旧动作校验指引及null测试覆盖标签问题，MD给具体修复方案。
-
-- 决定：不改业务/原测试，不合并main；不将恢复文案修正记为恢复能力已实现
-- 验证：独立6组回归+frontend build退出0；HTTP类型矩阵16/16通过；隔离18982：定向15=14pass1info，本体22=18pass及既有恢复缺陷/blocked/未测，项目54=53pass1info；浏览器确认快照文案与空态正确，动作去处理有效但上方帮助仍引用旧字段；本人PID39899停、18982释放、product-accept-data删除，旧服务与数据未动
-- 依据/文档：文档/需求/20260921_系统全方位深度测试/产品整改独立复验与修复建议_20260921.md
-
-### meeting-45 续会纪要评审意见归档为 md 文档（本体自动化构建） · zcode · 已实施，待验收
-
-时间：2026-09-21T04:45:17.253773+00:00；记录：`.collaboration/entries/000150-95e1f6124480.json`
-
-按用户要求将 meeting-45-export.md 评审意见整理为正式归档文档：文档/自动化构建续会纪要评审_20260921.md（95 行），已提交 main commit a8b038b（仅该文件，未带他人未跟踪的 本体工作台体验审视报告.md）。文档结构对齐既有评审文档风格：整体判断（修正清单主体可采纳）/ 吸收到位项对照表（R01/R02/R03/R05/R07/R08 + 文件线 + 三件套等 16 项）/ 四个采纳前缺口（R06/R09/R10 未回应、R04 一期落点含糊、代码物料与动作移出一期未明示、业务方确认机制需圈定范围）/ 纪要导出缺陷（truncated 声明矛盾复现、结构化区空、表格截断）/ 处理建议与结论。纯文档评审交付，未改代码、未触碰 ontology/ 与 worktree，无需求决定变化。前一条记录（同任务评审意见）见 entries/000150 前后，本条为 md 交付阶段追加。
-
-- 验证：git show --stat a8b038b 确认仅含该评审文档 1 文件 95 行；git status 确认他人未跟踪文件未被带入提交
-- 下一步：用户对修正清单及待确认表拍板后，方可按建议补齐 R06/R09/R10 回应并收尾方案文档；会议纪要建议修正导出缺陷后再归档（仍处 awaiting_confirmation）
-- 依据/文档：文档/自动化构建续会纪要评审_20260921.md；commit a8b038b
-
-### system-deep-test：产品缺陷修复 A01/R02/D-Q02-01（按 G 轮验收记录§4，三 agent 并行） · zcode · 已实施，待验收
-
-时间：2026-09-21T04:52:42.844785+00:00；记录：`.collaboration/entries/000150-f539ea230651.json`
-
-按 G轮整改独立复验记录与修复建议_20260921.md §4，用户指示继续修复后以三个并行 agent 完成三项产品缺陷修复（均在 codex/test 分支，待独立验收），业务基线之前的测试交付与统计不受影响。A01（提交 30bd715）：workbench/workflow.py 定义校验对规则 content 与动作 v2 effect 增加类型检查——None/缺键/空串/空白串按未填放行（选填语义不变，未改回必填），对象/数组/数值/布尔报单条错误（含定义名称、字段名、「必须为文本」与当前类型，不经 str() 隐式转换）；validate/save(200+errors)/publish(422 版本零新增) 共用同一检查，Excel/导入经 save 同受兜底；02 §4.9/§4.10 文档先行；测试 +6/+6/新建 54 项。R02（提交 ba0db4d）：project_validation._check_flow_binding 在结构核对后对被引用编排调用 flows.check_flow 纯配置检查（每编排一次缓存，不含连接/LLM/凭据维度），阻断错误逐条转为含对象/属性定位、编排标识与原因的单条阻断项，warnings 不阻断，未引用编排不受影响，不存在编排保留「不存在」语义并补定位；发布路径复用同一校验并受既有依赖快照重验约束；金样新增 2 样例（57/58）旧 97 样例逐字节不变；03 §2.2 文档先行；新增 test_project_flow_binding_check 14 步；并修正 test_publish_guards_adversarial 的编排夹具（补输出技术名与来源绑定，恢复其「可发布」夹具意图，135/135）。D-Q02-01（提交 3279bcd）：按验收记录「不撤销延期、不授权实施」
-
-- 决定：三项修复落在 codex/test 分支（用户指示继续修复的已登记工作树），未新建 worktree；如需独立分支可按提交拣选。；A01 类型检查放进共享定义校验而非各入口分别实现：save 保持「草稿允许不完整」（200+errors），publish 以同一检查 422 拒绝且版本零新增；不改回必填、null/空串按未填与 O3-03 既定语义一致。；R02 只做纯配置检查且按被引用编排缓存：不传 connections/llm_meta/credential_ids，与既有依赖三态协议（B01/B02/C01 系）划清边界；发布一致性依赖既有 baseline.flows 快照重验，不另造机制。；D-Q02-01 只做页面口径修正：延期决定未被撤销，记录明确不授权实施恢复改版；页面不再承诺「每次发布都会留快照」，断链本身保持复现并在缺陷清单注明待用户决定。；修复后 deep 判定脚本为两态兼容（未修记 known_defect_reproduced、已修记 product_pass），历史统计与结果索引不因修复改写。
-- 验证：单测：test_rule_action_field_types 54 项、test_project_flow_binding_check 14 步、test_business_rules 46、test_action_library 61、test_validation_split 99 样例 517 断言（金样 97→99 旧样例逐字节不变）、test_publish_guards_adversarial 135/135（夹具修正后）、deep_verdicts_test 107/107、deep_results_index_test 51/51，均退出 0。；全量回归 tests/run.py all 41/41（其中 test_publish_guards_adversarial 首跑失败系夹具用了损坏编排，R02 修复后被正确拦截，按测试自身「夹具应可发布」断言修正夹具后通过）。；真实 HTTP（18971 全新隔离实例 .runtime/prodfix-data，事后删除）：deep_reverify_r02_a01 15 条=product_pass14/info1（V-A01 与 V-R02-5/6 均翻转为通过，发布 422 版本零新增）；deep_ontology_o3o4o5 22 条=18 pass/1 new(D-Q02-01 仍复现)/1 static/1 blocked/1 not_tested，O3-03 无回归；deep_project_chain 54 条=53 pass/1 info，P8 发布版本数 1→1。；前端：vue-tsc 0 错误、npm build 成功；hooks 套件 save_queue 22/22、business_rule_model、action_model 通过。；范围与清理：git diff d6c73c2..HEAD -- tests/fixtures/validation_golden.json 仅增量（旧样例逐字节不变）；workbench 外无业务越界（frontend 仅文案）；工作树干净；18971 按 PID+cwd 确认后停止、数据根已删除；18931/18765/前轮证据未触碰。
-- 下一步：三项修复交 Codex 独立验收：A01 按 02 §4.9/§4.10 与 record §4 验收清单（各类型 × validate/save/publish/导入）、R02 按 03 §2.2 与验收清单（阻断/放行/负对照/未引用不阻断/发布一致性）、D-Q02-01 核对页面文案与恢复行为不变。；D-Q02-01 是否实施「按发布版本恢复到草稿」由用户决定（验收记录 §4 有方案）；实施后补跑 O4-07a 并移除 COVERAGE_UNCONFIRMED 登记。；其余产品缺陷（D1/D2/D3/R01/Q04-01/mapping_forms 等）按原缺陷清单另行安排；验收通过后停在待用户授权集成。
-- 依据/文档：文档/需求/20260921_系统全方位深度测试/G轮整改独立复验记录与修复建议_20260921.md（§4 修复方案与验收标准）；提交 30bd715（A01）、ba0db4d（R02）、3279bcd（D-Q02-01 口径）、e2a7419（缺陷清单状态）、3141ea5（README 变更记录）；文档/接口文档/02-本体区接口.md §4.9/§4.10；03-项目区接口.md §2.2；README 变更记录；tests/test_rule_action_field_types.py、tests/test_project_flow_binding_check.py、tests/fixtures/validation_golden.json（+2 样例）

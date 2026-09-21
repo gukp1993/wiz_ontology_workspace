@@ -1,0 +1,23 @@
+{
+  "ticket": "9cd5338c3a3549a4b9a83238b8f1a385",
+  "task": "AGENTS.md 新增规范：新建 worktree 默认同步 main 库快照",
+  "status": "decision",
+  "summary": "按用户指令在 AGENTS.md §3 启动与数据隔离写入规范（commit 0f287be，main）：新建开发 worktree 时隔离数据根默认用 transfer backup 生成 main 库 WAL 一致性快照直接落位（禁止 cp 活跃库文件），并复制根密钥（0700/0600，否则副本加密凭据不可解密）；快照为时点数据；副本内可按用户要求重置口令；数据根含真实数据与根密钥须登记为不可自动丢弃、清理须用户确认；自动化测试临时隔离根不适用本条仍用空库。原「默认合成数据」句同步改写为指向新规则并保留测试例外。来源背景：build-governance 工作树空库实践（admin 无法登录、加密凭据不可解密）。",
+  "decisions": [
+    "规范定为开发 worktree 的默认行为（用户指令），并显式划出例外：自动化测试临时根仍空库；用户明确要求空库/合成数据时从其指令。",
+    "同步用 transfer backup 一致性快照而非 cp 活跃库文件；根密钥必须随行，否则副本内加密凭据不可用。"
+  ],
+  "verification": [
+    "git show 0f287be 仅含 AGENTS.md 1 文件 2 增 1 删；落点为 §3 启动与数据隔离；commit 信息含动机与操作细节。"
+  ],
+  "next": [
+    "后续新建 worktree 按此规范执行（快照+根密钥+登记标注不可自动丢弃）；既有 build-governance 数据根已是该形态。"
+  ],
+  "references": [],
+  "actor": "zcode",
+  "created_at": "2026-09-21T07:07:36.522234+00:00",
+  "sequence": 164,
+  "filename": "000164-7ee869e3e45d.json",
+  "record_hash": "fe7d94497712bb3412e0be7f192e76c572dfadee2be490d5721b8373405d6d13",
+  "context_advanced": false
+}
