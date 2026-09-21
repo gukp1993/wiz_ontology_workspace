@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`926818e71d69628d`
+上下文版本：`b6130cb3473848fd`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 从物料自动构建本体 · 第5轮复验通过 + R5-01 整改 · zcode · 已实施，待验收
+
+时间：2026-09-21T04:44:59.315120+00:00；记录：`.collaboration/entries/000136-7e5f2b731a8b.json`
+
+第5轮复验判定 R4-01 与三项 P2 通过；按报告 §4 修复非阻断 R5-01（finish_success 只核对 lease，收尾前取消被成功覆盖成矛盾态）。提交 c49190b（修复+六场景回归）、b75f69e（文档）。未合并 main、未重启 18765、未清理环境。
+
+- 决定：finish_success 在同一 BEGIN IMMEDIATE 写事务内读行核对归属/lease/取消标记/当前状态：已取消或 cancel_requested=1 不转成功；failed/interrupted 不转成功；succeeded 幂等。；仅 running 允许成功收尾（queued 直达成功无真实调用场景，报告 §4 授权该限制）；成功转换实际成立才在同一事务推进任务阶段，拒绝收尾不动任务阶段。；_finish 同原则审计：终态一律不改写——取消后 worker 异常不再把 cancelled 覆盖成 failed；request_cancel 既有终态检查保证成功先提交则保持 succeeded。
+- 验证：新回归 tests/test_ontology_build_finish_guard.py 六个 Event 固定时序场景对照报告 §4 验收表，27/27。；tests/run.py all 46/46（新回归并入 unit 组）；late_write 23/23、runner_isolation 34/34、exclusion_inheritance 17/17、merge_refs 42/42 全部不退化。；无接口表现变化，接口文档无需同步；前端零改动无需重建。18765 全程 200 未受影响。
+- 下一步：R5-01 修复产生新业务提交（c49190b），按第5轮报告 §5 需对该提交补充复验；其余项通过证据可复用。；未验证项维持：真实模型语义质量（G16/T25）、OCR、规模校准、窄屏与键盘可达性（G15/T24）、T12/T20 故障注入、与最新 main 组合重验。；复验通过后停在待用户授权集成；未合并 main、未重启 18765、dist 未部署、开发环境保留。
+- 依据/文档：提交：c49190b（R5-01 修复+回归）、b75f69e（文档）；分支 codex/ontology-build；文档/需求/20260920_从物料自动构建本体/验收报告_第5轮_20260921.md §4（修复方案与验收表）；tests/test_ontology_build_finish_guard.py（六场景 27/27）；文档/需求/20260920_从物料自动构建本体/开发计划.md §11（第 5 轮记录）
 
 ### 从物料自动构建本体 · 第5轮独立复验 · codex/ontology-build · codex · 已验证
 
@@ -141,14 +152,3 @@ R4-01（P1）修复完成，未提交未合并：runner.py 新增 content_tx—�
 - 验证：npx vue-tsc --noEmit -p tsconfig.json：0 错误。npm run build：成功，产出 dist/assets/index-C5OE6mZW.js 与 index-mUXEVsI7.css（仅既有 chunk>500kB 提示）。；node --import ./tests/ts_hooks.mjs：global_settings_nav 7/7、global_interaction 7/7、dependency_guard 22/22、ontology_lazy_load 11/11、project_check_staleness 9/9、reference_changes、config_transfer 均通过。；脚本校验 navigation：四种旧写法全部归一 build；initialSpace('#build')='ontology'；build 不在 projectSpaceViews/globalViews。
 - 下一步：待 Codex 独立验收；本轮无浏览器端到端实测（A05/A06 真接口流转依赖 workbench/ontology_build* 后端与迁移 20260920_0003，非本轮改动）。；按本轮指令未 git add/commit。
 - 依据/文档：frontend/src/App.vue；frontend/src/app/navigation.ts；frontend/src/ontology/OntologyHome.vue；文档/需求/20260920_从物料自动构建本体/需求说明.md
-
-### 集成成功后自动清理开发环境约定 · codex · 已确认决定
-
-时间：2026-09-20T08:35:50.005451+00:00；记录：`.collaboration/entries/000124-d510e725ab27.json`
-
-用户要求集成完即删除对应开发环境，已固化到AGENTS、稳定基线和当前自动构建计划/指令。仅规则修改，未删除任何目录或分支。
-
-- 决定：集成并合并授权包含集成验证和main合并成功后的自动清理，无需另发清理指令或等待主服务重启。；清理本任务开发/临时集成worktree、已合并分支、专属依赖/运行产物及登记可丢弃的隔离测试数据；先保存提交/验收证据，停止匹配的服务并释放端口。；未提交/未合并、他人仍写入、未知或需保留数据阻断相关清理并报告，不强制删除；真实主库、原始物料和其他任务不在范围。
-- 验证：三份文档自动清理及保护边界、相对链接检查通过；git diff --check通过。当前只有main工作树，没有执行实际清理。
-- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
