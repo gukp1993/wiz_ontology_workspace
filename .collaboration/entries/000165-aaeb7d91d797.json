@@ -1,0 +1,30 @@
+{
+  "ticket": "2068c96d7e634361ae5526c22e68c799",
+  "task": "worktree 数据根迁入分支文件夹（各自独立管理）+ 纠正 18765 错位",
+  "status": "implemented",
+  "summary": "按用户指令把数据根从仓库外平级目录迁入各自分支工作树内（WIZ_WORKBENCH_ROOT=工作树根，data/ 与 keys/ 自含，镜像 main 运行布局）。迁移中发现并纠正一个严重错位：18765 曾由 build-governance 工作树目录内启动的进程服务（14:48 起），用户在 18765 的操作实际读写工作树数据副本。已停两个错位实例（按 PID+cwd 核对），18765 从 main 仓库真实根重启（start.sh，PID 9300），18881 以工作树自含数据根重启（PID 9356，admin/admin 验证通过）。用户上传的 1161 个物料 blob 已从旧目录随迁至工作树 data/ontology-build-blobs；误初始化的空库与旧平级目录已清除。AGENTS §3 规范修订为工作树内自含数据根（commit 2496b9b），登记同步更新。",
+  "decisions": [
+    "数据根位置定为工作树根目录本身（镜像 main 布局 data/+keys/），废弃仓库外平级目录模式；AGENTS 0f287be 规则相应修订。",
+    "git worktree remove 因未跟踪数据被拒属保护机制；删除或 --force 前必须经用户确认数据处置（已写入规范）。",
+    "18765 错位期间无数据丢失：用户操作写入的是 main 快照副本（已随迁），main 真实库未被写坏（mtime 14:56 的写入属其正常使用）。"
+  ],
+  "verification": [
+    "18765=PID 9300 cwd=main 仓库 HTTP 200；18881=PID 9356 cwd=worktree/build-governance，curl admin/admin 登录返回 admin(isAdmin=true)；worktree/data 11 资产、1161 blob、keys/wb-root.key 0600 就位；旧平级目录已清除。",
+    "期间一次执行链因 rmdir 失败后台化导致 task.env 未更新、实例错位——已现场盘点（进程 cwd/ps env/三库对照）后全部纠正，终态以 curl 与 cwd 双重验证。"
+  ],
+  "next": [
+    "用户照常使用：18765=main（原密码），18881=build-governance 副本（admin/admin，数据为快照+其上传）。",
+    "后续新建 worktree 按 AGENTS 修订版执行：数据根=工作树根，backup 快照+根密钥随行。",
+    "两个实例的会话 Cookie 同源 127.0.0.1 不同端口可能互相覆盖（AGENTS 已有告诫），浏览器验收分实例用隔离上下文。"
+  ],
+  "references": [
+    "commit 2496b9b（AGENTS §3 修订）；登记 .git/workbench-tasks/build-governance.json",
+    "实例 18881 数据：worktree/build-governance/data/workbench.sqlite3 + data/ontology-build-blobs（1161 文件）+ keys/wb-root.key"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T07:18:52.282280+00:00",
+  "sequence": 165,
+  "filename": "000165-aaeb7d91d797.json",
+  "record_hash": "201b86c20768d3ffe002c63a0383a1c9e5900285620643771ac4a590ecf8ca3e",
+  "context_advanced": false
+}
