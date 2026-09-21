@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`f8842e46ff83f0c6`
+上下文版本：`dd72713228b436e0`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### codex/test G轮整改独立复验 · codex · 已验证
+
+时间：2026-09-21T04:12:08.469340+00:00；记录：`.collaboration/entries/000146-85bd42b584be.json`
+
+独立复验d4b196e通过测试判定与报告整改；107/107、51/51、验收方59反例全部通过，三HTTP链分类一致。不是产品全量验收通过，A01/R02/D-Q02-01仍复现，MD给具体修复方案。
+
+- 决定：本轮不改业务与原测试、不合并main；历史恢复延期不由验收报告撤销
+- 验证：18981全新隔离实例：定向15、本体22、项目54记录，退出0且分类与报告一致；索引重算187记录/14批/94被替代/9根因；文档除时间一致，O4-07a明确未确认；本人PID9517已停、18981释放、g-accept-data删除；未动主服务/18931/旧证据
+- 依据/文档：文档/需求/20260921_系统全方位深度测试/G轮整改独立复验记录与修复建议_20260921.md
 
 ### system-deep-test：G 轮整改后的反例闭环复核（交复验前） · zcode · 已实施，待验收
 
@@ -138,16 +148,4 @@
 - 验证：本体链34断言31通过+A01复现+D-Q02-01（tests/deep_ontology_o1o2/o3o4o5/o6o7.py）；项目+编排74断言73通过+R02复现（tests/deep_project_chain/deep_flow_chain.py）；I1-I9全过：kill -9注入integrity_check=ok、63端点未登录401、密钥字节扫描0明文（tests/deep_integrity_*）；UI删除/撤销/重做/登录退出受控复测+API交叉核对（q04/REPORT.md）；server-18931.log全程0命中500；mapping_forms.test.mjs基线失败单列未修
 - 下一步：交回用户安排修复：优先D-Q02-01→A01→D1裁定→R01→D2（缺陷清单前五项）；集成/合并需用户明确授权后由Codex串行组合重验；18931与test-data*保留待处置；如需补全Q06：tests/deep_perf.py已就绪，须独占实例运行
 - 依据/文档：文档/需求/20260921_系统全方位深度测试/测试报告.md；文档/需求/20260921_系统全方位深度测试/缺陷清单.md；文档/需求/20260921_系统全方位深度测试/测试计划.md（实际执行记录）；提交4d4e497；被验业务SHA d6c73c2
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### Q03 深度测试：项目配置+编排业务链（P1-P9） · codex · 已实施，待验收
-
-时间：2026-09-21T01:09:14.900246+00:00；记录：`.collaboration/entries/000134-3f1de0ed1d0e.json`
-
-专属实例18931完成P1-P9，74条断言：73通过+1基线已知(R02)，未发现新增业务缺陷。三条数据线职责符合设计：本体save/publish/versions、项目CAS/往返无损/缺身份发阻断、编排check纯配置绝不执行+纯本地calc确定结果+错误定位+重复run不脏数据。安全：connection-secret不回显、跨账号读/写他人id一律404、探测不持LOCK。红线遵守：未连真实MySQL/Redis、未执行真实SQL/用户Python、flow-run仅calc、连接探测只打127.0.0.1关闭端口/静默mock并结束关闭。P8.4复现R02(known)：空壳编排(输出未绑定)被项目flow来源引用，project-validate不拦、publish仍成功。
-
-- 决定：两处测试侧纠偏(非业务缺陷)：P1.6误用/api/releases(实为release-ZIP工件列表)改查/api/versions；P6.5破坏性编辑造成deviceCode悬空被/api/save正确422拦截，改删无悬空属性clusterActivePower
-- 验证：tests/deep_project_chain.py 51条(50 pass/1 known=R02)；tests/deep_flow_chain.py 23条全pass；证据jsonl+REPORT.md在 .runtime/test-evidence/q03/
-- 下一步：R02(中)按既有缺口交owner裁定：project_validation._check_flow_binding 不调用 flows.check_flow；Q03只测试记录，未改业务代码，未git commit
-- 依据/文档：.runtime/test-evidence/q03/REPORT.md；tests/deep_project_chain.py；tests/deep_flow_chain.py；workbench/project_validation.py:512
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
