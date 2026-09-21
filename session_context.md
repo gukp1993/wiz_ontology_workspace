@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`82103bb2baf5b785`
+上下文版本：`223e38e459242834`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,28 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 仓库架构整理与代码规范（codex/repo-cleanup）集成合并 main 与清理 · zcode · 已验证
+
+时间：2026-09-21T07:26:33.650100+00:00；记录：`.collaboration/entries/000168-4cc55cd1adf8.json`
+
+按用户「合并main并删除worktree」指令完成集成。两次原样归档 main 他人未提交协作文件（5755e72、a4dd4e6；期间 main 前进 2496b9b AGENTS§3修订与 5f64fd7 meeting-48评审，均重新组合）。临时集成树合并 codex/repo-cleanup：AGENTS 两侧自动合并共存，session_context 冲突取 main 侧后脚本 render 重建（merge 1279542、重组 3debc02）。组合验证：ruff 全过/eslint 0/build 4.02s/TS 6:6/quick 3:3/all 48:49（败=pypdf 缺口，main 对照在案）。关键风险处置：合并会从工作树磁盘删除 991 个已退跟踪 ontology 文件（集成树实证），main ff 后立即 git restore --source=5755e72 --worktree 恢复，磁盘 ontology 995/.idea 6 与基线一致。附带发现：5 个测试用例依赖磁盘 ontology/models/storage 播种，main 有盘不受影响，新克隆环境会失败（既有依赖被暴露，建议专项）。清理：删除两个工作树与分支；18765 未更新，真实库/keys 未动；另一会话在 main 暂存的文档重组未提交内容原样未动。
+
+- 决定：main 快进前用 git restore --worktree 恢复 ontology/.idea 磁盘文件：退跟踪不得删除 main 工作树迁移备份与密钥目录（『磁盘文件全部保留』在 main 侧同样成立）；他人未提交协作文件按既有模式原样归档；另一会话暂存中的文档重组不代为提交、原样保留；session_context 冲突不手工拼接，取一侧后 render 脚本重建；新克隆环境 5 用例种子失败登记为后续专项，不在集成中扩大范围
+- 验证：main 3debc02：tracked ontology=0/.idea=0/总数883；磁盘 ontology=995(=基线)/.idea=6(=基线)；除他人暂存重组外无本任务残留；组合验证：ruff All checks passed、eslint exit 0、build 4.02s、TS 6/6、quick 3/3、all 48/49（pypdf 缺口 main 对照 83/85 同败）；无盘失败定位：集成树合并后 ontology/ 被 checkout 删除致 5 用例败，恢复磁盘后全过——纯磁盘种子缺失非代码回归；合并构成：996 D=991+5；Palantir 对照表 D+A 系 rename 断裂假象（新路径与 main 版 diff 为空）；69 R100=备份改名；非目标删除 0；端口18941无监听、两树无进程；18765 HTTP 200 未动
+- 下一步：主工作台 18765 运行合并前代码，更新需另行授权（build+重启）；新克隆环境测试种子依赖建议立项专项（测试自含种子或跳过守卫）；main 备份 data/workbench-before-build-migration-20260921-143248.sqlite3 保留
+- 依据/文档：main 链：5755e72→a4dd4e6→3debc02(含 merge 1279542)；被合并 codex/repo-cleanup@2c6a44d；文档/需求/20260921_仓库架构整理与代码规范/；验收记录提交 b3e912b/5a47ede
+
+### 自动化构建评审系列文档归档至独立目录（用户指令） · zcode · 已实施，待验收
+
+时间：2026-09-21T07:25:13.083100+00:00；记录：`.collaboration/entries/000167-6fcf5213d39d.json`
+
+按用户指令新建 文档/本体自动化构建评审_20260921/ 目录，git mv 收拢七份系列文档（R01-R10 讨论方案评审、续会4/5/5终版/6/7 纪要评审、方向整合与讨论议程），commit e2dafe0。移动后修正跨目录相对链接（](需求/ → ](../需求/、](本体建设思路 → ](../本体建设思路），全目录 md 链接逐一校验可解析（仅 Downloads 绝对路径为历史溯源标注、原文件已被用户清理，保持原值不修）。新增 README.md 索引：七份文档阅读顺序与关系表（评审对象+核心结论一栏）、当前状态与下一步（A1 待裁决对续会7三态草稿拍板、C1 衔接 build-governance worktree 18881、D1 收尾文档待指令、导出工具缺陷五次以完整对话为准）、目录外关联文档（需求说明/本体建设思路/推进计划表）。移动前全仓库引用核查：系列路径仅被文档自身与 session_context.md（自动生成不手改）引用，AGENTS/推进计划表等无引用，无断链风险。纯文件组织无内容改动；git mv 保留历史（部分文件因链接修正内容变化被识别为 rename 98-100%，log --follow 可追溯）。
+
+- 验证：移动前 grep 全仓库（排除 entries/worktree/node_modules/dist）：七份文档路径仅被自身与 session_context.md 引用；链接校验循环：目录内全部 .md 相对链接逐条解析，仓库内 0 断链；三条 Downloads 绝对路径为溯源标注（原导出件已被清理），非本次移动造成；git show e2dafe0：8 文件 496 增 1 删（7 份 git mv + README 新建）
+- 下一步：后续本系列新评审文档（如 meeting-49+）直接归档到该目录并更新 README 关系表；A1 裁决/C1 立项/D1 收尾文档等下一步不变，引用路径以新目录为准
+- 依据/文档：文档/本体自动化构建评审_20260921/；commit e2dafe0
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### meeting-48 续会7纪要评审并产出 A1 裁决前置草稿（本体自动化构建） · zcode · 已实施，待验收
 
@@ -65,6 +87,17 @@
 - 下一步：用户可访问 http://127.0.0.1:18881 用 admin/admin 登录（数据为 main 同步时点快照，不自动跟随 main）。；若还要把 main 18765 的 admin 密码改为 admin，属真实库重置，需用户明确指令（CLI 已具备）。；后续清理该工作树时数据根含真实数据与根密钥，须用户确认处置。
 - 依据/文档：实例：http://127.0.0.1:18881；工作树：worktree/build-governance；数据根：wiz_kq_builder_v2-build-governance-data（含 keys/wb-root.key 副本）；登记：.git/workbench-tasks/build-governance.json（env_ready_dev_pending）
 
+### 仓库架构整理与代码规范（codex/repo-cleanup）B项整改复验 · zcode · 已验证
+
+时间：2026-09-21T07:12:37.428738+00:00；记录：`.collaboration/entries/000162-514cd6dad452.json`
+
+用户指令「继续验收」，对整改提交做第2轮独立复验，判定【通过】，总体验收由不通过转为通过。复验 HEAD abab867，聚焦 B 项整改（业务提交 b8627db..eeb7097 内容未变，首轮 A/C/D 通过结论继续有效）：df941aa 整改提交 996 行改动=991 ontology+5 .idea 索引删除、零混入其他改动；git ls-tree -r HEAD 树级 ontology/.idea 均 0（提交对象级证据）；tracked 865（=864+abab867 新增交接条目，构成吻合）；磁盘 ontology 991、.idea 5 文件（含 .idea/.gitignore）全部保留；data/keys 全程 b4a56a9..HEAD 零接触；.gitignore 规则在。开发计划 §7 整改记录如实（根因=拆分提交前 git reset 撤销 rm --cached 暂存、git add -u 无法恢复删除暂存，与首轮验收推断一致），验收指令两处期望值已修正（交付物顶层md 8、tracked ≈864）并与本轮实测吻合。quick 3/3 哨兵通过，工作树 clean。复验记录已提交 5a47ede。
+
+- 决定：B 项整改复验通过：以 git ls-tree 树级证据为准（非索引瞬时态），996 纯删除+磁盘保留+data/keys 零接触三条件齐备；历史提交信息错位不要求改写（本地未合并分支允许但验收以最终树为准），错误数字以开发计划 §7 整改记录与 df941aa 提交信息更正为准；A/C/D 沿用首轮结论：整改为纯 git 索引操作无代码变更，首轮 all 48/49（pypdf 环境缺口经 main 对照）、TS 6/6、语义抽查 6/6、ruff/eslint/build 均不受影响
+- 验证：df941aa 纯度：git show --name-status 统计 996 行=991^D ontology+5^D .idea，非删除 0；树级：git ls-tree -r HEAD | grep -c ^ontology/ = 0；^\.idea/ = 0；git ls-files 总数 865；磁盘：find ontology -type f = 991；ls -1A .idea = 5 文件；git diff b4a56a9..HEAD --stat -- data/ keys/ = 0；文档：独立验收指令.md:41 期望 8（原≥12）、:58 期望 ≈864（原855左右）；开发计划 §7 整改记录含根因与数字更正；哨兵：python3 tests/run.py quick 3/3；git status clean
+- 下一步：状态：待用户授权集成。合并 main、清理工作树、更新主服务均待用户明确指令；集成时注意 .collaboration entries 本分支与 main 各自新增需合并日志（同序号不同内容：本树 000158-000162 与 main 000158-000164）；合并后 main 工作树磁盘 ontology/ 不受影响（本地文件保留），新克隆环境将不再自带旧文件树（新环境初始化只依赖 transfer CLI 与库内数据）
+- 依据/文档：文档/需求/20260921_仓库架构整理与代码规范/独立验收记录_20260921.md（含复验记录节）；复验提交 5a47ede；整改提交 df941aa/09ae5e2/abab867；首轮验收 b3e912b；基线 b4a56a9
+
 ### 为自动化构建增量/治理创建 worktree（用户明确指令） · zcode · 已确认决定
 
 时间：2026-09-21T06:43:09.984017+00:00；记录：`.collaboration/entries/000162-eb5ae3cbf932.json`
@@ -85,6 +118,28 @@
 - 验证：核对依赖顺序、完成标准与授权停止点；未改代码、未创建worktree、未更新服务。
 - 依据/文档：文档/需求/20260921_项目能力补齐推进计划/推进计划表.md
 
+### repo-cleanup 验收B项整改（原分支修复，不合并main） · zcode · 已实施，待验收
+
+时间：2026-09-21T07:06:08.564299+00:00；记录：`.collaboration/entries/000161-f127da84bd51.json`
+
+按独立验收记录修复要求整改：df941aa 单独提交补做真正的退出跟踪（git rm -r --cached ontology/ .idea/，996 文件出索引），提交后实测全达标——ontology tracked=0、.idea tracked=0、tracked 总数 1860→864、磁盘 ontology 仍 991 个文件、data/keys diff=0。09ae5e2 登记开发计划 §7 整改记录（根因：拆分提交前 git reset 撤销了 rm --cached 暂存，git add -u 无法恢复删除暂存；自验未在 reset 后复测 ls-files）并修正验收指令两处期望值（交付物顶层 md 期望 8 非 ≥12；tracked 期望 ≈864 非 855）。历史提交不改写，错误数字以整改记录与提交信息更正为准。
+
+- 决定：整改提交单独成提交不混入其他改动（按验收记录要求 1）；不改写本地历史：验收以最终树为准，d7f79ce/ec0c0aa 的信息错位在整改提交信息与开发计划 §7 中如实更正记录；验收指令期望值随实测修正并在指令文件内原位更新，保证复验口径一致
+- 验证：git ls-files | grep -c '^ontology/' = 0；'^\.idea/' = 0；git ls-files | wc -l = 864（1860−996）；find ontology -type f | wc -l = 991 磁盘原样；git diff --stat -- data/ keys/ 空（真实数据零接触）；工作树 clean；新 HEAD df941aa（业务整改）+ 09ae5e2（文档）
+- 下一步：交原验收人复验：以 df941aa 为准重走指令 §B 与附带质量问题核对（提交信息错位已在整改记录更正，历史不改写）；复验通过后停在待用户授权集成
+- 依据/文档：文档/需求/20260921_仓库架构整理与代码规范/独立验收记录_20260921.md（修复要求）；文档/需求/20260921_仓库架构整理与代码规范/开发计划.md §7；提交 df941aa、09ae5e2
+
+### 仓库架构整理与代码规范（codex/repo-cleanup）独立验收 · zcode · 受阻
+
+时间：2026-09-21T07:02:06.633953+00:00；记录：`.collaboration/entries/000160-c3ae1a62dfa2.json`
+
+用户直接指令 zcode 执行独立验收（角色由用户指定，默认 Codex 被覆盖）。按验收指令全项执行，总体判定【不通过】：B 项核心交付退出跟踪实际未发生——git ls-tree -r d7f79ce 内 ontology 仍 991 个、--name-status 0 条 D 记录，.idea 仍 5 个；tracked 1858（基线 b4a56a9 实测 1852，非声称的 1758→855）。.gitignore 规则已加但对仍在索引内的文件无效，合并后仓库仍带全部 ontology 数据。A 文档重组通过（交付物顶层 md=8，指令期望≥12系把 4 个子目录误计入顶层；基线实证顶层 0 份+归位 8 份与开发计划 A1 一致）。C 通过（ruff 全过/eslint 0 error/build 3.77s/quick 3/3）。D 通过（all 48/49，唯一败 parsers 2 项 D15 经 main 对照 83/85 同败确认为 pypdf 环境缺口；TS 6/6；语义抽查 6/6，但 4 个修复点实际落在 d7f79ce 而非指令所述 ec0c0aa）。根因推断：交付条目自验记录『git diff --cached 核验 ontology 991 个 D』证明暂存区当时确有删除，后续提交前疑似被 git add -A 在 .gitignore 生效前覆盖回索引，且提交前未复测关键断言。验收记录已提交 b3e912b。
+
+- 决定：B 项判定依据为提交树实证（git ls-tree / git show --name-status），非索引或工作区瞬时状态，不可辩解为暂存异常；A 项指令期望值≥12 与基线事实不符（基线交付物顶层 0 份 md），按开发计划 A1（归位 8 份）判实现正确，属验收指令笔误；pypdf 2 项 D15 按指令 §2 的 main 对照实验归为既有环境缺口，不计本次缺陷
+- 验证：B 核心证据：git ls-tree -r d7f79ce | grep -c ^ontology/ = 991；git show d7f79ce --name-status | grep -c '^D.*ontology' = 0；git ls-files | wc -l = 1858；基线 b4a56a9 树 = 1852；.gitignore 第 10/11 行有 /ontology/ 与 .idea/；A：评审与纪要 6/概念与说明 4/交付物顶层 md 8/归档同名残留 0/设计方案 rename 历史连续（b8627db←ddc4d31）/AGENTS 与 README 全部文档引用存在；C：ruff 'All checks passed!'；npm run lint exit 0；npm run build 3.77s；tests/run.py quick 3/3；D：run.py all 48/49（败=test_ontology_build_parsers 2×D15）；main 树同文件 83/85 同 2 项败；6 个 TS 套件全 OK；语义抽查 6 条全过（model_routes import/test_mapping_descriptions 版本号返回/FlowEditor 影子移 watch/LinkMappings :title/eeb7097 bridgeState/B904×5 from None+下划线前缀×3 无原名残留）；数据零接触：git diff b4a56a9..HEAD --stat -- data/ keys/ = 0；磁盘 ontology 991 文件完好；主仓库 vault 未动；验收 HEAD 6f61f6c 相对 eeb7097 仅多指令/交接文档（git diff --stat 确认）
+- 下一步：原分支修复：git rm -r --cached ontology/ .idea/ 单独成提交（磁盘保留），提交后实测 ontology=0/.idea=0/tracked≈862/磁盘仍 991/data+keys diff=0，交付新 SHA 重新验收；建议同步修正提交信息与内容错位（d7f79ce 混入 lint 基线、ec0c0aa 仅 1 文件却声称基线+存量修复）；本地未合并分支可整理历史或在新提交如实更正；不合并 main、不清理工作树、不更新主服务，均待用户明确指令
+- 依据/文档：文档/需求/20260921_仓库架构整理与代码规范/独立验收记录_20260921.md；验收记录提交 b3e912b；验收 HEAD 6f61f6c；被验业务提交 b8627db/d7f79ce/ec0c0aa/eeb7097；基线 b4a56a9
+
 ### 主工作台自动构建任务列表 500 修复（主库补 0003 迁移） · zcode · 已实施，待验收
 
 时间：2026-09-21T06:33:31.460177+00:00；记录：`.collaboration/entries/000160-c66fd6397cd9.json`
@@ -94,54 +149,3 @@
 - 决定：真实库操作按 AGENTS 先备份后迁移：transfer backup 产出 data/workbench-before-build-migration-20260921-143248.sqlite3（7086080 字节 WAL 一致快照）。；迁移只用显式 CLI transfer init（真实根唯一合法建表方式），迁移为纯新增表、不碰既有表与数据；服务无需重启（SQLite 新表对运行中连接立即可见）。
 - 验证：日志坐实根因：no such table: wb_build_tasks（正是任务列表查询）。；迁移后 alembic_version=20260920_0003、12 张 wb_build_* 表就位；wb_assets=11 行、wb_users=2 行与迁移前一致；18765 HTTP 200、进程 65311 未动。
 - 下一步：请用户在页面点「重试」或刷新验证任务列表正常；随后即可按六步流程使用（需已在更多工具配置可用模型，capabilities 已显示 MiniMax-M3）。；pypdf 未装：上传 PDF 材料会报「未安装 PDF 解析库」，其余格式不受影响；如需要按 requirements.txt（pypdf>=6.1,<7）安装请用户示意。；备份文件 data/workbench-before-build-migration-20260921-143248.sqlite3 保留，确认功能可用后可自行删除。
-
-### 整合四轮评审为自动化构建方向整合与讨论议程文档 · zcode · 已实施，待验收
-
-时间：2026-09-21T06:25:17.748558+00:00；记录：`.collaboration/entries/000159-d36c6795c56e.json`
-
-按用户要求'结合我们方向给出讨论方向、整合评审意见'，交付 文档/自动化构建方向整合与讨论议程_20260921.md（150 行，commit 9975939；另按惯例归档上轮交接条目 ec10814）。文档整合 meeting-42/45/46/47 四轮评审与本侧源码核对，作为下一轮讨论与拍板唯一输入：一~三节事实基线（能力基线表、R01-R10 最终口径与实现状态、8 条源码事实表——新增 R04 核对：decision/reviewed 与 evidence_status 已分离、来源枚举归增量）；第四节汇总三份待确认表为拍板清单（血缘映射分 A 业务裁决/B 验证执行/C 增量立项/D 文档流程四类，标注三条因能力建成而失义的过时项：首期范围两选一、LLM 留二期、授权 W11 事实表）；第五节讨论方向：重心从方案设计转向'一个裁决（哈希口径）+一套试点'，四议题各附输入已备齐内容与建议倾向，建议拍完即关线转试点执行；第六节不再讨论清单防绕圈；第七节会议机制建议（导出工具缺陷已四次须反馈、分工固定：源码类本侧/业务语义会议侧、关闭条件）；第八节确认记录表落地（三态+追加式）。增量需求建议排序：留痕→哈希机制→确认失效→路由（留痕是触发信号数据地基）。纯文档，无代码改动。
-
-- 验证：R04 新核对：storage/ontology_build.py:636-667 候选含 decision/reviewed/evidence_status 独立字段、protocol.py:176 default_decision 由证据推导可人工改——结构分离已满足；三表合并核对：M45 八行/M46 七行/M47 八行逐条归入 A-D 类或过时项，无遗漏；git show 9975939 仅方向文档 150 行；ec10814 归档交接条目 2 文件
-- 下一步：用户可持本文档直接开会拍板 A/B/C 三类或逐项确认；确认记录表随拍板追加；D1/D2 收尾文档与两条补记本侧可产出（待用户指令）；D3 断言挂测试集走 worktree 授权；拍板后增量需求按需求归档规则立项（建议 20260921_自动化构建治理增量 或并入原需求目录迭代）
-- 依据/文档：文档/自动化构建方向整合与讨论议程_20260921.md；commit 9975939；commit ec10814
-
-### meeting-47 续会6纪要评审并闭合事实表三条待验证项（本体自动化构建） · zcode · 已实施，待验收
-
-时间：2026-09-21T06:18:25.228456+00:00；记录：`.collaboration/entries/000158-f0dff3ae464b.json`
-
-评审 meeting-47-export.md（续会6，材料为终版评审，用户未发言），交付 文档/自动化构建续会6纪要评审_20260921.md（87 行，commit 6234244）。判定转机轮：终版评审核心发现（差异核对三类归类、R10 断言、确认机制圈定、三表汇总）全部被接收，防丢项首次有结构性手段（前置完成条件+三态状态值）；回放解环与路由三层证据方案质量高；第二类句式约束升级为'只允许验证范围句式、禁止能力分期句式'。本侧顺手闭合会议三条待验证：R02 晋升输出不含 candidateId（assemble 全新正式 id 组装 @graph、映射存 summary.candidateMap，断言措辞须精确到核心 schema）、R10 幂等完整（requestId+内容指纹重放/不同内容 409/一任务一交付/write_tx 原子）、候选路由=生成端五类全量无显式路径（归第三类增量）——事实表七条代表条目源码结论全部可得。新问题：truncated 第四次复发（纪要截断）、结构化区第四次空、会议核对流程过度精细化（本侧可直接出事实表无需等授权 W11）。8 条待确认建议处置：1/2/4 本侧可直接产出、3 不需要、5 留用户裁决、6 断言挂 G12 为固化既有正确行为（worktree）、7 建议采纳、8 增量立项走需求归档。未验证：candidateId 重生成不复用留批量阶段。纯文档+只读核对，未改代码。
-
-- 验证：R02：ontology_adapter.py:140-148 stable() 全新 id、build_node 正式 id；delivery.py:295-303 summary.candidateMap；candidateId 仅 precheck 错误定位（delivery.py:115/133）；R10：delivery.py:232-307 幂等三分支+回执先于 stale；ontology_build_routes.py:702-713 write_tx 原子；路由：protocol.py 无类型排除、pipeline.py:337/420 仅合法性过滤、alignment.py materialId 仅证据展示——无路由雏形；git show 6234244 仅含该评审文档 1 文件 87 行
-- 下一步：用户可据评审第四节事实表+8条处置意见直接拍板；如授权本侧可产出收尾文档（两条前置补记+三表汇总+试点范围句式改写）与 R02/R10 断言挂测试集（worktree）；增量需求如采纳按需求归档规则立项；导出工具缺陷已四次，建议向工具方反馈
-- 依据/文档：文档/自动化构建续会6纪要评审_20260921.md；commit 6234244
-
-### 按用户指令删除 resources/ 与 backup-20260918-202932/ · zcode · 已验证
-
-时间：2026-09-21T06:10:12.011779+00:00；记录：`.collaboration/entries/000157-92ec1f37afb5.json`
-
-删前已核实：resources/ 仅含已入 git 的 source.jsonId（2026-09-18 存储迁移已导入 SQLite 为 source-reference 附件，运行时读库内副本，仅 transfer.py:575 迁移 CLI 引用且有 is_dir 守卫；tests/deep_perf.py 与 OntologyDiscover.vue 的 resources 字样为同名无关概念）；backup 目录为 9-18 迁移日 SQLite 快照+根密钥副本，密钥与 keys/wb-root.key 逐字节相同，git 忽略未入库、无代码引用。执行：git rm resources、rm -rf backup 目录、同步更新 AGENTS.md 两处与 README.md 目录表对 resources 的描述。主服务 18765 删后 HTTP 200 不受影响，未重启未构建。
-
-- 验证：删除后 ls 确认两目录不存在；curl 18765 HTTP 200；grep 复核代码无 resources/ 目录依赖
-- 下一步：若将来对新空库重跑 transfer import 需要来源参考材料，从 git 历史找回 resources/imports/storage_20260814/source.jsonId；backup 快照已不可恢复（git 忽略），如需 9-18 数据时点回退已无来源
-
-### 深度测试任务 codex/test 分支集成合并 main 并清理工作树 · zcode · 已验证
-
-时间：2026-09-21T06:02:27.886353+00:00；记录：`.collaboration/entries/000156-db86486b16d6.json`
-
-按用户明确指令将 codex/test（深度测试31提交：Q/S/F/G/R多轮整改+A01/R02/D-Q02-01产品修复）合并入 main 并清理。两侧对 A01/R02 各自独立修复，9 文件真冲突已按统一口径解决：行为取 main 演进实现（B01/B02 三态上下文+C01 声明判据），报错文案统一为 test 侧富格式（名称(id)+当前类型；引用的编排 名称(flowId) 配置无效；不存在编排补 id）。金样重建 100 样例；接口文档 02/03/README 同步。集成期间 main 前进（c2c98f2 评审文档+e19c46a 归档他人交接条目），已重新组合为 d10c412 后快进。主服务 18765 未重启未更新，仍在运行合并前代码。
-
-- 决定：合并口径裁定：A01/R02 行为取 main 侧（含 B01/B02/C01 已验收演进），报错文案取 test 侧富格式；main 侧 content/effect 旧子串断言『必须是文本』同步为『必须为文本』（name/description 必填路径不变），未舍弃任何一侧已确认行为；test_project_flow_binding_check 适配三处：§6 夹具按 B01/B02 已知连接集合语义改用有效连接+未引用输入参数制造纯 warning；§4 计数包装器签名适配位置参数调用；docstring 更新为合并后上下文协议——均为测试适配不改判定意图；集成期间他人新提交 c2c98f2 与未提交 entry 000155/session_context.md：按用户既有授权模式原样归档为 e19c46a 后重新组合，未改动其内容；pypdf 两项 D15 失败经 main 对照实验确认为既有环境缺口（依赖在被清理的旧任务 venv 中），非本次合并引入，未擅自安装依赖
-- 验证：后端回归 run.py all 47/49：2 失败为 pypdf 环境缺口（main 树同样 83/85 失败，对照实验在案）；test_ontology_build.py 首次 run.py 偶发连接重置后单独 163/163 与 run.py 复跑均通过；直接相关 7 套件全过：validation_split 金样回放 525 断言等价、business_rules 63、action_library 83、rule_action_field_types 54、project_flow_binding_check 14、flow_dependency_context 92、publish_guards_adversarial 135；前端 npm run build（vue-tsc+vite）通过 4.34s；重组后 quick 组 3/3 哨兵通过；代码内容与已验证 f5ae29e 完全一致（插入提交均纯文档）；清理核对：PID 56914 cwd=worktree/test 确认后停止，18931 无监听；两 worktree、codex/test 与 integration/deep-test 分支已删；git worktree list 仅剩 main；18765 HTTP 200 未动
-- 下一步：主工作台更新需用户另行授权：构建新前端并重启 18765 后深度测试修复才对线上生效；pypdf 缺口如需修复由用户决定安装方式（requirements.txt 已登记 pypdf>=6.1,<7）；深度测试验收报告第6轮之后的收尾状态文档在分支内已合并，A01/R02 已由 Codex 复验（697c9ca），本轮为组合重验非新的独立验收
-- 依据/文档：合并提交 f5ae29e（deep-test 集成主体）/ d10c412（main 最终快进点）；文档/需求/20260921_系统全方位深度测试/（31 提交全部归档）；文档/接口文档/README.md 变更记录新增集成行；tests/fixtures/validation_golden.json（重建，100 样例）
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### meeting-46 终版纪要评审并归档 md 文档（本体自动化构建） · zcode · 已实施，待验收
-
-时间：2026-09-21T05:54:41.750460+00:00；记录：`.collaboration/entries/000155-d2467d29cdbc.json`
-
-评审 meeting-46-export (3).md（13:50 终版：对话与 13:34 版逐字一致、无新讨论，增量仅为 orchestrator 纪要整理完成/会议结束/进入 awaiting_confirmation），交付 文档/自动化构建续会5终版纪要评审_20260921.md（88 行，commit c2c98f2）。落表复验：R04、范围差异、R06/R09/R10、哈希机制均已进待确认表；但上轮三件事均未修复——R10 断言仍缺且纪要把发言2/11的断言承诺证据静默删除（矛盾被抹平而非暴露）、业务方确认机制圈定连续两轮零回应、哈希口径与确认失效绑定语义仍未明确。结构化区与附录矛盾（待确认建议/行动项区写'无'而附录有7项/多项认领）第三次复现，认定为导出工具系统性缺陷。核心新增发现：修正清单与已合并实现 ab27442 脱节——源码核实 parsers 已含 code/ddl/docx/md/pdf/xlsx 全物料线、CANDIDATE_TYPES 五类含 action、llm.py 已实现、候选 id 与同名保留策略已在，而会议仍按'代码物料/动作/LLM 留二期'口径收尾；建议收尾前必须做差异核对并把修正条目归三类：已实现文档化（R06/R09/R10/R02）/试点范围收窄表述（三项'留二期'）/纯增量需求（哈希口径、确认失效、业务方留痕等，走需求迭代+worktree）。另提示三份待确认表（meeting-45 八行、本次七行、评审补充）须汇总后再拍板。纯文档评审，未改代码/ontology/worktree。
-
-- 验证：源码核实已合并实现范围：workbench/ontology_build/parsers/（code.py 等8个解析器）、protocol.py:69 五类候选含 action、llm.py、review.py 候选id、alignment.py:131 同名保留待确认策略、delivery.py:319 内容哈希派生正式id；对话一致性：13:50 版发言1-36 与上轮13:34版逐字核对一致（上轮grep证据在案），材料版本同为 dcc52eb24f0e；旧导出文件已被清理，依据上轮评审时读取的原文核对；git show c2c98f2 确认仅含该评审文档 1 文件 88 行
-- 下一步：用户拍板前建议：先做修正清单 vs ab27442 差异核对（三类归类）、汇总三份待确认表、处理 R10 断言与确认机制圈定两件遗留；增量需求（哈希口径机制/确认失效/业务方留痕）如获采纳须按 AGENTS 流程走需求迭代与 worktree 开发，会议认领不构成实施授权
-- 依据/文档：文档/自动化构建续会5终版纪要评审_20260921.md；commit c2c98f2；main ab27442（已合并第一版实现）
