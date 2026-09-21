@@ -101,10 +101,32 @@ _JS_SEGMENT_OPEN = re.compile(r'<(template|script|style)\b([^>]*)>', re.I)
 _JS_SEGMENT_CLOSE = re.compile(r'</(template|script|style)\s*>', re.I)
 # 属性绑定：v-bind:x="expr" / :x="expr" / @ev="handler" / v-on:ev="handler" /
 # v-model(:x)?="expr" / v-if|v-else-if|v-show|v-for="expr"（只取引号内的表达式原文）
+# D18：引号配对改用命名反向引用 (?P=q)（旧写法 \4 指到 @on2 组，闭合引号判定错位）；
+# directive 组保留指令原文供证据展示；修饰符（.native/.stop）纳入参数名。
+_VUE_ARGUMENT = r'[\w\-]+(?:\.[\w\-]+)*'
 _TEMPLATE_BINDING = re.compile(
-    r'(?:v-bind:(?P<bind>[\w\-]+)|:(?P<bind2>[\w\-]+)|v-on:(?P<on>[\w\-]+)|@(?P<on2>[\w\-]+)'
-    r'|v-model(?::(?P<model>[\w\-]+))?|v-(?P<dir>if|else-if|show|for))\s*=\s*([\'"])(?P<expr>.*?)\4')
+    r'(?:(?:^|(?<=[\s>]))(?P<directive>v-bind:(?P<bind>' + _VUE_ARGUMENT + r')'
+    r'|:(?P<bind2>' + _VUE_ARGUMENT + r')'
+    r'|v-on:(?P<on>' + _VUE_ARGUMENT + r')|@(?P<on2>' + _VUE_ARGUMENT + r')'
+    r'|v-model(?::(?P<model>[\w\-]+))?|v-(?P<dir>if|else-if|show|for)))'
+    r'\s*=\s*(?P<q>[\'"])(?P<expr>.*?)(?P=q)')
 _TEMPLATE_EXPR = re.compile(r'\{\{\s*([^}]{1,120}?)\s*\}\}')
+# Vue 表达式里的字符串字面量（提取标识符前先抹掉，避免把引号内容当字段）
+_VUE_STRING_SPAN = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:\\.|[^`\\])*`')
+_VUE_TOKEN = re.compile(r'[A-Za-z_$][\w$]*')
+# 不是业务字段的 JS 关键字/宿主全局（Vue 内置 $ 前缀成员一并排除）
+_VUE_NON_FIELD_TOKENS = frozenset({
+    'true', 'false', 'null', 'undefined', 'NaN', 'Infinity', 'if', 'else', 'in', 'of', 'new',
+    'typeof', 'instanceof', 'void', 'delete', 'return', 'function', 'arrow', 'this', 'super',
+    'await', 'async', 'yield', 'try', 'catch', 'finally', 'throw', 'switch', 'case', 'default',
+    'do', 'while', 'for', 'break', 'continue', 'let', 'const', 'var', 'class', 'extends',
+    'Math', 'Date', 'JSON', 'Object', 'Array', 'String', 'Number', 'Boolean', 'RegExp',
+    'Promise', 'Map', 'Set', 'console', 'window', 'document', 'globalThis', 'process',
+    'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'encodeURIComponent', 'decodeURIComponent',
+    # v-for 局部别名（不是业务字段，出现即忽略；真实字段在同表达式的集合里）
+    'item', 'items', 'index', 'row', 'rows', 'key', 'scope',
+})
+MAX_EXPRESSION_IDENTIFIERS = 12   # 单条绑定最多提取的根标识符数（防噪声）
 
 _PY_CLASS = re.compile(r'^(\s*)class\s+([A-Za-z_][\w]*)\s*(?:\(([^)]*)\))?\s*:')
 _PY_FUNC = re.compile(r'^(\s*)(?:async\s+)?def\s+([A-Za-z_][\w]*)\s*\(([^)]*)\)')
@@ -992,6 +1014,47 @@ def _vue_segments(content, rel, sink):
                  {'tag': segment['tag'], 'startLine': segment['start'], 'endLine': segment['end'],
                   'attrs': segment['attrs']}, 'high')
     return segments
+
+
+def _directive_name(match):
+    """模板绑定所属指令原文（`v-bind:x` / `:x` / `@click` / `v-model` / `v-if` …）。
+
+    D18：本函数与 `_expression_identifiers` 之前被调用却未定义，任何含模板绑定的 .vue
+    都会在 `_template_facts` 处抛 NameError，被 `parse` 兜底转成整份文件解析失败。
+    """
+    return (match.group('directive') or '').strip()
+
+
+def _expression_identifiers(expression):
+    """Vue 表达式里的根标识符（字段使用证据）。
+
+    规则（保守，宁缺不造）：
+    * 先抹掉字符串/模板字面量，引号内内容不算标识符；
+    * 前面紧跟 `.` 的是属性/方法访问，宿主对象才是线索（`form.name` → `form`）；
+    * `$` 前缀（`$emit`/`$props`/`$event`）、JS 关键字与宿主全局、`v-for` 局部别名忽略；
+    * 紧跟 `:` 的按对象字面量的键忽略（`{ active: flag }` → 只留 `flag`；
+      代价是三元 `ok ? a : b` 的 `a` 也被当作键忽略）；
+    * 紧跟 `(` 的按函数/方法调用忽略（`save()`、`isValid(x)` → 只留 `x`）。
+    返回按出现顺序去重的标识符列表，最多 `MAX_EXPRESSION_IDENTIFIERS` 个。
+    """
+    blanked = _VUE_STRING_SPAN.sub(lambda m: ' ' * len(m.group(0)), str(expression or ''))
+    names = []
+    for token in _VUE_TOKEN.finditer(blanked):
+        name = token.group(0)
+        start, end = token.start(), token.end()
+        if start > 0 and blanked[start - 1] == '.':
+            continue
+        if name.startswith('$') or name in _VUE_NON_FIELD_TOKENS:
+            continue
+        if re.match(r'^\s*:(?![:=])', blanked[end:]):
+            continue
+        if blanked[end:end + 1] == '(':
+            continue
+        if name not in names:
+            names.append(name)
+        if len(names) >= MAX_EXPRESSION_IDENTIFIERS:
+            break
+    return names
 
 
 def _template_facts(content, rel, sink, segments):

@@ -39,12 +39,16 @@ _HTML_BLOCK = re.compile(r'^\s*<(/?)([A-Za-z][\w-]*)(\s[^>]*)?/?>')
 
 
 def _unite_table_row(row_text):
-    """拆分管表格行；支持 `\\|` 转义。"""
+    """拆分管表格行；支持 `\\|` 转义。
+
+    行首的 `|` 是行标记而不是空单元格：从第 2 个字符开始切分（D18 表格内容修正——
+    旧实现会把首列拆成一个恒为空的幽灵列，表头与列名对应关系整体错位一列）。
+    """
     if not row_text.startswith('|'):
         return []
     cells = []
     buf = []
-    index = 0
+    index = 1
     text = row_text
     while index < len(text):
         char = text[index]
@@ -87,7 +91,7 @@ def parse(path, material_id, rel_path=''):
     fence_start = 0
     fence_language = ''
     table_buf = []
-    table_start = 0
+    table_start = 0            # 当前表格首行行号（D18：必须随表格开始真实赋值，不得留 0）
     front_matter_done = False
 
     def section_path():
@@ -110,26 +114,36 @@ def parse(path, material_id, rel_path=''):
     def flush_table():
         if not table_buf:
             return
-        rows = [_unite_table_row(item['raw']) for item in table_buf]
-        rows = [row for row in rows if row]
-        header = rows[0] if rows else []
-        body = rows[1:] if len(rows) > 1 else []
-        width = max((len(row) for row in rows), default=0)
+        # 定位行以缓冲里第一条记录的真实行号为准（D18：table_start 曾未赋值 → line=0）
+        start = table_buf[0]['line'] or table_start
+        # 对齐分隔行（`| --- | --- |` / `--- | ---`）不是数据行：剔除后再编号，
+        # 同时将行号随单元格行一起携带，保证 locator 指向原文真实行（D18）。
+        data, separator_line = [], 0
+        for item in table_buf:
+            if item['separator']:
+                separator_line = separator_line or item['line']
+                continue
+            cells = _unite_table_row(item['raw'])
+            if cells:
+                data.append({'line': item['line'], 'cells': cells})
+        header = data[0]['cells'] if data else []
+        body = data[1:]
+        width = max((len(item['cells']) for item in data), default=0)
         counts['table'] += 1
         sink.add('md', {'kind': 'md', 'file': rel, 'section': section_path(),
-                        'line': table_start},
+                        'line': start},
                  ' | '.join(header)[:400] or '(空表头)', 'table',
                  {'header': header, 'rows': len(body), 'columns': width,
-                  'startLine': table_start,
-                  'endLine': table_buf[-1]['line'], 'separatorLine': table_buf[1]['line']
-                  if len(table_buf) > 1 else 0}, 'high')
+                  'startLine': start,
+                  'endLine': table_buf[-1]['line'], 'separatorLine': separator_line}, 'high')
         emitted = 0
-        for offset, row in enumerate(body, start=2):
+        for offset, entry in enumerate(body, start=2):
+            row = entry['cells']
+            row_line = entry['line'] or start
             if len(row) != width:
                 failed.append(failed_segment(
                     'block', {'kind': 'md', 'file': rel, 'section': section_path(),
-                              'line': table_buf[offset - 1]['line'] if offset - 1 < len(table_buf)
-                              else table_start},
+                              'line': row_line},
                     '表格行列数不齐（该行 %d 列，表宽 %d 列）：未猜测缺失单元格。'
                     % (len(row), width)))
             for index, cell in enumerate(row, start=1):
@@ -141,8 +155,7 @@ def parse(path, material_id, rel_path=''):
                 emitted += 1
                 column_name = header[index - 1] if index - 1 < len(header) else ''
                 sink.add('md', {'kind': 'md', 'file': rel, 'section': section_path(),
-                                'line': table_buf[offset - 1]['line'] if offset - 1 < len(table_buf)
-                                else table_start},
+                                'line': row_line},
                          ('%s：%s' % (column_name, cell) if column_name else cell)[:400],
                          'tableCell',
                          {'row': offset, 'column': index, 'columnName': column_name,
@@ -198,10 +211,14 @@ def parse(path, material_id, rel_path=''):
             next_line = lines[number] if number < total else ''
             if table_buf or _TABLE_SEPARATOR.match(next_line):
                 flush_paragraph()
-                table_buf.append({'raw': line, 'line': number})
+                if not table_buf:
+                    table_start = number      # 表格首行：真实起始行（locator 与 startLine 用）
+                # 对齐分隔行也以 `|` 开头：必须单独标记，否则会被当成第一条数据行（D18）
+                table_buf.append({'raw': line, 'line': number,
+                                  'separator': bool(_TABLE_SEPARATOR.match(line))})
                 continue
         if _TABLE_SEPARATOR.match(line) and table_buf:
-            table_buf.append({'raw': line, 'line': number})
+            table_buf.append({'raw': line, 'line': number, 'separator': True})
             continue
 
         setext = _SETEXT.match(line)

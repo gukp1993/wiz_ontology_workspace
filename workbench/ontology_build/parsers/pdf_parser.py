@@ -73,17 +73,31 @@ def _page_lines(text):
 
 
 def parse(path, material_id, rel_path=''):
-    """解析 PDF：逐页文本事实 + 扫描页失败报告。"""
+    """解析 PDF：打开文件后交给 `_extract` 逐页提取。"""
     rel = rel_of(path, rel_path)
     library, library_name = _load_library()
     if library is None:
         return failure('未安装 PDF 解析库，请安装 pypdf')
-
     try:
-        with open(str(path), 'rb') as handle:
-            reader = library.PdfReader(handle)
-    except FileNotFoundError as exc:
+        handle = open(str(path), 'rb')
+    except (OSError, IOError) as exc:
         return failure('读取文件失败：%s' % exc)
+    try:
+        # pypdf 惰性读取：文件句柄必须存活到解析结束。旧实现用 `with open(...)` 构造
+        # PdfReader 后就关闭句柄，任何文本型 PDF 都会在取页数时抛「seek of closed file」
+        # → 整份材料失败（D15：文本型 PDF 在交付环境不可用）。
+        return _extract(library, library_name, handle, rel, material_id)
+    finally:
+        try:
+            handle.close()
+        except Exception:  # noqa: BLE001 - 关闭失败不得覆盖解析结果
+            pass
+
+
+def _extract(library, library_name, handle, rel, material_id):
+    """在句柄保持打开的前提下逐页提取文本并产出事实。"""
+    try:
+        reader = library.PdfReader(handle)
     except Exception as exc:  # noqa: BLE001 - 损坏/加密/未知结构必须显式失败
         return failure('打开 PDF 失败（文件可能损坏或结构不受支持）：%s: %s'
                        % (exc.__class__.__name__, str(exc)[:200]))

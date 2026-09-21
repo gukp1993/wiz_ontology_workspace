@@ -7,6 +7,8 @@
   含富文本 `r/t`）、`xl/worksheets/sheetN.xml`（`<c r="B3" t="s|str|inlineStr|b|e|n">`、
   `<v>` 缓存值、`<f>` 公式文本、`<is>` 内联字符串、合并单元格 `<mergeCell>`、`dimension`）。
   产出：sheet 名、表头行（首个非空行）与列名、每个非空单元格（A1 坐标）、公式文本与缓存值。
+  部件读取走 `zipguard.CappedZipFile`：按**实际解压字节**计数封顶（单部件 + 整包累计），
+  不信任 header 声明值，超限显式失败而不是解压进内存（D12 解析侧）。
 * 降级（写入 notes / warnings / failedSegments）：
   - `<f>` 有公式但无 `<v>` 缓存 → 事实 quality='low' 且 `formulaCacheMissing=True`，
     标注「缺公式缓存，不当作计算结果」，**不自行计算公式**。
@@ -31,6 +33,7 @@ import xml.etree.ElementTree as ET
 
 from workbench.ontology_build.parsers.base import failure
 from workbench.ontology_build.parsers import textline
+from workbench.ontology_build.parsers import zipguard
 from workbench.ontology_build.parsers.textline import FactSink, failed_segment, finish, rel_of
 
 NS = '{http://schemas.openxmlformats.org/spreadsheetml/2006/main}'
@@ -84,6 +87,8 @@ def _shared_strings(archive, names):
         return [], ''
     try:
         root = xml_root(archive.read('xl/sharedStrings.xml'))
+    except zipguard.ZipBombDetected:
+        raise                  # 解压预算耗尽：整份工作簿不可信，交由上层显式失败
     except Exception as exc:  # noqa: BLE001 - 损坏的共享字符串必须显式报告
         return [], '共享字符串表（xl/sharedStrings.xml）解析失败：%s: %s' \
                    % (exc.__class__.__name__, str(exc)[:160])
@@ -235,6 +240,8 @@ def _number_formats(archive, names):
         return {}
     try:
         root = xml_root(archive.read('xl/styles.xml'))
+    except zipguard.ZipBombDetected:
+        raise                  # 解压预算耗尽属于安全边界，不能被样式表降级吞掉
     except Exception:  # noqa: BLE001 - 样式表损坏不影响单元格值
         return {}
     custom = {}
@@ -277,7 +284,7 @@ def parse(path, material_id, rel_path=''):
     sink = FactSink(material_id)
     notes, failed, warnings = [], [], []
     try:
-        with zipfile.ZipFile(str(path)) as archive:
+        with zipguard.open_capped(str(path)) as archive:
             names = set(archive.namelist())
             if 'xl/workbook.xml' not in names:
                 return failure('不是有效的 XLSX（缺少 xl/workbook.xml）。')
@@ -325,6 +332,8 @@ def parse(path, material_id, rel_path=''):
                     continue
                 try:
                     root = xml_root(archive.read(sheet['path']))
+                except zipguard.ZipBombDetected:
+                    raise      # 解压预算耗尽：继续解析其他 sheet 也不会得到可信结果
                 except Exception as exc:  # noqa: BLE001 - 单 sheet 失败不中断其他 sheet
                     failed.append(failed_segment(
                         'sheet', {'kind': 'xlsx', 'file': rel, 'sheet': sheet['name'], 'cell': ''},
@@ -407,6 +416,12 @@ def parse(path, material_id, rel_path=''):
                 if truncated:
                     break
 
+    except zipguard.ZipBombDetected as exc:
+        message = 'XLSX 解压超过安全上限，读取已中止：%s' % exc
+        return failure(message, coverage={
+            'modules': ['xlsx'], 'notes': [message, zipguard.limit_note()],
+            'failedSegments': [failed_segment(
+                'document', {'kind': 'xlsx', 'file': rel, 'sheet': '', 'cell': ''}, message)]})
     except zipfile.BadZipFile as exc:
         return failure('XLSX 不是有效的 ZIP 包：%s' % exc)
     except (OSError, IOError) as exc:
@@ -421,6 +436,7 @@ def parse(path, material_id, rel_path=''):
         notes.append('公式单元格 %d 个（缺缓存 %d 个）：公式文本与缓存值均按原文保留，公式未执行。'
                      % (formula_total, formula_missing))
     notes.append('已解析 %d 个 sheet；定位为「sheet + 单元格坐标（A1）」，表头行取每 sheet 首个非空行。' % len(sheets))
+    notes.append(zipguard.limit_note())
     notes.append('未执行：不计算公式、不执行宏、不打开外链工作簿、不访问网络、不依赖 openpyxl。')
     if not sink.facts:
         return finish(sink, ['xlsx'], notes + ['工作簿中没有可读单元格。'], failed, partial=True,

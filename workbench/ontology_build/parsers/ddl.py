@@ -484,7 +484,10 @@ def parse(path, material_id, rel_path=''):
                              % (table, len(columns), MAX_COLUMNS_PER_TABLE))
                 columns = columns[:MAX_COLUMNS_PER_TABLE]
                 partial = True
-            column_lines = _column_line_map(lines, body_start, body_end, columns)
+            # 列 / 约束 / 未识别条目共用同一套行号映射（D18：约束定位曾一律落到 body 起始行）
+            column_lines = _column_line_map(
+                lines, body_start, body_end,
+                [entry['text'] for entry in columns] + list(constraints) + list(unrecognized))
             data['columns'] = [entry['name'] for entry in columns]
             data['columnCount'] = len(columns)
             if not columns:
@@ -690,17 +693,30 @@ def _table_options_text(lines, statement_end, tail):
     return (str(tail or '') + ' ' + after).strip()
 
 
-def _column_line_map(lines, body_start, body_end, columns):
-    """列定义文本 → 出现行号（用去注释后的原文行定位，保持行号真实）。"""
+def _column_line_map(lines, body_start, body_end, items):
+    """表体条目原文 → 起始行号（用去注释后的原文行定位，保持行号真实）。
+
+    D18 定位修正：旧实现只为**列**建映射，表级约束与未识别条目一律落回 body 起始行——
+    行号不真实，且同一行上的多个约束事实会因 locator+snippet 相同而被 FactSink 去重吞掉
+    （表现为主键约束“吃掉”同表的 UNIQUE KEY 事实）。现在按条目原文前缀在 body 行内匹配，
+    列 / 约束 / 未识别条目共用同一套真实行号。
+    """
     mapping = {}
-    for entry in columns:
-        needle = entry['name']
-        if not needle:
+    window = range(body_start, min(body_end + 1, len(lines) + 1))
+    normalized = {}
+    for number in window:
+        normalized[number] = ' '.join(str(lines[number - 1] or '').split())
+    for item in items:
+        head = ' '.join(str(item or '').split()).strip()
+        if not head:
             continue
-        pattern = re.compile(r'(?:^|[\s,`"\[])%s(?:[`"\]]|\s)' % re.escape(needle))
-        for number in range(body_start, min(body_end + 1, len(lines) + 1)):
-            if pattern.search(_mask_strings(lines[number - 1])):
-                mapping[entry['text']] = number
+        probe = head[:60]
+        for number in window:
+            text = normalized[number]
+            if not text:
+                continue
+            if probe in text or text in head:
+                mapping[str(item)] = number
                 break
     return mapping
 
@@ -729,12 +745,14 @@ def _constraint_facts(sink, rel, content, constraint, line, table, schema):
         return
     foreign = _FK.search(text)
     if foreign:
+        # D18：_FK 全部是命名捕获组（cname/cols/table/refcols/actions），
+        # 早先用 group(1)/(3)/(4) 取列，实际取到的是约束名/目标表/引用列 → 错位。
         target_table, target_schema = _table_name(foreign.group('table'))
-        columns = _column_names(foreign.group(1))
-        ref_columns = _column_names(foreign.group(3) or '')
+        columns = _column_names(foreign.group('cols') or '')
+        ref_columns = _column_names(foreign.group('refcols') or '')
         actions = {}
         for match in re.finditer(r'ON\s+(DELETE|UPDATE)\s+(RESTRICT|CASCADE|SET\s+NULL|NO\s+ACTION|'
-                                 r'SET\s+DEFAULT)', foreign.group(4) or '', re.I):
+                                 r'SET\s+DEFAULT)', foreign.group('actions') or '', re.I):
             actions[match.group(1).upper()] = re.sub(r'\s+', ' ', match.group(2).upper())
         sink.add('ddl', _loc(rel, line, table, columns[0] if columns else ''),
                  textline.snippet_span(content, line, None, 1), 'fk',

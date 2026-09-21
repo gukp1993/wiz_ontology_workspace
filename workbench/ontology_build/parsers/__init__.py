@@ -17,7 +17,10 @@ REGISTRY / parse 已冻结，本包不改动它）。适配器只产出带精确
 安全边界（所有适配器共同遵守）：
 * 纯标准库 + 可选 pypdf/PyPDF2（PDF 专用；缺失时返回 failure 且绝不 pip install）。
 * 绝不执行材料：不 eval/exec、不运行代码或 SQL、不执行公式/宏、不打开外链、不访问网络。
-* docx/xlsx 在解析前先调用 `materials.zip_bomb_guard`（若该模块缺失则跳过守卫，不因此失败）。
+* docx/xlsx 在解析前先调用 `materials.zip_bomb_guard`（若该模块缺失则跳过守卫，不因此失败）；
+  该守卫依据 ZIP 目录里的声明值（条目数、声明展开总量、单条目压缩比），声明值可被打包方伪造，
+  所以部件读取另由 `parsers/zipguard.py` 按**实际解压字节**封顶
+  （单部件 64 MiB、整包累计 `protocol.ZIP_EXPANDED_BYTES`），超限显式失败（D12）。
 * 单文件事实数受 `protocol.MAX_FACTS_PER_MATERIAL` 限制，超出截断并在 coverage.notes 说明。
 * 每个失败/降级都进入 `ParseResult.coverage['failedSegments']` 或 `warnings`，绝不静默跳过。
 """

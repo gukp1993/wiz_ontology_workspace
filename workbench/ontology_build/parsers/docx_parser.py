@@ -5,6 +5,8 @@
 * 支持：用标准库 `zipfile` + `xml.etree.ElementTree` 直读 `word/document.xml`，按文档顺序
   产出段落（`w:p`）、标题（`w:pStyle` 含 `Heading`/`heading`/中文“标题 N” → 层级）、
   表格（`w:tbl` → 行 `w:tr` / 单元格 `w:tc` 文本矩阵），合并单元格按 `w:gridSpan` 标注跨度。
+  部件读取一律走 `zipguard.CappedZipFile`：按**实际解压字节**计数封顶（不信任 header 声明值），
+  超限显式 failure，不会把伪造声明值的 DOCX 解压进内存（D12 解析侧）。
 * 降级（写入 notes / failedSegments / warnings）：
   - `.doc`（OLE 复合文档魔数 D0 CF 11 E0）→ 直接返回 failure('旧版 .doc 建议转换为 .docx 后上传')。
   - 非 docx（无 `word/document.xml`）→ failure 明确原因。
@@ -25,6 +27,7 @@ import xml.etree.ElementTree as ET
 
 from workbench.ontology_build.parsers.base import failure
 from workbench.ontology_build.parsers import textline
+from workbench.ontology_build.parsers import zipguard
 from workbench.ontology_build.parsers.textline import FactSink, failed_segment, finish, rel_of
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
@@ -152,7 +155,7 @@ def parse(path, material_id, rel_path=''):
     sink = FactSink(material_id)
     notes, failed, warnings = [], [], []
     try:
-        with zipfile.ZipFile(str(path)) as archive:
+        with zipguard.open_capped(str(path)) as archive:
             names = set(archive.namelist())
             if not _has_document_part(names):
                 return failure('不是有效的 DOCX（缺少 word/document.xml，可能是 .doc 改名或其他 OOXML 文档）。')
@@ -166,6 +169,12 @@ def parse(path, material_id, rel_path=''):
                 'embeddings': sorted(name for name in names if name.startswith('word/embeddings/')),
                 'media': sorted(name for name in names if name.startswith('word/media/')),
             }
+    except zipguard.ZipBombDetected as exc:
+        message = 'DOCX 解压超过安全上限，读取已中止：%s' % exc
+        return failure(message, coverage={
+            'modules': ['docx'], 'notes': [message, zipguard.limit_note()],
+            'failedSegments': [failed_segment(
+                'document', {'kind': 'docx', 'file': rel, 'section': '', 'block': 0}, message)]})
     except zipfile.BadZipFile as exc:
         return failure('DOCX 不是有效的 ZIP 包：%s' % exc)
     except (OSError, IOError) as exc:
@@ -313,6 +322,7 @@ def parse(path, material_id, rel_path=''):
         notes.append('图片 %d 个：未做图像内容识别（不宣称解析图片中的文字）。' % len(extras['media']))
 
     notes.append('已按文档顺序处理 %d 个块（段落 %d、表格 %d）。' % (blocks, paragraph_count, table_count))
+    notes.append(zipguard.limit_note())
     notes.append('定位为「标题路径 + 块序号」（DOCX 无稳定页码），标题层级来源已在 heading 事实的 '
                  'levelSource 中标注。')
     if not sink.facts:
