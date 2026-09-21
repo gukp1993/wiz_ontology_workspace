@@ -3,7 +3,7 @@
             经 emit navigate(view, {type|property|contract}) 跳对象建模/契约页并 focus）；
      区块② 发布本体版本（变更说明 + 变更类型（publish-check 服务端分类驱动，破坏性禁兼容）
             + 业务验收记录 +「确认发布」；有阻断校验问题时禁用并说明原因）；
-     区块③ 历史版本（真实版本清单 manifest 信息 + 恢复快照；仅在真实成功后刷新）。
+     区块③ 历史版本（真实版本清单 manifest 信息 + 迁移导入的快照恢复；仅在真实成功后刷新）。
      协议（任务板 §2 冻结）：
      props：state — 当前本体草稿（JSON-LD 内存形态，含 workspaceId）。
      emits：before-change / changed — 预留（本组件不改内存）；published — 发布或恢复快照成功后发出，
@@ -105,7 +105,7 @@ const reasonSections=computed(()=>{
 })
 const changeLabels:Record<string,string>={initial:'初始版本',compatible:'兼容变更',breaking:'破坏性变更',pending:'待人工确认'}
 
-// --- 卡3：版本注册表 + 历史快照（zip，可恢复；快照收进底部折叠）---
+// --- 卡3：版本注册表（/api/versions）+ 迁移导入的快照（/api/releases 的 ZIP 工件，可恢复；收进底部折叠）---
 const versions=ref<any[]>([]),snapshots=ref<string[]>([]),versionError=ref('')
 async function loadLists(){
   versionError.value=''
@@ -180,7 +180,7 @@ async function verifyPublished(){
   if(added.length)publishUnknown.value=false
 }
 
-// --- 历史快照恢复：confirm 后执行；成功 emit('published') 并整页刷新（见文件头说明）---
+// --- 迁移导入快照的恢复：confirm 后执行；成功 emit('published') 并整页刷新（见文件头说明）---
 const restoring=ref('')
 async function restore(name:string){
   if(restoring.value)return
@@ -259,7 +259,7 @@ async function restore(name:string){
   </div>
   <div class="card">
     <div class="panelhead"><div><h2>已发布版本</h2>
-      <p class="muted">项目侧主动升级后即固定引用该版本；每个版本都是不可变快照。</p></div></div>
+      <p class="muted">项目侧主动升级后即固定引用该版本；版本一经发布即不可变。</p></div></div>
     <p v-if="versionError" class="inline-error">{{versionError}}</p>
     <template v-if="versions.length">
       <div v-for="v in versions" :key="v.version" class="version-card">
@@ -276,14 +276,14 @@ async function restore(name:string){
       <span class="empty-state-ico">⚑</span>
       <p>尚未发布任何版本。完成检查后，在上方发布第一个版本。</p>
     </div>
-    <details class="snapshot-details"><summary>历史快照（{{snapshots.length}}）</summary>
-      <p class="muted">每次发布都会留一份完整快照。恢复会把快照写回当前草稿（现有草稿自动备份），不影响已发布版本。</p>
+    <details class="snapshot-details"><summary>迁移导入的快照（{{snapshots.length}}）</summary>
+      <p class="muted">此处列出的是迁移导入的历史快照（release-ZIP 工件），恢复会把快照写回当前草稿（现有草稿自动备份）。在线发布的版本保存在上方「已发布版本」列表中，不会出现在这里，也不能在此处恢复。</p>
       <AppError v-if="restoreError" :compact="true" title="恢复快照未完成" :reason="restoreError" hint="已发布版本与当前草稿都未被破坏；处理原因后可重试。" retry-label="知道了" @retry="restoreError=''"/>
       <template v-if="snapshots.length">
         <div v-for="s in snapshots" :key="s" class="issue-row"><span>{{s.replace('.zip','')}}</span>
           <button class="go-fix" :disabled="!!restoring" @click="restore(s)">{{restoring===s?'恢复中…':'恢复此快照'}}</button></div>
       </template>
-      <p v-else class="muted">暂无历史快照。</p>
+      <p v-else class="muted">暂无迁移导入的快照。在线发布的版本不会出现在这里，请查看上方「已发布版本」列表。</p>
     </details>
   </div>
 </div>
