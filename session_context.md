@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`223e38e459242834`
+上下文版本：`c67b01d0d4af9b86`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,6 +22,28 @@
 
 ## 最近交接（新 → 旧）
 
+### ontology-build-v2-governance（V2-2～V2-8，worktree/build-governance） · zcode · 已实施，待验收
+
+时间：2026-09-21T18:23:33.627452+00:00；记录：`.collaboration/entries/000170-67bc10856624.json`
+
+V2 六项增量全部实施并逐项提交（基于 425a28d，分支 codex/build-governance）：5373176 G20 格式黑名单三层（blacklist.py+build-task-filter+view=filter 过滤报告+422 BLACKLISTED+迁移 20260921_0004）；186a080 G18 图片/OCR（kind=image+image_parser/ocr_support+扫描页 PDF OCR 路径+capabilities ocr 动态探测）；04bf5da G19 LLM 兜底三级分派（llm.fallback_parse+限额+弱证据 LLM_FALLBACK_EVIDENCE 降级）；07c7bd1 G23 生成断点续跑（批次检查点+resumeMode auto/abstract+基线约束+失败/重启状态回退 scope+回退后重试成功恢复 review）并收敛 finish_guard 场景1 至 §12.3 语义；f5f7a96 G17 上传断点续传+G21 大文件夹软引导（纯前端）；26ff8e8 lint 清理。08 分册契约先行并同 commit 更新（§2.2/§4.3/§13 新增，§1/§2/§4/§5/§12 扩展，README/05 登记）。G22 单物料重试/排除与 G24 级联删除为既有实现，本轮补验证（flow_image_ocr + task_purge 11/11）。
+
+- 决定：黑名单硬层为安全边界不可配置，白名单只能越过软/自定义层；ZIP 既有排除口径（密钥/构建产物/大二进制）显式收口为硬规则；LLM 兜底限额按「每轮扫描 200 文件/50MB」实现（需求原文「单任务」；扫描复用成功材料，实际增量消耗近似任务级，已在 08 §4.3 如实表述）；G23 语义收敛：有失败批次时 generate 运行改判 failed（此前部分批失败仍 succeeded 无入口可续跑）；generate failed/取消/重启中断时任务 generating→scope，回退后重试成功且基线未变恢复 review；finish_guard 场景1 断言按 08 §12.3 取消回退语义更新（该测试自 fca1f2b 起与旧断言冲突，属既有漂移非本轮引入）；G17 已知边界如实登记：续传状态在页面内存，刷新页面丢失 uploadId 按新上传处理（服务端 TTL 有界清理）
+- 验证：tests/test_ontology_build.py 222/222（基线 163 项+新增 59 项：G20 13 项/G18 13 项/G19 12 项/G23 12 项等，含正反路径）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 11/11、exclusion_inheritance 17/17、merge_refs 42/42；test_storage_contract 60/60、test_storage_transfer 27/27（20260921_0004 迁移实测 0003→0004 升级+重复 upgrade 幂等）；vue-tsc 0 错误、npm run build 通过；ontology_build_upload_filter.test.mjs 8/8、ontology_build_frontend.test.mjs 通过；ruff check 对本轮全部改动文件通过
+- 下一步：待 Codex 独立验收（本报告为 zcode 自测，不替代验收）；浏览器点击级验收点：物料页过滤报告区、进度页失败入口与「重试失败批次/从 abstract 阶段重试」、上传中断续传、大文件夹软引导层；真实 tesseract OCR 与扫描版 PDF 识别质量未验证（环境无 tesseract/poppler，成功路径经假 OCR 注入验证）；LLM 兜底真实模型语义质量未验证（假模型验证协议与降级路径）；规模限额校准、G16 样本验证维持既有未验证状态；集成合并仍按流程等用户明确指令
+- 依据/文档：worktree/build-governance 分支 codex/build-governance 5373176/186a080/04bf5da/07c7bd1/f5f7a96/26ff8e8；文档/接口文档/08-从物料自动构建本体接口.md §2.1/§2.2/§4.3/§5/§12.5/§12.6/§13；文档/需求/20260920_从物料自动构建本体/开发计划.md §12（含 V2-8 现状核对结论）
+
+### 三项增量实现完成（用户改回由 zcode 继续）+ 生成实测后台运行中 · zcode · 已实施，待验收
+
+时间：2026-09-21T08:38:08.183946+00:00；记录：`.collaboration/entries/000169-27668660677a.json`
+
+用户改回由 zcode 完成。任务一三项增量代码完成并提交：fca1f2b（后端分组/分页/purge/取消回退+21 项测试）、37eae0b（前端后缀过滤/分组浏览/停止与级联确认+8 项测试）。契约 08 §12 于 9e66460 预先冻结。创智源生成实测后台运行中（jsonId 实测由后台子 agent 并行跑）。18881 未重启——等两个生成任务跑完再做集成重启与浏览器实测。
+
+- 决定：分组口径：按 relPath 顶层目录聚合（folder=''=根目录），聚合恒加载，分组视图默认、平铺分页切换、详情弹层 100/页。；删除语义改为级联物理清理（任务行+11 张关联表+blob 文件），已交付本体草稿保留；文件删除在事务提交后进行且失败不回滚。；后缀过滤为前端选择时过滤（白名单归一：中文分号/顿号分隔、大小写、连续点），展示选中/上传/跳过计数。
+- 验证：新增回归：materials_views 10/10、task_purge 11/11（含已交付本体保留、blob 文件删除、跨账号隔离）；upload_filter 8/8。；回归不退化：test_ontology_build、late_write、merge_refs、review_edit、ontology_build_frontend 全过；vue-tsc 0 错误、npm run build 通过。
+- 下一步：等创智源（retrieve 27.6 万事实筛选中——试点规模校准的真实性能数据点）与 jsonId 两个生成完成后：重启 18881 加载新前端与后端，浏览器实测三项功能，再交 Codex 验收。；检索阶段性能建议作为规模校准专项数据点。
+- 依据/文档：提交：fca1f2b（后端）、37eae0b（前端）；分支 codex/build-governance；契约：文档/接口文档/08-从物料自动构建本体接口.md §12（9e66460 冻结）；测试：tests/test_ontology_build_materials_views.py、tests/test_ontology_build_task_purge.py、tests/ontology_build_upload_filter.test.mjs
+
 ### 仓库架构整理与代码规范（codex/repo-cleanup）集成合并 main 与清理 · zcode · 已验证
 
 时间：2026-09-21T07:26:33.650100+00:00；记录：`.collaboration/entries/000168-4cc55cd1adf8.json`
@@ -32,17 +54,6 @@
 - 验证：main 3debc02：tracked ontology=0/.idea=0/总数883；磁盘 ontology=995(=基线)/.idea=6(=基线)；除他人暂存重组外无本任务残留；组合验证：ruff All checks passed、eslint exit 0、build 4.02s、TS 6/6、quick 3/3、all 48/49（pypdf 缺口 main 对照 83/85 同败）；无盘失败定位：集成树合并后 ontology/ 被 checkout 删除致 5 用例败，恢复磁盘后全过——纯磁盘种子缺失非代码回归；合并构成：996 D=991+5；Palantir 对照表 D+A 系 rename 断裂假象（新路径与 main 版 diff 为空）；69 R100=备份改名；非目标删除 0；端口18941无监听、两树无进程；18765 HTTP 200 未动
 - 下一步：主工作台 18765 运行合并前代码，更新需另行授权（build+重启）；新克隆环境测试种子依赖建议立项专项（测试自含种子或跳过守卫）；main 备份 data/workbench-before-build-migration-20260921-143248.sqlite3 保留
 - 依据/文档：main 链：5755e72→a4dd4e6→3debc02(含 merge 1279542)；被合并 codex/repo-cleanup@2c6a44d；文档/需求/20260921_仓库架构整理与代码规范/；验收记录提交 b3e912b/5a47ede
-
-### 自动化构建评审系列文档归档至独立目录（用户指令） · zcode · 已实施，待验收
-
-时间：2026-09-21T07:25:13.083100+00:00；记录：`.collaboration/entries/000167-6fcf5213d39d.json`
-
-按用户指令新建 文档/本体自动化构建评审_20260921/ 目录，git mv 收拢七份系列文档（R01-R10 讨论方案评审、续会4/5/5终版/6/7 纪要评审、方向整合与讨论议程），commit e2dafe0。移动后修正跨目录相对链接（](需求/ → ](../需求/、](本体建设思路 → ](../本体建设思路），全目录 md 链接逐一校验可解析（仅 Downloads 绝对路径为历史溯源标注、原文件已被用户清理，保持原值不修）。新增 README.md 索引：七份文档阅读顺序与关系表（评审对象+核心结论一栏）、当前状态与下一步（A1 待裁决对续会7三态草稿拍板、C1 衔接 build-governance worktree 18881、D1 收尾文档待指令、导出工具缺陷五次以完整对话为准）、目录外关联文档（需求说明/本体建设思路/推进计划表）。移动前全仓库引用核查：系列路径仅被文档自身与 session_context.md（自动生成不手改）引用，AGENTS/推进计划表等无引用，无断链风险。纯文件组织无内容改动；git mv 保留历史（部分文件因链接修正内容变化被识别为 rename 98-100%，log --follow 可追溯）。
-
-- 验证：移动前 grep 全仓库（排除 entries/worktree/node_modules/dist）：七份文档路径仅被自身与 session_context.md 引用；链接校验循环：目录内全部 .md 相对链接逐条解析，仓库内 0 断链；三条 Downloads 绝对路径为溯源标注（原导出件已被清理），非本次移动造成；git show e2dafe0：8 文件 496 增 1 删（7 份 git mv + README 新建）
-- 下一步：后续本系列新评审文档（如 meeting-49+）直接归档到该目录并更新 README 关系表；A1 裁决/C1 立项/D1 收尾文档等下一步不变，引用路径以新目录为准
-- 依据/文档：文档/本体自动化构建评审_20260921/；commit e2dafe0
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### meeting-48 续会7纪要评审并产出 A1 裁决前置草稿（本体自动化构建） · zcode · 已实施，待验收
 
@@ -139,13 +150,3 @@
 - 验证：B 核心证据：git ls-tree -r d7f79ce | grep -c ^ontology/ = 991；git show d7f79ce --name-status | grep -c '^D.*ontology' = 0；git ls-files | wc -l = 1858；基线 b4a56a9 树 = 1852；.gitignore 第 10/11 行有 /ontology/ 与 .idea/；A：评审与纪要 6/概念与说明 4/交付物顶层 md 8/归档同名残留 0/设计方案 rename 历史连续（b8627db←ddc4d31）/AGENTS 与 README 全部文档引用存在；C：ruff 'All checks passed!'；npm run lint exit 0；npm run build 3.77s；tests/run.py quick 3/3；D：run.py all 48/49（败=test_ontology_build_parsers 2×D15）；main 树同文件 83/85 同 2 项败；6 个 TS 套件全 OK；语义抽查 6 条全过（model_routes import/test_mapping_descriptions 版本号返回/FlowEditor 影子移 watch/LinkMappings :title/eeb7097 bridgeState/B904×5 from None+下划线前缀×3 无原名残留）；数据零接触：git diff b4a56a9..HEAD --stat -- data/ keys/ = 0；磁盘 ontology 991 文件完好；主仓库 vault 未动；验收 HEAD 6f61f6c 相对 eeb7097 仅多指令/交接文档（git diff --stat 确认）
 - 下一步：原分支修复：git rm -r --cached ontology/ .idea/ 单独成提交（磁盘保留），提交后实测 ontology=0/.idea=0/tracked≈862/磁盘仍 991/data+keys diff=0，交付新 SHA 重新验收；建议同步修正提交信息与内容错位（d7f79ce 混入 lint 基线、ec0c0aa 仅 1 文件却声称基线+存量修复）；本地未合并分支可整理历史或在新提交如实更正；不合并 main、不清理工作树、不更新主服务，均待用户明确指令
 - 依据/文档：文档/需求/20260921_仓库架构整理与代码规范/独立验收记录_20260921.md；验收记录提交 b3e912b；验收 HEAD 6f61f6c；被验业务提交 b8627db/d7f79ce/ec0c0aa/eeb7097；基线 b4a56a9
-
-### 主工作台自动构建任务列表 500 修复（主库补 0003 迁移） · zcode · 已实施，待验收
-
-时间：2026-09-21T06:33:31.460177+00:00；记录：`.collaboration/entries/000160-c66fd6397cd9.json`
-
-用户在前端已更新的 18765 上用「从物料生成」，任务列表 500（requestId eacc809718d1）。日志与库核对确认根因：主库 schema 停在 20260918_0002，自动构建迁移 20260920_0003 从未在主库应用（wb_build_* 12 表不存在；能力接口不查这些表所以正常）。按规则先在线备份再执行 transfer init：仅新增 12 张 wb_build_* 表（checkfirst 幂等），alembic 升至 20260920_0003；既有数据不变（wb_assets 11 行、wb_users 2 行迁移前后一致）。无需重启后端。pypdf 仍未安装（PDF 材料会报缺库），保持由用户决定安装方式。
-
-- 决定：真实库操作按 AGENTS 先备份后迁移：transfer backup 产出 data/workbench-before-build-migration-20260921-143248.sqlite3（7086080 字节 WAL 一致快照）。；迁移只用显式 CLI transfer init（真实根唯一合法建表方式），迁移为纯新增表、不碰既有表与数据；服务无需重启（SQLite 新表对运行中连接立即可见）。
-- 验证：日志坐实根因：no such table: wb_build_tasks（正是任务列表查询）。；迁移后 alembic_version=20260920_0003、12 张 wb_build_* 表就位；wb_assets=11 行、wb_users=2 行与迁移前一致；18765 HTTP 200、进程 65311 未动。
-- 下一步：请用户在页面点「重试」或刷新验证任务列表正常；随后即可按六步流程使用（需已在更多工具配置可用模型，capabilities 已显示 MiniMax-M3）。；pypdf 未装：上传 PDF 材料会报「未安装 PDF 解析库」，其余格式不受影响；如需要按 requirements.txt（pypdf>=6.1,<7）安装请用户示意。；备份文件 data/workbench-before-build-migration-20260921-143248.sqlite3 保留，确认功能可用后可自行删除。
