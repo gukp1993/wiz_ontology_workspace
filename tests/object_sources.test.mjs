@@ -16,6 +16,7 @@ try {
   const {descriptor}=parse(readFileSync(filename,'utf8'),{filename})
   let code=compileScript(descriptor,{id:'source-test'}).content
   code=code.replace(/import AppSelect from ['"].*?['"]/,'const AppSelect = {}')
+code=code.replace(/import AssistPanel from ['"][^'"]+['"]/,'const AssistPanel = {props:[\'binding\',\'api\',\'locate\'],render:() => null}')
   code=code.replace(/import RegisteredInstances from ['"].*?['"]/,'const RegisteredInstances = {}')
   code=code.replace(/import MappingDescription from ['"].*?['"]/,'const MappingDescription = {}')
   code=code.replace(/from (['"])([^'"]+)\1/g,(_,quote,spec)=>{
