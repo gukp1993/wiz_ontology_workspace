@@ -105,6 +105,13 @@ def _run_task(owner_user_id, run_id, job):
 
 # ── GET ────────────────────────────────────────────────────────────────────
 
+def _ocr_capability():
+    """V2-2（G18）：OCR 可用性动态探测（pytesseract + Pillow + tesseract）。"""
+    from workbench.ontology_build.parsers import ocr_support
+    available, reason = ocr_support.ocr_status()
+    return {'available': available, 'reason': reason or 'OCR 已配置（本地 tesseract）'}
+
+
 def get_capabilities(query):
     from workbench import llm_providers
     provider = None
@@ -118,8 +125,7 @@ def get_capabilities(query):
                'model': provider.get('model', '')}
     return {
         'limits': protocol.LIMITS,
-        'ocr': {'available': False,
-                'reason': '未配置 OCR 服务；扫描页 PDF 将逐页报告失败，不假称解析成功'},
+        'ocr': _ocr_capability(),
         # V2-4（08 §13）：黑名单三层枚举（硬层完整公开；软层为默认值，任务可覆盖）
         'blacklist': {
             'hard': {'exts': sorted(blacklist_domain.HARD_EXTS),
@@ -151,7 +157,7 @@ def get_task(query):
         detail = task_domain.get_task_detail(conn, task_id)
         detail['stale'] = task_domain.stale_for_task(conn, task_id, _owner())
         detail['capabilities'] = {'limits': protocol.LIMITS,
-                                  'ocrAvailable': False}
+                                  'ocrAvailable': _ocr_capability()['available']}
     return detail, 200
 
 

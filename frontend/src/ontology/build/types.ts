@@ -43,8 +43,9 @@ export interface TaskFilterSpec {
 }
 
 // ── §1.2 Material ──────────────────────────────────────────────────────────
-/** 材料识别类型（识别后填入；未识别时服务端可能给空串，展示走 materialKindLabel 兜底）。 */
-export type MaterialKind = 'code' | 'ddl' | 'docx' | 'pdf' | 'xlsx' | 'md' | 'zip' | 'other'
+/** 材料识别类型（识别后填入；未识别时服务端可能给空串，展示走 materialKindLabel 兜底）。
+ *  image 为 V2-2（G18）新增：位图 OCR / SVG 文本。 */
+export type MaterialKind = 'code' | 'ddl' | 'docx' | 'pdf' | 'xlsx' | 'md' | 'image' | 'zip' | 'other'
 export type UploadState = 'open' | 'complete' | 'aborted'
 export type ParseState = 'pending' | 'running' | 'success' | 'partial' | 'failed' | 'excluded'
 
@@ -268,6 +269,7 @@ export const KIND_LABELS: Record<MaterialKind, string> = {
   pdf: 'PDF',
   xlsx: 'Excel',
   md: 'Markdown',
+  image: '图片（OCR）',
   zip: '压缩包',
   other: '其他',
 }
@@ -304,6 +306,7 @@ export const KIND_LOCATOR_LABELS: Record<MaterialKind, string> = {
   pdf: '页码 / 原文区域',
   xlsx: '工作表 / 单元格',
   md: '标题路径 / 行号',
+  image: '整图 / 图片区域',
   zip: '压缩包内路径',
   other: '待识别',
 }

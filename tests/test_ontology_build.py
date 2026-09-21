@@ -47,6 +47,8 @@ from workbench import model_format  # noqa: E402
 from workbench import storage  # noqa: E402
 from workbench.ontology_build import alignment  # noqa: E402
 from workbench.ontology_build import blacklist as blacklist_domain  # noqa: E402
+from workbench.ontology_build.parsers import image_parser  # noqa: E402
+from workbench.ontology_build.parsers import ocr_support  # noqa: E402
 from workbench.ontology_build import materials as materials_domain  # noqa: E402
 from workbench.ontology_build import protocol  # noqa: E402
 from workbench.ontology_build import runner  # noqa: E402
@@ -942,6 +944,141 @@ def flow_revision_contracts():
           '物料排除按 String(materialRevision) 通过并推进修订', actual=(status, _short(excluded)))
 
 
+# --- 回归流：V2-2 图片/OCR（G18）+ G22 单物料重试/排除验证 ---------------------------
+def flow_image_ocr():
+    """图片物料与扫描版 PDF 走 OCR；未配置逐文件报告（ocr_unconfigured），不假称成功。
+
+    本环境（与交付环境一致）通常未安装 tesseract：测试先用白盒固定 ocr_status=未配置，
+    验证 HTTP 全链路的失败呈报与 G22 重试/排除；再用假 OCR 函数验证识别成功路径。
+    """
+    fake_reason = 'OCR 未配置（ocr_unconfigured）：测试固定（未安装 tesseract）'
+    saved_status = dict(ocr_support._STATUS)
+    saved_probe = image_parser.ocr_status
+    ocr_support._STATUS.clear()
+    ocr_support._STATUS.update({'available': False, 'reason': fake_reason})
+    try:
+        status, caps = api('/api/build-capabilities')
+        ocr = caps.get('ocr') or {}
+        check(ocr.get('available') is False and 'ocr_unconfigured' in str(ocr.get('reason')),
+              'capabilities ocr 动态探测：未配置时 reason 含状态码 ocr_unconfigured',
+              actual=ocr)
+
+        status, created = api('/api/build-task-create', {'name': '图片OCR回归'})
+        task_id = require((created.get('task') or {}).get('id'), 'OCR 回归任务创建失败')
+        fixture_dir = FIXTURE_DIR / 'ocr'
+        fixture_dir.mkdir(parents=True, exist_ok=True)
+        png_path = fixture_dir / 'device.png'
+        try:
+            from PIL import Image
+            Image.new('RGB', (8, 8), (200, 30, 30)).save(str(png_path), format='PNG')
+        except Exception as exc:  # noqa: BLE001
+            raise Abort('Pillow 不可用，无法生成 PNG 夹具：%s' % exc)
+        (fixture_dir / 'chart.svg').write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg">'
+            '<text>设备额定容量 500kWh</text><text x="0" y="20">SOC 采样周期 5 秒</text></svg>',
+            encoding='utf-8')
+        (fixture_dir / 'blank.svg').write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>',
+            encoding='utf-8')
+        try:
+            from pypdf import PdfWriter
+            pdf_buffer = io.BytesIO()
+            writer = PdfWriter()
+            writer.add_blank_page(width=612, height=792)
+            writer.write(pdf_buffer)
+            (fixture_dir / 'scan.pdf').write_bytes(pdf_buffer.getvalue())
+        except Exception as exc:  # noqa: BLE001
+            raise Abort('pypdf 不可用，无法生成扫描 PDF 夹具：%s' % exc)
+
+        uploads = {}
+        for name in ('device.png', 'chart.svg', 'blank.svg', 'scan.pdf'):
+            status, body = _upload_bytes((fixture_dir / name).read_bytes(), task_id, name)
+            if status != 200:
+                raise Abort('上传 %s 失败：%s' % (name, _short(body)))
+            uploads[name] = (body.get('materials') or [{}])[0]
+        check(uploads['device.png'].get('kind') == 'image' and uploads['chart.svg'].get('kind') == 'image',
+              'png/svg 识别为 kind=image（V2-2 支持矩阵）',
+              actual={k: v.get('kind') for k, v in uploads.items()})
+
+        status, scan = api('/api/build-scan', {'taskId': task_id})
+        run = poll_run(task_id, require(scan.get('runId'), '扫描未返回 runId'))
+        check(run.get('state') == 'succeeded',
+              '部分材料失败不阻塞扫描（单材料失败不阻塞其余）', actual=run.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+        states = {m['relPath']: m for m in listing.get('items') or []}
+        png = states.get('device.png') or {}
+        check(png.get('parseState') == 'failed' and 'ocr_unconfigured' in str(png.get('error'))
+              and 'ocr_unconfigured' in str((png.get('coverage') or {}).get('failedSegments')),
+              '位图 OCR 未配置：材料 failed 且失败原因带状态码 ocr_unconfigured（不假称成功）',
+              actual=_short(png))
+        chart = states.get('chart.svg') or {}
+        check(chart.get('parseState') == 'success'
+              and int(((chart.get('coverage') or {}).get('factCount')) or 0) >= 1,
+              'SVG 文本元素确定性提取成功（不需要 OCR）', actual=_short(chart))
+        blank = states.get('blank.svg') or {}
+        check(blank.get('parseState') == 'failed' and 'svg_empty' in str(blank.get('error')),
+              '无文本 SVG 明确失败（svg_empty），不当空文件继续', actual=_short(blank))
+        scan_pdf = states.get('scan.pdf') or {}
+        failed_segments = str((scan_pdf.get('coverage') or {}).get('failedSegments'))
+        check(scan_pdf.get('parseState') == 'partial' and 'ocr_unconfigured' in failed_segments
+              and "'page': 1" in failed_segments.replace('"page": 1', "'page': 1"),
+              '扫描版 PDF 空白页逐页报告 OCR 未配置（partial + failedSegments 含页码）',
+              actual=_short(scan_pdf))
+        svg_facts = db_rows("SELECT module, snippet FROM wb_build_facts WHERE task_id = ? "
+                            "AND module = 'svg'", (task_id,))
+        check(bool(svg_facts) and any('额定容量' in row['snippet'] for row in svg_facts),
+              'SVG 事实落库且 snippet 可回读原文', actual=[dict(r) for r in svg_facts[:3]])
+
+        # G22：单物料重试（mat-retry 只重解析该文件）与排除状态机
+        status, retry = api('/api/build-material-retry',
+                            {'taskId': task_id, 'materialId': png.get('id')})
+        run = poll_run(task_id, require(retry.get('runId'), '单物料重试未返回 runId'))
+        check(run.get('state') == 'succeeded',
+              'G22：失败物料单文件重试可执行（mat-retry）', actual=run.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+        png_after = next((m for m in listing.get('items') or [] if m['relPath'] == 'device.png'), {})
+        check(png_after.get('parseState') == 'failed' and 'ocr_unconfigured' in str(png_after.get('error')),
+              'G22：重试后 OCR 仍未配置 → 如实仍为 failed（不假称成功）', actual=_short(png_after))
+        _, fresh = api('/api/build-materials', query='?taskId=' + task_id)
+        material_revision = fresh.get('revision')
+        status, excluded = api('/api/build-material-exclude',
+                               {'taskId': task_id, 'materialId': blank.get('id'),
+                                'excluded': True, 'revision': str(material_revision)})
+        check(status == 200 and (excluded.get('material') or {}).get('parseState') == 'excluded',
+              'G22：物料排除进入状态机 excluded', actual=(status, _short(excluded)))
+        _, fresh = api('/api/build-materials', query='?taskId=' + task_id)
+        status, restored = api('/api/build-material-exclude',
+                               {'taskId': task_id, 'materialId': blank.get('id'),
+                                'excluded': False, 'revision': str(fresh.get('revision'))})
+        check(status == 200 and (restored.get('material') or {}).get('parseState') == 'pending',
+              'G22：恢复排除后材料回到 pending 待扫描', actual=(status, _short(restored)))
+    finally:
+        ocr_support._STATUS.clear()
+        ocr_support._STATUS.update(saved_status)
+        image_parser.ocr_status = saved_probe
+
+    # 假 OCR 成功路径（白盒）：注入假识别函数验证 facts 形状与状态码
+    saved = (image_parser.ocr_status, image_parser.image_to_text)
+    png_file = FIXTURE_DIR / 'ocr' / 'device.png'
+    try:
+        image_parser.ocr_status = lambda: (True, '')
+        image_parser.image_to_text = lambda image: ('设备额定容量 500kWh\nSOC 采样周期 5 秒', '')
+        result = image_parser.parse(str(png_file), 'bm-fake-ocr', 'device.png')
+        check(not result.error and len(result.facts) == 1
+              and result.facts[0].module == 'ocr' and result.facts[0].quality == 'medium'
+              and result.facts[0].locator.get('kind') == 'image'
+              and '额定容量' in result.facts[0].snippet,
+              '假 OCR 成功路径：整图级事实 module=ocr quality=medium（G18 产物形状）',
+              actual=[f.to_dict() for f in result.facts])
+        image_parser.image_to_text = lambda image: (_ for _ in ()).throw(
+            ocr_support.OcrError('ocr_failed', 'OCR 识别失败（ocr_failed）：注入'))
+        result = image_parser.parse(str(png_file), 'bm-fake-fail', 'device.png')
+        check(result.error and 'ocr_failed' in result.error and not result.facts,
+              'OCR 识别异常 → failed 且原因带 ocr_failed（不假称成功）', actual=result.error)
+    finally:
+        image_parser.ocr_status, image_parser.image_to_text = saved
+
+
 # --- 回归流：V2-4 格式黑名单三层（G20） ---------------------------------------------
 def flow_blacklist_filter():
     """硬>白名单>软>自定义追加；直传拒绝 422 BLACKLISTED；ZIP 展开过滤报告可见。"""
@@ -1657,6 +1794,7 @@ def main():
     # D05/D10 路由层：五类写端点 revision 口径与交付令牌必填
     flow_revision_contracts()
     flow_blacklist_filter()
+    flow_image_ocr()
     flow_lease_fencing(task_id)
     return 0
 

@@ -8,9 +8,10 @@ REGISTRY / parse 已冻结，本包不改动它）。适配器只产出带精确
     code  → code.parse       Java/Spring/MyBatis/JPA、JS/TS/Vue、Python
     ddl   → ddl.parse        SQL DDL（MySQL 常见方言优先）
     docx  → docx_parser.parse  DOCX 段落/标题/表格（.doc 明确拒绝并提示转换）
-    pdf   → pdf_parser.parse   文本型 PDF（扫描页逐页失败报告，无 OCR）
+    pdf   → pdf_parser.parse   文本型 PDF；扫描页走 OCR 路径（未配置逐页报告，V2-2）
     xlsx  → xlsx_parser.parse  XLSX 多 sheet/表头/单元格/公式文本与缓存值
     md    → markdown_parser.parse  MD 标题层级/段落/表格/代码块
+    image → image_parser.parse  位图 OCR（pytesseract 可选依赖）+ SVG 文本提取（V2-2）
     other → textline.parse   未知类型文本线索降级（明确标注覆盖不足）
     zip   → 不在此包解析：ZIP 由材料层安全展开成条目后再按扩展名分派（见 materials.py）
 
@@ -30,6 +31,7 @@ from workbench.ontology_build.parsers import base
 from workbench.ontology_build.parsers import code
 from workbench.ontology_build.parsers import ddl
 from workbench.ontology_build.parsers import docx_parser
+from workbench.ontology_build.parsers import image_parser
 from workbench.ontology_build.parsers import markdown_parser
 from workbench.ontology_build.parsers import pdf_parser
 from workbench.ontology_build.parsers import textline
@@ -42,6 +44,7 @@ base.register('docx', docx_parser.parse)
 base.register('pdf', pdf_parser.parse)
 base.register('xlsx', xlsx_parser.parse)
 base.register('md', markdown_parser.parse)
+base.register('image', image_parser.parse)
 base.register('other', textline.parse)
 
 # ZIP 守卫在展开后按条目解析；未展开的 zip 走明确的 failure，而不是猜内容

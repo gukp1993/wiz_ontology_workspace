@@ -46,7 +46,7 @@ TASK_STAGE_LABELS = {
     'delivered': '已创建本体',
 }
 MATERIAL_PARSE_STATES = ('pending', 'running', 'success', 'partial', 'failed', 'excluded')
-MATERIAL_KINDS = ('code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'zip', 'other')
+MATERIAL_KINDS = ('code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'image', 'zip', 'other')
 RUN_KINDS = ('scan', 'dialog', 'generate')
 RUN_STATES = ('queued', 'running', 'succeeded', 'failed', 'cancelled', 'interrupted')
 GENERATE_STAGES = ('retrieve', 'align', 'abstract', 'verify', 'adapt')
@@ -131,6 +131,8 @@ _DOC_EXT = {
     'docx': 'docx', 'doc': 'docx-convert-hint', 'pdf': 'pdf', 'xlsx': 'xlsx',
     'xls': 'xlsx-convert-hint', 'md': 'md', 'markdown': 'md', 'txt': 'md',
 }
+# V2-2（G18）：图片物料（jpg/jpeg/png/gif/bmp/tiff/tif/webp/svg）走 OCR/矢量文本解析
+_IMAGE_EXT = {'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'webp', 'svg'}
 
 
 def detect_kind(rel_path, head=b''):
@@ -140,7 +142,7 @@ def detect_kind(rel_path, head=b''):
     """
     name = str(rel_path or '').rsplit('/', 1)[-1].lower()
     ext = name.rsplit('.', 1)[-1] if '.' in name else ''
-    magic = bytes(head[:8])
+    magic = bytes(head[:12])
     if magic.startswith(b'PK\x03\x04'):
         if ext == 'docx':
             return 'docx'
@@ -153,6 +155,19 @@ def detect_kind(rel_path, head=b''):
         return 'pdf'
     if magic.startswith(b'\xd0\xcf\x11\xe0'):
         return 'docx' if ext in ('doc', 'docx') else ('xlsx' if ext in ('xls', 'xlsx') else 'other')
+    if ext in _IMAGE_EXT and (
+            magic.startswith(b'\x89PNG') or magic.startswith(b'\xff\xd8\xff')
+            or magic.startswith((b'GIF87a', b'GIF89a'))
+            or (magic.startswith(b'BM') and ext in ('bmp',))
+            or magic.startswith((b'II*\x00', b'MM\x00*'))
+            or (magic[:4] == b'RIFF' and magic[8:12] == b'WEBP')
+            or ext == 'svg'):
+        return 'image'
+    if magic.startswith(b'\x89PNG') or magic.startswith(b'\xff\xd8\xff') \
+            or magic.startswith((b'GIF87a', b'GIF89a')) \
+            or magic.startswith((b'II*\x00', b'MM\x00*')) \
+            or (magic[:4] == b'RIFF' and magic[8:12] == b'WEBP'):
+        return 'image'
     if ext == 'sql':
         return 'ddl'
     if ext in _DOC_EXT:
@@ -164,6 +179,8 @@ def detect_kind(rel_path, head=b''):
         return mapped
     if ext in _CODE_EXT:
         return 'code'
+    if ext in _IMAGE_EXT:
+        return 'image'
     return 'other'
 
 
