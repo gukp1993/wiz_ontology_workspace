@@ -90,6 +90,7 @@ const assistTouchTick=ref(0) // 手改字段次数（测试观察点；面板通
 const assistBinding=computed(()=>{
   if(editing.value!=='identity')return null
   return identityAssistBinding(()=>identityDraft.value,noteDraft,{
+    projectId:String(props.projectState?.projectId||''),
     targetId:String(props.b?.object_type||''),
     contextTitle:'配置「'+objectName.value+'」的实例识别',
     applyMode:switchIdentityMode, // 复用既有切换拦截（登记引用未清理时阻止切回数据库表／视图）

@@ -84,6 +84,8 @@ def ontology_state():
          'mg:apiName': 'soc', 'rdfs:domain': {'@id': 'mg:Station'}, 'rdfs:range': {'@id': 'xsd:double'}},
         {'@id': 'mg:station_name', '@type': 'owl:DatatypeProperty', 'rdfs:label': '名称',
          'mg:apiName': 'station_name', 'rdfs:domain': {'@id': 'mg:Station'}, 'rdfs:range': {'@id': 'xsd:string'}},
+        {'@id': 'mg:voltage', '@type': 'owl:DatatypeProperty', 'rdfs:label': '电压',
+         'mg:apiName': 'voltage', 'rdfs:domain': {'@id': 'mg:Grid'}, 'rdfs:range': {'@id': 'xsd:double'}},
         {'@id': 'mg:connected_to', '@type': 'owl:ObjectProperty', 'rdfs:label': '接入电网',
          'rdfs:domain': {'@id': 'mg:Station'}, 'rdfs:range': {'@id': 'mg:Grid'},
          'mg:cardinality': 'many-to-one'},
@@ -524,11 +526,49 @@ run('7 候选截断标记（对象 60/表 60/字段 100）', t7_truncation)
 run('8 目录缓存读取失败口径（单条损坏跳过/存储失败冒泡 503 语义）', t8_catalog_unreadable_propagates)
 run('9 只读不变式（前后存储零变化）', t9_no_write_invariant)
 
+
+def t10_unconfigured_targets_allowed():
+    """引用版本中存在、项目侧未配置的目标：允许辅助（标题标「未配置」）而非 404。"""
+    payload, _tp = assist_context.build_context(
+        'project', PROJECT, 'propertySource', 'Grid.voltage', 'fill', {'kind': 'redis'})
+    assert '未配置' in payload['context']['title'], payload['context']['title']
+    payload, _tp = assist_context.build_context(
+        'project', PROJECT, 'identity', 'Grid', 'fill', {'mode': 'registered'})
+    assert '实例识别' in payload['context']['title'], payload['context']['title']  # Grid 绑定存在（空配置）
+    payload, _tp = assist_context.build_context(
+        'project', PROJECT, 'actionBinding', 'Grid:action_1', 'fill', {})
+    assert '未配置' in payload['context']['title'], payload['context']['title']
+    # 已配置目标标题不带「未配置」
+    payload, _tp = assist_context.build_context(
+        'project', PROJECT, 'propertySource', 'Station.soc', 'fill',
+        {'kind': 'flow', 'flow': FLOW_ID, 'output': 'out_value', 'inputs': {}})
+    assert '未配置' not in payload['context']['title'], payload['context']['title']
+
+
+def t10b_unconfigured_targets_still_404_for_unknown():
+    """定义本身不存在 → 仍然 404（不能因容忍未配置而放开幻觉目标）。"""
+    try:
+        assist_context.build_context('project', PROJECT, 'propertySource', 'Grid.nonexistent',
+                                     'fill', {'kind': 'redis'})
+        raise AssertionError('不存在的属性不应放行')
+    except NotFound:
+        pass
+    try:
+        assist_context.build_context('project', PROJECT, 'identity', 'NoSuchObject', 'fill',
+                                     {'mode': 'database'})
+        raise AssertionError('不存在的对象不应放行')
+    except NotFound:
+        pass
+
+
+run('10 未配置目标容忍（定义在引用版本即放行，标题标未配置）', t10_unconfigured_targets_allowed)
+run('10b 未配置容忍不放开幻觉目标（仍 404）', t10b_unconfigured_targets_still_404_for_unknown)
+
 print()
 if FAILURES:
     print(f'共 {len(FAILURES)} 项失败：' + '、'.join(FAILURES))
     shutil.rmtree(TMP, ignore_errors=True)
     sys.exit(1)
-print('全部通过（12 项）')
+print('全部通过（14 项）')
 shutil.rmtree(TMP, ignore_errors=True)
 sys.exit(0)

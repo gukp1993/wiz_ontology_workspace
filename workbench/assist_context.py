@@ -457,6 +457,25 @@ def _binding_of(bindings, object_type):
                  and str(b.get('object_type') or '') == object_type), None)
 
 
+def _ref_def_exists(reference, bare_id, want_types, domain_bare=None):
+    """引用版本图中是否存在指定裸 id 的定义（可选校验 domain）。用于放宽「未配置目标」：
+    定义存在而项目侧尚无配置 → 允许辅助（标题标「未配置」）；定义本身不存在 → 404。"""
+    for node in ((reference or {}).get('ontology') or {}).get('@graph') or []:
+        if not isinstance(node, dict):
+            continue
+        if bare(node.get('@id') or '') != bare_id:
+            continue
+        if want_types and not any(t in str(node.get('@type') or '') for t in want_types):
+            continue
+        if domain_bare is not None:
+            domain = node.get('rdfs:domain')
+            domain_id = domain.get('@id') if isinstance(domain, dict) else domain
+            if domain_id and bare(domain_id) != domain_bare:
+                continue
+        return True
+    return False
+
+
 def _project_title(target_kind, target_id, state, reference):
     spec = assist_fields.resolve(target_kind)
     if not target_id:
@@ -466,36 +485,48 @@ def _project_title(target_kind, target_id, state, reference):
     workflow = (reference or {}).get('workflow') or {}
     if target_kind == 'identity':
         binding = _binding_of(bindings, target_id)
-        if binding is None:
-            raise NotFound('编辑目标不存在或不可见：' + target_id)
-        ot = str(binding.get('object_type') or target_id)
-        return '对象「' + labels.get(ot, ot) + '」的实例识别'
+        if binding is not None:
+            ot = str(binding.get('object_type') or target_id)
+            return '对象「' + labels.get(ot, ot) + '」的实例识别'
+        if _ref_def_exists(reference, target_id, ('owl:Class',)):
+            return '对象「' + labels.get(target_id, target_id) + '」的实例识别（未配置）'
+        raise NotFound('编辑目标不存在或不可见：' + target_id)
     if target_kind == 'propertySource':
         ot, _, prop = target_id.partition('.')
         binding = _binding_of(bindings, ot)
-        if binding is None or prop not in (binding.get('properties') or {}):
-            raise NotFound('编辑目标不存在或不可见：' + target_id)
-        return '属性「' + labels.get(ot, ot) + '.' + prop + '」的取值来源'
+        if binding is not None and prop in (binding.get('properties') or {}):
+            return '属性「' + labels.get(ot, ot) + '.' + prop + '」的取值来源'
+        if _ref_def_exists(reference, prop, ('Property',), domain_bare=ot):
+            return '属性「' + labels.get(ot, ot) + '.' + prop + '」的取值来源（未配置）'
+        raise NotFound('编辑目标不存在或不可见：' + target_id)
     if target_kind == 'linkMapping':
         ot, _, relation = target_id.partition('.')
         binding = _binding_of(bindings, ot)
         rows = (binding.get('relations') or []) if isinstance(binding, dict) else []
-        if not any(isinstance(r, dict) and str(r.get('relation') or '') == relation for r in rows):
-            raise NotFound('编辑目标不存在或不可见：' + target_id)
-        return '链接「' + relation + '」的映射（' + labels.get(ot, ot) + '）'
+        if any(isinstance(r, dict) and str(r.get('relation') or '') == relation for r in rows):
+            return '链接「' + relation + '」的映射（' + labels.get(ot, ot) + '）'
+        if _ref_def_exists(reference, relation, ('owl:ObjectProperty',), domain_bare=ot):
+            return '链接「' + relation + '」的映射（' + labels.get(ot, ot) + '）（未配置）'
+        raise NotFound('编辑目标不存在或不可见：' + target_id)
     if target_kind == 'actionBinding':
         if target_id == 'actionBindings':
             return '动作接口映射'
         oid, _, aid = target_id.partition(':')
         rows = state.get('bindings', {}).get('actionBindings') or []
+        if isinstance(rows, dict):
+            rows = [dict(v or {}, objectTypeId=k.split(':', 1)[0], actionId=k.split(':', 1)[-1])
+                    for k, v in rows.items()]  # 兼容历史上按组合键存 dict 的形态
         hit = next((r for r in rows if isinstance(r, dict)
                     and str(r.get('objectTypeId') or '') == oid
                     and str(r.get('actionId') or '') == aid), None)
-        if hit is None:
-            raise NotFound('编辑目标不存在或不可见：' + target_id)
         action_name = next((str(a.get('name') or aid) for a in (workflow.get('actions') or [])
                             if isinstance(a, dict) and a.get('id') == aid), aid)
-        return '动作「' + action_name + '」的接口映射（' + labels.get(oid, oid) + '）'
+        if hit is not None:
+            return '动作「' + action_name + '」的接口映射（' + labels.get(oid, oid) + '）'
+        if (any(isinstance(a, dict) and a.get('id') == aid for a in (workflow.get('actions') or []))
+                and _ref_def_exists(reference, oid, ('owl:Class',))):
+            return '动作「' + action_name + '」的接口映射（' + labels.get(oid, oid) + '）（未配置）'
+        raise NotFound('编辑目标不存在或不可见：' + target_id)
     raise ValueError('未知的辅助填写目标类型：' + str(target_kind))
 
 

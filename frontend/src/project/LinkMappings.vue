@@ -126,7 +126,8 @@ const assistBinding=computed(()=>{
   const d=draft.value
   if(!d||editingMembership.value)return null
   return linkMappingAssistBinding(()=>draft.value,noteDraft,{
-    targetId:String(d.relation||''),
+    projectId:String(props.projectState?.projectId||''),
+    targetId:String(props.b?.object_type||'')+'.'+String(d.relation||''), // 与后端 project 目标约定一致：对象类型.关系id
     contextTitle:'维护链接映射「'+linkLabel(d.relation)+'」',
   })
 })

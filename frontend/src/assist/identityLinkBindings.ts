@@ -35,6 +35,7 @@ const snapOf = (snap: unknown): Record<string, unknown> => (snap && typeof snap 
 const readNote = (note: NoteDraftRef | null | undefined): string => (note && asString(note.value) ? note.value : '')
 
 export interface IdentityAssistOptions {
+  projectId?: string
   /** 编辑目标：对象类型标识（如 'o_cluster'）；对象尚未启用映射时传 '' */
   targetId?: string
   /** 未取到上下文时的兜底标题（取到后面板改用 context.title） */
@@ -68,6 +69,7 @@ export function identityAssistBinding(draft: () => IdentityAssistDraft | null | 
   }
   return {
     space: 'project',
+    projectId: options.projectId || '',
     targetKind: 'identity',
     targetId: options.targetId || '',
     contextTitle: options.contextTitle || '实例识别辅助填写',
@@ -105,6 +107,7 @@ export function identityAssistBinding(draft: () => IdentityAssistDraft | null | 
 }
 
 export interface LinkMappingAssistOptions {
+  projectId?: string
   /** 编辑目标：链接标识（本体关系 id，如 'l_belong'） */
   targetId?: string
   /** 未取到上下文时的兜底标题 */
@@ -123,6 +126,7 @@ export function linkMappingAssistBinding(draft: () => LinkMappingAssistDraft | n
   }
   return {
     space: 'project',
+    projectId: options.projectId || '',
     targetKind: 'linkMapping',
     targetId: options.targetId || '',
     contextTitle: options.contextTitle || '链接映射辅助填写',
