@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`6cc0e9c0aa8f4175`
+上下文版本：`456188183db5aef1`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### codex/ontology-build 第3轮独立验收 · codex · 已验证
+
+时间：2026-09-21T02:37:13.141273+00:00；记录：`.collaboration/entries/000129-5e738db9174e.json`
+
+基线43dddc8验收不通过。既有160/160构建、95/95解析、后端41/41与前端构建通过，新增独立反例复现4项P1：取消重试旧worker写入、多轮排除丢失、合并后交付引用断裂、序列编辑协议不一致。报告附录B已更正附录A通过结论，归档3份探针。
+
+- 决定：待修复复验，不合并main，不依据旧通过结论清理环境。；仅验收文档与证据，不改业务代码，不启停已有服务。
+- 验证：双worker真实隔离SQLite探针、域函数mock读取探针、序列编辑payload探针均复现。；既有自动化与前端build通过；任务回链ID丢失静态确认（P2）。；未做浏览器交互、真实模型语义质量、与最新main组合验收。
+- 下一步：修复R3-01～04并补回归后再验收。
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收报告.md 附录B；文档/需求/20260920_从物料自动构建本体/验收证据_第三轮/
 
 ### 从物料自动构建本体 第2轮独立复验 · codex · 已验证
 
@@ -143,15 +154,3 @@ P0 三项已落盘。① kind=flow 改消费 flows.dependency_state：unreadable
 - 验证：四份文件相对链接、P0-P7阶段、T01-T25测试矩阵及现有测试路径检查通过。；原型只增加计划与指令链接，JS语法通过；git diff --check通过。未运行正式业务测试或构建。
 - 下一步：执行工具获用户实施指令后，按必读顺序和P0协议核对开始实施，结果追加开发计划§11。
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-
-### 执行 20260920_本体与项目统一维护体验改版 执行指令（v2 功能保护，多Agent并行） · zcode · 实施中
-
-时间：2026-09-20T07:07:50.953248+00:00；记录：`.collaboration/entries/000117-35aec319ef1d.json`
-
-W3 阶段：A 三项最小修复完成（B1 前端补 applicable_objects 三入口一致、B2 references 补裸名前缀容错、B3 槽位身份改目标出现序号不放松保护；test_references 21 步、dependency_guard 22/22、金样 97/507 全过）；F 前端保护独立复核 60 项通过并发现两缺陷，协调者已修：① ConnectionManager 引用检测补 inlineSql（原漏报导致先见「保存失败」）、② PropertySources 编排读取失败且配置未改时不再阻断「只改说明」的保存；C/E 产物经 F 独立复核通过；L 补 stale 前端分支与目录/凭据条件写接线、保存后清理已删连接派生数据；12 步发布守卫测试（a–l）全过。B（领域校验）与 D（前端基线）仍在实施，D 的幂等 key 签名含 revision 的修正待其应用。
-
-- 决定：F 发现①处理：UI 引用检测必须覆盖 inlineSql/inline.connection，与服务端保存边界同形态，避免用户先见持久化失败。；F 发现②处理：编排读取失败仅阻断发布（G1 契约），配置未改、只改说明的草稿保存不被阻断（过滤该条提示）。；A 的 B1 采用「同步前端」而非登记差异：三入口（图谱/对象页/批量）统一预告阻断。；A 的 B3 槽位身份=引用类别+目标 id+同目标出现序号（不用所在序号）；新增同目标槽位仍产生新键。
-- 验证：test_references 21 步（含新增单元⑩B2/⑪B1/⑫B3）、dependency_guard 22/22、legacy_graph_bridge、object_workspace 7/7、ont_list_unified 4/4、金样 97/507 全过。；F 复核 ui_protection_independent.test.mjs 60 项全过（换表逐字段保留、未知 kind 只读、flow failed/missing 区分、stale 不覆盖、删除先落盘）。；我修后复跑：connection_manager.test.mjs、ui_protection_independent、source_config_retention 全过；typecheck exit=0；test_publish_guards 12 步、quick 3/3、unit 27/27、test_project_api_roundtrip 13 步、test_save_iteration、test_references、test_mapping_descriptions、test_flows、test_storage_contract 全过。；接口文档 02 §2.2 已登记 B2 前缀容错与 B3 槽位身份口径（文档先行的同 commit 差异）。
-- 下一步：等 B（project_validation/project_mapping/影响匹配）与 D（key 签名修正等）回收；随后金样预期差异生成与回放。；W4：npm run build（cs统一一次）、隔离实例浏览器验收（F）、§11.4 逐项 F01–F10、按工作包提交。
-- 依据/文档：文档/接口文档/02-本体区接口.md §2.2、03-项目区接口.md §2.1-§2.4/§3.3、README 变更记录；workbench/{references,projects,project_routes,flows,catalogs,secrets,server}.py；tests/{test_publish_guards,test_references,ui_protection_independent,connection_manager,source_config_retention}.py|mjs
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
