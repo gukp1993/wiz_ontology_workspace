@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`fbb021a14eee8656`
+上下文版本：`bc09c7301a448dcb`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### assist-fill-production 子代理验收循环：三轮后通过 · zcode · 已验证
+
+时间：2026-09-21T19:08:17.878347+00:00；记录：`.collaboration/entries/000169-17e91f19a46f.json`
+
+按用户指令开独立子agent验收 assist-fill-production（子agent为未参与开发的全新上下文，只读仓库+真实点击+全量测试）。R1 判定不通过：3 项 P1（DEF-01 本体区上下文固定读默认工作区/DEF-02 新建动作辅助404/DEF-03 替换真实旧值默认勾选违背需求§3.5）。主 agent 修复（fe1179f：协议补 ontologyId 端到端、新建动作 targetId 传空、默认勾选门控改「ready 且宿主旧值为空」，9 套件适配+各增反向断言）。R2 判定不通过：唯一 P1=ontologyId 未登记接口文档。补登记（53ef04a：04§5.1+README）。R3 聚焦复验判定通过（4/4 项：变更范围/文档-实现三方一致/套件复跑 14+10/工作区零写入）。交付 HEAD de60a74。环境 18951 保留。
+
+- 决定：验收循环机制：验收子agent只读仓库零写入不出修复清单，修复由主agent执行后再派全新子agent复验，直至通过；DEF-01 修法=协议补 ontologyId 可选字段（省略回落默认 storage）而非收缩为仅默认工作区；跨账号/不可见工作区一律 404；DEF-03 门控判据=建议 fieldKeys 对应宿主旧值为空才默认勾选；测试同步语义并各套件至少增 1 条反向断言
+- 验证：R1：后端 14+57+10 全过、前端 46 套件、9/11 场景浏览器全链路（采纳后≥2.5s revision 冻结→保存前进）、真实模型 minimax 抽查通过、XSS/账号隔离/双视口过；发现 3 P1；修复后：46/46 套件、assist_context 14/14、assist_api 10/10、typecheck 0、build 过、真实模型端到端冒烟（admin/minimax ready 建议）；R2：三项 P1 三层直证全过、全量回归无回归、唯一 P1=文档未登记；R3：4/4 通过（fe1179f..HEAD 仅 2 文件纯追加、文档-实现三方一致、context 14+api 10 复跑、porcelain=0）；证据 /tmp/kg_accept_final/ 与 kg_accept_r2/ r3/
+- 下一步：验收通过停在待用户授权集成；合并 main、更新主工作台均等待用户明确指令；登记待办（不阻断）：DEF-04 检查页签字段定位接线（P2）；登录过渡态一次性 TypeError（疑存量，建议另立治理项）
+- 依据/文档：交付 HEAD de60a74（分支 codex/assist-fill-production）；验收轮次记录 c9b34de；证据 /tmp/kg_accept_final/ /tmp/kg_accept_r2/ /tmp/kg_accept_r3/；环境 http://127.0.0.1:18951（admin/admin 真实模型；assist_dev/AssistDev#2026 模型桩 18913）
 
 ### assist-fill-production · zcode · 已验证
 
@@ -140,14 +151,3 @@ T11完成：O1/O2/O2b/O3/O4/O5/P2/S14/S15/三视口通过；P1/P5辅助上下文
 - 验证：WIZ_WORKBENCH_ROOT=$(mktemp -d) python3 tests/test_assist_context.py → 12/12 通过、退出码 0：正常构建×4（本体 object/项目 identity/propertySource(flow)/actionBinding）、白名单与形态 9 类 ValueError、越权 404 含跨账号、令牌篡改/过期/缺字段、check_generate 四类 stale、脱敏（脏连接 password 与 LLM API Key 不进返回值）+modelReady 两分支、截断（65→60/105→100/62→60 均带 truncated）、目录损坏跳过+存储失败冒泡、只读不变式零写入。；不预设 WIZ_WORKBENCH_ROOT 直跑同样 12/12 退出 0；python3 -m py_compile 通过（本机 3.9.6，无 3.10+ 语法）；tests/run.py --list 已收录（unit 组自动发现）。未跑前端/服务/全量回归（纯新增两文件，git status 确认零既有文件改动）。
 - 下一步：T2 接线：/api/assist-context 可直接返回 build_context 的 payload；generate 侧调 check_generate(tp, space, project_id, target_kind, target_id, draft, lambda: assist_context.compute_fingerprint(space, project_id))；按 docstring 的异常映射转状态码。；T3 前端镜像消费截断标记键；接口文档 04 §5.1 需登记截断增量键与 title 规则（本轮无文档改权）。；T4 复用 token_payload 的 dh/fp 与 canonical_hash(normalize_draft(...))；propertySource 候选已按 draft.kind 在服务端分派。
 - 依据/文档：workbench/assist_context.py；tests/test_assist_context.py；workbench/assist_fields.py（T0 冻结，只读）；文档/接口文档/04-编排与LLM接口.md §5.1/§5.2；文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md
-
-### assist-fill-production T3 辅助填写面板与状态机 · zcode · 已实施，待验收
-
-时间：2026-09-21T06:54:20.349035+00:00；记录：`.collaboration/entries/000157-6ce8e958ec07.json`
-
-在已登记 worktree（assist-fill-production 分支）交付 T3 三个新文件：frontend/src/assist/useAssistPanel.ts（状态机组合式函数+defaultAssistApi）、frontend/src/assist/AssistPanel.vue（面板 UI，三页签/问题卡/建议卡/采纳/撤销/错误态）、tests/assist_panel.test.mjs（51 项断言）。未改任何既有文件；未执行 git 操作、未跑 build、未启动服务（按指令边界留给协调者）。
-
-- 决定：请求代际 req 统一驱动 open/refreshContext/generate/cancel/close 的迟到响应丢弃；generate 允许重入（重新生成使在途旧请求失效，最后发出者胜出）；stale 双通道：宿主 notifyDraftChanged() 显式通知 + adopt/generate 前草稿指纹（JSON 序列化对比）漂移自检；采纳/撤销后重对齐指纹避免自伤；手改后的恢复语义：重新 generate 不清 stale（指纹仍相对旧 contextToken，真实后端此处为 409 CONTEXT_STALE），必须 refreshContext 重取令牌后才能再采纳——与接口文档 04 §5.2 令牌绑定 draft 摘要一致；adopt 只合并勾选且 state=ready 的建议，同字段后者覆盖、与当前草稿等值字段剔除、全等值时无操作；顺序固定 snapshot→apply；绝不调用 commit-now/touch 等任何保存函数（测试桩内为会抛错的间谍）；checked 默认 ready 全勾选；pending/blocked 由 setChecked 拒绝勾选（状态机与 UI 双保险）；MODEL_NOT_CONFIGURED 归入 no-model 态保留输入
-- 验证：node --import ./tests/ts_hooks.mjs tests/assist_panel.test.mjs → 51/51 通过，退出码 0（open/no-model/迟到丢弃/CONTEXT_STALE 恢复/采纳合并/等值剔除/撤销与撤销保护/取消/intent+answers 结构化传输/指纹漂移拦截）；cd frontend && npm run typecheck（vue-tsc --noEmit）→ 退出码 0，新增文件零类型错误；既有 tests/save_queue.test.mjs 复跑退出码 0，无相互影响；git status 确认仅新增三文件；worktree 内他人新文件 workbench/assist_context.py 未触碰
-- 下一步：T4 落地 /api/assist-context、/api/assist-generate 后 defaultAssistApi() 即通（现后端路由未注册）；T5–T10 接入者构造 AssistHostBinding（draft 返回白名单快照、apply 合并建议值、snapshot/restore 支撑撤销），手改字段处调 notifyDraftChanged()，切换目标传新 binding 对象或经 ref 调 open；协调者串行执行 npm run build 与提交；面板尚未被任何表单挂载，属预期
-- 依据/文档：frontend/src/assist/useAssistPanel.ts；frontend/src/assist/AssistPanel.vue；tests/assist_panel.test.mjs；frontend/src/assist/types.ts（T0 冻结，只读）；文档/接口文档/04-编排与LLM接口.md §5
