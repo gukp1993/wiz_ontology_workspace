@@ -166,7 +166,7 @@ onBeforeUnmount(()=>{listen(false);resizeObserver?.disconnect();fieldsetObserver
 </template>
 
 <style scoped>
-.app-select{display:block;width:100%;min-width:0;margin-top:5px}
+.app-select{display:block;width:100%;min-width:0;margin-top:var(--app-select-gap,5px)}
 .app-select-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:41px;padding:9px 11px;border:1px solid var(--line-2);border-radius:7px;background:var(--paper);color:var(--ink);font:inherit;font-size:14px;line-height:1.6;text-align:left;cursor:pointer;transition:border-color .12s}
 .app-select-trigger:hover:not(:disabled){border-color:var(--blue-line);color:var(--ink)}
 .app-select-trigger.is-open{border-color:var(--blue)}
@@ -176,7 +176,9 @@ onBeforeUnmount(()=>{listen(false);resizeObserver?.disconnect();fieldsetObserver
 .app-select-panel{z-index:1000;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;padding:5px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);box-shadow:var(--shadow-1);font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif}
 .app-select-search{display:flex;align-items:center;gap:8px;margin:3px 3px 7px;padding:0 9px;border:1px solid var(--line);border-radius:6px;background:var(--paper-2);color:var(--faint);flex:none}
 .app-select-search input{min-width:0;width:100%;padding:8px 0;margin:0;border:0;background:transparent;box-shadow:none;outline:none;color:var(--ink);font:inherit;font-size:13px;line-height:1.6}
-.app-select-search input::-webkit-search-cancel-button{display:none}.app-select-search svg{flex:none}.app-select-search:focus-within{border-color:var(--blue-line)}
+.app-select-search input::-webkit-search-cancel-button{display:none}.app-select-search svg{flex:none}
+/* 面板 overflow:hidden，外描边环会被裁掉，所以焦点补偿用等效 2px 内环（1px 边框换色 + 1px inset 环） */
+.app-select-search:focus-within{border-color:var(--blue);box-shadow:inset 0 0 0 1px var(--focus)}
 .app-select-clear{flex:none;border:0;padding:0;width:20px;min-height:24px;background:transparent;color:var(--faint);font-size:18px;line-height:1;cursor:pointer}
 .app-select-options{min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;outline:none}
 .app-select-option{display:flex;align-items:center;gap:12px;width:100%;min-height:38px;padding:8px 10px;border:0;border-radius:5px;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}

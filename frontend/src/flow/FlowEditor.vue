@@ -720,7 +720,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 .amber{color:var(--warn)}
 .error{color:var(--danger)}
 .good{color:var(--ok)}
-@media(max-width:1439px){.flow-list{position:absolute;inset:0 auto 0 0;z-index:18;width:210px;box-shadow:var(--shadow-2)}}
+@media(max-width:1439px){.flow-list{position:absolute;inset:0 auto 0 0;z-index:18;width:210px;box-shadow:8px 0 20px #1b32531a}}
 @media(max-width:1099px){.flow-inspector{position:absolute;right:0;top:0;bottom:0;z-index:20;max-width:100%}.inspector-resizer{display:none}}
 @media(max-width:767px){.flow-inspector{width:100%!important}.head-row{gap:6px}.flow-toolbar{gap:4px;padding:6px 10px}}
 </style>
