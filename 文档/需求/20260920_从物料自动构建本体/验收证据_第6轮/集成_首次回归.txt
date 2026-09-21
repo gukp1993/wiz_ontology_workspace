@@ -1,0 +1,415 @@
+组：all，共 47 个测试
+
+=== test_export_restore_http.py ===
+通过 6) 旧 revision 恢复返回 409 且草稿保持 DRAFT-B
+通过 7) 恢复成功：内容回到 SNAPSHOT-A，新 revision=r-37c87d6499…，备份 1 份
+通过 8) 跨本体恢复被拒（400），目标本体草稿未变
+
+全部通过（9 步）：导出可用、恢复可用、边界与隔离符合预期。
+临时根：/var/folders/j4/4xkj3fs544x8dfdbldh6072h0000gn/T/wiz_export_restore_k2soo89j
+--- test_export_restore_http.py: 通过（1.2s）
+
+=== test_http_error_boundaries.py ===
+  File "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/workbench/server.py", line 265, in do_GET
+    return self.respond(*handler(parse_qs(url.query, keep_blank_values=True)))
+  File "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/tests/test_http_error_boundaries.py", line 146, in boom
+    raise RuntimeError('秘密细节 /etc/passwd 与 SELECT * FROM users WHERE pwd=1')
+RuntimeError: 秘密细节 /etc/passwd 与 SELECT * FROM users WHERE pwd=1
+127.0.0.1 - - [21/Sep/2026 13:25:43] "GET /api/flows HTTP/1.1" 500 -
+--- test_http_error_boundaries.py: 通过（1.8s）
+
+=== test_save_iteration.py ===
+通过 6) 旧格式往返：字符串直取属性 + related_sources 均原样保留（pid=7dd8b184a00e）
+通过 7) 存储不可用不假成功（StorageUnavailable），head 完好可读
+通过 8) 恢复后保存正常（token=r-094538da…）
+
+统计：8 个步骤全部通过（1–8）
+临时根已清理
+--- test_save_iteration.py: 通过（2.6s）
+
+=== test_ontology_build.py ===
+    return func(*args, **kwargs)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/client.py", line 469, in read
+    s = self.fp.read()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socket.py", line 704, in readinto
+    return self._sock.recv_into(b)
+ConnectionResetError: [Errno 54] Connection reset by peer
+--- test_ontology_build.py: 失败（退出码 1）（2.9s）
+
+=== test_references.py ===
+通过 HTTP⑥) 历史遗留失效引用仍可保存（不锁死草稿）
+通过 HTTP⑦) 既有失效改名可保存 / 同名同文案的新失效仍 422（S2）
+通过 HTTP⑧) 未填写完整仍允许保存（errors 提示）
+
+全部 21 步通过
+临时根已清理
+--- test_references.py: 通过（1.1s）
+
+=== test_publish_guards.py ===
+通过 m) 损坏目录缓存：校验报 error（数据连接 conn-mysql-01：目录缓存读取失败（缓存…）、发布 422 阻断、零新版本
+通过 n) 目录存储读取失败：GET 与 POST 同为 503（可重试语义，不落 500 程序错误）
+通过 j) 跨账号隔离：他人 requestId 不串号（404）
+
+统计：16 个步骤全部通过（a–n）
+临时根已清理
+--- test_publish_guards.py: 通过（1.5s）
+
+=== test_mapping_descriptions.py ===
+通过 D07) 发布含说明；发布后草稿可改（快照不可变由存储层保证，历史版本清单不变）
+通过 D11) 预览入口遇对象说明在取数前明确拒绝
+通过 D11b) 无说明旧配置行为不变
+
+共 13 步通过
+（临时目录：/var/folders/j4/4xkj3fs544x8dfdbldh6072h0000gn/T/wiz_map_desc_5e88s18m）
+--- test_mapping_descriptions.py: 通过（1.2s）
+
+=== test_config_packages.py ===
+通过 回执) 再次核对可用
+通过 M21) 发布递增验证
+
+全部 13 步通过
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/zipfile.py:1505: UserWarning: Duplicate name: 'a.json'
+  return self._open_to_write(zinfo, force_zip64=force_zip64)
+--- test_config_packages.py: 通过（1.2s）
+
+=== test_project_api_roundtrip.py ===
+通过 i) 5 份草稿快照均无 catalogs 键（目录缓存只存数据库缓存表）
+  [跳过] demo-objects 422（临时根无演示数据：rules/metrics/observation_binding 未配置，demo 未就绪），按预案改用 /api/explorer
+通过 j) merged() 过滤 dict 来源并上报 unsupportedSources（kinds=['database', 'redis']）；demo-objects 422（临时根无演示数据：rules/metrics/observation_binding 未配置，demo 未就绪），按预案改用 /api/explorer
+
+统计：13 个步骤全部通过（a–j）
+临时根已清理
+--- test_project_api_roundtrip.py: 通过（1.0s）
+
+=== test_formatting_roundtrip.py ===
+通过 3) 保存后重新 GET /api/state：三份 formatting（含 x-custom / x-keep / x-meta）零丢失
+通过 4) /api/format-preview 透传历史 code 配置正常执行
+通过 5) 服务重启后 formatting 配置仍完整保留
+通过 6) 落盘草稿文件含未知扩展键，全部写入发生在临时根内
+
+全部通过（7 步）；临时根已清理
+--- test_formatting_roundtrip.py: 通过（1.3s）
+
+=== test_flow_executor.py ===
+通过) 测试形态通过路由执行
+通过) 全图运行 revision gate（409）
+通过) 全图运行成功（无项目上下文）
+通过) 全图运行 errors gate（422）
+
+全部通过：33 项
+--- test_flow_executor.py: 通过（0.5s）
+
+=== test_action_http.py ===
+通过) R05 无 effect 的动作可被项目绑定且校验零错误零警告（项目侧不读 effect）
+通过) R05 最小动作的绑定条目名称按名称拼接（不依赖 effect）
+通过) R05 带 effect 的动作项目校验行为不变
+通过) R05 校验只读：动作 effect 原值未被项目校验改写
+
+全部通过（74 项断言）
+--- test_action_http.py: 通过（0.5s）
+
+=== test_action_library.py ===
+通过) A01 动作 effect 为 '' 时仍可发布（选填空值语义保持）
+通过) A01 effect '' 发布快照不被清洗/补充
+通过) A01 动作 effect 为 '   ' 时仍可发布（选填空值语义保持）
+通过) A01 effect '   ' 发布快照不被清洗/补充
+
+77 项断言全部通过
+--- test_action_library.py: 通过（0.6s）
+
+=== test_auth.py ===
+通过) 登录后本体列表只含本账号数据
+通过) 登录后读取默认本体草稿 → 200
+通过) 退出登录 → 200
+通过) 退出后原会话失效 → 401
+
+统计：63 项通过，全部通过
+--- test_auth.py: 通过（3.9s）
+
+=== test_business_rules.py ===
+通过) A01 规则 content 为布尔值 → 正式发布路由 422 且给「必须是文本」
+通过) A01 规则 content 为布尔值 拒绝发布后零新增版本
+通过) A01 规则 description=null 正式路由 422 且文案定位字段（不暴露 NoneType）
+通过) A01 description=null 拒绝后零新增版本
+
+57 项断言全部通过
+--- test_business_rules.py: 通过（0.5s）
+
+=== test_calc_functions.py ===
+...................
+----------------------------------------------------------------------
+Ran 19 tests in 0.042s
+
+OK
+--- test_calc_functions.py: 通过（0.6s）
+
+=== test_catalog_independent.py ===
+================ 汇总 ================
+硬断言通过 51 项；不符 0 项；规格观察 2 项
+  规格观察：T12/F05：损坏目录应在 items 出对应连接的 error 条目（供页面定位）
+  规格观察：G1 冻结契约：project_validation.validate_project 应接受 degraded_catalogs 并出 error
+  （规格观察项为冻结契约要求、当前实现未达标；WIZ_QA_STRICT=1 时按失败计）
+临时根已清理
+--- test_catalog_independent.py: 通过（1.0s）
+
+=== test_connection_catalog.py ===
+通过) secrets.save 拒绝后未创建幽灵项目资产行（C01 红线）
+通过) C07 刷新目录成功
+通过) C07 目录不进入已保存草稿
+通过) C07 目录变化不影响属性绑定内容
+通过) 全程使用假驱动（未访问真实 MySQL/Redis/外网）
+统计：55 项全部通过
+--- test_connection_catalog.py: 通过（0.5s）
+
+=== test_context_sync.py ===
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 1.492s
+
+OK
+--- test_context_sync.py: 通过（1.5s）
+
+=== test_flow_dependency_context.py ===
+[通过] C01 发布响应不回显注入异常原文（凭据空白故障）
+[通过] C01改正恢复 前置：草稿保存 200（保存不因依赖错误锁死）
+[通过] C01 把空白 providerId 改成有效值（依赖可读）→ 重新发布成功（可恢复、未被锁死）
+[通过] C01 恢复发布确实产生版本（拒绝路径与恢复路径可区分）
+
+汇总：92 通过 / 0 失败
+--- test_flow_dependency_context.py: 通过（0.8s）
+
+=== test_flow_sql_dialect.py ===
+通过) 空字符串被 != '' 拦下
+通过) 非空字符串通过
+通过) 布尔参数直接真值判断
+通过) not 与括号
+
+全部通过：25 项
+--- test_flow_sql_dialect.py: 通过（0.0s）
+
+=== test_flow_test_plan.py ===
+通过) 超长字段名：原输入对象未被修改
+通过) 多字段合计超限：预览序列化 ≤65536 字节（实际 58390）
+通过) 多字段合计超限：truncated 正确标记
+通过) 多字段合计超限：原输入对象未被修改
+
+全部通过：70 项
+--- test_flow_test_plan.py: 通过（0.5s）
+
+=== test_flows.py ===
+通过) Redis 缺命令报错（不再静默按 GET 执行）
+通过) Redis args 标识符须是已声明输入名
+通过) Redis args 声明名通过
+通过) HTTP 凭据与自填 Authorization 并存报冲突
+
+全部通过：94 项
+--- test_flows.py: 通过（0.6s）
+
+=== test_formatting_builtin.py ===
+通过  兼容-1 历史 code 模式仍可执行
+通过  自然语言-1 null 本地占位不依赖模型
+通过  自然语言-2 无模型配置可读报错
+通过  自然语言-3 空 instruction 可读报错
+
+全部通过
+--- test_formatting_builtin.py: 通过（4.1s）
+
+=== test_identity_required.py ===
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.012s
+
+OK
+--- test_identity_required.py: 通过（0.5s）
+
+=== test_inline_sql.py ===
+..............
+----------------------------------------------------------------------
+Ran 14 tests in 0.007s
+
+OK
+--- test_inline_sql.py: 通过（0.5s）
+
+=== test_llm_providers.py ===
+通过) 不存在 → 404
+通过) 标识非法 → 400
+通过) 缺 providerId → 400
+通过) 删除默认后自动回退剩余提供方（回归）
+
+全部通过：40 项
+--- test_llm_providers.py: 通过（0.5s）
+
+=== test_ontology_build_exclusion_inheritance.py ===
+通过 14) 真实 run_generate 生成新批次候选（object:设备）
+通过 15) run_generate 调用点：库里的新候选行是 defer + revived（写事务内生效）
+通过 16) 生成摘要给出跨批次保护的说明（notes 含保护条数）
+通过 17) 生成运行推进到 adapt 阶段（真实 runner.stage 写入路径未被破坏）
+
+统计：17 项通过，0 项失败
+--- test_ontology_build_exclusion_inheritance.py: 通过（0.9s）
+
+=== test_ontology_build_finish_guard.py ===
+Traceback (most recent call last):
+  File "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/workbench/ontology_build/runner.py", line 146, in wrapper
+    job(user_id, run_id)
+  File "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/tests/test_ontology_build_finish_guard.py", line 167, in job
+    raise RuntimeError('A 收尾前异常（模拟收尾竞态）')
+RuntimeError: A 收尾前异常（模拟收尾竞态）
+--- test_ontology_build_finish_guard.py: 通过（0.4s）
+
+=== test_ontology_build_late_write.py ===
+通过 21) 场景5 dialog/仅取消：取消后释放 A，A 线程退出
+通过 22) 场景5 dialog/仅取消：不新增助手消息（旧回答的内容写被同事务核对拒绝）
+通过 23) 场景5 dialog/仅取消：run 最终 cancelled
+
+========== 汇总 ==========
+通过 23 / 23
+--- test_ontology_build_late_write.py: 通过（0.4s）
+
+=== test_ontology_build_merge_refs.py ===
+通过 42) 环保护：交付预检同样就该候选产出可定位 issue
+
+端到端读回断言：主对象稳定 id=obj_64386b63a87b；动作关联=[{'actionId': 'act_b686d3bcc79b', 'objectTypeId': 'obj_64386b63a87b'}]
+撤销合并阻断：可定位 issues=4 条
+
+合计 42 项：通过 42，失败 0
+--- test_ontology_build_merge_refs.py: 通过（0.4s）
+
+=== test_ontology_build_parsers.py ===
+  ok   D12 统一入口下超限 DOCX 仍显式失败（异常不外抛）
+  ok   D15 统一入口解析文本型 PDF 成功
+
+========== 汇总 ==========
+通过 95 / 95
+EOF marker not found
+--- test_ontology_build_parsers.py: 通过（0.3s）
+
+=== test_ontology_build_runner_isolation.py ===
+通过 32) begin_worker_scope 退出：只弹自己的登记
+通过 33) 显式传入已被轮换的旧 lease：作用域内写入按失配丢弃（stage 不被改写）
+通过 34) begin_worker_scope 全部退出后 active_runs 为空
+
+========== 汇总 ==========
+通过 34 / 34
+--- test_ontology_build_runner_isolation.py: 通过（0.3s）
+
+=== test_paths_isolation.py ===
+通过：核心导入不加载演示模块
+通过：数据根覆盖与回落
+通过：静态资源走代码根
+通过：ensure 不读基础文件
+统计：4 项全部通过
+--- test_paths_isolation.py: 通过（0.6s）
+
+=== test_project_flow_source.py ===
+通过) 动作绑定：编排列表读取失败必须 fail-closed 报 error（含编排 id）
+通过) 动作绑定：读取失败不得与「不存在」混同
+通过) 动作绑定：StorageUnavailable 必须原样抛出（路由 503）
+通过) 动作绑定：编排存在时应正常通过
+
+全部通过（44 步）：kind=flow 取值来源校验符合契约（含依赖三态）。
+--- test_project_flow_source.py: 通过（0.5s）
+
+=== test_property_sources.py ===
+通过  e1) 未知 kind 报「属性来源方式无效」／非法结构报格式无效
+通过  f1) 属性键在引用版本中不存在 block，原配置保留
+通过  f2) field 来源字段有目录但不存在 block；无目录保持现状
+通过  f3) degraded_catalogs 形参生效（None 时逐字节不变）
+
+全部通过
+--- test_property_sources.py: 通过（0.2s）
+
+=== test_publish_guards_adversarial.py ===
+  通过 · 同账号另一项目复用同 requestId 不得回放他项目的回执
+  通过 · 同账号另一项目应产出自己的版本（v1）而非借用 A 的版本
+
+================ 汇总 ================
+通过 135 项；不符 0 项
+临时根已清理；全部断言通过
+--- test_publish_guards_adversarial.py: 通过（1.3s）
+
+=== test_query_rules.py ===
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.012s
+
+OK
+--- test_query_rules.py: 通过（0.5s）
+
+=== test_registered_validation.py ===
+通过  registered_property_valid
+通过  registered_property_variants
+通过  validate_does_not_mutate_data
+
+32 项测试执行完毕
+全部通过
+--- test_registered_validation.py: 通过（0.2s）
+
+=== test_sql_steps.py ===
+.................
+----------------------------------------------------------------------
+Ran 17 tests in 0.004s
+
+OK
+--- test_sql_steps.py: 通过（0.5s）
+
+=== test_sql_templates.py ===
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.003s
+
+OK
+--- test_sql_templates.py: 通过（0.5s）
+
+=== test_storage_contract.py ===
+通过) MySQL DDL 编译 wb_build_runs
+通过) MySQL DDL 编译 wb_build_batches
+通过) MySQL DDL 编译 wb_build_candidates
+通过) MySQL DDL 编译 wb_build_review_ops
+通过) MySQL DDL 编译 wb_build_deliveries
+统计：60 项全部通过
+--- test_storage_contract.py: 通过（0.6s）
+
+=== test_storage_transfer.py ===
+通过) 反向导出凭据（0600）可用于回滚
+✓ 备份完成（含 WAL 一致快照）：/private/var/folders/j4/4xkj3fs544x8dfdbldh6072h0000gn/T/wiz_transfer_e_5t76jj/backup.sqlite3
+  ⚠ 根密钥需另行独立备份：<DATA_ROOT>/keys/wb-root.key
+通过) 在线备份成功（备份 API）
+通过) 备份文件存在
+统计：27 项全部通过
+--- test_storage_transfer.py: 通过（0.6s）
+
+=== test_time_series_type.py ===
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.256s
+
+OK
+--- test_time_series_type.py: 通过（0.3s）
+
+=== test_upgrade_impact.py ===
+通过  d) 未绑定定义不产生绑定级影响
+通过  e) 链接映射按稳定 id 命中且相似名不误报
+通过  f) 契约变化定位实现与计算来源
+通过  g) JSON schema 形态兼容
+
+全部通过
+--- test_upgrade_impact.py: 通过（0.0s）
+
+=== test_validation_split.py ===
+金样 98 个样例，515 项断言全部执行
+全部通过：errors/warnings/items 逐字节等价（含顺序），兼容入口一致
+--- test_validation_split.py: 通过（0.6s）
+
+=== test_value_shape.py ===
+通过  c3) classify：valueShape 不变时不误报
+通过  c4) classify：JSON-LD 形态输入走 encode 路径
+通过  d1) effective()：共享定义 valueShape 继承
+通过  d2) validate_properties：valueShape 合法性与覆盖校验
+
+全部通过
+--- test_value_shape.py: 通过（0.0s）
+
+========== 汇总 ==========
+通过 46 / 47
+  失败: test_ontology_build.py（退出码 1）

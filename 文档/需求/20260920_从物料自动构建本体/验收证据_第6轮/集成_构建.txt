@@ -1,0 +1,22 @@
+
+> wiz_kq_builder@0.1.0 build
+> vue-tsc --noEmit && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 287 modules transformed.
+rendering chunks...
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/app/http.ts is dynamically imported by /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/settings/ConfigurationTransfer.vue?vue&type=script&setup=true&lang.ts but also statically imported by /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/App.vue?vue&type=script&setup=true&lang.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/app/auth.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/app/saveCoordinator.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/flow/FlowEditor.vue?vue&type=script&setup=true&lang.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/flow/api.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/ontology/OntologyRelease.vue?vue&type=script&setup=true&lang.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/ontology/api.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/ontology/build/BuildReviewPage.vue?vue&type=script&setup=true&lang.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/ontology/build/BuildSavePage.vue?vue&type=script&setup=true&lang.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/ontology/build/BuildScopePage.vue?vue&type=script&setup=true&lang.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/ontology/build/api.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/project/ProjectValidation.vue?vue&type=script&setup=true&lang.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/project/api.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/settings/transferApi.ts, /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/integration-ontology-build-r6/frontend/src/tools/llm.ts, dynamic import will not move module into another chunk.
+
+computing gzip size...
+dist/index.html                     0.35 kB │ gzip:   0.30 kB
+dist/assets/index-CX6uyi15.css    218.19 kB │ gzip:  36.72 kB
+dist/assets/xlsx-B2eTCt_Q.js      499.55 kB │ gzip: 161.70 kB
+dist/assets/index-CjKZ-8TK.js   1,595.57 kB │ gzip: 536.06 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 3.68s

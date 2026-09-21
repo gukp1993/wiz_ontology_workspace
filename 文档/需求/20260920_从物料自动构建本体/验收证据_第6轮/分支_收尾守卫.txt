@@ -1,0 +1,47 @@
+Traceback (most recent call last):
+  File "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2-ontology-build/workbench/ontology_build/runner.py", line 146, in wrapper
+    job(user_id, run_id)
+  File "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2-ontology-build/tests/test_ontology_build_finish_guard.py", line 167, in job
+    raise RuntimeError('A 收尾前异常（模拟收尾竞态）')
+RuntimeError: A 收尾前异常（模拟收尾竞态）
+--- cancel_between_content_and_finish ---
+通过 1) 场景1 worker 到达暂停点
+通过 2) 场景1 取消已提交（cancelled + 标记）
+通过 3) 场景1 worker 已退出
+通过 4) 场景1 最终保持 cancelled（不被成功收尾覆盖）
+通过 5) 场景1 cancel_requested 保留（不被抹平）
+通过 6) 场景1 任务阶段未被收尾推进（仍 generating）
+通过 7) 场景1 已完成内容保留（1 条候选）
+
+--- success_then_cancel_request ---
+通过 8) 场景2 首次成功
+通过 9) 场景2 任务推进到评审
+通过 10) 场景2 保持 succeeded（实际已完成状态）
+通过 11) 场景2 取消标记未被置位
+
+--- cancel_retry_b_then_a_finishes ---
+通过 12) 场景3 A 到达暂停点（尚未写任何内容）
+通过 13) 场景3 B 完成成功
+通过 14) 场景3 A 已退出
+通过 15) 场景3 终态仍为 B 的 succeeded
+通过 16) 场景3 候选只有 B 的（A 的内容写与收尾都被拒）
+通过 17) 场景3 任务阶段保持 review（A 未改阶段）
+
+--- normal_and_duplicate_finish ---
+通过 18) 场景4 首次成功
+通过 19) 场景4 任务推进到评审
+通过 20) 场景4 重复收尾后仍 succeeded
+通过 21) 场景4 重复收尾不重复产生业务内容
+通过 22) 场景4 重复收尾后任务阶段不变
+
+--- failure_does_not_overwrite_cancel ---
+通过 23) 场景5 worker 到达暂停点
+通过 24) 场景5 最终保持 cancelled（不被 failed 覆盖）
+通过 25) 场景5 错误文案仍是取消原文
+
+--- queued_direct_finish_rejected ---
+通过 26) 场景6 queued 不被直达成功
+通过 27) 场景6 任务阶段未被推进
+
+========== 汇总 ==========
+通过 27 / 27
