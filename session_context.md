@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`6d164886a0d61932`
+上下文版本：`4748c3870e6df5b2`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,27 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 方法论 v1.1 修订：并入 Palantir 指导 + §7 重写为代码事实对照 · zcode · 已实施，待验收
+
+时间：2026-09-21T14:38:00.560904+00:00；记录：`.collaboration/entries/000179-0003a988dab9.json`
+
+按用户「更新方法论融合palantir可用内容」指令修订 自动化构建本体方法论_20260921.md 至 v1.1：①头部补 Palantir 输入源与修订记录；②§0 立场表加 Palantir 行（建模真实世界/设计判据/任务化验收）；③S8 增任务化验收裁定（unseen 业务问题测可答性、答不了记为缺口产出、人与AI分开测）；④新增 Palantir 采纳清单表（四优先级原则/身份与观测分离/precedence 权威源/反模式/Validation/分支治理，各标注落点与不采纳理由）；⑤§6 拆 6.1 工程事故类 + 6.2 Palantir 四条可确定性化反模式检查（System Silos/Kitchen Sink/God Object/Misnomer，各拟确定性检查与落点；Golden Hammer/Time Machine/Action Sprawl 说明不采纳理由）；⑥§7 整体重写：基线改为 main 已合并实现代码事实（protocol/llm/alignment/retrieval/delivery 只读核对），9 行逐阶段对照表（6段✅对齐、S4/S6/S7+执行模型🟡四缺口①接地②分批③频率门④批次降级），候选增量按真实差距重排 8 项（P0=接地/逐类分批/批次降级，P1=诱导层/反模式警示/相似建议+缓存，P2=任务化验收/覆盖率报告），7.3 限制令边界保留；⑦附录补官方四页链接与 9-15 能力级对照表。纯文档交付未改代码。
+
+- 验证：grep 校验文档标题结构完整（0-7章+附录，无断节）；4.7 编号瑕疵已修正；§7.1 九行对照全部依据上轮已核实代码事实（含 llm.py:43-45/414-423、alignment.py:12-13 行号）；候选增量均标待拍板；7.3 边界声明与限制令核对一致，未新增白名单议题
+- 下一步：候选增量八项待用户逐项拍板后才进需求线排期；P0 三项与生成实测失败根因直接相关，拍板后可与三项管理增量同分支排期
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/自动化构建本体方法论_20260921.md；https://www.palantir.com/docs/foundry/ontology/ontology-best-practices/
+
+### 创建 ui_fix 开发 worktree 并登记隔离环境 · codex · 已确认决定
+
+时间：2026-09-21T13:42:31.672975+00:00；记录：`.collaboration/entries/000178-614ba95041a5.json`
+
+按用户明确创建指令，从已提交 main（4714e8a）派生 codex/ui_fix 分支与 worktree/ui_fix 独立工作树，按 2026-09-21 规范把数据根放在工作树内并完成 main 库快照+根密钥+物料blob 随迁，端口登记 18882。本轮只建环境与登记，未安装依赖、未启动服务、未写业务代码、未改 main。
+
+- 决定：目录名沿用用户给定标识 ui_fix，分支按约定命名 codex/ui_fix；从本地已提交 main 4714e8a 创建，仓库无 remote 故不执行 pull。；数据根=工作树根（WIZ_WORKBENCH_ROOT=worktree/ui_fix），库用 transfer backup --output 生成 WAL 一致快照落 data/workbench.sqlite3，禁复制正在写入的库文件；随迁 keys/wb-root.key（否则副本内加密凭据全不可解）与 data/ontology-build-blobs 57 个物料 blob（1.6MB），使副本自含。；端口实测 18882/18892/18902 空闲、18912 被占，登记 18882；未触碰 18765(main)、18881(build-governance) 等他人实例，未启动任何进程。；登记写入公共目录 .git/workbench-tasks/ui_fix.json（fcntl 串行锁），标注 status=worktree_ready_not_started 与『含真实数据与根密钥副本，不可自动丢弃，删除须用户确认』；账号口令与 main 相同未重置。；依赖与构建按创建模板默认不做：worktree 无 node_modules 与 frontend/dist，后续启动前需 npm ci && npm run build（或由后端托管自己构建的 dist）；npm run dev 的 /api 代理默认 18765，验收本分支前必须核对为 18882。
+- 验证：git worktree list 确认 worktree/ui_fix @ codex/ui_fix @ 4714e8a；git -C worktree/ui_fix status 干净；主仓库 git status 无 worktree 泄漏（.gitignore 第24行 /worktree/ 生效）；快照只读校验：alembic_version=20260920_0003，pragma integrity_check=ok，30 张 wb_ 表有数据（wb_users 2、wb_build_materials 58、wb_build_facts 4024、wb_snapshots 365）；落位文件权限：data/ keys/ 0700，workbench.sqlite3 与 wb-root.key 0600，.runtime/task.env 0600；本轮未运行 npm build、未跑测试、未启动服务（仅环境创建与登记）；context.py record 需 read 返回的 ticket 且各列表字段≤5 项、单条≤400 字，超限报『交接列表格式无效』
+- 下一步：等用户下达 ui_fix 的具体修复范围与任务；开发前在 worktree/ui_fix 内准备依赖并启动 18882 实例。；若修复涉及前端，需先 ./start.sh setup 或建分支 venv，并 npm ci && npm run build 后由分支后端托管自身 dist。；集成合并与清理仍需用户明确指令；本环境含真实数据副本，删除前必须经用户确认。
+- 依据/文档：/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/ui_fix；.git/workbench-tasks/ui_fix.json；worktree/ui_fix/.runtime/task.env
 
 ### 自动化构建本体方法论交付（用户指令，综合 OpenSPG+semantica） · zcode · 已实施，待验收
 
@@ -129,25 +150,3 @@
 - 验证：main 3debc02：tracked ontology=0/.idea=0/总数883；磁盘 ontology=995(=基线)/.idea=6(=基线)；除他人暂存重组外无本任务残留；组合验证：ruff All checks passed、eslint exit 0、build 4.02s、TS 6/6、quick 3/3、all 48/49（pypdf 缺口 main 对照 83/85 同败）；无盘失败定位：集成树合并后 ontology/ 被 checkout 删除致 5 用例败，恢复磁盘后全过——纯磁盘种子缺失非代码回归；合并构成：996 D=991+5；Palantir 对照表 D+A 系 rename 断裂假象（新路径与 main 版 diff 为空）；69 R100=备份改名；非目标删除 0；端口18941无监听、两树无进程；18765 HTTP 200 未动
 - 下一步：主工作台 18765 运行合并前代码，更新需另行授权（build+重启）；新克隆环境测试种子依赖建议立项专项（测试自含种子或跳过守卫）；main 备份 data/workbench-before-build-migration-20260921-143248.sqlite3 保留
 - 依据/文档：main 链：5755e72→a4dd4e6→3debc02(含 merge 1279542)；被合并 codex/repo-cleanup@2c6a44d；文档/需求/20260921_仓库架构整理与代码规范/；验收记录提交 b3e912b/5a47ede
-
-### 自动化构建评审系列文档归档至独立目录（用户指令） · zcode · 已实施，待验收
-
-时间：2026-09-21T07:25:13.083100+00:00；记录：`.collaboration/entries/000167-6fcf5213d39d.json`
-
-按用户指令新建 文档/本体自动化构建评审_20260921/ 目录，git mv 收拢七份系列文档（R01-R10 讨论方案评审、续会4/5/5终版/6/7 纪要评审、方向整合与讨论议程），commit e2dafe0。移动后修正跨目录相对链接（](需求/ → ](../需求/、](本体建设思路 → ](../本体建设思路），全目录 md 链接逐一校验可解析（仅 Downloads 绝对路径为历史溯源标注、原文件已被用户清理，保持原值不修）。新增 README.md 索引：七份文档阅读顺序与关系表（评审对象+核心结论一栏）、当前状态与下一步（A1 待裁决对续会7三态草稿拍板、C1 衔接 build-governance worktree 18881、D1 收尾文档待指令、导出工具缺陷五次以完整对话为准）、目录外关联文档（需求说明/本体建设思路/推进计划表）。移动前全仓库引用核查：系列路径仅被文档自身与 session_context.md（自动生成不手改）引用，AGENTS/推进计划表等无引用，无断链风险。纯文件组织无内容改动；git mv 保留历史（部分文件因链接修正内容变化被识别为 rename 98-100%，log --follow 可追溯）。
-
-- 验证：移动前 grep 全仓库（排除 entries/worktree/node_modules/dist）：七份文档路径仅被自身与 session_context.md 引用；链接校验循环：目录内全部 .md 相对链接逐条解析，仓库内 0 断链；三条 Downloads 绝对路径为溯源标注（原导出件已被清理），非本次移动造成；git show e2dafe0：8 文件 496 增 1 删（7 份 git mv + README 新建）
-- 下一步：后续本系列新评审文档（如 meeting-49+）直接归档到该目录并更新 README 关系表；A1 裁决/C1 立项/D1 收尾文档等下一步不变，引用路径以新目录为准
-- 依据/文档：文档/本体自动化构建评审_20260921/；commit e2dafe0
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### meeting-48 续会7纪要评审并产出 A1 裁决前置草稿（本体自动化构建） · zcode · 已实施，待验收
-
-时间：2026-09-21T07:21:06.146095+00:00；记录：`.collaboration/entries/000166-e7a8098883bf.json`
-
-评审 meeting-48-export.md（续会7，材料为方向整合议程 08c5cbd1fc46，用户全程未发言、awaiting_confirmation），交付 文档/自动化构建续会7纪要评审_20260921.md（107 行，commit 5f64fd7）。判定六轮最佳：按议程推进（B2 滞留→A1 前置→产出物规格）零绕圈，不再讨论清单/确认记录表规则/第六节第5条分工均生效（W11'提交代码快照'表述被纠正为 worktree 路径），多次自我修正，A1 正确留白待业务方裁决。议题收敛质量高：滞留口径+关闭条件三段式+B1/B2/B3 三检查点拆分；A1 前置贡献判定基线/溯源基线分离（解析器指纹只溯源、判定函数物理隔离）、规则集指纹双基线、单一事实源。吸收两处对本侧方向文档的修正：A1 量级佐证后置（当前无真实存量确认记录，只做功能性预演）、滞留窗口定义前置化挂 B1。新问题：orchestrator truncated 第五次且丢失最重（发言 45-61 的三态状态列/断言清单/出处自检/两套状态语义区分整体未进纪要）；结构化区第五次空；发言 58 断言清单'四条'指认与发言 54 三条清单矛盾。按会议分工（散落结论整理归本侧）产出 A1 裁决前置强制产出物：按 B1/B2/A1/C1C2/D1D3 检查点分列的三态草稿（共识/倾向/待裁决+对话出处）+ 经出处核对的 D3 断言清单（①同批落键②干跑隔离③解析器指纹明确认领，④口径文档版本引用为候选）。下次方向：A1 裁决（对三态草稿逐项拍防顺手全批）→ C1 立项落 build-governance worktree（18881 已就绪）→ B1 前置数值 → D1 收尾文档；导出工具缺陷累计五次须反馈。纯文档+只读核对。
-
-- 验证：核对用户未发言（对话仅 system'用户结束会议'一条用户痕迹）；worktree 路径修正确认：发言 45 引用方向文档第六节第5条、发言 46/50 W11 接受并修正表述；断言清单出处核对：发言 6/8 同批落键、13/14 干跑隔离、37/38 解析器指纹明确认领；发言 44 版本号引用未明确认领为 D3 断言；发言 58'四条'理由（补解析器指纹）与发言 54 三条清单（已含）矛盾；三态草稿逐条对照对话出处（约 25 条目）标注共识/倾向/待裁决；git show 5f64fd7 仅含该评审文档 1 文件 107 行
-- 下一步：用户/业务方可持评审第五节三态草稿直接进行 A1 裁决（stripped_dump vs raw_bytes+随行项）；裁决后 C1 立项：build-governance worktree（18881、main 快照已就绪）实施滞留留痕+D3 断言（R02/R10+①-③）；D1 收尾文档待用户指令由本侧产出（含新增拍板项节+两条前置补记+单一事实源框架）；导出工具缺陷五次，建议用户向工具方反馈
-- 依据/文档：文档/自动化构建续会7纪要评审_20260921.md；commit 5f64fd7
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
