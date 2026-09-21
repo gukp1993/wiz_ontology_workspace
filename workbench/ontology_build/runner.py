@@ -5,6 +5,8 @@
   `auth.bind_request`，结束后在 finally 里解绑，绝不能凭客户端字段决定归属。
 * 解析 / LLM / 文件读写都不持 `workbench.locking.LOCK`，也不开长写事务：
   只做「短事务读状态 → 外部工作 → 短事务提交」，提交前复查取消与 fencing。
+* 业务内容写点（候选/消息/材料事实，R4-01）必须经 `content_tx()` 落库：同一
+  写事务内先核对取消与执行权再写内容，晚到 worker 的旧结果不可能通过核对。
 * 服务重启把 queued/running 标 interrupted，不假装仍在运行。
 * 单进程内有界池（RUN_WORKERS）；作业异常写回 run.error 与 retryable，
   绝不吞掉后静默当成功。
@@ -246,6 +248,22 @@ def check_cancelled(conn, run_id, owner_user_id):
         raise Cancelled('运行已被重试接管或已轮换执行权，旧结果不再写入')
     if state['cancel_requested'] or state['state'] in ('cancelled', 'interrupted'):
         raise Cancelled('用户已取消')
+
+
+def content_tx(user_id, run_id, body):
+    """业务内容写事务：同一写事务内先核对取消与执行权，再执行 body(conn) 写内容。
+
+    语义（R4-01）：候选、对话消息、材料事实等业务内容一律经这里落库，不能在
+    内容写完之后才靠下一次 stage/update_run 检查——那是「先污染后拦截」。
+    为什么同一事务内核对就足够：SQLite BEGIN IMMEDIATE 串行化所有写事务，
+    核对通过后到提交前，取消标记与 lease 轮换都无法并发插入，晚到 worker 的
+    内容不可能在通过核对后落库。核对失败抛 Cancelled，任何内容都不写。
+    """
+    def guarded(conn):
+        check_cancelled(conn, run_id, user_id)
+        return body(conn)
+    with sto.write_tx() as tx:
+        return tx.run(guarded)
 
 
 def stage(user_id, run_id, stage, label=None, progress=None):

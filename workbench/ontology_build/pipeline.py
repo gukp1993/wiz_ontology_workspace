@@ -6,6 +6,10 @@
   （`workbench.locking.LOCK`）、绝不开长事务。
 * 每个阶段边界调用 `runner.check_cancelled(conn, run_id, owner_user_id)`（由
   `runner.stage()` 内部完成），取消后晚结果禁止写入。
+* **业务内容写点（候选 / 对话消息 / 材料事实与 parse_state，R4-01）一律经
+  `runner.content_tx()` 落库**：同一写事务内先核对取消与执行权，再写内容——
+  不能等内容写完之后才在下一次 stage/update_run 里检查（那是先污染后拦截）；
+  run 行的状态/进度/usage/checkpoint 写仍走带 `lease=` 条件的 update_run。
 * 失败抛 `PipelineError`，由 runner 记录到 run.error（可重试），**不吞异常、不假装成功**；
   已完成材料的解析结果与已完成批次的候选已各自提交，失败后仍然保留。
 
@@ -163,7 +167,10 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
             details.append({'id': item['id'], 'relPath': item['relPath'], 'parseState': 'reused',
                             'facts': int(item['factCount']), 'error': ''})
         else:
-            _tx(lambda conn, item=item: _scan_mark_running(conn, owner_id, run_id, item['id']))
+            # parse_state 是业务内容（R4-01）：同事务核对取消/执行权后再写
+            runner.content_tx(owner_id, run_id,
+                              lambda conn, item=item:
+                              _scan_mark_running(conn, owner_id, run_id, item['id']))
             if not item['path']:
                 outcome = {'state': 'failed', 'facts': 0, 'modules': [],
                            'error': '材料文件缺失（已被清理或未登记为 blob）'}
@@ -174,8 +181,11 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
                     outcome = {'state': 'failed', 'facts': 0, 'modules': [],
                                'error': '解析材料失败（%s）：%s' % (exc.__class__.__name__, exc)}
                 else:
-                    outcome = _tx(lambda conn, item=item, result=result:
-                                  _scan_write(conn, owner_id, run_id, task_id, item, result))
+                    # 事实与 parse_state/coverage 都是业务内容（R4-01）：同事务核对后再写
+                    outcome = runner.content_tx(
+                        owner_id, run_id,
+                        lambda conn, item=item, result=result:
+                        _scan_write(conn, owner_id, run_id, task_id, item, result))
             details.append({'id': item['id'], 'relPath': item['relPath'],
                             'parseState': outcome['state'], 'facts': int(outcome['facts']),
                             'error': outcome.get('error') or ''})
@@ -618,8 +628,10 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
                for start in range(0, len(model_facts), protocol.LLM_BATCH_FACTS)]
     runner.stage(owner_id, run_id, 'abstract', label,
                  {'done': 0, 'total': len(batches), 'facts': len(model_facts)})
-    _tx(lambda conn: (runner.check_cancelled(conn, run_id, owner_id),
-                      store.delete_candidates_of_batch(conn, task_id, owner_id, batch_id)))
+    # 本批旧候选整批作废也是业务内容变更（R4-01）：同事务核对取消/执行权后再删
+    runner.content_tx(owner_id, run_id,
+                      lambda conn: store.delete_candidates_of_batch(conn, task_id, owner_id,
+                                                                    batch_id))
     accumulated, errors = [], []
     usage = _usage()
     rejected_total = 0
@@ -633,8 +645,11 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
             verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys())
             if verified:
                 accumulated.extend(verified)
-                _tx(lambda conn, items=verified:
-                    _append_candidates(conn, owner_id, task_id, batch_id, items))
+                # 候选是业务内容（R4-01）：同事务核对取消/执行权后再追加，
+                # 已取消/已被接管的旧 worker 在这里被拒绝，绝不污染新 attempt 的批次。
+                runner.content_tx(owner_id, run_id,
+                                  lambda conn, items=verified:
+                                  _append_candidates(conn, owner_id, task_id, batch_id, items))
         runner.stage(owner_id, run_id, 'abstract', label,
                      {'done': position, 'total': len(batches), 'facts': len(model_facts),
                       'candidates': len(accumulated)})
@@ -672,13 +687,14 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
     runner.stage(owner_id, run_id, 'adapt', label, {'done': len(final), 'total': len(final)})
 
     def _final_write(conn):
-        runner.check_cancelled(conn, run_id, owner_id)
+        # 取消/执行权核对由 content_tx 在同一写事务内完成（R4-01）：
+        # 人工排除继承 + 本批次整批替换（先删后写）必须作为一个不可拆的内容事务。
         protected = inherit_manual_exclusions(conn, owner_id, task_id, batch_id, final)
         if protected:
             _note(notes, '历史批次人工排除的 %d 个候选在新批次未自动复活：已强制暂缓并标记 '
                          'revived，需人工确认后重新纳入。' % protected)
         return _write_candidates(conn, owner_id, task_id, batch_id, final)
-    _tx(_final_write)
+    runner.content_tx(owner_id, run_id, _final_write)
     summary = {
         'runId': run_id, 'kind': 'generate', 'state': 'succeeded', 'batchId': batch_id,
         'facts': {'total': len(facts), 'pool': len(pool), 'sent': len(model_facts),
@@ -731,7 +747,9 @@ def run_dialog(owner_user_id, task_id, run_id, provider):
     content = llm.assistant_text(result)
     error = '' if result.get('ok') else _text(result.get('error')) or 'LLM 调用失败'
     patch = result.get('patch') if isinstance(result.get('patch'), dict) else {}
-    message_id, seq = _tx(lambda conn: store.append_message(
+    # 助手消息是业务内容（R4-01）：同事务核对取消/执行权后再追加，
+    # 晚到的旧 worker 回答不得排进新 attempt 的消息流。
+    message_id, seq = runner.content_tx(owner_id, run_id, lambda conn: store.append_message(
         conn, task_id, owner_id, 'assistant', content, patch=patch, error=error,
         scope_revision=int(context['scope'].get('revision') or 0)))
     usage = result.get('usage') if isinstance(result.get('usage'), dict) else _usage()
