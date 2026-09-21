@@ -1,0 +1,1483 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>从物料自动构建本体 · 交互原型 v2</title>
+<style>
+/* ═══ 设计令牌：与 frontend/src/style.css 逐字一致（唯一取色入口） ═══ */
+:root{
+  --ink:#182c3e;--ink-2:#3d5063;
+  --muted:#5b6d7e;
+  --faint:#8394a5;
+  --bg:#f6f8fa;--paper:#ffffff;--paper-2:#f4f7fa;--paper-3:#eef2f6;
+  --line:#dce4eb;--line-2:#c9d5e0;--grid:#d9e2ea;
+  --blue:#245cdf;--blue-deep:#1a49b0;--blue-ink:#234fa8;--blue-soft:#edf3ff;--blue-line:#b8cff8;
+  --ok:#1f7a55;--ok-soft:#eefaf3;--ok-line:#cdebd8;--ok-bright:#47c4a3;
+  --warn:#8a6116;--warn-soft:#fff8e8;--warn-line:#f0dfb2;
+  --danger:#b03a3a;--danger-deep:#8f2f2f;--danger-soft:#fdf0f0;--danger-line:#f2cfcf;
+  --focus:#245cdf;--backdrop:#10283d66;
+  --r-sm:6px;--r-md:10px;--r-lg:14px;--r-pill:999px;
+  --shadow-1:0 1px 2px rgba(24,44,62,.08);--shadow-2:0 16px 48px rgba(16,40,61,.18);
+  --dur:.12s;--ease:cubic-bezier(.2,.6,.3,1)
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;color:var(--ink);background:var(--bg)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--paper);border-radius:var(--r-sm);padding:6px 13px;color:var(--ink)}
+button:hover{border-color:var(--blue);color:var(--blue)}
+button:active:not(:disabled){transform:translateY(1px)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.primary{background:var(--blue);color:var(--paper);border-color:var(--blue)}
+.primary:hover:not(:disabled){background:var(--blue-deep);color:var(--paper)}
+.mini{padding:3px 9px;font-size:12px}
+.danger-ghost{color:var(--danger);border-color:var(--danger-line)}
+.danger-ghost:hover:not(:disabled){background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
+.row-link{border:0;background:none;padding:2px 6px;border-radius:4px;color:var(--blue);font-size:13px}
+.row-link:hover{background:var(--blue-soft)}
+.row-link.danger{color:var(--danger)}
+.row-link.danger:hover{background:var(--danger-soft)}
+input:not([type=checkbox]),select,textarea{display:block;width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--paper);color:var(--ink);margin-top:5px}
+textarea{min-height:78px;resize:vertical}
+label{display:block;margin:14px 0;color:var(--muted);font-size:13px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:17px;font-weight:650;margin:0 0 12px}
+h3{font-size:15px;margin:0}
+p{overflow-wrap:anywhere}
+.muted{color:var(--muted);font-size:13px}
+.eyebrow{font-size:11px;letter-spacing:1px;color:var(--muted);font-weight:650}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* ═══ 壳层：224px 浅色侧栏 + 56px 顶栏（与 App.vue 一致） ═══ */
+.rail{position:fixed;top:0;bottom:0;left:0;width:224px;background:var(--paper);border-right:1px solid var(--line);padding:14px 12px;display:flex;flex-direction:column;gap:10px;z-index:30}
+.rail .brand{font-size:18px;font-weight:650;letter-spacing:.4px;padding:0 10px 2px;color:var(--ink)}
+.rail .brand small{display:block;color:var(--faint);font-size:10px;letter-spacing:2px;font-weight:500;margin-top:3px}
+.ws-tabs{display:flex;gap:2px;background:var(--paper-3);border:1px solid var(--line);border-radius:var(--r-md);padding:3px;margin:0}
+.ws-tabs button{flex:1;min-width:0;border:0;background:none;border-radius:var(--r-sm);padding:6px 12px;color:var(--muted);font-weight:500;text-align:center}
+.ws-tabs button.active{background:var(--paper);box-shadow:inset 0 0 0 1px var(--line-2),var(--shadow-1);color:var(--ink);font-weight:650}
+.ws-tabs button:not(.active):hover{color:var(--ink);background:var(--line)}
+.space{padding:6px 0 8px;font-size:12px;color:var(--muted)}
+.space-head{display:flex;align-items:center;justify-content:space-between;margin:0 0 7px}
+.space-head label{font-size:12px;color:var(--muted);margin:0}
+.space-new{border:0;background:none;padding:2px 5px;border-radius:4px;color:var(--blue);font-size:12px;font-weight:500;line-height:1.5}
+.space-new:hover{background:var(--blue-soft);color:var(--blue-deep)}
+.space .fake-select{width:100%;min-height:38px;padding:8px 10px;border:1px solid var(--line-2);border-radius:7px;background:var(--paper);color:var(--ink);text-align:left;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.space .fake-select:hover{border-color:var(--blue-line)}
+.space .fake-select b{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.space .fake-select i{font-style:normal;color:var(--faint)}
+nav{overflow:auto;min-height:0;flex:1 1 0;scrollbar-width:thin}
+nav button{display:flex;align-items:center;gap:9px;text-align:left;width:100%;background:none;color:var(--ink-2);border:0;border-radius:var(--r-sm);padding:8px 10px;margin:2px 0;font-size:14px;font-weight:500}
+nav button:hover{background:var(--paper-2);color:var(--ink)}
+nav button.active{background:var(--blue-soft);color:var(--blue-ink);font-weight:600}
+.nav-ico{width:16px;height:16px;flex:none;opacity:.85}
+nav button.active .nav-ico{opacity:1}
+.rail-user{flex-shrink:0;display:flex;align-items:center;gap:4px;border-top:1px solid var(--line);padding-top:10px;margin-top:2px}
+.rail-user-trigger{display:flex;align-items:center;gap:9px;flex:1;min-width:0;background:none;border:0;border-radius:var(--r-sm);padding:6px 8px;color:var(--ink-2);text-align:left}
+.rail-user-trigger:hover{background:var(--paper-2);color:var(--ink)}
+.user-avatar{flex:none;width:28px;height:28px;border-radius:50%;background:var(--blue-soft);color:var(--blue-ink);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:650}
+.user-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500}
+.rail-gear{flex:none;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;border-radius:var(--r-sm);color:var(--ink-2)}
+.rail-gear:hover{background:var(--paper-2);color:var(--ink)}
+.rail-hint{font-size:12px;color:var(--faint);padding:10px 11px 0;margin:0}
+.topbar{position:fixed;top:0;left:224px;right:0;height:56px;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:0 20px;z-index:40}
+.topbar-crumb{flex:1;min-width:0;display:flex;align-items:baseline;gap:10px;overflow:hidden}
+.crumb-path{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar-title{font-size:15px;font-weight:650;color:var(--ink);margin:0;white-space:nowrap}
+.topbar-status{display:flex;align-items:center;gap:8px;flex:none}
+.save-pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:var(--r-pill);border:1px solid var(--line);font-size:12px;white-space:nowrap;background:var(--paper);color:var(--muted)}
+.save-pill.blue{color:var(--blue-ink);border-color:var(--blue-line);background:var(--blue-soft)}
+.shell{margin-left:224px;margin-top:56px}
+main{padding:0 24px 40px}
+
+/* ═══ 原型说明条 ═══ */
+.demo{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 24px;background:var(--warn-soft);border-bottom:1px solid var(--warn-line);color:var(--warn);font-size:12px;position:sticky;top:56px;z-index:35}
+.demo .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.demo button{font-size:12px;padding:3px 10px;background:var(--paper)}
+.demo .proto-ver{font-weight:650}
+
+/* ═══ 通用组件（card/panelhead/table/pill/steps-bar） ═══ */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);padding:20px;margin-bottom:16px}
+.panelhead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;row-gap:8px}
+.panelhead h2{margin:0}
+.panelhead h2 .muted{font-weight:400;font-size:12px}
+.tools{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.status-pill{display:inline-block;border:1px solid var(--blue-line);background:var(--blue-soft);color:var(--blue-ink);border-radius:var(--r-pill);padding:3px 11px;font-size:12px;white-space:nowrap}
+.pill-ok{background:var(--ok-soft);border-color:var(--ok-line);color:var(--ok)}
+.pill-warn{background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)}
+.pill-error{background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);overflow-wrap:anywhere;vertical-align:top}
+th{color:var(--muted);font-weight:500;background:var(--paper-2);font-size:13px}
+.tablewrap{overflow:auto}
+tr.row-excluded td{background:var(--paper-2);color:var(--muted)}
+.steps-bar{display:flex;align-items:center;gap:8px;margin:14px 0 18px;flex-wrap:wrap}
+.steps-bar button{display:flex;align-items:center;gap:7px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r-pill);padding:5px 13px 5px 6px;font-size:13px;color:var(--muted)}
+.steps-bar button i{font-style:normal;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--paper-2);font-size:12px;flex:none}
+.steps-bar button.on{color:var(--blue-ink);border-color:var(--blue-line);background:var(--blue-soft);font-weight:600}
+.steps-bar button.on i{border-color:var(--blue);background:var(--blue);color:var(--paper)}
+.steps-bar button.done{color:var(--ok)}
+.steps-bar button.done i{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.steps-bar button:disabled{opacity:.45}
+.bt-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:16px 0 12px}
+.bt-intro h1{font-size:22px;margin:0 0 4px}
+.bt-intro p{margin:0}
+.bt-intro-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bt-sub{display:block;font-size:12px;color:var(--muted);margin-top:4px}
+.bt-note{padding:11px 14px;border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);font-size:13px;color:var(--ink-2);margin:12px 0}
+.bt-note.warn{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
+.bt-note.bad{border-color:var(--danger-line);background:var(--danger-soft);color:var(--danger)}
+.bt-note.ok{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.bt-err-text{color:var(--danger)}
+.inline-error{font-size:13px;color:var(--danger)}
+.inline-success{font-size:13px;color:var(--ok)}
+.inline-warning{font-size:13px;color:var(--warn)}
+.empty-state{padding:44px 24px;text-align:center;color:var(--muted)}
+.footer-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 18px;margin-top:16px}
+.footer-bar .tools{flex-wrap:wrap}
+.check-option{display:flex;align-items:flex-start;gap:9px;font-size:14px;margin:10px 0;color:var(--ink)}
+.check-option input{display:inline-block;width:17px;min-width:17px;height:17px;margin:3px 0 0;accent-color:var(--blue)}
+.ont-limits{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 18px;margin:0}
+.ont-limits dt{font-size:12px;color:var(--muted)}
+.ont-limits dd{margin:2px 0 0;font-size:13px;overflow-wrap:anywhere}
+
+/* 模拟/未实现 标注 */
+.mark{display:inline-block;font-size:11px;font-weight:600;vertical-align:2px;color:#7754a1;background:#f3ecff;padding:1px 6px;border-radius:4px;margin-left:6px;white-space:nowrap}
+.mark.todo{color:var(--muted);background:var(--paper-3)}
+body.no-marks .mark{display:none}
+
+/* 弹层 */
+.modal-backdrop{position:fixed;inset:0;background:var(--backdrop);z-index:100;display:grid;place-items:center;padding:20px}
+.modal-card{background:var(--paper);border-radius:var(--r-lg);padding:28px;width:min(620px,95vw);max-height:90vh;overflow:auto;box-shadow:var(--shadow-2)}
+.modal-card.dialog-lg{width:min(880px,96vw)}
+.modal-card h2{margin:0 0 10px}
+.dialogtools{display:flex;justify-content:flex-end;gap:10px;margin-top:24px;flex-wrap:wrap}
+.dialogtools .left{margin-right:auto}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:12px 20px;border-radius:7px;z-index:200;max-width:85vw;font-size:13px;box-shadow:var(--shadow-2)}
+
+/* 交互说明侧板 */
+.help-fab{position:fixed;right:18px;bottom:18px;z-index:90;border-radius:var(--r-pill);padding:10px 16px;box-shadow:var(--shadow-2);background:var(--blue);border-color:var(--blue);color:var(--paper);font-weight:600}
+.help-fab:hover{background:var(--blue-deep);color:var(--paper)}
+.help-drawer{position:fixed;inset:0;background:var(--backdrop);z-index:110;display:flex;justify-content:flex-end}
+.help-panel{width:460px;max-width:94vw;height:100%;background:var(--paper);box-shadow:var(--shadow-2);display:flex;flex-direction:column}
+.help-head{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.help-head h2{margin:0;font-size:16px}
+.help-head button{margin-left:auto}
+.help-body{padding:18px 22px 30px;overflow-y:auto;flex:1;font-size:13px}
+.help-body h3{font-size:14px;margin:18px 0 6px;color:var(--blue-ink)}
+.help-body h3:first-child{margin-top:0}
+.help-body li{margin:5px 0}
+.help-body ul{padding-left:18px;margin:6px 0}
+.help-body .tagline{color:var(--muted)}
+
+/* ═══ A01 任务列表 ═══ */
+.bt-steps{list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:0;margin:14px 0}
+.bt-steps li{padding:14px;background:var(--paper-2);border-radius:var(--r-sm)}
+.bt-steps span{display:block;font-size:12px;color:var(--muted)}
+.bt-steps strong{display:block;font-size:14px;margin:4px 0}
+.bt-steps small{display:block;font-size:12px;color:var(--muted)}
+.cascade-box{border:1px solid var(--danger-line);background:var(--danger-soft);border-radius:var(--r-sm);padding:12px 14px;font-size:13px;color:var(--danger);margin:12px 0}
+.cascade-box b{display:block;margin-bottom:4px}
+.cascade-list{margin:8px 0 0;padding:0;list-style:none}
+.cascade-list li{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--danger-line);padding:4px 0}
+.cascade-list li:last-child{border-bottom:0}
+
+/* ═══ A02 物料页 ═══ */
+.bt-drop{border:1px dashed var(--line-2);background:var(--paper-2);border-radius:var(--r-md);text-align:center;padding:22px;margin:14px 0}
+.bt-drop p{margin:6px 0}
+.suffix-row{display:grid;grid-template-columns:minmax(240px,420px) minmax(0,1fr);gap:14px;align-items:end;margin:12px 0 4px}
+.cnt-line{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px;margin:10px 0 2px;font-variant-numeric:tabular-nums}
+.cnt-line b{font-weight:650}
+.cnt-line .seg i{font-style:normal;color:var(--faint);margin:0 4px}
+.bar{height:8px;background:var(--paper-3);border-radius:var(--r-pill);overflow:hidden;margin:8px 0}
+.bar>i{display:block;height:100%;background:var(--blue);transition:width var(--dur) var(--ease)}
+.bar.thin{height:5px;margin:4px 0 0}
+.bar>i.striped{background-image:linear-gradient(45deg,rgba(255,255,255,.35) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.35) 50%,rgba(255,255,255,.35) 75%,transparent 75%,transparent);background-size:14px 14px;animation:bar-move .8s linear infinite}
+@keyframes bar-move{to{background-position:14px 0}}
+.up-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 4px}
+.url-row{display:flex;gap:10px;align-items:center;border-top:1px dashed var(--line);margin-top:16px;padding-top:14px;flex-wrap:wrap}
+.url-row input{margin:0;flex:1;min-width:220px}
+.view-toggle{display:flex;gap:0;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.view-toggle button{border:0;border-radius:0;padding:6px 12px;font-size:13px;background:var(--paper)}
+.view-toggle button.on{background:var(--blue-soft);color:var(--blue-ink);font-weight:600}
+.group-row{cursor:pointer}
+.group-row:hover td{background:var(--paper-2)}
+.summary-pills{display:flex;gap:6px;flex-wrap:wrap}
+.summary-pills .status-pill{padding:1px 9px;font-size:11px}
+.blacklist-card{border:1px solid var(--warn-line)}
+.blacklist-card>summary{cursor:pointer;padding:13px 18px;font-size:14px;font-weight:600;color:var(--warn);list-style:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.blacklist-card>summary::before{content:'▸';transition:transform var(--dur)}
+.blacklist-card[open]>summary::before{transform:rotate(90deg)}
+.blacklist-body{padding:0 18px 16px;font-size:13px}
+.reason-chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.reason-chips span{border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--warn);border-radius:var(--r-pill);padding:2px 11px;font-size:12px}
+.pager{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0 2px;border-top:1px solid var(--line);margin-top:10px;color:var(--muted);font-size:12px;flex-wrap:wrap}
+.pager .tools{gap:6px}
+.gap-detail{background:var(--paper-2);border-radius:var(--r-sm);padding:10px 12px;margin:8px 0;font-size:12px;color:var(--ink-2)}
+.gap-detail b{display:block;margin-bottom:4px}
+.gap-detail ul{margin:4px 0;padding-left:18px}
+
+/* ═══ A03 范围页 ═══ */
+.scope-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:16px;align-items:start}
+.chatbox{display:flex;flex-direction:column;min-height:520px}
+.chatlog{overflow:auto;flex:1;min-height:240px;padding-right:8px}
+.message{max-width:94%;padding:12px 15px;border:1px solid var(--line);border-radius:9px;margin:12px 0;background:var(--paper-2);white-space:pre-wrap;font-size:14px}
+.message.you{margin-left:auto;background:var(--blue-soft);border-color:var(--blue-line)}
+.message.err{background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)}
+.message strong{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+.message.err strong{color:var(--danger)}
+.suggest{border:1px dashed var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);padding:9px 11px;margin-top:9px;font-size:13px;white-space:normal}
+.suggest p{margin:0 0 7px}
+.choices{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.choices button{font-size:12px;white-space:normal;background:var(--paper)}
+.composer{border-top:1px solid var(--line);padding-top:10px;margin-top:12px}
+.composer textarea{min-height:70px}
+.composer-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.scope-form .status-pill{white-space:nowrap}
+.scope-form textarea{min-height:62px}
+.q-item{border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin:8px 0;font-size:13px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.q-item.blocking{border-color:var(--danger-line);background:var(--danger-soft)}
+.q-item.done{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.q-item .tools{margin-left:auto}
+
+/* ═══ A04 生成页 ═══ */
+.progress-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(330px,.85fr);gap:16px;align-items:start}
+.stagebar{display:flex;gap:4px;margin:4px 0 16px}
+.stagebar span{flex:1;height:10px;border-radius:var(--r-pill);background:var(--paper-3);border:1px solid var(--line)}
+.stagebar span.done{background:var(--blue);border-color:var(--blue)}
+.stagebar span.current{background:linear-gradient(90deg,var(--blue-soft),var(--blue));border-color:var(--blue)}
+.stagebar span.failed{background:var(--danger);border-color:var(--danger)}
+.stagebar span.cancel{background:var(--warn-line);border-color:var(--warn)}
+.stage-row{display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--line)}
+.stage-row:last-child{border-bottom:0}
+.stage-circle{width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--paper-3);color:var(--muted);font-size:13px}
+.stage-row.done .stage-circle{background:var(--ok-soft);color:var(--ok)}
+.stage-row.current .stage-circle{background:var(--blue);color:var(--paper)}
+.stage-row.failed .stage-circle{background:var(--danger-soft);color:var(--danger)}
+.stage-body{flex:1;min-width:0}
+.stage-body strong{display:block;font-size:14px}
+.stage-body p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+.stage-badge{margin-left:auto;flex:none}
+.batch-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:12px 0 4px}
+.batch-cell{position:relative;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper-2);min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:12px;color:var(--muted);padding:4px}
+.batch-cell b{font-size:14px;color:var(--ink-2)}
+.batch-cell.done{background:var(--ok-soft);border-color:var(--ok-line);color:var(--ok)}
+.batch-cell.done b{color:var(--ok)}
+.batch-cell.running{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
+.batch-cell.running b{color:var(--blue-ink)}
+.batch-cell.failed{background:var(--danger-soft);border-color:var(--danger);color:var(--danger);cursor:pointer}
+.batch-cell.failed b{color:var(--danger)}
+.batch-cell.failed:hover{box-shadow:0 0 0 2px var(--danger-line)}
+.batch-cell.reuse{box-shadow:inset 0 0 0 1px var(--ok-line)}
+.batch-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:8px}
+.batch-legend i{font-style:normal;display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px;border:1px solid var(--line)}
+.legend-done{background:var(--ok-soft);border-color:var(--ok-line)!important}
+.legend-run{background:var(--blue-soft);border-color:var(--blue-line)!important}
+.legend-fail{background:var(--danger-soft);border-color:var(--danger)!important}
+.legend-todo{background:var(--paper-2)}
+.bp-rows{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;margin:12px 0}
+.bp-rows dt{font-size:12px;color:var(--muted)}
+.bp-rows dd{margin:0;font-size:13px;overflow-wrap:anywhere}
+
+/* ═══ A05 评审页 ═══ */
+.reviewgrid{display:grid;grid-template-columns:270px minmax(330px,1fr) minmax(300px,.9fr);gap:14px;align-items:start}
+.reviewgrid>.card{padding:15px;min-width:0;margin-bottom:0}
+.list-count{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:12px 3px}
+.cand-list{max-height:600px;overflow:auto;padding:2px}
+.cand{display:block;width:100%;text-align:left;border:1px solid transparent;border-radius:var(--r-sm);padding:11px 10px;margin:4px 0;background:transparent;white-space:normal}
+.cand:hover{background:var(--paper-2)}
+.cand.on{border-color:var(--blue-line);background:var(--blue-soft);color:var(--blue-ink)}
+.cand small{display:block;font-size:11px;color:var(--muted)}
+.cand strong{display:block;font-size:13px;font-weight:600;margin:2px 0}
+.cand .badges{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.cand .badges .status-pill{padding:1px 8px;font-size:11px}
+.cand .decision{font-size:11px;color:var(--muted)}
+.evfield{padding:12px 0;border-bottom:1px solid var(--line)}
+.evfield h4{margin:0 0 8px;font-size:13px}
+.evitem{padding:8px 0 10px;border-top:1px dashed var(--paper-3)}
+.evitem small{display:block;overflow-wrap:anywhere;color:var(--muted);font-size:12px}
+.evitem pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:var(--paper-2);padding:11px;border-radius:var(--r-sm);margin:8px 0 0}
+.ev-q{display:inline-block;font-size:11px;border-radius:4px;padding:0 6px;margin-left:6px;border:1px solid var(--line)}
+.ev-q.low{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
+.ev-q.high{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.editor-field{display:block;margin:16px 0;font-size:14px;color:var(--ink)}
+.field-title{display:flex;align-items:center;gap:7px;font-weight:600;flex-wrap:wrap}
+.required-mark{color:var(--danger)}
+.optional-label{font-size:11px;font-weight:400;color:var(--faint)}
+.editor-field input,.editor-field select,.editor-field textarea{font-size:14px;margin-top:8px}
+.field-help{display:block;font-size:12px;color:var(--muted);font-weight:400;margin:6px 0}
+.detail-footer{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:20px;padding-top:14px}
+.detail-footer>span{font-size:12px;color:var(--muted)}
+.dep-warn{border-left:3px solid var(--danger-line);background:var(--danger-soft);padding:10px 12px;margin:10px 0;font-size:13px;color:var(--danger)}
+.scroll-y{max-height:640px;overflow:auto;padding-right:4px}
+
+/* ═══ A06 保存页 ═══ */
+.save-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(340px,.8fr);gap:18px;align-items:start}
+.metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px;margin-bottom:12px}
+.metric-cell{background:var(--paper-2);border-radius:var(--r-sm);padding:11px 13px}
+.metric-cell small{display:block;font-size:12px;color:var(--muted)}
+.metric-cell strong{font-size:21px;display:block;font-variant-numeric:tabular-nums}
+.check-list{list-style:none;margin:10px 0;padding:0}
+.check-list li{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin:7px 0;font-size:13px;background:var(--paper)}
+.check-list li .ic{flex:none;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;margin-top:1px}
+.check-list li.pass .ic{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok-line)}
+.check-list li.fail{border-color:var(--danger-line);background:var(--danger-soft)}
+.check-list li.fail .ic{background:var(--paper);color:var(--danger);border:1px solid var(--danger-line)}
+.check-list li .go{margin-left:auto;flex:none}
+.success-hero{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--ok-soft);color:var(--ok);font-size:24px;margin-bottom:14px;border:1px solid var(--ok-line)}
+
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+@media(max-width:1200px){.reviewgrid{grid-template-columns:230px minmax(0,1fr)}.reviewgrid>.ev-card{grid-column:2}}
+@media(max-width:980px){.scope-grid,.progress-grid,.save-grid{grid-template-columns:1fr}.reviewgrid{grid-template-columns:1fr}.reviewgrid>.ev-card{grid-column:auto}.suffix-row{grid-template-columns:1fr}.batch-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(max-width:700px){.topbar{position:static;height:auto;flex-wrap:wrap;padding:8px 12px}.shell{margin-left:0;margin-top:0}.rail{position:static;width:100%;height:auto}.demo{position:static;top:auto}.metric-row{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal"></div>
+<div id="help"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<button type="button" class="help-fab" data-action="help">？ 交互说明</button>
+<script>
+'use strict';
+/* ═══════════════ 基础工具 ═══════════════ */
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const copy = v => JSON.parse(JSON.stringify(v));
+const fmtBytes = n => {
+  if (!Number.isFinite(n) || n < 0) return '—';
+  const units = ['B','KB','MB','GB']; let v = n, u = 0;
+  while (v >= 1024 && u < units.length - 1) { v /= 1024; u += 1 }
+  return (u === 0 ? String(Math.round(v)) : v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[u];
+};
+const fmtSec = s => s < 60 ? s.toFixed(1) + ' 秒' : Math.floor(s / 60) + ' 分 ' + Math.round(s % 60) + ' 秒';
+let toastTimer;
+function notify(text) { clearTimeout(toastTimer); $('#toast').innerHTML = '<div class="toast">' + esc(text) + '</div>'; toastTimer = setTimeout(() => { $('#toast').innerHTML = '' }, 4800) }
+function modal(html) { $('#modal').innerHTML = '<div class="modal-backdrop"><section class="modal-card ' + (html.lg ? 'dialog-lg' : '') + '" role="dialog" aria-modal="true">' + html.body + '</section></div>'; const f = $('#modal input,#modal button'); if (f) f.focus() }
+function closeModal() { $('#modal').innerHTML = '' }
+const sim = () => S.marks ? '<span class="mark">模拟</span>' : '';
+const todo = () => S.marks ? '<span class="mark todo">未实现</span>' : '';
+
+/* ═══════════════ 演示数据 ═══════════════ */
+const NAV_ICONS = {
+  'o-home':'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  'objects':'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.3 7L12 12l8.7-5M12 22V12',
+  'library':'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z',
+  'rules':'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
+  'actions':'M13 2L3 14h9l-1 8 10-12h-9z',
+  'o-release':'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7',
+  'build':'M5 5h14v14H5zM12 12h.01',
+  'tools':'M5 12h.01M12 12h.01M19 12h.01',
+  'gear':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'
+};
+const MENU = [['o-home','工作概览'],['objects','对象建模'],['library','共享属性'],['rules','业务规则'],['actions','动作定义'],['o-release','本体校验与发布'],['build','从物料生成']];
+const STEP_NAMES = ['物料','确定范围','生成','评审初稿','保存新本体'];
+const PAGES = ['materials','scope','progress','review','save'];
+const STAGES = [
+  { k:'retrieve', n:'筛选材料片段', d:'按范围筛选相关片段与必要依赖，不按表名一一生成对象' },
+  { k:'align',    n:'跨来源对齐证据', d:'对齐页面、代码、表结构与文档，保留来源位置' },
+  { k:'abstract', n:'抽象候选定义', d:'分批抽象对象、属性、链接、规则与动作候选' },
+  { k:'verify',   n:'校验证据与引用', d:'核对口径冲突与候选间引用，结构问题不假通过' },
+  { k:'adapt',    n:'适配本体协议', d:'按工作台协议分配稳定引用并校验，不生成项目映射' },
+];
+const PARSE_LABELS = {
+  pending:['待扫描',''], running:['解析中',''], success:['已解析','pill-ok'],
+  ocr_running:['图片 OCR 中',''], ocr_success:['OCR 成功','pill-ok'], ocr_unconfigured:['OCR 未配置','pill-warn'],
+  fallback_running:['LLM 兜底解析中',''], fallback_done:['兜底完成','pill-warn'],
+  partial:['部分解析','pill-warn'], failed:['解析失败','pill-error'], excluded:['已排除',''],
+};
+const REASON_LABELS = { binary:'二进制', secret:'密钥凭据', av:'音视频', custom:'自定义规则' };
+
+/* 模拟文件夹（选择文件夹时一次性载入） */
+const TREE = [
+  ['energy-backend/src/cluster','.java',28], ['energy-backend/src/device','.java',24],
+  ['energy-backend/src/billing','.java',18], ['energy-backend/src/mapper','.xml',16],
+  ['energy-backend/sql','.sql',6], ['energy-web/src/cluster','.vue',21],
+  ['energy-web/src/plan','.ts',14], ['energy-web/src/plan','.min.js',3],
+  ['docs','.md',9], ['docs','.docx',4], ['docs','.pdf',6], ['docs','.xlsx',2],
+  ['assets/images','.png',12], ['assets/media','.mp4',4], ['assets/images','.psd',2],
+  ['deploy','.key',2],
+];
+const BLACKLIST = p =>
+  /\.min\.js$/.test(p) ? 'custom' :
+  /\.(mp4|mov|avi|mkv|mp3)$/.test(p) ? 'av' :
+  /\.(key|pub|pem|pfx)$/.test(p) ? 'secret' :
+  /\.(psd|tiff|dll|so|bin)$/i.test(p) ? 'binary' : '';
+const STEM = { '.java':'Service', '.xml':'Mapper', '.sql':'migration', '.vue':'Panel', '.ts':'view', '.min.js':'chart.min', '.md':'笔记', '.docx':'需求说明', '.pdf':'设备协议扫描', '.xlsx':'数据字典', '.png':'现场照片', '.mp4':'讲解视频', '.psd':'设计稿', '.key':'deploy' };
+function hashOf(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h }
+function buildTree() {
+  const out = [];
+  for (const [dir, ext, n] of TREE) for (let i = 1; i <= n; i++) {
+    const p = dir + '/' + STEM[ext] + '_' + String(i).padStart(2, '0') + ext;
+    out.push({ path:p, ext, size: 4 + hashOf(p) % 120 * 1024 + (hashOf(p) % 7) * 137 });
+  }
+  return out;
+}
+const DEMO_FILES = buildTree();
+function groupOf(path) {
+  if (path.startsWith('energy-backend/src/')) return 'energy-backend / src · 后端服务';
+  if (path.startsWith('energy-backend/sql')) return 'energy-backend / sql · 数据库脚本';
+  if (path.startsWith('energy-web/')) return 'energy-web / src · 前端页面';
+  if (path.startsWith('docs')) return 'docs · 需求与设计文档';
+  if (path.startsWith('assets')) return 'assets · 图片与媒体';
+  if (path.startsWith('deploy')) return 'deploy · 部署配置';
+  return path.split('/').slice(0, 2).join(' / ');
+}
+
+/* 候选定义（A05） */
+const ev = (field, file, loc, text, quality) => ({ field, file, loc, text, quality: quality || 'high' });
+function seedCandidates() { return [
+ { id:'cluster', type:'对象', name:'储能簇', definition:'由多个电池模组组成、作为监测与管理单元的电池集合。', status:'supported', decision:'include', deps:[], origin:'parse', reason:'', evidence:[
+   ev('名称、业务定义','docs/运行管理需求.docx','2.1 设备层级 · 段落 3','储能设备下设储能簇，每个簇由多个电池模组组成。'),
+   ev('名称','energy-web/src/cluster/ClusterList.vue','第 24 行','页面标题：储能簇管理','medium')] },
+ { id:'device', type:'对象', name:'储能设备', definition:'由储能簇等组成、具备独立充放电管理能力的设备。', status:'supported', decision:'include', deps:[], origin:'parse', reason:'', evidence:[
+   ev('业务定义','docs/运行管理需求.docx','2.1 · 段落 2','储能设备作为充放电管理单元，下设多个储能簇。')] },
+ { id:'system', type:'对象', name:'储能系统', definition:'在当前业务范围内由多个储能设备构成的整体。', status:'supported', decision:'include', deps:[], origin:'parse', reason:'', evidence:[
+   ev('名称、业务定义','docs/业务术语.md','储能系统 · 第 12–16 行','储能系统是所属储能设备的集合，不要求有独立设备记录。','medium')] },
+ { id:'capacity', type:'属性', owner:'cluster', name:'额定容量', definition:'储能簇在规定条件下标称的储能容量。', dtype:'数值', status:'supported', decision:'include', deps:['cluster'], origin:'parse', reason:'', evidence:[
+   ev('名称、数据类型','energy-backend/sql/001_init.sql','m_storage_cluster_phase.capacity',"capacity decimal(18,4) COMMENT '额定容量'"),
+   ev('业务定义','docs/运行管理需求.docx','2.2 · 表格 1','额定容量：规定条件下标称的储能容量。'),
+   ev('名称','energy-web/src/cluster/ClusterList.vue','第 38 行','label: "额定容量", prop: "capacity"','medium')] },
+ { id:'soc', type:'属性', owner:'cluster', name:'SOC', definition:'电池的剩余电量百分比；此属性描述储能簇当前最新值。', dtype:'数值', status:'supported', decision:'include', deps:['cluster'], origin:'parse', reason:'', evidence:[
+   ev('业务定义、数据类型','docs/数据字典.xlsx','测点 · B8:E8','SOC | 剩余电量百分比 | 数值 | 最新值')] },
+ { id:'series', type:'属性', owner:'cluster', name:'SOC采样序列', definition:'电池的剩余电量百分比随时间记录的采样序列。', dtype:'时间序列', valueType:'数值', status:'supported', decision:'include', deps:['cluster'], origin:'parse', reason:'', evidence:[
+   ev('业务定义、数据类型、观测值类型','docs/数据字典.xlsx','采样 · B3:F3','SOC | 每5分钟采样 | 时间戳 | 数值 | 剩余电量百分比')] },
+ { id:'serial', type:'属性', owner:'cluster', name:'出厂编号', definition:'设备出厂时铭牌上的唯一编号，用于资产溯源。', dtype:'文本', status:'inferred', decision:'defer', deps:['cluster'], origin:'fallback', reason:'', evidence:[
+   ev('名称','docs/设备协议扫描_01.pdf','第 4 页 · OCR 识别（质量低）','出厂编号：PCS-2023-0817-0042（识别置信度较低）','low')] },
+ { id:'link1', type:'链接', name:'所属于', definition:'储能簇归属于负责其运行管理的储能设备。', source:'cluster', target:'device', card:'多对一', status:'supported', decision:'include', deps:['cluster','device'], origin:'parse', reason:'', evidence:[
+   ev('端点、数量关系','docs/运行管理需求.docx','2.1 · 段落 4','一个储能簇只能归属一个储能设备，一个设备可以包含多个储能簇。'),
+   ev('端点','energy-backend/src/cluster/ClusterMapper.xml','第 31 行','cluster.storage_id = storage.id','medium')] },
+ { id:'link2', type:'链接', name:'包含设备', definition:'储能系统由纳入该系统的储能设备组成。', source:'system', target:'device', card:'一对多', status:'supported', decision:'include', deps:['system','device'], origin:'parse', reason:'', evidence:[
+   ev('端点、数量关系','docs/业务术语.md','第 19–22 行','本业务中一个设备只纳入一个系统；一个系统包含多个设备。','medium')] },
+ { id:'rule', type:'规则', name:'储能设备SOC汇总规则', definition:'根据所属储能簇的数据汇总设备整体的剩余电量百分比。', content:'', status:'conflict', decision:'defer', deps:['device'], origin:'parse', reason:'', evidence:[
+   ev('规则内容 · 文档口径','docs/运行管理需求.docx','3.2 · 段落 5','设备SOC = Σ(簇SOC × 簇额定容量) / Σ(簇额定容量)。'),
+   ev('规则内容 · 实现口径','energy-backend/src/device/SocService.java','第 82–85 行','return values.stream().mapToDouble(Cluster::getSoc).average();','medium')] },
+ { id:'stop', type:'动作', name:'停止充放电', definition:'请求储能设备结束当前充电或放电。', effect:'', status:'inferred', decision:'defer', deps:['device'], origin:'fallback', reason:'', evidence:[
+   ev('名称','energy-web/src/device/StorageControl.vue','第 51 行','按钮：停止充放电','medium'),
+   ev('行为线索（尚不足以证明效果）','energy-backend/src/device/StorageController.java','第 66 行','setStoragePower(storageId, 0)','low')] },
+ { id:'dup', type:'对象', name:'电池簇', definition:'由多个电池模组组成、作为监测与管理单元的电池集合。', status:'inferred', decision:'defer', deps:[], origin:'fallback', reason:'可能与储能簇同义，待确认合并。', evidence:[
+   ev('别名候选','docs/设备协议扫描_02.pdf','第 4 页 · OCR 识别（质量低）','电池簇（本文所称储能簇）作为监测单元。','low')] },
+]}
+const STATUS_LABELS = { supported:['有依据','pill-ok'], inferred:['推断待确认','pill-warn'], conflict:['来源冲突','pill-error'], insufficient:['材料不足','pill-warn'] };
+const DEC_LABELS = { include:'拟纳入', defer:'暂缓', exclude:'已排除' };
+
+/* ═══════════════ 状态 ═══════════════ */
+let S;
+function fresh() {
+  return {
+    page:'tasks', marks:true, helpOpen:false, notice:'',
+    tasks:[
+      { id:'t1', name:'储能运行管理本体', label:'添加物料', tone:'', mats:0, upd:'2026-09-21 09:12', del:{ m:0, f:0, r:0 }, demo:true },
+      { id:'t2', name:'光伏电站运维本体', label:'待评审', tone:'pill-warn', mats:23, upd:'2026-09-20 16:40', del:{ m:23, f:1482, r:3 }, onto:'ont-demo-pv-001' },
+      { id:'t3', name:'收益结算口径梳理', label:'已创建本体', tone:'pill-ok', mats:11, upd:'2026-09-19 11:05', del:{ m:11, f:640, r:2 }, onto:'ont-demo-settle-002' },
+    ],
+    /* A02 */
+    picked:false, suffix:'', zipMode:null, bigAskSeen:false,
+    up:{ state:'idle', chunk:0, total:360, file:'', uploaded:0 },
+    mats:[], matView:'group', scan:null, ack:false, detail:null,
+    urlDraft:'',
+    /* A03 */
+    chat:[], round:0, llmDown:false,
+    scope:{ goal:'', include:'', exclude:'', coverage:'' }, scopeSaved:null, scopeDirty:false,
+    questions:[
+      { t:'设备 SOC 汇总口径：需求文档采用容量加权，后端代码采用简单平均，两者不一致。', blocking:false, done:false, hint:'可留到候选评审处理。' },
+      { t:'assets/images 下有 4 张扫描页尚未配置 OCR，是否纳入本次证据范围？', blocking:true, done:false, hint:'阻断范围确认：请先选择处理方式。' },
+    ],
+    /* A04 */
+    run:null,
+    /* A05 */
+    cands:seedCandidates(), sel:'cluster', search:'', fType:'', fDec:'', fStatus:'', itemDirty:false, mergeBackup:null, merged:false,
+    /* A06 */
+    saveName:'储能运行管理本体', saveAck:false, savedResult:null,
+  };
+}
+S = fresh();
+
+/* ═══════════════ A02 计算辅助 ═══════════════ */
+function suffixList() { return S.suffix.split(/[，,]/).map(x => x.trim().toLowerCase()).filter(Boolean).map(x => x.startsWith('.') ? x : '.' + x) }
+function pickStats() {
+  const allow = suffixList();
+  let keep = 0, skip = 0, bl = { binary:0, secret:0, av:0, custom:0 }, bytes = 0;
+  for (const f of DEMO_FILES) {
+    if (allow.length && !allow.includes(f.ext)) { skip++; continue }
+    const r = BLACKLIST(f.path);
+    if (r) { bl[r]++; continue }
+    keep++; bytes += f.size;
+  }
+  return { total:DEMO_FILES.length, keep, skip, bl, bytes, blTotal:bl.binary + bl.secret + bl.av + bl.custom };
+}
+function ensureMats() {
+  if (S.mats.length) return;
+  let seq = 0;
+  S.mats = DEMO_FILES.filter(f => !BLACKLIST(f.path)).map(f => ({
+    id:'m' + (++seq), path:f.path, ext:f.ext, group:groupOf(f.path), size:f.size, st:'pending', excluded:false, notes:[],
+  }));
+}
+function assignParseStates() {
+  let pdf = 0, dev = 0, ts = 0, docx = 0;
+  const flips = [];
+  const now = Date.now();
+  for (const m of S.mats) {
+    if (m.excluded) { m.st = 'excluded'; continue }
+    if (m.ext === '.pdf') { m.st = ['ocr_running','ocr_running','ocr_success','ocr_success','ocr_unconfigured','ocr_unconfigured'][pdf++ % 6]; if (m.st === 'ocr_running') flips.push({ at:now + 6000 + pdf * 800, id:m.id, to:'ocr_success' }) }
+    else if (m.ext === '.docx') { m.st = (++docx === 2) ? 'partial' : 'success'; if (m.st === 'partial') m.notes = ['表格 3–7 存在合并单元格，按段落近似还原，建议人工核对原表。'] }
+    else if (m.path.startsWith('energy-backend/src/device/') && m.ext === '.java') {
+      m.st = dev === 0 ? 'fallback_running' : dev === 1 ? 'failed' : 'success';
+      if (m.st === 'fallback_running') flips.push({ at:now + 9000, id:m.id, to:'fallback_done' });
+      if (m.st === 'failed') m.notes = ['第 88–96 行：文件内 GBK 与 UTF-8 编码混杂，该段已跳过，不能当成空内容。'];
+      dev++;
+    }
+    else if (m.path.startsWith('energy-web/src/plan/') && m.ext === '.ts') { m.st = ts === 0 ? 'failed' : 'success'; if (m.st === 'failed') m.notes = ['文件在第 210 行被截断，未能完整解析。']; ts++ }
+    else m.st = 'success';
+  }
+  S.scan = { state:'done', flips, t0:now };
+}
+function activeMats() { return S.mats.filter(m => !m.excluded) }
+function gapMats() { return activeMats().filter(m => ['failed','partial','ocr_unconfigured'].includes(m.st)) }
+function okMats() { return activeMats().filter(m => ['success','ocr_success','fallback_done','ocr_running','fallback_running'].includes(m.st)) }
+function matLabel(m) { return (PARSE_LABELS[m.st] || ['未知',''])[0] }
+function matTone(m) { return (PARSE_LABELS[m.st] || ['未知',''])[1] }
+function groupStats() {
+  const map = new Map();
+  for (const m of S.mats) {
+    if (!map.has(m.group)) map.set(m.group, { name:m.group, files:[], bytes:0 });
+    const g = map.get(m.group); g.files.push(m); g.bytes += m.size;
+  }
+  return [...map.values()];
+}
+function groupSummary(g) {
+  const c = {};
+  for (const m of g.files) c[m.st] = (c[m.st] || 0) + 1;
+  const order = ['success','ocr_success','ocr_running','fallback_running','fallback_done','partial','failed','ocr_unconfigured','pending','excluded'];
+  return order.filter(k => c[k]).map(k => '<span class="status-pill ' + matTone({ st:k }) + '">' + (PARSE_LABELS[k] || [k])[0] + ' ' + c[k] + '</span>').join(' ');
+}
+
+/* ═══════════════ A04 运行模型 ═══════════════ */
+function newRun() {
+  return { state:'running', stage:0, prog:0, sec:[0,0,0,0,0], attempt:1, note:'',
+    batches:Array.from({ length:25 }, (_, i) => ({ st:'pending', prog:0, reuse:false, faildone:false, err:'' })), error:'' };
+}
+function runActiveCount(r) { return r.batches.filter(b => b.st === 'running').length }
+function tickRun(r, dt) {
+  r.sec[r.stage] += dt;
+  if (r.stage !== 2) {
+    r.prog += dt / 2.4;
+    if (r.prog >= 1) { r.prog = 0; r.stage += 1; if (r.stage > 4) { r.state = 'done'; r.note = '' } }
+    return;
+  }
+  let active = runActiveCount(r);
+  for (const b of r.batches) { if (active >= 4) break; if (b.st === 'pending') { b.st = 'running'; b.prog = 0; active++ } }
+  for (let i = 0; i < r.batches.length; i++) {
+    const b = r.batches[i];
+    if (b.st !== 'running') continue;
+    b.prog += dt * (b.reuse ? 12 : 0.85);
+    if (b.prog < 1) continue;
+    if (i === 6 && !b.faildone) {
+      b.faildone = true; b.st = 'failed';
+      b.err = 'LLM 输出被截断（finish_reason=length）：候选 JSON 未闭合。该批片段 #145–168（energy-backend/src/device）未产出候选。';
+      r.state = 'failed';
+      r.error = 'abstract 阶段第 7/25 批失败：LLM 输出被截断。其余已成功批次（含前序阶段）结果保留；可仅重试失败批次，或从 abstract 阶段整体重试。';
+      return;
+    }
+    b.st = 'done'; b.reuse = false;
+  }
+  if (r.batches.every(b => b.st === 'done')) { r.prog = 0; r.stage = 3 }
+}
+
+/* ═══════════════ 渲染 ═══════════════ */
+function ico(key) { return '<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (NAV_ICONS[key] || NAV_ICONS.build) + '"/></svg>' }
+function canGo(p) {
+  if (p === 'materials') return true;
+  if (p === 'scope') return S.mats.length > 0;
+  if (p === 'progress') return S.run !== null;
+  if (p === 'review') return S.run !== null && S.run.state === 'done';
+  if (p === 'save') return S.run !== null && S.run.state === 'done';
+  return false;
+}
+function shell(content) {
+  const inTask = S.page !== 'tasks';
+  const crumb = inTask ? '本体 / 从物料生成 / ' + esc(S.tasks.find(t => t.demo)?.name || '演示任务') : '本体 / 从物料生成';
+  const title = { tasks:'从物料生成', materials:'物料', scope:'确定范围', progress:'生成', review:'评审初稿', save:'保存新本体' }[S.page] || '从物料生成';
+  return '' +
+  '<aside class="rail"><div class="brand">◇ 本体工作台<small>ONTOLOGY WORKSPACE</small></div>' +
+  '<div class="ws-tabs" role="tablist"><button type="button" class="active">本体</button><button type="button" data-action="demo-toast" data-msg="原型仅演示本体区「从物料生成」子流程；项目区未包含。">项目</button></div>' +
+  '<div class="space"><div class="space-head"><label>当前本体</label><button type="button" class="space-new" data-action="demo-toast" data-msg="新建本体入口在本原型中仅示意。">＋ 新建</button></div>' +
+  '<button type="button" class="fake-select" data-action="demo-toast" data-msg="切换本体入口仅示意；本原型不读写真实本体。"><b>储能本体</b><i>▾</i></button></div>' +
+  '<nav aria-label="工作台导航">' + MENU.map(([k, n]) =>
+    '<button type="button' + (k === 'build' ? '" class="active" aria-current="page"' : '" data-action="demo-toast" data-msg="原型仅演示「从物料生成」子入口；该菜单未包含。"') + '>' + ico(k) + n + '</button>').join('') +
+  '<button type="button" data-action="demo-toast" data-msg="原型仅演示「从物料生成」子入口；更多工具未包含。">' + ico('tools') + '更多工具</button>' +
+  '<p class="rail-hint">「从物料生成」是新建本体的子入口：从代码、表结构、文档等物料生成一份有依据的本体初稿。</p></nav>' +
+  '<div class="rail-user"><div style="flex:1;min-width:0;display:flex"><button type="button" class="rail-user-trigger"><span class="user-avatar">演</span><span class="user-name">演示用户</span></button></div>' +
+  '<button type="button" class="rail-gear" data-action="demo-toast" data-msg="设置中心未包含在本原型内。">' + ico('gear') + '</button></div></aside>' +
+  '<div class="topbar"><div class="topbar-crumb"><span class="crumb-path">' + crumb + '</span><h1 class="topbar-title">' + title + '</h1></div>' +
+  '<div class="topbar-status"><span class="save-pill blue">交互原型 · v2</span></div></div>' +
+  '<div class="shell"><div class="demo"><span><b class="proto-ver">原型说明 · v2 · 2026-09-21</b>　本原型为交互模拟，不代表已实现能力：不读取真实文件、不调用模型、不写入工作台数据；带「模拟 / 未实现」标注处均为演示入口。刷新复位。</span>' +
+  '<span class="actions"><button type="button" data-action="help">交互说明</button><button type="button" data-action="marks">' + (S.marks ? '隐藏标注' : '显示标注') + '</button><button type="button" data-action="reset">重新开始</button></span></div>' +
+  '<main>' + (inTask ? stepsBar() : '') + '<div id="page">' + content + '</div></main></div>';
+}
+function stepsBar() {
+  return '<div class="steps-bar" role="group" aria-label="生成流程"><button type="button" data-action="goto" data-page="tasks">← 生成任务</button>' +
+  PAGES.map((p, i) => {
+    const idx = PAGES.indexOf(S.page);
+    const cls = p === S.page ? 'on' : (i < idx ? 'done' : '');
+    const dis = canGo(p) ? '' : 'disabled title="按流程顺序解锁"';
+    return '<button type="button" class="' + cls + '" data-action="goto" data-page="' + p + '" ' + dis + '><i>' + (i < idx ? '✓' : i + 1) + '</i>' + STEP_NAMES[i] + '</button>';
+  }).join('') + '</div>';
+}
+function render() {
+  const fn = { tasks:pageTasks, materials:pageMaterials, scope:pageScope, progress:pageProgress, review:pageReview, save:pageSave }[S.page];
+  $('#app').innerHTML = shell(fn());
+  document.body.classList.toggle('no-marks', !S.marks);
+  renderHelp();
+}
+
+/* ───── A01 任务列表 ───── */
+function pageTasks() {
+  const rows = S.tasks.map(t =>
+    '<tr><td><strong>' + esc(t.name) + '</strong><small class="bt-sub">清单修订 ' + (t.del.m || 0) + (t.onto ? ' · 已创建本体 ' + esc(t.onto) : '') + '</small></td>' +
+    '<td><span class="status-pill ' + (t.tone || '') + '">' + esc(t.label) + '</span></td>' +
+    '<td>' + t.mats + ' 份</td><td>' + t.upd + '</td>' +
+    '<td class="tools" style="flex-wrap:nowrap">' +
+    (t.demo ? '<button type="button" class="row-link" data-action="continue-task">继续</button>' : '<button type="button" class="row-link" data-action="demo-toast" data-msg="原型聚焦「储能运行管理本体」任务的完整流程；该任务仅作列表展示。">' + (t.onto ? '查看任务' : '继续') + '</button>') +
+    (t.onto ? '<button type="button" class="row-link" data-action="demo-toast" data-msg="回链进入对象建模：交付后按现有切本体机制整页载入（原型不跳转）。">查看已创建本体</button>' : '') +
+    '<button type="button" class="row-link danger" data-action="del-task" data-id="' + t.id + '">删除</button></td></tr>').join('');
+  return '' +
+  '<div class="bt-intro"><div><h1>从物料生成本体</h1><p class="muted">从已有系统（代码、表结构、需求文档）中提取业务概念，先得到一份有依据的初稿，再由你裁剪。</p></div>' +
+  '<div class="bt-intro-tools"><button type="button" data-action="demo-toast" data-msg="进入对象建模为现有页面入口，原型不跳转。">进入对象建模</button>' +
+  '<button type="button" class="primary" data-action="new-task">＋ 新建生成任务</button></div></div>' +
+  (S.notice ? '<p class="bt-note ok" role="status">' + esc(S.notice) + '</p>' : '') +
+  '<section class="card"><div class="panelhead"><h2>能力与限额</h2><button type="button" class="mini" data-action="demo-toast" data-msg="能力与限额来自服务端接口（原型为静态演示数据）。">刷新</button></div>' +
+  '<dl class="ont-limits">' +
+  '<div><dt>单文件</dt><dd>200 MB</dd></div><div><dt>单任务总量</dt><dd>2 GB</dd></div><div><dt>分片大小</dt><dd>4 MB</dd></div>' +
+  '<div><dt>压缩包展开上限</dt><dd>1 GB · 2000 个条目</dd></div><div><dt>单份材料解析超时</dt><dd>120 秒</dd></div>' +
+  '<div><dt>扫描页识别（OCR）</dt><dd class="bt-err-text">不可用：未配置识别服务</dd></div>' +
+  '<div><dt>模型服务</dt><dd>演示模型（demo-llm）</dd></div><div><dt>解析器 / 提示词版本</dt><dd>p-14 / pr-7</dd></div></dl>' +
+  '<p class="bt-note warn">扫描件（图片页）当前无法识别：对应文件会标记为「OCR 未配置」并计入覆盖缺口；这不影响其它材料的解析。</p></section>' +
+  '<section class="card"><div class="panelhead"><h2>生成任务 <span class="muted">共 ' + S.tasks.length + ' 个</span></h2><button type="button" class="mini" data-action="demo-toast" data-msg="列表来自服务端（原型为静态演示）。">刷新</button></div>' +
+  (S.tasks.length ? '<div class="tablewrap"><table><thead><tr><th style="width:32%">任务</th><th>当前阶段</th><th>物料</th><th>更新时间</th><th style="width:24%">操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>' :
+  '<div class="empty-state"><p><strong>还没有生成任务。</strong></p><p>新建任务后上传物料，先扫描识别内容，再对话确定范围。</p><button type="button" class="primary" data-action="new-task">＋ 新建生成任务</button></div>') +
+  '</section>' +
+  '<section class="card"><h2>v2 新增交互点（对照 v1）</h2><ul class="muted" style="line-height:2">' +
+  '<li>删除任务：弹层写明<b>物理删除级联范围</b>，必须输入任务名确认，确认后行消失并显示级联删除计数。</li>' +
+  '<li>物料页：后缀过滤与计数行、大文件夹压缩引导、分片断点续传演示、分组/平铺与详情分页、图片 OCR 与 LLM 兜底状态、黑名单已过滤区、从 URL 抓取（待定）。</li>' +
+  '<li>生成页：五阶段耗时与 25 批次网格、失败注入与两种重试粒度、取消/继续。</li>' +
+  '<li>评审页：LLM 兜底候选带「推断待确认」角标与低质量证据标注。</li>' +
+  '</ul></section>';
+}
+
+/* ───── A02 物料页 ───── */
+function pageMaterials() {
+  const st = pickStats();
+  const up = S.up;
+  const scanned = S.scan && S.scan.state === 'done';
+  let uploadZone = '';
+  if (!S.picked) {
+    uploadZone = '<div class="bt-drop"><strong>前后端代码 · 数据库表结构 · 需求文档</strong>' +
+    '<p class="muted">文件夹 / ZIP、SQL、DOCX、PDF、XLSX、MD；旧版 Office 格式建议先转换。可直接把文件拖到这里。</p>' +
+    '<p class="bt-sub">分片上传：按服务端给定分片大小切片并逐片校验 SHA-256，整文件哈希一致才会登记为材料。</p>' +
+    '<p style="margin-top:12px"><button type="button" data-action="pick-dir">选择文件夹</button>　<button type="button" class="primary" data-action="pick-dir">选择文件</button>' +
+    '<span class="mark">模拟</span></p><p class="bt-sub">原型以固定演示目录（' + DEMO_FILES.length + ' 个文件）模拟一次文件夹选择；不会读取本机文件。</p></div>';
+  } else {
+      uploadZone = '<div class="suffix-row"><label style="margin:0">后缀过滤（只上传匹配的文件）' + sim() +
+    '<input id="suffix" type="text" value="' + esc(S.suffix) + '" placeholder="留空=全部上传；例：.java,.sql,.md" aria-label="后缀过滤"></label>' +
+    '<div><button type="button" class="mini" data-action="pick-reset">清除本次选择</button></div></div>' +
+    '<div class="cnt-line" id="cnt-line">' + cntLineHtml(st) + '</div>' +
+    '<div class="tools" style="margin-top:10px"><button type="button" class="primary" data-action="start-upload" ' + (up.state === 'idle' ? '' : 'disabled') + '>开始上传（' + st.keep + ' 个文件 · 约 ' + fmtBytes(st.bytes) + '）</button>' +
+    '<span class="bt-sub">' + (st.keep > 20 ? '超过 20 个文件，开始上传时会给出压缩建议。' : '黑名单过滤（二进制 / 密钥凭据 / 音视频 / 自定义规则）在上传登记时执行。') + '</span></div>' + uploadProgressHtml();
+  }
+  const scanCard = S.scan ? (
+    '<section class="card"><div class="panelhead"><h2>材料扫描 <span class="muted">' + (S.scan.state === 'running' ? '扫描中…' : '扫描结束') + '</span></h2>' +
+    '<span class="status-pill ' + (S.scan.state === 'running' ? '' : 'pill-ok') + '">' + (S.scan.state === 'running' ? '进行中' : '已完成') + '</span></div>' +
+    '<div class="bar"><i class="' + (S.scan.state === 'running' ? 'striped' : '') + '" style="width:' + (S.scan.state === 'running' ? 60 : 100) + '%"></i></div>' +
+    '<p class="bt-sub" id="scan-note">' + (S.scan.state === 'running' ? '阶段：筛选材料片段 → 跨来源对齐证据（演示加速，正式扫描耗时以服务端为准）。' :
+      '已解析 ' + okMats().length + ' 份 · 覆盖缺口 ' + gapMats().length + ' 份（缺口未确认前不能继续）。图片 OCR 与 LLM 兜底状态见清单。') + '</p>' +
+    (scanned ? '<div class="tools" style="margin-top:8px"><button type="button" class="mini" data-action="rescan">重新扫描</button><span class="bt-sub">材料清单变化后（上传 / 排除 / 恢复）需要重新扫描。</span></div>' : '') +
+    '</section>') : '';
+
+  const matsCard = !S.mats.length ? '' :
+  '<section class="card"><div class="panelhead"><h2>物料清单 <span class="muted">' + S.mats.length + ' 份 · 参与建模 ' + activeMats().length + ' 份</span></h2>' +
+  '<div class="tools"><div class="view-toggle" role="group" aria-label="视图切换">' +
+  '<button type="button" class="' + (S.matView === 'group' ? 'on' : '') + '" data-action="mat-view" data-v="group">分组视图</button>' +
+  '<button type="button" class="' + (S.matView === 'flat' ? 'on' : '') + '" data-action="mat-view" data-v="flat">平铺</button></div></div></div>' +
+  (S.matView === 'group' ? groupTableHtml() : flatTableHtml()) +
+  (gapMats().length ? '<p class="bt-note warn">有 ' + gapMats().length + ' 份材料存在覆盖缺口（解析失败 / 部分解析 / OCR 未配置）。缺口内容不会被当成空内容，也不会自动纳入定义。</p>' +
+  '<label class="check-option"><input id="ack" type="checkbox" ' + (S.ack ? 'checked' : '') + '><span>我了解材料覆盖缺口，允许先用已解析部分继续。</span></label>' : '') +
+  '</section>';
+
+  const blacklist = S.mats.length ? blacklistHtml() : '';
+  return '' +
+  '<div class="bt-intro"><div><h1>添加物料</h1><p class="muted">材料可以覆盖多个业务。先扫描识别内容，再通过对话确定本次范围。</p></div>' +
+  '<button type="button" data-action="goto" data-page="tasks">← 生成任务</button></div>' +
+  '<section class="card"><div class="panelhead"><h2>上传材料 <span class="muted">单文件与任务总量上限见任务页「能力与限额」</span></h2></div>' + uploadZone +
+  '<div class="url-row"><strong style="white-space:nowrap">从 URL 抓取</strong><span class="status-pill pill-warn">待定' + todo() + '</span>' +
+  '<input id="url-input" type="text" value="' + esc(S.urlDraft) + '" placeholder="https:// …（代码仓库、文档站地址）" aria-label="URL 抓取地址">' +
+  '<button type="button" data-action="url-fetch">抓取</button></div>' +
+  '<p class="bt-sub">方案评估中，尚未确认实现：当前版本不支持从 URL 抓取物料，此处仅保留入口示意。</p></section>' +
+  scanCard + matsCard + blacklist +
+  '<div class="footer-bar"><small class="muted">至少一份未排除且解析成功的材料才允许继续；失败不能当成空内容忽略。</small>' +
+  '<div class="tools"><button type="button" data-action="scan" ' + (!S.mats.length || (S.scan && S.scan.state === 'running') ? 'disabled' : '') + '>' + (S.scan && S.scan.state === 'running' ? '扫描中…' : '扫描物料') + '</button>' +
+  '<button type="button" class="primary" data-action="goto" data-page="scope" ' + (S.mats.length && okMats().length && (gapMats().length === 0 || S.ack) ? '' : 'disabled title="' + continueBlockReason() + '"') + '>继续确定范围 →</button></div></div>' +
+  (S.mats.length && !(okMats().length && (gapMats().length === 0 || S.ack)) ? '<p class="bt-sub" style="margin-top:8px">' + esc(continueBlockReason()) + '</p>' : '') +
+  '<details class="card" style="padding:14px 18px"><summary class="muted" style="cursor:pointer">本页模拟范围（原型说明）</summary>' +
+  '<p class="bt-sub" style="margin-top:10px">真实实现：分片上传 + SHA-256 校验 + 断点续传、黑名单过滤、图片 OCR、LLM 兜底解析、URL 抓取（待定）。' +
+  '原型所有文件均为虚构演示数据；「选择文件夹」不读取本机文件，「模拟网络中断」用于演示断点续传交互。</p></details>';
+}
+function cntLineHtml(st) {
+  return '<span class="seg">选中 <b>' + st.total + '</b> 个<i>·</i>过滤后上传 <b>' + st.keep + '</b> 个<i>·</i>跳过 <b>' + st.skip + '</b> 个</span>' +
+  '<span class="muted">约 ' + fmtBytes(st.bytes) + '</span>' +
+  (st.blTotal ? '<span class="muted">上传登记时黑名单再过滤 ' + st.blTotal + ' 个</span>' : '');
+}
+function uploadProgressHtml() {
+  const up = S.up;
+  if (up.state === 'idle') return '';
+  const pct = up.total ? Math.min(100, Math.round(up.chunk / up.total * 100)) : 0;
+  let head = '', btns = '';
+  if (up.state === 'running') {
+    head = '正在上传：' + esc(up.file) + ' · 已传 <b>' + up.chunk + '</b> / ' + up.total + ' 物';
+    btns = '<button type="button" class="mini" data-action="up-pause">暂停</button><button type="button" class="mini danger-ghost" data-action="up-fail">模拟网络中断' + sim() + '</button>';
+  } else if (up.state === 'paused') {
+    head = '已暂停于第 <b>' + up.chunk + '</b> / ' + up.total + ' 片（已传分片均已校验保存）';
+    btns = '<button type="button" class="mini primary" data-action="up-resume">继续上传（从第 ' + (up.chunk + 1) + ' 片）</button>';
+  } else if (up.state === 'failed') {
+    head = '<span class="bt-err-text">上传在第 ' + up.chunk + ' 片失败（模拟网络中断）：已传分片均已校验保存，可从断点继续，无需重传整包。</span>';
+    btns = '<button type="button" class="mini primary" data-action="up-resume">失败后从断点继续（第 ' + (up.chunk + 1) + ' 片）</button><button type="button" class="mini" data-action="up-abandon">放弃</button>';
+  } else if (up.state === 'done') {
+    const st = pickStats();
+    head = '上传完成：' + st.keep + ' 个文件已登记为材料' + (st.blTotal ? '（另有 ' + st.blTotal + ' 个被黑名单过滤，见下方折叠区）' : '') + '。';
+  }
+  return '<div class="up-head"><div><strong>上传进度</strong><span class="muted" style="margin-left:8px">分片大小 4 MB · 逐片 SHA-256 校验</span></div><div class="tools">' + btns + '</div></div>' +
+  '<div class="bar"><i id="up-bar" class="' + (up.state === 'running' ? 'striped' : '') + '" style="width:' + pct + '%"></i></div>' +
+  '<p class="bt-sub" id="up-line">' + head + '</p>';
+}
+function groupTableHtml() {
+  const gs = groupStats();
+  return '<div class="tablewrap"><table><thead><tr><th>分组（按目录）</th><th>文件数</th><th>状态汇总</th><th>字节</th><th style="width:12%">操作</th></tr></thead><tbody>' +
+  gs.map(g => '<tr class="group-row" data-action="group-detail" data-group="' + esc(g.name) + '" title="点击查看分组明细">' +
+    '<td><strong>' + esc(g.name) + '</strong></td><td>' + g.files.length + '</td>' +
+    '<td><span class="summary-pills">' + groupSummary(g) + '</span></td><td>' + fmtBytes(g.bytes) + '</td>' +
+    '<td><button type="button" class="row-link" data-action="group-detail" data-group="' + esc(g.name) + '">查看明细</button></td></tr>').join('') +
+  '</tbody></table></div><p class="bt-sub">点击任意分组行打开明细弹层（每页 100 条，可重试 / 排除 / 查看问题）。</p>';
+}
+function flatTableHtml() {
+  const list = S.mats;
+  const size = 100, pages = Math.max(1, Math.ceil(list.length / size));
+  const page = Math.min(S.flatPage || 0, pages - 1);
+  const slice = list.slice(page * size, page * size + size);
+  return '<div class="tablewrap"><table><thead><tr><th>文件</th><th>大小</th><th>解析状态</th><th style="width:26%">操作</th></tr></thead><tbody>' +
+  slice.map(m => matRowCells(m)).join('') + '</tbody></table></div>' +
+  (pages > 1 ? '<div class="pager"><span>第 ' + (page * size + 1) + '–' + Math.min(list.length, (page + 1) * size) + ' 项 · 共 ' + list.length + ' 项 · 每页 100 条</span><span class="tools">' +
+  '<button type="button" class="mini" data-action="flat-page" data-p="' + (page - 1) + '" ' + (page === 0 ? 'disabled' : '') + '>上一页</button>' +
+  '<button type="button" class="mini" data-action="flat-page" data-p="' + (page + 1) + '" ' + (page >= pages - 1 ? 'disabled' : '') + '>下一页</button></span></div>' : '');
+}
+function matRowCells(m) {
+  const quality = m.st === 'fallback_done' ? '　<span class="ev-q low">quality=low</span>' : '';
+  return '<tr class="' + (m.excluded ? 'row-excluded' : '') + '"><td><strong>' + esc(m.path) + '</strong>' +
+  (m.notes.length && !m.excluded ? '<small class="bt-sub bt-err-text">' + esc(m.notes[0]) + '</small>' : '') + '</td>' +
+  '<td>' + fmtBytes(m.size) + '</td>' +
+  '<td><span class="status-pill ' + matTone(m) + '">' + matLabel(m) + '</span>' + quality + '</td>' +
+  '<td class="tools" style="flex-wrap:nowrap">' +
+  '<button type="button" class="row-link" data-action="mat-retry" data-id="' + m.id + '" ' + (m.excluded || ['success','ocr_success','fallback_done'].includes(m.st) ? 'disabled' : '') + '>重试</button>' +
+  '<button type="button" class="row-link" data-action="mat-toggle" data-id="' + m.id + '">' + (m.excluded ? '恢复' : '排除') + '</button>' +
+  '<button type="button" class="row-link" data-action="mat-issue" data-id="' + m.id + '">查看问题</button></td></tr>';
+}
+function blacklistHtml() {
+  const st = pickStats();
+  const items = DEMO_FILES.filter(f => BLACKLIST(f.path)).map(f => ({ p:f.path, r:BLACKLIST(f.path), s:f.size }));
+  if (!items.length) return '';
+  const dist = ['binary','secret','av','custom'].map(k => '<span>' + REASON_LABELS[k] + ' ' + st.bl[k] + '</span>').join('');
+  return '<details class="card blacklist-card"><summary>已过滤 ' + st.blTotal + ' 个文件（不参与上传与解析）' + sim() + '<span class="muted" style="font-weight:400">点击展开清单</span></summary>' +
+  '<div class="blacklist-body"><p class="muted" style="margin:6px 0 0">黑名单在上传登记时执行：被过滤文件不计入证据，也不视为已分析；原因分布如下。</p>' +
+  '<div class="reason-chips">' + dist + '</div>' +
+  '<div class="tablewrap"><table><thead><tr><th>文件</th><th>大小</th><th>过滤原因</th></tr></thead><tbody>' +
+  items.map(f => '<tr><td>' + esc(f.p) + '</td><td>' + fmtBytes(f.s) + '</td><td>' + REASON_LABELS[f.r] + '</td></tr>').join('') +
+  '</tbody></table></div>' +
+  '<p class="bt-sub">默认规则：依赖目录、构建产物、密钥凭据、大体积二进制与音视频；「自定义规则」支持按路径 / 后缀追加（演示中为 *.min.js）。</p></div></details>';
+}
+function continueBlockReason() {
+  if (!S.mats.length) return '还没有材料：先上传材料并扫描。';
+  if (!okMats().length) return '还没有解析成功的材料：先点击「扫描物料」。';
+  if (gapMats().length && !S.ack) return '存在解析缺口：请先勾选「我了解材料覆盖缺口」，或重试 / 排除有问题的材料。';
+  return '';
+}
+
+/* ───── A03 范围页 ───── */
+function pageScope() {
+  const sc = S.scope;
+  const saved = S.scopeSaved;
+  const dirty = S.scopeDirty;
+  const blocking = S.questions.find(q => q.blocking && !q.done);
+  const canConfirm = !!(saved && sc.goal.trim() && sc.include.trim() && !blocking);
+  const msgs = S.chat.length ? S.chat.map((m, i) => {
+    const cls = m.role === 'you' ? 'you' : m.role === 'err' ? 'err' : '';
+    const who = m.role === 'you' ? '你' : m.role === 'err' ? '系统' : '建模助手 · 模拟';
+    let sug = '';
+    if (m.patch && !m.applied) sug = '<div class="suggest"><p><b>助手建议（不会自动写入右侧）：</b>' + esc(m.patch.text) + '</p><button type="button" class="mini" data-action="adopt" data-i="' + i + '">采纳到右侧摘要</button></div>';
+    if (m.patch && m.applied) sug = '<div class="suggest"><p>✓ 建议已采纳到右侧摘要（未保存）。</p></div>';
+    const retry = m.role === 'err' ? '<div class="tools" style="margin-top:8px"><button type="button" class="mini" data-action="llm-retry">重试</button></div>' : '';
+    return '<div class="message ' + cls + '"><strong>' + who + '</strong>' + esc(m.text) + sug + retry + '</div>';
+  }).join('') : '<div class="message"><strong>建模助手 · 模拟</strong>已读取 ' + S.mats.length + ' 份材料：识别出设备管理、运行监测、充放电计划、收益结算等模块（固定示例）。这次建模希望覆盖哪些业务？建议先明确主业务，再决定公共概念保留到什么程度。</div>';
+  const choices = S.round === 0
+    ? '<button type="button" data-action="scope-choice" data-v="energy">聚焦储能运行，不含收益结算</button><button type="button" data-action="scope-choice" data-v="all">覆盖全部业务模块</button>'
+    : S.round === 1
+    ? '<button type="button" data-action="scope-choice" data-v="full">计划：生成、审核、下发全流程</button><button type="button" data-action="scope-choice" data-v="limited">只描述计划内容与生成规则</button>'
+    : S.round === 2
+    ? '<button type="button" data-action="scope-choice" data-v="related">保留园区、电表必要关联</button><button type="button" data-action="scope-choice" data-v="norelated">关联概念先暂缓</button>'
+    : '<button type="button" data-action="scope-restart">重新讨论业务范围</button>';
+  return '' +
+  '<div class="bt-intro"><div><h1>确定建模范围</h1><p class="muted">不用一次说清楚：结合材料逐步确认，右侧摘要是本次生成的正式依据。LLM 每轮只提问与建议，不替你做决定。</p></div>' +
+  '<div class="bt-intro-tools"><span class="status-pill ' + (S.llmDown ? 'pill-error' : 'pill-ok') + '">' + (S.llmDown ? 'LLM 服务不可用（模拟）' : 'LLM 服务正常（模拟）') + '</span>' +
+  '<button type="button" data-action="llm-toggle">' + (S.llmDown ? '恢复 LLM 服务' : '模拟 LLM 服务失效') + sim() + '</button>' +
+  '<button type="button" data-action="goto" data-page="materials">← 返回物料</button></div></div>' +
+  '<div class="scope-grid"><section class="card chatbox"><div class="panelhead"><h2>范围讨论</h2><span class="muted">示例对话 · 不发送任何网络请求</span></div>' +
+  '<div class="chatlog" id="chatlog">' + msgs + '</div>' +
+  '<div class="choices">' + choices + '</div>' +
+  '<div class="composer"><label class="sr-only" for="chat-input">范围补充</label>' +
+  '<textarea id="chat-input" placeholder="输入你的想法：业务目标、纳入 / 排除的模块、关联概念保留到什么程度。原型只记录文字，不做真实语义理解。"></textarea>' +
+  '<div class="composer-foot"><small class="muted">每轮聚焦关键歧义；你手工改过的摘要不会被助手覆盖。</small>' +
+  '<button type="button" class="primary" data-action="send-chat">发送</button></div></div></section>' +
+  '<section class="card scope-form"><div class="panelhead"><h2>本次范围</h2><span class="status-pill ' + (dirty || !saved ? 'pill-warn' : 'pill-ok') + '" id="scope-pill">' + (dirty ? '未保存修改' : saved ? '已保存' : '待填写') + '</span></div>' +
+  '<label class="editor-field" style="margin-top:0"><span class="field-title">建模目标 <b class="required-mark">*</b></span>' +
+  '<textarea id="sc-goal" placeholder="这次要建模的业务与用途。">' + esc(sc.goal) + '</textarea></label>' +
+  '<label class="editor-field"><span class="field-title">纳入范围 <b class="required-mark">*</b></span>' +
+  '<textarea id="sc-include" placeholder="要生成的业务模块、对象范围及需要的深度。">' + esc(sc.include) + '</textarea></label>' +
+  '<label class="editor-field"><span class="field-title">排除范围</span>' +
+  '<textarea id="sc-exclude" placeholder="明确不生成的业务或技术内容。">' + esc(sc.exclude) + '</textarea></label>' +
+  '<label class="editor-field"><span class="field-title">覆盖说明</span>' +
+  '<textarea id="sc-coverage" placeholder="材料缺口、版本差异、同模块取舍的解释。">' + esc(sc.coverage) + '</textarea></label>' +
+  '<div class="tools"><button type="button" data-action="save-scope">保存摘要</button><span class="bt-sub" style="margin:0">已扫描 ' + S.mats.length + ' 份材料</span></div>' +
+  (S.llmDown ? '<p class="bt-note warn">LLM 服务当前不可用（模拟）：可稍后重试对话，或直接在右侧手工编辑摘要并保存。手工路径不受影响。</p>' : '') +
+  '<h3 style="margin:18px 0 4px">未决问题</h3>' +
+  S.questions.map((q, i) =>
+    '<div class="q-item ' + (q.done ? 'done' : q.blocking ? 'blocking' : '') + '"><span>' + esc(q.t) + '</span>' +
+    (q.done ? '<span class="status-pill pill-ok">已处理</span>'
+      : (q.blocking ? '<span class="status-pill pill-error">阻断范围确认</span><span class="tools">' +
+        '<button type="button" class="mini" data-action="resolve-q" data-i="' + i + '" data-v="no">暂不纳入，按缺口处理</button>' +
+        '<button type="button" class="mini" data-action="resolve-q" data-i="' + i + '" data-v="yes">纳入并等待 OCR 配置</button></span>'
+        : '<span class="status-pill">可留到候选评审</span>')) +
+    '</div>').join('') +
+  '<p class="bt-sub">材料与范围变化会使已生成结果过期；过期结果只读回看，不影响继续编辑与再次确认。</p></section></div>' +
+  '<div class="footer-bar"><small class="muted">' + (!saved ? '先保存摘要，再确认范围并生成。' : blocking ? '存在阻断性未决问题，请先在右侧处理。' : '确认后开始抽象本体；非关键疑问可以留到评审。') + '</small>' +
+  '<div class="tools"><button type="button" data-action="goto" data-page="materials">返回物料</button>' +
+  '<button type="button" class="primary" data-action="confirm-scope" ' + (canConfirm && !dirty ? '' : 'disabled') + '>确认范围并生成 →</button></div></div>';
+}
+
+/* ───── A04 生成页 ───── */
+function pageProgress() {
+  const r = S.run;
+  if (!r) return '<section class="card"><p class="muted">还没有生成运行。请先在「确定范围」页确认范围。</p></section>';
+  const statePill = { running:['生成中',''], failed:['阶段失败','pill-error'], cancelled:['已取消','pill-warn'], done:['已完成','pill-ok'] }[r.state] || ['未知',''];
+  const stageCls = i => {
+    if (r.state === 'done' || i < r.stage) return 'done';
+    if (i === r.stage) return r.state === 'failed' ? 'failed' : r.state === 'cancelled' ? 'cancel' : 'current';
+    return '';
+  };
+  const segs = STAGES.map((_, i) => '<span class="' + stageCls(i) + '"></span>').join('');
+  const rows = STAGES.map((st, i) => {
+    const c = stageCls(i);
+    const badge = c === 'done' ? '<span class="status-pill pill-ok">已完成</span>' : c === 'current' ? (r.state === 'failed' ? '<span class="status-pill pill-error">失败</span>' : r.state === 'cancelled' ? '<span class="status-pill pill-warn">已停止</span>' : '<span class="status-pill">处理中</span>') : c === 'failed' ? '<span class="status-pill pill-error">失败</span>' : '<span class="status-pill">待处理</span>';
+    const dur = c === 'done' ? fmtSec(r.sec[i]) + '（演示加速）' : c === 'current' ? fmtSec(r.sec[i]) + ' …' : '—';
+    return '<div class="stage-row ' + c + '"><span class="stage-circle">' + (c === 'done' ? '✓' : i + 1) + '</span>' +
+    '<div class="stage-body"><strong>' + st.n + '</strong><p>' + st.d + '</p></div>' +
+    '<span class="stage-badge" style="text-align:right">' + badge + '<small class="bt-sub">耗时 ' + dur + '</small></span></div>';
+  }).join('');
+  const batchCard = '<section class="card"><div class="panelhead"><h2>abstract 阶段批次 <span class="muted">25 批 · 并行度 4（模拟）</span></h2><span class="status-pill ' + (r.state === 'failed' ? 'pill-error' : r.batches.every(b => b.st === 'done') ? 'pill-ok' : '') + '">' + r.batches.filter(b => b.st === 'done').length + ' / 25 成功</span></div>' +
+  '<div class="batch-legend"><span><i class="legend-done"></i>成功</span><span><i class="legend-run"></i>进行中</span><span><i class="legend-fail"></i>失败（点击看错误）</span><span><i class="legend-todo"></i>待跑</span></div>' +
+  '<div class="batch-grid" id="batch-grid">' + r.batches.map((b, i) => {
+    const label = { pending:'待跑', running:'解析中…', done:'成功', failed:'失败' }[b.st];
+    const tip = b.st === 'done' ? '第 ' + (i + 1) + ' 批 · 成功' + (b.reuse ? ' · 检查点复用' : '') : b.st === 'failed' ? '第 ' + (i + 1) + ' 批 · 点击查看错误' : b.st === 'running' ? '第 ' + (i + 1) + ' 批 · 解析中' : '第 ' + (i + 1) + ' 批 · 待跑';
+    return '<button type="button" class="batch-cell ' + b.st + (b.reuse ? ' reuse' : '') + '" ' + (b.st === 'failed' ? 'data-action="batch-detail" data-i="' + i + '"' : 'disabled') + ' title="' + tip + '"><b>' + (i + 1) + '</b>' + label + '</button>';
+  }).join('') + '</div>' +
+  '<p class="bt-sub">批次是阶段内的并行分片：失败批不阻塞其他批次，已完成批结果保留；「从 abstract 阶段重试」会命中检查点直接复用已成功批（演示）。</p></section>';
+  const failBanner = r.state === 'failed' ? '<div class="bt-note bad"><b>' + esc(r.error) + '</b><div class="tools" style="margin-top:10px">' +
+    '<button type="button" class="primary" data-action="retry-failed">重试失败批次</button>' +
+    '<button type="button" data-action="retry-stage">从 abstract 阶段重试</button>' +
+    '<button type="button" class="mini" data-action="demo-toast" data-msg="也可在模型设置中更换模型或调小分片后重试（原型不跳转）。">查看建议</button></div>' +
+    '<p class="bt-sub" style="margin-top:8px">重试失败批次：复用前序阶段与已成功批次结果，仅重跑失败批；从 abstract 阶段重试：前序阶段结果复用，本阶段全部批次重新执行（已成功批命中检查点直接复用）。</p></div>' : '';
+  const cancelBanner = r.state === 'cancelled' ? '<p class="bt-note warn">已取消生成：未创建本体。已完成阶段与成功批次结果保留，可继续。</p>' : '';
+  const doneBanner = r.state === 'done' ? '<p class="bt-note ok"><b>初稿已就绪：5/5 阶段成功 · 25/25 批成功 · 候选 12 项（1 项来源冲突、3 项推断待确认）。</b>请人工评审候选定义与证据。</p>' : '';
+  const actions = r.state === 'running'
+    ? '<button type="button" class="danger-ghost" data-action="run-cancel">停止 / 取消生成</button>'
+    : r.state === 'cancelled'
+    ? '<button type="button" class="primary" data-action="run-resume">继续生成</button>'
+    : r.state === 'failed'
+    ? ''
+    : r.state === 'done'
+    ? '<button type="button" class="primary" data-action="goto" data-page="review">评审初稿 →</button>' : '';
+  return '' +
+  '<div class="bt-intro"><div><h1>构建本体初稿</h1><p class="muted">按确认范围分析证据。此阶段不会创建正式本体。</p></div>' +
+  '<div class="bt-intro-tools"><span class="status-pill ' + statePill[1] + '">' + statePill[0] + '</span>' +
+  '<button type="button" data-action="goto" data-page="scope">← 返回范围</button></div></div>' +
+  '<div class="progress-grid"><section class="card"><div class="panelhead"><h2>处理阶段</h2><span class="bt-sub" style="margin:0">原型按演示速度推进；正式执行各阶段通常需要数分钟。</span></div>' +
+  '<div id="stage-zone"><div class="stagebar" aria-hidden="true">' + segs + '</div>' +
+  '<div id="stage-rows">' + rows + '</div>' + failBanner + cancelBanner + doneBanner + '</div>' +
+  '<div class="tools" style="margin-top:14px" id="run-actions">' + actions + '</div></section>' +
+  batchCard +
+  '<section class="card"><h2>本次生成依据</h2><p class="muted">确认范围时冻结的输入基线（不含任何密钥）：</p>' +
+  '<dl class="bp-rows"><dt>材料数</dt><dd>' + activeMats().length + ' 份</dd><dt>材料修订</dt><dd>r' + (S.mats.length + 3) + '</dd><dt>范围修订</dt><dd>r1</dd>' +
+  '<dt>解析器版本</dt><dd>p-14</dd><dt>提示词版本</dt><dd>pr-7</dd><dt>模型指纹</dt><dd>demo-llm/demo-1</dd></dl>' +
+  '<details><summary class="muted" style="cursor:pointer">运行与重试边界</summary>' +
+  '<p class="bt-sub" style="margin-top:8px">任务在服务端后台执行，离开页面不会中断；服务重启后运行标记为「已中断」并允许重试，不会伪装成运行中。</p>' +
+  '<p class="bt-sub">取消不保证立即终止已发出的模型请求，但晚到的结果不会写入当前批次。</p></details></section></div>';
+}
+function renderBatchGrid() {
+  const grid = $('#batch-grid'); if (!grid) return;
+  const r = S.run; if (!r) return;
+  grid.innerHTML = r.batches.map((b, i) => {
+    const label = { pending:'待跑', running:'解析中…', done:'成功', failed:'失败' }[b.st];
+    const tip = b.st === 'done' ? '第 ' + (i + 1) + ' 批 · 成功' + (b.reuse ? ' · 检查点复用' : '') : b.st === 'failed' ? '第 ' + (i + 1) + ' 批 · 点击查看错误' : b.st === 'running' ? '第 ' + (i + 1) + ' 批 · 解析中' : '第 ' + (i + 1) + ' 批 · 待跑';
+    return '<button type="button" class="batch-cell ' + b.st + (b.reuse ? ' reuse' : '') + '" ' + (b.st === 'failed' ? 'data-action="batch-detail" data-i="' + i + '"' : 'disabled') + ' title="' + tip + '"><b>' + (i + 1) + '</b>' + label + '</button>';
+  }).join('');
+}
+/* ───── A05 评审页 ───── */
+function pageReview() {
+  const inc = S.cands.filter(c => c.decision === 'include' && !c.mergedInto).length;
+  const def = S.cands.filter(c => c.decision === 'defer' && !c.mergedInto).length;
+  const exc = S.cands.filter(c => c.decision === 'exclude').length;
+  let i = S.cands.find(c => c.id === S.sel) || S.cands[0];
+  const visible = S.cands.filter(c => !c.mergedInto &&
+    (!S.fType || c.type === S.fType) &&
+    (!S.fDec || c.decision === S.fDec) &&
+    (!S.fStatus || c.status === S.fStatus) &&
+    (!S.search || c.name.includes(S.search) || c.definition.includes(S.search)));
+  const TYPES = ['对象','属性','链接','规则','动作'];
+  const list = visible.map(c => {
+    const low = c.evidence.some(e => e.quality === 'low');
+    return '<button type="button" class="cand ' + (c.id === i.id ? 'on' : '') + '" data-action="select-c" data-id="' + c.id + '">' +
+    '<small>' + c.type + (c.owner ? ' · ' + esc(nameOf(c.owner)) : '') + '</small><strong>' + esc(c.name) + '</strong>' +
+    '<span class="badges"><span class="status-pill ' + STATUS_LABELS[c.status][1] + '">' + STATUS_LABELS[c.status][0] + '</span>' +
+    (c.origin === 'fallback' ? '<span class="mark">兜底</span>' : '') +
+    (low ? '<span class="ev-q low">低质量证据</span>' : '') +
+    '<span class="decision">' + DEC_LABELS[c.decision] + '</span>' + (c.reviewed ? '<span class="ev-q high">已审阅</span>' : '') + '</span></button>';
+  }).join('') || '<div class="empty-state">没有匹配项</div>';
+  const depBlock = i.deps.filter(d => { const t = S.cands.find(x => x.id === d); return t && (t.decision !== 'include' || t.mergedInto) });
+  const evHtml = i.evidence.map(e =>
+    '<article class="evitem"><small>' + esc(e.file) + '</small><small>' + esc(e.loc) + ' · 材料快照 demo-1' +
+    '<span class="ev-q ' + (e.quality === 'low' ? 'low' : e.quality === 'high' ? 'high' : '') + '">' + ({ high:'质量 高', medium:'质量 中', low:'质量 低' }[e.quality] || e.quality) + '</span></small>' +
+    '<details' + (e.quality === 'low' ? '' : ' open') + '><summary class="muted" style="cursor:pointer;font-size:12px">展开原文片段</summary><pre>' + esc(e.text) + '</pre></details></article>').join('');
+  return '' +
+  '<div class="bt-intro"><div><h1>评审本体初稿</h1><p class="muted">拟纳入 ' + inc + ' 项 · 暂缓 ' + def + ' 项 · 已排除 ' + exc + ' 项。名称与定义可修改，依据始终保留；LLM 兜底来源的候选带「推断待确认」角标，纳入前需人工确认。</p></div>' +
+  '<div class="bt-intro-tools"><button type="button" data-action="goto" data-page="progress">← 生成进度</button>' +
+  '<button type="button" class="primary" data-action="goto" data-page="save">保存前检查 →</button></div></div>' +
+  '<div class="reviewgrid"><section class="card"><h3 style="margin-bottom:10px">候选定义</h3>' +
+  '<input id="search" type="search" placeholder="搜索名称或定义" value="' + esc(S.search) + '" aria-label="搜索候选">' +
+  '<label style="margin:10px 0 0">类型筛选</label><select id="f-type" aria-label="类型筛选"><option value="">全部类型</option>' + TYPES.map(t => '<option ' + (S.fType === t ? 'selected' : '') + '>' + t + '</option>').join('') + '</select>' +
+  '<label style="margin:10px 0 0">决定筛选</label><select id="f-dec" aria-label="决定筛选"><option value="">全部决定</option><option value="include" ' + (S.fDec === 'include' ? 'selected' : '') + '>拟纳入</option><option value="defer" ' + (S.fDec === 'defer' ? 'selected' : '') + '>暂缓</option><option value="exclude" ' + (S.fDec === 'exclude' ? 'selected' : '') + '>已排除</option></select>' +
+  '<label style="margin:10px 0 0">证据状态</label><select id="f-status" aria-label="证据状态筛选"><option value="">全部状态</option>' + Object.keys(STATUS_LABELS).map(k => '<option value="' + k + '" ' + (S.fStatus === k ? 'selected' : '') + '>' + STATUS_LABELS[k][0] + '</option>').join('') + '</select>' +
+  '<div class="list-count"><span>已载入 ' + visible.length + ' / ' + S.cands.filter(c => !c.mergedInto).length + ' 项</span><span>当前批次 bb-demo-0921</span></div>' +
+  '<div class="cand-list">' + list + '</div>' +
+  (S.merged ? '<button type="button" class="row-link" data-action="undo-merge">撤销上次合并</button>' : '') +
+  '<p class="bt-sub">合并只处理同类型重复定义；被并入候选的证据全部保留，且可撤销。</p></section>' +
+  '<section class="card"><div class="panelhead"><div><span class="eyebrow">' + i.type + (i.owner ? ' · 所属 ' + esc(nameOf(i.owner)) : '') + (i.reviewed ? ' · 已人工审阅' : '') + '</span><h3>' + esc(i.name) + '</h3></div>' +
+  '<span class="status-pill ' + STATUS_LABELS[i.status][1] + '">' + STATUS_LABELS[i.status][0] + '</span>' + (i.origin === 'fallback' ? '<span class="mark">兜底</span>' : '') + '</div>' +
+  (depBlock.length ? '<div class="dep-warn">该定义依赖未纳入的对象：' + depBlock.map(d => esc(nameOf(d))).join('、') + '。纳入前需先处理依赖（可恢复对象，或把本定义改为暂缓 / 排除）。</div>' : '') +
+  '<label class="editor-field" style="margin-top:10px"><span class="field-title">名称 <b class="required-mark">*</b></span><input id="item-name" value="' + esc(i.name) + '"></label>' +
+  '<label class="editor-field"><span class="field-title">业务定义 <b class="required-mark">*</b></span><textarea id="item-def" style="min-height:96px">' + esc(i.definition) + '</textarea></label>' +
+  (i.type === '属性' ? '<label class="editor-field"><span class="field-title">数据类型</span><select disabled><option>' + esc(i.dtype) + '</option></select>' +
+    (i.dtype === '时间序列' ? '<span class="field-help">观测值类型：数值（来自数据字典采样表）。</span>' : '') + '</label>' : '') +
+  (i.type === '链接' ? '<div class="bt-note">' + esc(nameOf(i.source)) + ' → ' + esc(i.name) + ' → ' + esc(nameOf(i.target)) + '<br>' + esc(i.card) + ' · 原型展示已提取关系；正式实现复用现有链接编辑字段。</div>' : '') +
+  (i.type === '规则' ? '<label class="editor-field"><span class="field-title">规则内容 <span class="optional-label">选填</span></span><textarea id="item-content" placeholder="不确定时留空，不推断未证实的口径">' + esc(i.content || '') + '</textarea></label>' : '') +
+  (i.type === '动作' ? '<label class="editor-field"><span class="field-title">预期效果 <span class="optional-label">选填</span></span><textarea id="item-effect" placeholder="不确定时留空，不推断未证实效果">' + esc(i.effect || '') + '</textarea></label>' : '') +
+  (i.status !== 'supported' ? '<p class="bt-note warn">' + (i.status === 'conflict' ? '文档与代码存在不同口径：请选择采用的定义并记录理由，或暂缓。' : '当前结论含推断' + (i.origin === 'fallback' ? '（LLM 兜底来源）' : '') + '。纳入前请补充人工确认依据，或暂缓。') + '</p>' +
+  '<label class="editor-field"><span class="field-title">人工确认依据<span class="optional-label">纳入时必填</span></span><textarea id="item-reason" placeholder="说明采用哪份依据，或补充你的业务确认；不能以模型自评分代替证据">' + esc(i.reason || '') + '</textarea></label>' : '') +
+  '<div class="detail-footer"><span id="edit-state">' + (S.itemDirty ? '有未保存的编辑' : '与服务端最新值一致') + '</span>' +
+  '<span class="tools"><button type="button" class="primary" data-action="save-edit" ' + (S.itemDirty ? '' : 'disabled') + '>保存编辑</button>' +
+  '<button type="button" data-action="cancel-edit" ' + (S.itemDirty ? '' : 'disabled') + '>取消编辑</button></span></div>' +
+  '<h3 style="margin:20px 0 8px">本次决定：' + DEC_LABELS[i.decision] + '</h3>' +
+  '<div class="tools"><button type="button" ' + (i.decision === 'include' ? 'class="primary" ' : '') + 'data-action="decide" data-v="include">纳入</button>' +
+  '<button type="button" ' + (i.decision === 'defer' ? 'class="primary" ' : '') + 'data-action="decide" data-v="defer">暂缓</button>' +
+  '<button type="button" class="danger-ghost" data-action="decide" data-v="exclude">排除</button>' +
+  (i.id === 'dup' && !i.mergedInto ? '<button type="button" data-action="merge-preview">合并到储能簇…</button>' : '') + '</div>' +
+  '<p class="bt-sub">排除可恢复；排除对象不会自动删除其属性或链接，依赖未处理的定义不能最终保存。</p></section>' +
+  '<section class="card ev-card"><h3>定义依据</h3><p class="bt-sub">按字段定位原文：文件 + 位置（行号 / 页码 / 单元格）；低质量证据（如 OCR 置信度低）以角标提示。</p>' +
+  '<div class="scroll-y">' + i.evidence.map(e => '<div class="evfield"><h4>' + esc(e.field) + '</h4>' + evItemHtml(e) + '</div>').join('') + '</div></section></div>';
+}
+function evItemHtml(e) {
+  return '<article class="evitem"><small>' + esc(e.file) + '</small><small>' + esc(e.loc) + ' · 材料快照 demo-1' +
+  '<span class="ev-q ' + (e.quality === 'low' ? 'low' : e.quality === 'high' ? 'high' : '') + '">' + ({ high:'质量 高', medium:'质量 中', low:'质量 低' }[e.quality] || e.quality) + '</span></small>' +
+  '<details' + (e.quality === 'low' ? '' : ' open') + '><summary class="muted" style="cursor:pointer;font-size:12px">展开原文片段</summary><pre>' + esc(e.text) + '</pre></details></article>';
+}
+function nameOf(id) { const c = S.cands.find(x => x.id === id); return c ? c.name : id }
+
+/* ───── A06 保存页 ───── */
+function saveIssues() {
+  const inc = S.cands.filter(c => c.decision === 'include' && !c.mergedInto);
+  const out = [];
+  for (const c of inc) {
+    if (!c.name.trim() || !c.definition.trim()) out.push({ msg:'「' + (c.name || '未命名') + '」：名称与业务定义不能为空。', id:c.id });
+    if (c.status !== 'supported' && !(c.reason || '').trim()) out.push({ msg:'「' + c.name + '」：含推断或冲突，纳入前需填写人工确认依据。', id:c.id });
+    for (const d of c.deps) { const t = S.cands.find(x => x.id === d); if (t && (t.decision !== 'include' || t.mergedInto)) out.push({ msg:'「' + c.name + '」：依赖的对象「' + nameOf(d) + '」未纳入。', id:c.id }) }
+  }
+  if (!inc.some(c => c.type === '对象')) out.push({ msg:'至少需要纳入一个对象。', id:'' });
+  return out;
+}
+function pageSave() {
+  if (S.savedResult) {
+    return '<section class="card" style="max-width:820px;margin:30px auto"><div class="success-hero">✓</div>' +
+    '<h1>新本体草稿已创建（模拟）</h1><p class="muted">' + esc(S.savedResult.name) + ' · ' + esc(S.savedResult.id) + ' · ' + S.savedResult.at + '</p>' +
+    '<p class="bt-note ok">交付为未发布草稿：不修改任何已有本体，不含项目映射 / 连接 / 编排；来源依据保留在本次任务中。任务只能交付一次。</p>' +
+    '<p>已写入选定 ' + S.cands.filter(c => c.decision === 'include' && !c.mergedInto).length + ' 项定义；暂缓与排除项继续留在生成任务中。</p>' +
+    '<div class="tools"><button type="button" class="primary" data-action="demo-toast" data-msg="进入对象建模：正式实现按现有切本体机制整页载入（原型不跳转）。">进入对象建模</button>' +
+    '<button type="button" data-action="goto" data-page="tasks">返回生成任务</button></div></section>';
+  }
+  const inc = S.cands.filter(c => c.decision === 'include' && !c.mergedInto);
+  const counts = ['对象','属性','链接','规则','动作'].map(t => '<div class="metric-cell"><small>' + t + '</small><strong>' + inc.filter(c => c.type === t).length + '</strong></div>').join('');
+  const issues = saveIssues();
+  const checks = [
+    { pass: inc.some(c => c.type === '对象'), text:'至少纳入一个对象', id:'' },
+    { pass: !issues.some(x => x.msg.includes('依赖')), text:'依赖完整：纳入项依赖的对象均已纳入', id:'' },
+    { pass: !issues.some(x => x.msg.includes('名称与业务定义')), text:'必填字段完整（名称 / 业务定义）', id:'' },
+    { pass: !issues.some(x => x.msg.includes('人工确认依据')), text:'推断与冲突项已获人工确认依据（或改为暂缓）', id:'' },
+    { pass: !inc.some(c => c.type === '属性' && c.dtype === '时间序列' && !c.valueType), text:'时间序列属性均已声明观测值类型', id:'' },
+    { pass: true, text:'候选间引用可解析（稳定 id 引用，不受改名影响）', id:'' },
+  ];
+  const deferred = S.cands.filter(c => c.decision !== 'include' && !c.mergedInto);
+  return '' +
+  '<div class="bt-intro"><div><h1>保存为新本体</h1><p class="muted">只写入本次选定的定义；暂缓与排除项继续留在生成任务中，可随时回来继续评审。</p></div>' +
+  '<button type="button" data-action="goto" data-page="review">返回评审并处理</button></div>' +
+  '<div class="save-grid"><section class="card"><h2>本次纳入</h2><div class="metric-row">' + counts + '</div>' +
+  '<p class="muted">合计选定 ' + inc.length + ' 项 · 暂缓 ' + S.cands.filter(c => c.decision === 'defer' && !c.mergedInto).length + ' 项 · 已排除 ' + S.cands.filter(c => c.decision === 'exclude').length + ' 项</p>' +
+  '<h3 style="margin:18px 0 8px">依赖与结构检查</h3><ul class="check-list">' +
+  checks.map(c => '<li class="' + (c.pass ? 'pass' : 'fail') + '"><span class="ic">' + (c.pass ? '✓' : '!') + '</span><span>' + c.text + (c.pass ? '' : '<span class="mark">存在阻断</span>') + '</span>' + (c.pass ? '' : '<button type="button" class="row-link go" data-action="goto" data-page="review">去处理</button>') + '</li>').join('') +
+  '</ul>' +
+  '<h3 style="margin:18px 0 8px">未纳入项（暂缓 / 排除）</h3><div class="tablewrap"><table><thead><tr><th>定义</th><th>类型</th><th>证据状态</th><th>决定</th></tr></thead><tbody>' +
+  (deferred.length ? deferred.map(c => '<tr><td>' + esc(c.name) + '</td><td>' + c.type + '</td><td>' + STATUS_LABELS[c.status][0] + '</td><td>' + DEC_LABELS[c.decision] + '</td></tr>').join('') : '<tr><td colspan="4" class="muted">没有暂缓或排除项。</td></tr>') +
+  '</tbody></table></div></section>' +
+  '<section class="card"><h2>新本体信息</h2>' +
+  '<label class="editor-field" style="margin-top:8px"><span class="field-title">本体名称 <b class="required-mark">*</b></span>' +
+  '<input id="final-name" value="' + esc(S.saveName) + '" placeholder="例如：储能运行管理本体">' +
+  '<small class="field-help">同名时服务端会拒绝（409）：试试输入「储能本体」体验同名保护（模拟）。</small></label>' +
+  (S.saveError ? '<p class="inline-error" role="alert">' + esc(S.saveError) + '</p>' : '') +
+  '<p class="bt-note">仅创建未发布草稿；不修改任何已有本体，不生成项目映射。来源依据保留在本次任务。</p>' +
+  '<label class="check-option"><input id="save-ack" type="checkbox" ' + (S.saveAck ? 'checked' : '') + '><span>我已核对本次选定集合，了解生成结果仍需人工完善，暂缓项不会写入本体。</span></label>' +
+  '<div class="tools" style="margin-top:14px"><button type="button" class="primary" data-action="create-onto" ' + (issues.length || !S.saveAck || !S.saveName.trim() ? 'disabled' : '') + '>创建新本体草稿</button></div>' +
+  '<ul class="muted" style="margin:14px 0 0;padding-left:18px;font-size:12px;line-height:1.9">' +
+  '<li>提交前服务端会重新校验基线、选定集合与结构；失败全部回滚，不会先建空本体。</li>' +
+  '<li>重复点击、超时重试只创建一个本体（requestId 幂等，模拟）。</li>' +
+  '<li>成功后继续编辑由现有对象建模负责，任务结果不再自动同步到本体。</li></ul></section></div>';
+}
+
+/* ───── 交互说明侧板 ───── */
+function renderHelp() {
+  $('#help').innerHTML = !S.helpOpen ? '' :
+  '<div class="help-drawer" data-action="help-close"><aside class="help-panel" role="dialog" aria-label="交互说明" onclick="event.stopPropagation()">' +
+  '<div class="help-head"><h2>交互说明（v2）</h2><button type="button" class="mini" data-action="help-close">关闭 ✕</button></div>' +
+  '<div class="help-body">' +
+  '<h3>全局</h3><ul>' +
+  '<li>顶部黄色条为<b>原型说明</b>：版本 v2、日期 2026-09-21、模拟范围声明。右下角按钮随时打开本面板。</li>' +
+  '<li><span class="mark">模拟</span>= 该交互为演示入口；<span class="mark todo">未实现</span>= 方案待定 / 尚未确认实现。可点顶部「隐藏标注」收起。</li>' +
+  '<li>所有数据保存在页面内存，刷新复位；无任何网络请求，不读写真实工作台。</li></ul>' +
+  '<h3>A01 生成任务列表</h3><ul>' +
+  '<li>「＋ 新建生成任务」弹层可命名创建（演示）。</li>' +
+  '<li>「删除」→ 弹层显示<b>物理删除级联范围</b>（任务及 N 份物料、解析证据、生成记录；已创建本体不受影响），必须输入任务名一致才可确认。</li>' +
+  '<li>确认后该行消失，页面顶部提示级联删除计数。<span class="mark">模拟</span></li></ul>' +
+  '<h3>A02 物料页（本版重点）</h3><ul>' +
+  '<li>「选择文件夹」载入固定演示目录（' + DEMO_FILES.length + ' 个文件）。<span class="mark">模拟</span></li>' +
+  '<li>后缀过滤输入实时更新计数行：选中 X · 过滤后上传 Y · 跳过 Z。</li>' +
+  '<li>过滤后 &gt;20 个时自动弹出<b>大文件夹引导</b>：「压缩为 zip 上传（推荐）」或「仍要直接上传」。</li>' +
+  '<li>上传进度：分片计数「已传 n / 总数 片」+「暂停」；点「模拟网络中断」进入失败态，再用「失败后从断点继续」从同一片续传（演示断点续传）。</li>' +
+  '<li>「扫描物料」后清单出现：分组视图（组名 / 文件数 / 状态汇总 / 字节）⇄ 平铺切换；点击分组打开明细弹层（每页 100 条，重试 / 排除 / 查看问题）。</li>' +
+  '<li>新增状态：图片 OCR 中 / OCR 成功 / OCR 未配置；LLM 兜底解析中 → 兜底完成（数秒后自动翻转，带 quality=low 角标）。</li>' +
+  '<li>黑名单已过滤区：独立折叠区显示「已过滤 N 个文件」+ 原因分布（二进制 / 密钥凭据 / 音视频 / 自定义规则）+ 可展开清单。</li>' +
+  '<li>从 URL 抓取：<span class="mark todo">未实现</span>方案评估中，仅入口示意。</li></ul>' +
+  '<h3>A03 确定范围</h3><ul>' +
+  '<li>左侧对话流：选项推进多轮澄清；助手给出建议补丁，点「采纳到右侧摘要」才写入。<span class="mark">模拟</span></li>' +
+  '<li>「模拟 LLM 服务失效」：发送 / 选项后返回失败消息，可重试；右侧四个字段（目标 / 纳入 / 排除 / 覆盖）始终可手工编辑并保存。</li>' +
+  '<li>未决问题：阻断项必须选择处理方式后才能「确认范围并生成」。</li></ul>' +
+  '<h3>A04 生成页</h3><ul>' +
+  '<li>五子阶段进度（筛选材料片段 → 跨来源对齐证据 → 抽象候选定义 → 校验证据与引用 → 适配本体协议），各阶段显示状态与耗时（演示加速）。</li>' +
+  '<li>abstract 阶段展开 25 批网格：成功 / 进行中 / 失败 / 待跑四色；失败格可点击查看错误详情。</li>' +
+  '<li>演示失败注入：第 7/25 批「LLM 输出被截断」→「重试失败批次」（复用前序结果，成功批保留）或「从 abstract 阶段重试」（成功批命中检查点直接复用）。</li>' +
+  '<li>「停止 / 取消生成」→ 可继续；完成后出现「评审初稿 →」。<span class="mark">模拟</span></li></ul>' +
+  '<h3>A05 评审初稿</h3><ul>' +
+  '<li>候选列表：搜索 + 类型 / 决定 / 证据状态三重筛选。</li>' +
+  '<li>决定：纳入 / 暂缓 / 排除（非「有依据」候选纳入时必填人工确认依据）；「电池簇」可体验合并预览与撤销合并。</li>' +
+  '<li>字段级证据展开：文件 + 行号 / 页码 / 单元格；低质量证据角标提示；LLM 兜底候选带「兜底」与「推断待确认」标注。<span class="mark">模拟</span></li></ul>' +
+  '<h3>A06 保存新本体</h3><ul>' +
+  '<li>数量核对 + 动态「依赖与结构检查」清单（随评审决定实时变化，可「去处理」跳回）。</li>' +
+  '<li>名称输入同名保护：输入「储能本体」提交可见 409 提示（模拟）。</li>' +
+  '<li>勾选确认后「创建新本体草稿」→ 保存结果页（只读）。<span class="mark">模拟</span></li></ul>' +
+  '<p class="tagline" style="margin-top:16px">对照文档：需求说明.md · 开发计划.md · 执行指令.md（同目录）。</p>' +
+  '</div></aside></div>';
+}
+
+/* ═══════════════ 动作 ═══════════════ */
+function act(action, d) {
+  switch (action) {
+    case 'demo-toast': notify(d.msg || '演示入口'); return;
+    case 'help': S.helpOpen = true; renderHelp(); return;
+    case 'help-close': S.helpOpen = false; renderHelp(); return;
+    case 'marks': S.marks = !S.marks; render(); return;
+    case 'reset': modal({ body:'<h2>重新开始演示？</h2><p class="muted">清空页面内存中的模拟数据，不影响真实工作台。</p><div class="dialogtools"><button type="button" data-action="close">取消</button><button type="button" class="primary" data-action="reset-confirm">重新开始</button></div>' }); return;
+    case 'reset-confirm': S = fresh(); closeModal(); render(); notify('已复位。'); return;
+    case 'close': closeModal(); S.detail = null; return;
+    case 'goto': {
+      if (!canGo(d.page)) { notify(continueBlockReason() || '请按流程顺序操作。'); return }
+      if (S.page === 'scope' && S.scopeDirty && d.page !== 'scope') { notify('范围摘要有未保存修改：请先「保存摘要」或继续编辑。'); return }
+      if (S.page === 'review' && S.itemDirty && d.page !== 'review') { notify('候选有未保存编辑：请先保存或取消。'); return }
+      if (d.page === 'scope' && !S.chat.length) S.chat.push({ role:'ai', text:'已读取 ' + S.mats.length + ' 份材料：识别出设备管理、运行监测、充放电计划、收益结算等模块（固定示例）。这次建模希望覆盖哪些业务？建议先明确主业务，再决定公共概念保留到什么程度。' });
+      S.page = d.page; render();
+      if (d.page === 'scope') { const el = $('#chatlog'); if (el) el.scrollTop = el.scrollHeight }
+      return;
+    }
+    /* A01 */
+    case 'new-task': modal({ body:'<h2>新建生成任务</h2><p class="muted">任务只组织材料与范围，尚未创建本体。</p><label>任务名称<input id="new-name" maxlength="80" placeholder="留空则自动命名为「未命名任务-日期」"></label><p class="bt-sub">原型内创建后同样进入固定演示上下文。</p><p class="inline-error" id="new-err"></p><div class="dialogtools"><button type="button" data-action="close">取消</button><button type="button" class="primary" data-action="create-task">创建并添加物料</button></div>' }); return;
+    case 'create-task': {
+      const name = ($('#new-name')?.value || '').trim() || '未命名任务-2026-09-21';
+      S.tasks.unshift({ id:'t0', name, label:'添加物料', tone:'', mats:0, upd:'2026-09-21 09:30', del:{ m:0, f:0, r:0 }, demo:true });
+      closeModal(); S.page = 'materials'; render(); notify('已创建任务「' + name + '」，接下来添加物料。'); return;
+    }
+    case 'del-task': {
+      const t = S.tasks.find(x => x.id === d.id); if (!t) return;
+      modal({ body:'<h2>删除生成任务</h2><p>将<b>物理删除</b>任务「' + esc(t.name) + '」及其全部关联数据：</p>' +
+      '<div class="cascade-box"><b>级联删除范围（不可恢复）</b><ul class="cascade-list">' +
+      '<li><span>任务与范围 / 候选记录</span><b>1 项</b></li><li><span>物料文件（含分片与哈希）</span><b>' + t.del.m + ' 份</b></li>' +
+      '<li><span>解析证据片段</span><b>' + t.del.f.toLocaleString() + ' 条</b></li><li><span>生成运行记录（扫描 / 对话 / 生成）</span><b>' + t.del.r + ' 次</b></li></ul>' +
+      '<p style="margin:10px 0 0">已创建的本体草稿不受影响，保留在工作台；但删除后原始证据不可用，无法再次追溯。</p></div>' +
+      '<label>请输入任务名以确认删除<input id="del-name" placeholder="' + esc(t.name) + '" autocomplete="off"></label>' +
+      '<p class="bt-sub">名称必须与「' + esc(t.name) + '」完全一致。</p>' +
+      '<div class="dialogtools"><button type="button" data-action="close">取消</button><button type="button" class="danger-ghost" id="del-btn" data-action="del-confirm" data-id="' + t.id + '" disabled>删除任务</button></div>' });
+      const inp = $('#del-name');
+      inp.addEventListener('input', () => { $('#del-btn').disabled = inp.value.trim() !== t.name });
+      return;
+    }
+    case 'del-confirm': {
+      const t = S.tasks.find(x => x.id === d.id); if (!t) return;
+      S.tasks = S.tasks.filter(x => x.id !== d.id);
+      closeModal();
+      S.notice = '已删除任务「' + t.name + '」：级联删除物料 ' + t.del.m + ' 份 · 解析证据 ' + t.del.f.toLocaleString() + ' 条 · 生成记录 ' + t.del.r + ' 次；已创建本体草稿保留。';
+      render(); notify('任务已删除（模拟物理删除）。'); return;
+    }
+    case 'continue-task': S.page = 'materials'; render(); return;
+    /* A02 */
+    case 'pick-dir': S.picked = true; S.zipMode = null; S.bigAskSeen = false; S.up = { state:'idle', chunk:0, total:360, file:'', uploaded:0 }; render(); notify('已选择演示文件夹（' + DEMO_FILES.length + ' 个文件，模拟）。'); return;
+    case 'pick-reset': S.picked = false; S.suffix = ''; S.zipMode = null; S.up = { state:'idle', chunk:0, total:360, file:'', uploaded:0 }; render(); return;
+    case 'start-upload': {
+      const st = pickStats();
+      if (!st.keep) { notify('过滤后没有可上传的文件：请调整后缀过滤。'); return }
+      if (st.keep > 20 && !S.zipMode) { openBigAsk(st); return }
+      beginUpload(st);
+      return;
+    }
+    case 'zip-mode': { S.zipMode = 'zip'; closeModal(); beginUpload(pickStats()); notify('已选择压缩为 zip 上传：整个目录打包为 1 个压缩包分片上传。'); return }
+    case 'direct-mode': { S.zipMode = 'direct'; S.bigAskSeen = true; closeModal(); beginUpload(pickStats()); return }
+    case 'why-zip': notify('压缩为 zip 后只有 1 个上传流，断点续传只针对单个文件，失败重传成本最低。'); return;
+    case 'up-pause': if (S.up.state === 'running') { S.up.state = 'paused'; refreshUploadZone() } return;
+    case 'up-fail': if (S.up.state === 'running') { S.up.state = 'failed'; refreshUploadZone(); notify('已模拟网络中断：停在当前分片。') } return;
+    case 'up-resume': if (S.up.state === 'paused' || S.up.state === 'failed') { S.up.state = 'running'; refreshUploadZone() } return;
+    case 'up-abandon': S.up = { state:'idle', chunk:0, total:360, file:'', uploaded:0 }; render(); return;
+    case 'scan': {
+      if (!S.mats.length) { ensureMats() }
+      S.scan = { state:'running' }; render(); notify('已开始扫描材料：单份材料失败不会阻塞其余材料。');
+      setTimeout(() => { if (!S.scan || S.scan.state !== 'running') return; assignParseStates(); S.page = 'materials'; render(); notify('扫描结束（模拟）：解析状态与覆盖缺口已更新。') }, 2200);
+      return;
+    }
+    case 'rescan': S.scan = { state:'running' }; render(); setTimeout(() => { if (!S.scan || S.scan.state !== 'running') return; assignParseStates(); render(); notify('重新扫描完成。') }, 1800); return;
+    case 'mat-view': S.matView = d.v; render(); return;
+    case 'flat-page': S.flatPage = Number(d.p); render(); return;
+    case 'group-detail': openGroupDetail(d.group, 0); return;
+    case 'detail-page': if (S.detail) { S.detail.page = Number(d.p); openGroupDetail(S.detail.group, S.detail.page) } return;
+    case 'mat-retry': {
+      const m = S.mats.find(x => x.id === d.id); if (!m) return;
+      m.st = 'running'; m.notes = []; if (S.detail) openGroupDetail(S.detail.group, S.detail.page);
+      render(); notify('已重新提交解析：「' + m.path + '」');
+      setTimeout(() => { if (!m) return; m.st = ['failed','partial','ocr_unconfigured'].includes(m.st) ? m.st : 'success'; if (S.detail) openGroupDetail(S.detail.group, S.detail.page); render() }, 1600);
+      return;
+    }
+    case 'mat-toggle': {
+      const m = S.mats.find(x => x.id === d.id); if (!m) return;
+      m.excluded = !m.excluded; m.st = m.excluded ? 'excluded' : 'pending';
+      if (S.detail) openGroupDetail(S.detail.group, S.detail.page);
+      render(); notify((m.excluded ? '已排除「' : '已恢复「') + m.path + '」；材料清单已变化，此前的扫描与生成结果基线失效。');
+      return;
+    }
+    case 'mat-issue': {
+      const m = S.mats.find(x => x.id === d.id); if (!m) return;
+      modal({ body:'<h2>解析问题 · ' + esc(m.path) + '</h2>' +
+      (m.notes.length ? '<div class="gap-detail"><b>解析说明 / 未解析片段（不能当成空内容忽略）</b><ul>' + m.notes.map(n => '<li>' + esc(n) + '</li>').join('') + '</ul></div>' : '<p class="muted">服务端未报告解析缺口' + (m.st === 'success' ? '（该材料已完整解析）' : '') + '。</p>') +
+      '<p class="bt-sub">当前状态：' + matLabel(m) + ' · 大小 ' + fmtBytes(m.size) + ' · 分组 ' + esc(m.group) + '</p>' +
+      '<div class="dialogtools"><button type="button" data-action="close">关闭</button><button type="button" class="danger-ghost" data-action="mat-toggle2" data-id="' + m.id + '">' + (m.excluded ? '恢复该材料' : '排除该材料') + '</button><button type="button" class="primary" data-action="mat-retry2" data-id="' + m.id + '">重试解析</button></div>' });
+      return;
+    }
+    case 'mat-toggle2': closeModal(); act('mat-toggle', d); return;
+    case 'mat-retry2': closeModal(); act('mat-retry', d); return;
+    case 'url-fetch': notify('从 URL 抓取：方案评估中，尚未确认实现。当前版本不支持该入口。'); return;
+    /* A03 */
+    case 'scope-choice': {
+      const v = d.v; let you = '', ai = '', patch = null;
+      if (v === 'energy' || v === 'all') {
+        you = v === 'energy' ? '聚焦储能运行，不含收益结算。' : '覆盖全部业务模块。';
+        patch = v === 'energy'
+          ? { text:'纳入：储能设备管理、运行监测、充放电计划；排除：收益结算、光伏业务、技术基础设施。', apply:{ include:'储能设备管理、运行监测、充放电计划', exclude:'收益结算、光伏业务、技术基础设施' } }
+          : { text:'纳入：设备管理、监测、计划、收益结算与光伏业务；排除：技术基础设施。', apply:{ include:'设备管理、监测、计划、收益结算与光伏业务', exclude:'技术基础设施' } };
+        ai = '收到。建议如右下补丁所示。计划流程还涉及生成、审核和下发——本次需要完整业务流程，还是只描述计划内容与生成规则？'; S.round = 1;
+      } else if (v === 'full' || v === 'limited') {
+        you = v === 'full' ? '计划：生成、审核、下发全流程。' : '只描述计划内容与生成规则。';
+        patch = { text:(v === 'full' ? '纳入追加：计划（生成、审核、下发全流程）。' : '纳入追加：计划（仅计划内容与生成规则）。'), apply:{ include:(S.scope.include || '') + '；计划：' + (v === 'full' ? '生成、审核、下发全流程' : '仅计划内容与生成规则') } };
+        ai = '已记录。材料中的储能设备还关联园区和电表：建议保留必要关联定义，不扩展园区其他业务与电表计费规则。'; S.round = 2;
+      } else {
+        you = v === 'related' ? '保留园区、电表必要关联。' : '关联概念先暂缓。';
+        patch = { text:'覆盖说明：' + (v === 'related' ? '园区、电表仅保留必要关联定义，不展开计费与园区其他业务。' : '关联概念暂缓；相关链接列为候选，不自动纳入。'), apply:{ coverage:(S.scope.coverage ? S.scope.coverage + ' ' : '') + (v === 'related' ? '园区、电表：仅保留必要关联定义，不展开计费与园区其他业务。' : '关联概念暂缓；相关链接列为候选，不自动纳入。') } };
+        ai = '范围要点已齐。注意：设备 SOC 的汇总口径在文档与代码中不一致，可留到生成后的评审处理。请核对右侧摘要并保存。'; S.round = 3;
+      }
+      pushTurn(you, ai, patch);
+      return;
+    }
+    case 'send-chat': {
+      const t = ($('#chat-input')?.value || '').trim(); if (!t) return;
+      if (S.llmDown) { S.chat.push({ role:'you', text:t }, { role:'err', text:'模型调用失败（模拟 503）：LLM 服务当前不可用。可点「重试」，或直接手工编辑右侧摘要并保存——手工路径不受影响。' }); render(); scrollChat(); return }
+      S.chat.push({ role:'you', text:t }, { role:'ai', text:'已记录你的补充（模拟）：原型没有真实 LLM，不能自动理解并改写摘要；请把你的决定填入右侧对应字段并「保存摘要」。正式实现会针对该补充继续澄清，并给出建议补丁。' });
+      S.scopeDirty = S.scopeDirty; render(); scrollChat(); return;
+    }
+    case 'llm-retry': {
+      const lastErr = [...S.chat].reverse().find(m => m.role === 'err');
+      if (S.llmDown) { S.chat.push({ role:'err', text:'重试仍失败（模拟 503）：LLM 服务不可用。请使用右侧手工编辑路径。' }) }
+      else { S.chat.push({ role:'ai', text:'（重试成功，模拟）已恢复连接。请继续补充范围要点，或直接核对右侧摘要。' }) }
+      void lastErr; render(); scrollChat(); return;
+    }
+    case 'llm-toggle': S.llmDown = !S.llmDown; render(); notify(S.llmDown ? '已模拟 LLM 服务失效：对话将返回失败，右侧手工编辑不受影响。' : 'LLM 服务已恢复（模拟）。'); return;
+    case 'adopt': {
+      const m = S.chat[Number(d.i)];
+      if (m && m.patch) { Object.assign(S.scope, m.patch.apply); m.applied = true; S.scopeDirty = true; render(); notify('建议已填入右侧摘要（未保存）。') }
+      return;
+    }
+    case 'scope-restart': S.round = 0; S.chat.push({ role:'ai', text:'可以重新选择业务范围；旧摘要保留供参考，新范围需重新保存确认。' }); render(); scrollChat(); return;
+    case 'save-scope': {
+      readScope(); S.scopeSaved = copy(S.scope); S.scopeDirty = false; render(); notify('范围摘要已保存（模拟）；尚未开始生成。'); return;
+    }
+    case 'resolve-q': {
+      const q = S.questions[Number(d.i)]; if (!q) return;
+      q.done = true; q.result = d.v === 'yes' ? '纳入并等待 OCR 配置' : '暂不纳入，按缺口处理';
+      render(); notify('已处理未决问题：' + q.result + '。'); return;
+    }
+    case 'confirm-scope': {
+      readScope();
+      if (S.scopeDirty) { notify('范围摘要有未保存修改：请先「保存摘要」。'); return }
+      if (!S.scopeSaved) { notify('请先保存范围摘要。'); return }
+      const blocking = S.questions.find(q => q.blocking && !q.done);
+      if (blocking) { notify('存在阻断性未决问题：请先在右侧处理。'); return }
+      S.run = newRun(); S.page = 'progress'; render(); notify('已确认范围并启动生成（模拟）。'); return;
+    }
+    /* A04 */
+    case 'run-cancel': if (S.run && S.run.state === 'running') { S.run.state = 'cancelled'; S.run.note = '已取消。'; render() } return;
+    case 'run-resume': if (S.run && S.run.state === 'cancelled') { S.run.state = 'running'; render() } return;
+    case 'retry-failed': {
+      const r = S.run; if (!r || r.state !== 'failed') return;
+      r.batches.forEach(b => { if (b.st === 'failed') { b.st = 'pending'; b.prog = 0 } });
+      r.state = 'running'; r.error = ''; r.note = '重试失败批次：复用前序阶段与已成功批次结果，仅重跑失败批。';
+      render(); notify('已提交重试失败批次（模拟）。'); return;
+    }
+    case 'retry-stage': {
+      const r = S.run; if (!r || r.state !== 'failed') return;
+      r.batches.forEach(b => { if (b.st === 'done') { b.st = 'pending'; b.prog = 0; b.reuse = true } if (b.st === 'failed') { b.st = 'pending'; b.prog = 0 } });
+      r.state = 'running'; r.error = ''; r.note = '从 abstract 阶段重试：已成功批命中检查点将直接复用（演示）。';
+      render(); notify('已从 abstract 阶段重试：成功批将快速复用（模拟）。'); return;
+    }
+    case 'batch-detail': {
+      const r = S.run; if (!r) return;
+      const b = r.batches[Number(d.i)];
+      modal({ body:'<h2>第 ' + (Number(d.i) + 1) + ' / 25 批 · 失败</h2>' +
+      '<div class="cascade-box"><b>错误详情</b>' + esc(b.err || 'LLM 输出被截断') + '</div>' +
+      '<p class="bt-sub">尝试次数：' + (b.faildone ? 1 : 0) + ' 次 · 该批不阻塞其他批次；已成功批次结果保留。</p>' +
+      '<p class="bt-sub">建议：重试失败批次（多数截断为偶发）；多次失败可更换模型配置或缩小分片后从 abstract 阶段重试。</p>' +
+      '<div class="dialogtools"><button type="button" data-action="close">关闭</button><button type="button" class="primary" data-action="retry-failed">重试失败批次</button></div>' });
+      return;
+    }
+    /* A05 */
+    case 'select-c': {
+      if (S.itemDirty) { notify('当前候选有未保存编辑：请先保存或取消。'); return }
+      S.sel = d.id; render(); return;
+    }
+    case 'save-edit': {
+      const i = S.cands.find(c => c.id === S.sel); if (!i) return;
+      const name = $('#item-name')?.value ?? i.name, def = $('#item-def')?.value ?? i.definition;
+      if (!name.trim() || !def.trim()) { notify('名称和业务定义必填，原内容未修改。'); return }
+      i.name = name; i.definition = def; i.reviewed = true;
+      const reason = $('#item-reason'); if (reason) i.reason = reason.value;
+      const content = $('#item-content'); if (content) i.content = content.value;
+      const effect = $('#item-effect'); if (effect) i.effect = effect.value;
+      S.itemDirty = false; render(); notify('编辑已保存到模拟任务（未写正式本体）。'); return;
+    }
+    case 'cancel-edit': {
+      const i = S.cands.find(c => c.id === S.sel); if (!i) return;
+      if ($('#item-name')) $('#item-name').value = i.name;
+      if ($('#item-def')) $('#item-def').value = i.definition;
+      const r = $('#item-reason'); if (r) r.value = i.reason || '';
+      S.itemDirty = false; render(); return;
+    }
+    case 'decide': {
+      const i = S.cands.find(c => c.id === S.sel); if (!i) return;
+      if (S.itemDirty) { notify('请先保存编辑，再调整纳入决定。'); return }
+      if (d.v === 'include' && i.status !== 'supported' && !(i.reason || '').trim()) { notify('此项含推断或冲突：请先填写人工确认依据并保存，或继续暂缓。'); return }
+      i.decision = d.v; i.reviewed = true; render();
+      if (d.v !== 'include') {
+        const n = S.cands.filter(j => j.deps.includes(i.id) && j.decision === 'include').length;
+        if (n) notify('已保留原关联：' + n + ' 项已纳入定义依赖此项，保存前需要处理。');
+      }
+      return;
+    }
+    case 'merge-preview': {
+      const from = S.cands.find(c => c.id === 'dup'), to = S.cands.find(c => c.id === 'cluster');
+      modal({ body:'<h2>合并预览（保留项：储能簇）</h2><div class="tablewrap"><table><thead><tr><th>字段</th><th>保留值</th><th>被并入值</th><th>是否不同</th></tr></thead><tbody>' +
+      '<tr><td>名称</td><td>储能簇</td><td>电池簇</td><td>不同</td></tr>' +
+      '<tr><td>业务定义</td><td>' + esc(to.definition) + '</td><td>' + esc(from.definition) + '</td><td>相同</td></tr>' +
+      '<tr><td>证据</td><td>' + to.evidence.length + ' 条</td><td>' + from.evidence.length + ' 条</td><td>合并保留</td></tr></tbody></table></div>' +
+      '<p class="bt-sub">材料明确给出同义表述，这不是仅按名称相似度合并；正式实现必须比较字段与关联差异。合并后原候选保留记录、可撤销。</p>' +
+      '<div class="dialogtools"><button type="button" data-action="close">取消</button><button type="button" class="primary" data-action="merge-confirm">确认合并</button></div>' });
+      return;
+    }
+    case 'merge-confirm': {
+      S.mergeBackup = copy(S.cands);
+      const from = S.cands.find(c => c.id === 'dup'), to = S.cands.find(c => c.id === 'cluster');
+      to.evidence.push(...copy(from.evidence));
+      from.mergedInto = to.id; from.decision = 'exclude';
+      S.cands.forEach(c => { c.deps = c.deps.map(x => x === from.id ? to.id : x) });
+      S.merged = true; S.sel = 'cluster'; closeModal(); render(); notify('已合并「电池簇」→「储能簇」：双方证据保留，可撤销。'); return;
+    }
+    case 'undo-merge': modal({ body:'<h2>撤销合并？</h2><p class="muted">恢复合并前的候选、证据与关联；本次评审会话内对候选的其他修改会一并还原。</p><div class="dialogtools"><button type="button" data-action="close">取消</button><button type="button" class="primary" data-action="undo-merge-confirm">恢复合并前状态</button></div>' }); return;
+    case 'undo-merge-confirm': if (S.mergeBackup) S.cands = copy(S.mergeBackup); S.merged = false; S.sel = 'dup'; S.itemDirty = false; closeModal(); render(); return;
+    /* A06 */
+    case 'create-onto': {
+      const name = (($('#final-name')?.value ?? S.saveName) || '').trim();
+      if (!name) { notify('本体名称不能为空。'); return }
+      if (name === '储能本体') { S.saveError = '当前账号已有同名本体（模拟 409 DUPLICATE_NAME）：请修改名称；不会覆盖或合并已有本体。'; render(); return }
+      S.saveError = ''; S.saveName = name;
+      S.savedResult = { name, id:'ont-demo-0921-001', at:'2026-09-21 10:05' };
+      render(); notify('新本体草稿已创建（模拟）。'); return;
+    }
+  }
+  function beginUpload(st) {
+    S.up = { state:'running', chunk:0, total:S.zipMode === 'zip' ? 96 : 360, file:S.zipMode === 'zip' ? 'energy-demo.zip（' + st.keep + ' 个文件的压缩包）' : 'energy-backend/…（共 ' + st.keep + ' 个文件，聚合进度）', uploaded:0 };
+    render();
+  }
+  function openBigAsk(st) {
+    modal({ body:'<h2>大文件夹上传建议</h2><p>当前过滤后待上传 <b>' + st.keep + '</b> 个文件（约 ' + fmtBytes(st.bytes) + '）。逐个文件分片上传耗时较长，中途失败需逐文件续传。</p>' +
+    '<p class="bt-note">推荐先在本地压缩为 zip：只有 1 个上传流，断点续传只针对单个文件；服务端会自动展开并列出条目（上限 1 GB / 2000 条）。</p>' +
+    '<div class="dialogtools" style="justify-content:stretch;flex-direction:column-reverse;gap:10px">' +
+    '<button type="button" data-action="close">返回调整过滤条件</button>' +
+    '<button type="button" data-action="direct-mode">仍要直接上传</button>' +
+    '<button type="button" class="primary" data-action="zip-mode">压缩为 zip 上传（推荐）</button></div>' +
+    '<p class="bt-sub" style="margin-top:10px"><button type="button" class="row-link" data-action="why-zip">为什么推荐压缩上传？</button></p>' });
+  }
+  function readScope() {
+    S.scope.goal = $('#sc-goal')?.value ?? S.scope.goal;
+    S.scope.include = $('#sc-include')?.value ?? S.scope.include;
+    S.scope.exclude = $('#sc-exclude')?.value ?? S.scope.exclude;
+    S.scope.coverage = $('#sc-coverage')?.value ?? S.scope.coverage;
+  }
+}
+function pushTurn(you, ai, patch) {
+  if (S.llmDown) { S.chat.push({ role:'you', text:you }, { role:'err', text:'模型调用失败（模拟 503）：LLM 服务当前不可用。可点「重试」，或直接手工编辑右侧摘要并保存——手工路径不受影响。' }); render(); scrollChat(); return }
+  S.chat.push({ role:'you', text:you }, { role:'ai', text:ai, patch:patch, applied:false });
+  render(); scrollChat();
+}
+function scrollChat() { const el = $('#chatlog'); if (el) el.scrollTop = el.scrollHeight }
+function openGroupDetail(group, page) {
+  const g = groupStats().find(x => x.name === group); if (!g) return;
+  const size = 100, pages = Math.max(1, Math.ceil(g.files.length / size));
+  page = Math.min(page, pages - 1);
+  S.detail = { group, page };
+  const slice = g.files.slice(page * size, page * size + size);
+  modal({ lg:true, body:'<h2>分组明细 · ' + esc(g.name) + '</h2>' +
+  '<p class="muted">' + g.files.length + ' 个文件 · ' + fmtBytes(g.bytes) + ' · ' + groupSummary(g) + '</p>' +
+  '<div class="tablewrap" style="max-height:52vh;overflow:auto"><table><thead><tr><th>文件</th><th>大小</th><th>解析状态</th><th style="width:26%">操作</th></tr></thead><tbody>' +
+  slice.map(m => matRowCells(m)).join('') + '</tbody></table></div>' +
+  '<div class="pager"><span>第 ' + (page * size + 1) + '–' + Math.min(g.files.length, (page + 1) * size) + ' 项 · 共 ' + g.files.length + ' 项 · 每页 100 条</span><span class="tools">' +
+  '<button type="button" class="mini" data-action="detail-page" data-p="' + (page - 1) + '" ' + (page === 0 ? 'disabled' : '') + '>上一页</button>' +
+  '<button type="button" class="mini" data-action="detail-page" data-p="' + (page + 1) + '" ' + (page >= pages - 1 ? 'disabled' : '') + '>下一页</button></span></div>' +
+  '<div class="dialogtools"><button type="button" data-action="close">关闭</button></div>' });
+}
+function refreshUploadZone() {
+  const line = $('#up-line'), bar = $('#up-bar');
+  const up = S.up; if (!line) { render(); return }
+  if (bar) {
+    bar.style.width = Math.min(100, Math.round(up.chunk / up.total * 100)) + '%';
+    bar.className = up.state === 'running' ? 'striped' : '';
+  }
+  if (up.state === 'paused') line.innerHTML = '已暂停于第 <b>' + up.chunk + '</b> / ' + up.total + ' 片（已传分片均已校验保存）　<button type="button" class="mini primary" data-action="up-resume">继续上传（从第 ' + (up.chunk + 1) + ' 片）</button>';
+  else if (up.state === 'failed') line.innerHTML = '<span class="bt-err-text">上传在第 ' + up.chunk + ' 片失败（模拟网络中断）：已传分片均已校验保存，可从断点继续，无需重传整包。</span>　<button type="button" class="mini primary" data-action="up-resume">失败后从断点继续（第 ' + (up.chunk + 1) + ' 片）</button>　<button type="button" class="mini" data-action="up-abandon">放弃</button>';
+  else render();
+}
+
+/* ═══════════════ 演示时钟 ═══════════════ */
+setInterval(() => {
+  const dt = 0.25;
+  /* A02 上传推进 */
+  if (S.up && S.up.state === 'running') {
+    S.up.chunk = Math.min(S.up.total, S.up.chunk + 16);
+    const line = $('#up-line');
+    if (line) {
+      const bar = $('#up-bar');
+      if (bar) { bar.style.width = Math.min(100, Math.round(S.up.chunk / S.up.total * 100)) + '%'; bar.className = 'striped' }
+      line.innerHTML = '正在上传：' + esc(S.up.file) + ' · 已传 <b>' + S.up.chunk + '</b> / ' + S.up.total + ' 物';
+    }
+    if (S.up.chunk >= S.up.total) {
+      S.up.state = 'done'; ensureMats(); render();
+      notify('上传完成（模拟）：材料已登记，可点击「扫描物料」。');
+    }
+  }
+  /* A04 生成推进 */
+  if (S.run && S.run.state === 'running') {
+    tickRun(S.run, dt);
+    if (S.page === 'progress') {
+      /* 运行中只替换阶段区与批次网格；「停止/取消」按钮所在区不动，避免点击丢失 */
+      const html = pageProgress();
+      const tmp = document.createElement('div'); tmp.innerHTML = html;
+      const zone = tmp.querySelector('#stage-zone'), grid = tmp.querySelector('#batch-grid');
+      const z = $('#stage-zone'), g = $('#batch-grid');
+      if (z && zone) z.innerHTML = zone.innerHTML;
+      if (g && grid) g.innerHTML = grid.innerHTML;
+      if (S.run.state !== 'running') render();
+    }
+    if (S.run.state === 'done' && S.page === 'progress') notify('生成完成（模拟）：初稿已就绪，请评审。');
+  }
+  /* OCR / 兜底状态翻转 */
+  if (S.scan && S.scan.flips && S.scan.flips.length) {
+    const now = Date.now(); let changed = false;
+    S.scan.flips = S.scan.flips.filter(f => {
+      if (f.at <= now) { const m = S.mats.find(x => x.id === f.id); if (m) { m.st = f.to; changed = true } return false }
+      return true;
+    });
+    if (changed && S.page === 'materials') render();
+  }
+}, 250);
+
+/* ═══════════════ 事件绑定 ═══════════════ */
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (el && !el.disabled) act(el.dataset.action, el.dataset);
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'suffix') { S.suffix = t.value; const st = pickStats(); const line = $('#cnt-line'); if (line) line.innerHTML = cntLineHtml(st); if (st.keep <= 20) S.bigAskSeen = false }
+  if (t.id === 'url-input') S.urlDraft = t.value;
+  if (t.id === 'search') {
+    if (S.itemDirty) { notify('请先保存编辑。'); return }
+    S.search = t.value; const pos = t.selectionStart; render(); const s = $('#search'); if (s) { s.focus(); s.setSelectionRange(pos, pos) }
+  }
+  if (t.id === 'item-name' || t.id === 'item-def' || t.id === 'item-reason' || t.id === 'item-content' || t.id === 'item-effect') {
+    S.itemDirty = true; const st = $('#edit-state'); if (st) { st.textContent = '有未保存的编辑'; st.className = 'inline-warning' }
+    const sb = document.querySelector('[data-action="save-edit"]'), cb = document.querySelector('[data-action="cancel-edit"]');
+    if (sb) sb.disabled = false; if (cb) cb.disabled = false;
+  }
+  if (t.id === 'sc-goal' || t.id === 'sc-include' || t.id === 'sc-exclude' || t.id === 'sc-coverage') {
+    S.scopeDirty = true; const p = $('#scope-pill'); if (p) { p.textContent = '未保存修改'; p.className = 'status-pill pill-warn' }
+    const btn = document.querySelector('[data-action="confirm-scope"]'); if (btn) btn.disabled = true;
+  }
+  if (t.id === 'final-name') S.saveName = t.value;
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'ack') { S.ack = t.checked; render() }
+  if (t.id === 'f-type') { S.fType = t.value; render(); const s = $('#f-type'); if (s) s.focus() }
+  if (t.id === 'f-dec') { S.fDec = t.value; render(); const s = $('#f-dec'); if (s) s.focus() }
+  if (t.id === 'f-status') { S.fStatus = t.value; render(); const s = $('#f-status'); if (s) s.focus() }
+  if (t.id === 'save-ack') { S.saveAck = t.checked; render() }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); if (S.helpOpen) { S.helpOpen = false; renderHelp() } }
+  if (e.key === 'Enter' && e.target.id === 'chat-input') { e.preventDefault(); act('send-chat', {}) }
+});
+render();
+</script>
+</body>
+</html>
