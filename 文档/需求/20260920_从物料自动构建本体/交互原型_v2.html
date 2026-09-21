@@ -443,7 +443,7 @@ function seedCandidates() { return [
  { id:'series', type:'属性', owner:'cluster', name:'SOC采样序列', definition:'电池的剩余电量百分比随时间记录的采样序列。', dtype:'时间序列', valueType:'数值', status:'supported', decision:'include', deps:['cluster'], origin:'parse', reason:'', evidence:[
    ev('业务定义、数据类型、观测值类型','docs/数据字典.xlsx','采样 · B3:F3','SOC | 每5分钟采样 | 时间戳 | 数值 | 剩余电量百分比')] },
  { id:'serial', type:'属性', owner:'cluster', name:'出厂编号', definition:'设备出厂时铭牌上的唯一编号，用于资产溯源。', dtype:'文本', status:'inferred', decision:'defer', deps:['cluster'], origin:'fallback', reason:'', evidence:[
-   ev('名称','docs/设备协议扫描_01.pdf','第 4 页 · OCR 识别（质量低）','出厂编号：PCS-2023-0817-0042（识别置信度较低）','low')] },
+   ev('名称（LLM 兜底解析）','energy-backend/src/device/Service_01.java','第 12 行','serialNo = "PCS-2023-0817-0042"　// 出厂编号','low')] },
  { id:'link1', type:'链接', name:'所属于', definition:'储能簇归属于负责其运行管理的储能设备。', source:'cluster', target:'device', card:'多对一', status:'supported', decision:'include', deps:['cluster','device'], origin:'parse', reason:'', evidence:[
    ev('端点、数量关系','docs/运行管理需求.docx','2.1 · 段落 4','一个储能簇只能归属一个储能设备，一个设备可以包含多个储能簇。'),
    ev('端点','energy-backend/src/cluster/ClusterMapper.xml','第 31 行','cluster.storage_id = storage.id','medium')] },
@@ -453,10 +453,10 @@ function seedCandidates() { return [
    ev('规则内容 · 文档口径','docs/运行管理需求.docx','3.2 · 段落 5','设备SOC = Σ(簇SOC × 簇额定容量) / Σ(簇额定容量)。'),
    ev('规则内容 · 实现口径','energy-backend/src/device/SocService.java','第 82–85 行','return values.stream().mapToDouble(Cluster::getSoc).average();','medium')] },
  { id:'stop', type:'动作', name:'停止充放电', definition:'请求储能设备结束当前充电或放电。', effect:'', status:'inferred', decision:'defer', deps:['device'], origin:'fallback', reason:'', evidence:[
-   ev('名称','energy-web/src/device/StorageControl.vue','第 51 行','按钮：停止充放电','medium'),
-   ev('行为线索（尚不足以证明效果）','energy-backend/src/device/StorageController.java','第 66 行','setStoragePower(storageId, 0)','low')] },
+   ev('名称线索（LLM 兜底解析）','energy-backend/src/device/Service_01.java','第 27 行','接口注释：/device/{id}/stop —— 停止充放电','low'),
+   ev('行为线索（尚不足以证明效果）','energy-backend/src/device/Service_01.java','第 31 行','setStoragePower(storageId, 0) 出现在 stopDevice(...)，效果未在文件内说明','low')] },
  { id:'dup', type:'对象', name:'电池簇', definition:'由多个电池模组组成、作为监测与管理单元的电池集合。', status:'inferred', decision:'defer', deps:[], origin:'fallback', reason:'可能与储能簇同义，待确认合并。', evidence:[
-   ev('别名候选','docs/设备协议扫描_02.pdf','第 4 页 · OCR 识别（质量低）','电池簇（本文所称储能簇）作为监测单元。','low')] },
+   ev('别名候选（LLM 兜底解析）','energy-backend/src/device/Service_01.java','第 44 行','// 电池簇（BatteryCluster）：本文所称储能簇，作为监测单元','low')] },
 ]}
 const STATUS_LABELS = { supported:['有依据','pill-ok'], inferred:['推断待确认','pill-warn'], conflict:['来源冲突','pill-error'], insufficient:['材料不足','pill-warn'] };
 const DEC_LABELS = { include:'拟纳入', defer:'暂缓', exclude:'已排除' };
@@ -481,7 +481,7 @@ function fresh() {
     scope:{ goal:'', include:'', exclude:'', coverage:'' }, scopeSaved:null, scopeDirty:false,
     questions:[
       { t:'设备 SOC 汇总口径：需求文档采用容量加权，后端代码采用简单平均，两者不一致。', blocking:false, done:false, hint:'可留到候选评审处理。' },
-      { t:'assets/images 下有 4 张扫描页尚未配置 OCR，是否纳入本次证据范围？', blocking:true, done:false, hint:'阻断范围确认：请先选择处理方式。' },
+      { t:'docs/ 下有 2 个扫描版 PDF OCR 识别失败，是否纳入本次证据范围？', blocking:true, done:false, hint:'阻断范围确认：请先选择处理方式。' },
     ],
     /* A04 */
     run:null,
@@ -509,17 +509,19 @@ function pickStats() {
 function ensureMats() {
   if (S.mats.length) return;
   let seq = 0;
-  S.mats = DEMO_FILES.filter(f => !BLACKLIST(f.path)).map(f => ({
+  const allow = suffixList();
+  S.mats = DEMO_FILES.filter(f => !BLACKLIST(f.path) && (!allow.length || allow.includes(f.ext))).map(f => ({
     id:'m' + (++seq), path:f.path, ext:f.ext, group:groupOf(f.path), size:f.size, st:'pending', excluded:false, notes:[],
   }));
 }
 function assignParseStates() {
-  let pdf = 0, dev = 0, ts = 0, docx = 0;
+  let pdf = 0, dev = 0, ts = 0, docx = 0, png = 0;
   const flips = [];
   const now = Date.now();
   for (const m of S.mats) {
     if (m.excluded) { m.st = 'excluded'; continue }
-    if (m.ext === '.pdf') { m.st = ['ocr_running','ocr_running','ocr_success','ocr_success','ocr_unconfigured','ocr_unconfigured'][pdf++ % 6]; if (m.st === 'ocr_running') flips.push({ at:now + 6000 + pdf * 800, id:m.id, to:'ocr_success' }) }
+    if (m.ext === '.pdf') { m.st = ['ocr_running','ocr_running','ocr_success','ocr_success','failed','failed'][pdf++ % 6]; if (m.st === 'ocr_running') flips.push({ at:now + 6000 + pdf * 800, id:m.id, to:'ocr_success' }); if (m.st === 'failed') m.notes = ['扫描页 OCR 识别失败（页面质量过低），已逐文件报告；可重试或排除。'] }
+    else if (m.ext === '.png') { m.st = 'ocr_running'; flips.push({ at:now + 5000 + png * 300, id:m.id, to:'ocr_success' }); png++ }
     else if (m.ext === '.docx') { m.st = (++docx === 2) ? 'partial' : 'success'; if (m.st === 'partial') m.notes = ['表格 3–7 存在合并单元格，按段落近似还原，建议人工核对原表。'] }
     else if (m.path.startsWith('energy-backend/src/device/') && m.ext === '.java') {
       m.st = dev === 0 ? 'fallback_running' : dev === 1 ? 'failed' : 'success';
@@ -650,9 +652,9 @@ function pageTasks() {
   '<dl class="ont-limits">' +
   '<div><dt>单文件</dt><dd>200 MB</dd></div><div><dt>单任务总量</dt><dd>2 GB</dd></div><div><dt>分片大小</dt><dd>4 MB</dd></div>' +
   '<div><dt>压缩包展开上限</dt><dd>1 GB · 2000 个条目</dd></div><div><dt>单份材料解析超时</dt><dd>120 秒</dd></div>' +
-  '<div><dt>扫描页识别（OCR）</dt><dd class="bt-err-text">不可用：未配置识别服务</dd></div>' +
+  '<div><dt>扫描页识别（OCR）</dt><dd>已启用（tesseract）；未配置或识别失败时逐文件报告，不假称解析成功</dd></div>' +
   '<div><dt>模型服务</dt><dd>演示模型（demo-llm）</dd></div><div><dt>解析器 / 提示词版本</dt><dd>p-14 / pr-7</dd></div></dl>' +
-  '<p class="bt-note warn">扫描件（图片页）当前无法识别：对应文件会标记为「OCR 未配置」并计入覆盖缺口；这不影响其它材料的解析。</p></section>' +
+  '<p class="bt-note">扫描页与图片经 OCR 提取文字；OCR 失败会逐文件报告并计入覆盖缺口，可重试或排除。</p></section>' +
   '<section class="card"><div class="panelhead"><h2>生成任务 <span class="muted">共 ' + S.tasks.length + ' 个</span></h2><button type="button" class="mini" data-action="demo-toast" data-msg="列表来自服务端（原型为静态演示）。">刷新</button></div>' +
   (S.tasks.length ? '<div class="tablewrap"><table><thead><tr><th style="width:32%">任务</th><th>当前阶段</th><th>物料</th><th>更新时间</th><th style="width:24%">操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>' :
   '<div class="empty-state"><p><strong>还没有生成任务。</strong></p><p>新建任务后上传物料，先扫描识别内容，再对话确定范围。</p><button type="button" class="primary" data-action="new-task">＋ 新建生成任务</button></div>') +
@@ -700,7 +702,7 @@ function pageMaterials() {
   '<button type="button" class="' + (S.matView === 'group' ? 'on' : '') + '" data-action="mat-view" data-v="group">分组视图</button>' +
   '<button type="button" class="' + (S.matView === 'flat' ? 'on' : '') + '" data-action="mat-view" data-v="flat">平铺</button></div></div></div>' +
   (S.matView === 'group' ? groupTableHtml() : flatTableHtml()) +
-  (gapMats().length ? '<p class="bt-note warn">有 ' + gapMats().length + ' 份材料存在覆盖缺口（解析失败 / 部分解析 / OCR 未配置）。缺口内容不会被当成空内容，也不会自动纳入定义。</p>' +
+  (gapMats().length ? '<p class="bt-note warn">有 ' + gapMats().length + ' 份材料存在覆盖缺口（解析失败 / 部分解析 / OCR 识别失败或未配置）。缺口内容不会被当成空内容，也不会自动纳入定义。</p>' +
   '<label class="check-option"><input id="ack" type="checkbox" ' + (S.ack ? 'checked' : '') + '><span>我了解材料覆盖缺口，允许先用已解析部分继续。</span></label>' : '') +
   '</section>';
 
@@ -852,7 +854,7 @@ function pageScope() {
     (q.done ? '<span class="status-pill pill-ok">已处理</span>'
       : (q.blocking ? '<span class="status-pill pill-error">阻断范围确认</span><span class="tools">' +
         '<button type="button" class="mini" data-action="resolve-q" data-i="' + i + '" data-v="no">暂不纳入，按缺口处理</button>' +
-        '<button type="button" class="mini" data-action="resolve-q" data-i="' + i + '" data-v="yes">纳入并等待 OCR 配置</button></span>'
+        '<button type="button" class="mini" data-action="resolve-q" data-i="' + i + '" data-v="yes">纳入并标注缺口，待重试后处理</button></span>'
         : '<span class="status-pill">可留到候选评审</span>')) +
     '</div>').join('') +
   '<p class="bt-sub">材料与范围变化会使已生成结果过期；过期结果只读回看，不影响继续编辑与再次确认。</p></section></div>' +
@@ -1076,7 +1078,7 @@ function renderHelp() {
   '<li>过滤后 &gt;20 个时自动弹出<b>大文件夹引导</b>：「压缩为 zip 上传（推荐）」或「仍要直接上传」。</li>' +
   '<li>上传进度：分片计数「已传 n / 总数 片」+「暂停」；点「模拟网络中断」进入失败态，再用「失败后从断点继续」从同一片续传（演示断点续传）。</li>' +
   '<li>「扫描物料」后清单出现：分组视图（组名 / 文件数 / 状态汇总 / 字节）⇄ 平铺切换；点击分组打开明细弹层（每页 100 条，重试 / 排除 / 查看问题）。</li>' +
-  '<li>新增状态：图片 OCR 中 / OCR 成功 / OCR 未配置；LLM 兜底解析中 → 兜底完成（数秒后自动翻转，带 quality=low 角标）。</li>' +
+  '<li>新增状态：图片 OCR 中 / OCR 成功（OCR 未配置或失败时逐文件报告，重试不改变失败结果）；LLM 兜底解析中 → 兜底完成（数秒后自动翻转，带 quality=low 角标）。软黑名单的任务级覆盖与自定义追加规则的配置入口未在原型演示（见需求 §5.4）。</li>' +
   '<li>黑名单已过滤区：独立折叠区显示「已过滤 N 个文件」+ 原因分布（二进制 / 密钥凭据 / 音视频 / 自定义规则）+ 可展开清单。</li>' +
   '<li>从 URL 抓取：<span class="mark todo">未实现</span>方案评估中，仅入口示意。</li></ul>' +
   '<h3>A03 确定范围</h3><ul>' +
@@ -1096,7 +1098,7 @@ function renderHelp() {
   '<li>数量核对 + 动态「依赖与结构检查」清单（随评审决定实时变化，可「去处理」跳回）。</li>' +
   '<li>名称输入同名保护：输入「储能本体」提交可见 409 提示（模拟）。</li>' +
   '<li>勾选确认后「创建新本体草稿」→ 保存结果页（只读）。<span class="mark">模拟</span></li></ul>' +
-  '<p class="tagline" style="margin-top:16px">对照文档：需求说明.md · 开发计划.md · 执行指令.md（同目录）。</p>' +
+  '<p class="tagline" style="margin-top:16px">对照文档：需求说明_v2.md（最新）· 需求说明.md（v1 存档）· 开发计划.md · 执行指令.md（同目录）。</p>' +
   '</div></aside></div>';
 }
 
@@ -1178,9 +1180,10 @@ function act(action, d) {
     case 'detail-page': if (S.detail) { S.detail.page = Number(d.p); openGroupDetail(S.detail.group, S.detail.page) } return;
     case 'mat-retry': {
       const m = S.mats.find(x => x.id === d.id); if (!m) return;
+      const was = m.st;
       m.st = 'running'; m.notes = []; if (S.detail) openGroupDetail(S.detail.group, S.detail.page);
       render(); notify('已重新提交解析：「' + m.path + '」');
-      setTimeout(() => { if (!m) return; m.st = ['failed','partial','ocr_unconfigured'].includes(m.st) ? m.st : 'success'; if (S.detail) openGroupDetail(S.detail.group, S.detail.page); render() }, 1600);
+      setTimeout(() => { if (!m) return; m.st = ['failed','partial','ocr_unconfigured'].includes(was) ? was : 'success'; if (S.detail) openGroupDetail(S.detail.group, S.detail.page); render() }, 1600);
       return;
     }
     case 'mat-toggle': {
@@ -1246,7 +1249,7 @@ function act(action, d) {
     }
     case 'resolve-q': {
       const q = S.questions[Number(d.i)]; if (!q) return;
-      q.done = true; q.result = d.v === 'yes' ? '纳入并等待 OCR 配置' : '暂不纳入，按缺口处理';
+      q.done = true; q.result = d.v === 'yes' ? '纳入并标注缺口，待重试后处理' : '暂不纳入，按缺口处理';
       render(); notify('已处理未决问题：' + q.result + '。'); return;
     }
     case 'confirm-scope': {
