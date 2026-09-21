@@ -139,11 +139,12 @@ def scenario_a01(api, rec, ontology_id, tag='O3-04'):
     pj = p['json'] if isinstance(p['json'], dict) else {}
     after, after_note = _versions_of(api, ontology_id)
 
-    # 诊断分组（F03）：第一组必须定位到 content/effect 字段本身，第二组说明是类型/取值非法。
-    # 仅命中「文本/类型」这类泛词不算针对目标。
+    # 诊断分组（F03 + 对抗验证加固）：第一组锚定到**被追加的非法记录 id 或字段名**，
+    # 第二组说明「非文本/类型非法」。两组须在同一条诊断消息内同时命中；不使用
+    # '类型/格式/无效' 单词单独判定，避免把其它字段的类型错误误收为 A01 的证据。
     diag_groups = [
-        ['content', 'effect', '内容', '预期效果', '业务效果'],
-        ['非文本', '必须为文本', '字符串', '类型', '格式', '非法', '无效'],
+        ['r-a01-bad', 'a-a01-bad', 'content', 'effect'],
+        ['非文本', '必须为文本', '必须为字符串', '文本类型', '字符串类型'],
     ]
     detail = ('validate HTTP %s errors=%s；save HTTP %s errors=%s；publish HTTP %s body=%s；'
               '版本 %s→%s（%s；%s）' % (v['status'], _brief(v_errs), s['status'], _brief(sj.get('errors')),
@@ -228,19 +229,22 @@ def scenario_r02(api, rec, project_id, project_state, object_type, prop, tag='R0
     诊断词 + 版本零新增判定，未拦截分支按既有 R02 登记记已知缺陷复现。
     """
     out = {'projectId': project_id, 'cases': {}, 'shellFlowId': None}
-    # 诊断分组（F03）：第一组定位到该属性/该编排引用，第二组说明具体原因（输出未绑定）。
-    # 两组都要命中才算「针对目标」，不再用单个泛词（如 flow/输出）判定。
-    diag_groups = [
-        [prop, object_type, '编排', 'flow', '函数编排'],
-        ['未绑定', '输出未绑定', 'OUTPUT_BINDING_MISSING', '未选择', '绑定'],
-    ]
     rev = (api.get('/api/project-state?project=' + project_id)['json'] or {}).get('revision')
 
-    # 1) 创建空壳编排
+    # 1) 创建空壳编排（先拿到 fid，诊断分组需要用它锚定身份）
     r = api.post('/api/flows', {'name': '继续验证空壳编排 ' + uuid.uuid4().hex[:6], 'description': 'R02：输出未绑定'})
     j = r['json'] if isinstance(r['json'], dict) else {}
     fid = j.get('id')
     out['shellFlowId'] = fid
+    # 诊断分组（F03 + 对抗验证加固）：第一组是**具体身份**（被引用的属性/对象/编排 id），
+    # 第二组是**具体原因**（编排输出未绑定）。两组必须在同一条诊断消息内同时命中。
+    # 刻意不使用 '编排'/'绑定'/'未选择' 这类泛词：真实接口对其它功能的报错
+    # （如「动作绑定…实现方式未选择（项目接口或函数编排）」「…读取失败…暂不能校验该绑定」）
+    # 会同时含这些泛词，导致无关错误被误判成「正确拦截」。
+    diag_groups = [
+        [prop, object_type] + ([fid] if fid else []),
+        ['未绑定', '输出未绑定', 'OUTPUT_BINDING_MISSING', '尚未绑定', '未选择输出'],
+    ]
     res = V.classify_prereq('创建空壳编排 201+id', r['status'] == 201 and bool(fid),
                             'HTTP %s %s' % (r['status'], _brief(j)))
     rec.add(tag + '-1', res['result'], tag + ' 前置：创建空壳编排', res['detail'], 'R02-pre')
@@ -340,8 +344,13 @@ def scenario_r02(api, rec, project_id, project_state, object_type, prop, tag='R0
                                   {'kind': 'flow', 'flow': 'flow-does-not-exist-' + uuid.uuid4().hex[:8],
                                    'output': 'fout-1', 'inputs': {}})
     rev3 = (api.get('/api/project-state?project=' + project_id)['json'] or {}).get('revision') or rev2
-    # 7a) 负对照的 validate 段：同样先过状态码/结构，再要求出现「编排不存在」诊断
-    gdiag = [['编排', 'flow'], ['不存在', '已删除', '未找到', 'NOT_FOUND']]
+    # 7a) 负对照的 validate 段：同样先过状态码/结构；诊断须同时给出**该引用的身份**
+    #     （ghost flow id / 属性 / 对象）与**不存在的原因**，避免把无关错误（如
+    #     「额外编排不存在或不属于当前账号」）当成负对照成立。
+    ghost_fid = ghost.get('bindings', {}).get('object_bindings', [{}])[0].get('properties', {}) \
+        .get(prop, {}).get('flow', '')
+    gdiag = [[ghost_fid, prop, object_type],
+             ['不存在', '已删除', '未找到', 'NOT_FOUND', '引用无效']]
     r = api.post('/api/project-validate', {'state': ghost, 'revision': rev3})
     gj = r['json'] if isinstance(r['json'], dict) else {}
     gerrs = gj.get('errors') if isinstance(gj.get('errors'), list) else None

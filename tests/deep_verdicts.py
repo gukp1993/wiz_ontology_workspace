@@ -110,95 +110,202 @@ def _body_present(response):
     return bool(response.get('binary')) or bool(str(response.get('text') or '').strip())
 
 
-# 诊断结构（信封）键：其子树承载「为什么被拒」，进入后其中的文本都算诊断文案。
-_DIAG_ENVELOPE = {
-    'error', 'errors', 'message', 'messages', 'issues', 'issue', 'reasons', 'reason',
-    'diagnostics', 'problems', 'violations', 'report', 'check', 'warnings',
-    'detail', 'details', 'note', 'notes', 'items', 'fields', 'field',
-    'sections', 'section', 'parameterId',
-}
-# 顶层描述键：不在信封里也直接算诊断文案（如顶层 error）。
-_DIAG_TEXT_KEYS = _DIAG_ENVELOPE | {'code', 'codes', 'text', 'description', 'hint'}
+# ---------------------------------------------------------------------------
+# 诊断文本提取（F03 + 对抗验证加固）
+#
+# 只有「诊断信封」（errors/diagnostics/reasons/issues…）内的文本才算错误说明。
+# 顶层其它键（field/text/code/description…）与状态清单 items[] 的字段一律**不收集**：
+# 真实接口会把每个条目（无论有无问题）都回显 items[].name/id/kind，把它们当诊断，
+# 会让「定位组」无条件命中，从而把无关错误误判成正确拦截。
+# ---------------------------------------------------------------------------
 
-# 诊断子树内**不参与匹配**的键：它们承载类型/标识/状态等判别值，不是错误说明。
-# 例：导入冲突回显里的 `kind:'flow'`、校验条目里的 `kind:'propertySource'`，
-# 若被当作诊断文案，仅凭一个 "flow" 词就会把无关错误误判成「针对目标」。
-_DIAG_IGNORE_KEYS = {'state', 'data', 'payload', 'revision', 'requestId',
-                     'kind', 'type', 'status', 'level', 'id', 'ids', 'key', 'keys',
-                     'version', 'templateId', 'packageKey', 'suggestedName'}
+# 信封键：其子树承载「为什么被拒」
+_ENVELOPE_KEYS = {
+    'error', 'errors', 'message', 'messages', 'issues', 'issue', 'reasons', 'reason',
+    'diagnostics', 'diagnostic', 'problems', 'problem', 'violations', 'violation',
+    'warnings', 'warning', 'detail', 'details', 'note', 'notes', 'report', 'check',
+}
+# 状态清单键：其条目是「逐项状态回显」，只下钻其中真正的错误字段
+_STATUS_LIST_KEYS = {'items', 'results', 'rows', 'entries', 'checks'}
+# 诊断子树内不参与匹配的键（大小写不敏感）：类型/标识/状态/回显载荷
+_IGNORE_KEYS = {
+    'state', 'data', 'payload', 'revision', 'requestid', 'requestid', 'kind', 'type',
+    'status', 'level', 'id', 'ids', 'key', 'keys', 'version', 'templateid', 'packagekey',
+    'suggestedname', 'scene', 'outputs', 'output', 'nodes', 'connections', 'layout',
+    'canvas', 'props', 'effects', 'sceneid', 'flow', 'flowid', 'objecttype', 'objecttypeid',
+    'prop', 'properties', 'index', 'count', 'total', 'generation', 'fingerprint',
+}
+
+
+def _is_ignored(key):
+    return str(key).lower() in _IGNORE_KEYS
+
+
+def diag_messages(response):
+    """返回诊断文案列表：**一条消息 = 一个诊断条目**（不是每个标量各成一条）。
+
+    为什么按「条目」而不是按「标量」：真实接口里一个错误条目的定位与原因是同一对象的
+    两个字段（如 {"name":"activePower","message":"未绑定"}），必须能在同一条消息内同时
+    命中「定位」与「原因」两组诊断词；而 {"errors":["消息甲","消息乙"]} 这种多条目形态
+    必须各自独立成条，防止两条互不相关的消息各贡献一半拼出假命中。
+
+    只从「诊断信封」取文本：根层与状态清单（items[]）里只下钻信封键；状态清单条目的
+    name/id/kind/status 等回显字段不收集（真实接口会为每个条目回显这些字段，收集它们
+    会让定位组无条件命中）。不使用整体文本兜底，非 JSON 响应不参与诊断匹配。
+    """
+    messages = []
+
+    def item_text(node):
+        """把一个诊断条目内的全部标量拼成一条消息（忽略键整棵跳过）。"""
+        out = []
+
+        def rec(n):
+            if isinstance(n, dict):
+                for k, v in n.items():
+                    if _is_ignored(k):
+                        continue
+                    rec(v)
+            elif isinstance(n, list):
+                for x in n:
+                    rec(x)
+            else:
+                out.append(str(n))
+
+        rec(node)
+        return ' '.join(out).strip()
+
+    def from_envelope(value):
+        if isinstance(value, list):
+            for item in value:
+                text = item_text(item)
+                if text:
+                    messages.append(text)
+        else:
+            text = item_text(value)
+            if text:
+                messages.append(text)
+
+    def from_status_list(value):
+        if not isinstance(value, list):
+            return
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            for k, v in item.items():
+                if _is_ignored(k):
+                    continue
+                low = str(k).lower()
+                if low in _ENVELOPE_KEYS:
+                    from_envelope(v)
+                elif low in _STATUS_LIST_KEYS:
+                    from_status_list(v)
+
+    payload = response.get('json')
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if _is_ignored(key):
+                continue
+            low = str(key).lower()
+            if low in _ENVELOPE_KEYS:
+                from_envelope(value)
+            elif low in _STATUS_LIST_KEYS:
+                from_status_list(value)
+            # 其它顶层键是载荷回显：整棵跳过，不作兜底搜索
+    elif isinstance(payload, list):
+        for item in payload:
+            text = item_text(item)
+            if text:
+                messages.append(text)
+    return messages
 
 
 def diag_text(response):
-    """收集响应中「约定诊断字段」内的文本，供诊断匹配使用。
-
-    规则（F03）：
-    - 只进入诊断信封键（errors/diagnostics/error/report/check/items/issues…）的子树；
-    - 信封内：字符串列表（`{"errors": ["文案"]}`）与描述键下的标量都算诊断文案，
-      但 `_DIAG_IGNORE_KEYS`（类型/标识/回显载荷）一律跳过；
-    - 信封外的普通键**不收集**，避免回显载荷里的词造成误判；
-    - 完全取不到诊断文本时返回空串，**不再回退为整份响应**（不再搜索整份响应）。
-    """
-    chunks = []
-
-    def walk(node, in_envelope):
-        if isinstance(node, dict):
-            for key, value in node.items():
-                if key in _DIAG_IGNORE_KEYS:
-                    continue
-                if isinstance(value, (dict, list)):
-                    walk(value, in_envelope or key in _DIAG_ENVELOPE)
-                elif in_envelope or key in _DIAG_TEXT_KEYS:
-                    chunks.append(str(value))
-        elif isinstance(node, list):
-            for item in node:
-                if isinstance(item, (dict, list)):
-                    walk(item, in_envelope)
-                elif in_envelope:
-                    # 信封内的字符串列表（errors/issues/reasons…）必须收集，
-                    # 否则真实响应里的错误文案会被整体漏掉。
-                    chunks.append(str(item))
-
-    if response.get('json') is not None:
-        walk(response['json'], False)
-    # 非 JSON 响应（纯文本错误页）整体按诊断文本处理
-    if response.get('json') is None and response.get('text'):
-        chunks.append(str(response['text']))
-    return ' '.join(chunks)
+    """诊断文案的整串形式（保留给报告与单测；匹配请用 diag_messages + _diag_hit）。"""
+    return ' | '.join(diag_messages(response))
 
 
 def _diag_hit(response, groups, not_required=False):
-    """诊断命中判定：每一组至少命中一个词（组内 OR、组间 AND）。
+    """诊断命中判定：**必须由同一条诊断消息**同时满足所有组（组内 OR、组间 AND）。
 
-    单一组（旧 diagnostic_terms）等价于「组内任一命中」；多组表示
-    「字段/对象定位 + 具体错误原因」须同时成立，避免泛词误收。
+    对抗验证发现：早期实现把所有诊断文案拼成一整串再找词，两条互不相关的消息
+    可以各贡献一半，拼出「字段定位 + 具体原因」的假命中。因此这里按消息独立判定：
+    存在一条消息，它对每一组都至少命中一个词，才算命中。
 
-    **未提供诊断依据时不放行**：不能因为「返回了期望的错误码」就宣布校验正确。
-    确需跳过诊断核对的调用方必须显式传 `diagnostic_not_required=True`。
+    未提供诊断依据时不放行；确需跳过必须显式 `diagnostic_not_required=True`。
     """
-    groups = [g for g in (groups or []) if g]
+    groups = [list(g) for g in (groups or []) if g]
+    for group in groups:
+        if not all(isinstance(g, str) and g.strip() for g in group):
+            return False, '用例配置有误：诊断词必须是非空字符串（收到 %r）' % (group,)
     if not groups:
         if not_required:
             return True, '调用方显式声明无需诊断核对（diagnostic_not_required=True）'
         return False, ('未提供诊断依据（diagnostic_terms/diagnostic_term_groups 均为空），'
                        '无法确认拒绝是否针对目标')
-    text = diag_text(response)
-    if not text:
-        return False, '响应中取不到诊断文本（无约定诊断字段），不能判定拒绝是否针对目标'
-    missed = []
-    for group in groups:
-        if not any(term in text for term in group):
-            missed.append('|'.join(group))
-    if missed:
-        return False, '诊断文本未覆盖：%s（诊断文本=%s）' % ('；'.join(missed), text[:300])
-    return True, '诊断命中（诊断文本=%s）' % text[:300]
+    messages = diag_messages(response)
+    if not messages:
+        return False, '响应中取不到诊断文案（无约定诊断字段），不能判定拒绝是否针对目标'
+    best = None
+    for message in messages:
+        missing = [g for g in groups if not any(term in message for term in g)]
+        if not missing:
+            return True, '同一条诊断消息命中全部诊断组：%s' % message[:300]
+        if best is None or len(missing) < len(best[1]):
+            best = (message, missing)
+    message, missing = best
+    return False, ('没有任何单条诊断消息覆盖全部诊断组；最接近的是「%s」，'
+                   '其中未覆盖：%s' % (message[:160], '；'.join('|'.join(g) for g in missing)))
 
 
 def _mk(result, reason, detail=''):
     return {'result': result, 'reason': reason, 'detail': detail}
 
 
+def _as_status_tuple(value, field):
+    """状态码集合归一：整数或整数序列；返回 (tuple|None, 错误说明)。"""
+    if value is None:
+        return None, '用例配置有误：%s 不能为空' % field
+    items = value if isinstance(value, (list, tuple, set, frozenset)) else (value,)
+    out = []
+    for item in items:
+        if isinstance(item, bool) or not isinstance(item, int):
+            return None, '用例配置有误：%s 必须是整数状态码，收到 %r' % (field, item)
+        out.append(item)
+    if not out:
+        return None, '用例配置有误：%s 为空集合' % field
+    return tuple(out), ''
+
+
+def _as_bool(value, field):
+    if isinstance(value, bool):
+        return value, ''
+    return None, '用例配置有误：%s 必须是布尔值，收到 %r' % (field, value)
+
+
+def _as_count(value, field):
+    if value is None:
+        return value, ''
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None, '用例配置有误：%s 必须是整数计数或 None，收到 %r' % (field, value)
+    return value, ''
+
+
+def _precondition_ok(precondition_ok):
+    """前置归一：仅接受 bool 或 {'ok': bool, 'detail': str}；其它类型按配置错误处理。"""
+    if isinstance(precondition_ok, bool):
+        return precondition_ok, ''
+    if isinstance(precondition_ok, dict):
+        ok = precondition_ok.get('ok')
+        if isinstance(ok, bool):
+            return ok, str(precondition_ok.get('detail') or '')
+        return None, '用例配置有误：前置字典的 ok 必须是布尔值，收到 %r' % (ok,)
+    return None, '用例配置有误：precondition_ok 必须是布尔值或字典，收到 %r' % (precondition_ok,)
+
+
 def classify_prereq(name, ok, detail=''):
     """前置步骤判定：成功 → product_pass；失败 → blocked（用例不成立，不用旧状态继续）。"""
+    if not isinstance(ok, bool):
+        return _mk(TEST_ERROR, '用例配置有误：前置判定必须是布尔值，收到 %r' % (ok,), detail)
     if ok:
         return _mk(PRODUCT_PASS, '前置成功：' + name, detail)
     return _mk(BLOCKED, '前置未成功：' + name + '；该用例不成立，不用旧状态继续', detail)
@@ -206,6 +313,8 @@ def classify_prereq(name, ok, detail=''):
 
 def classify_static_check(ok, detail='', defect_kind=NEW_DEFECT):
     """静态/白名单/源码核对：通过记 static_check_pass（不是动态业务验证）。"""
+    if not isinstance(ok, bool):
+        return _mk(TEST_ERROR, '用例配置有误：静态核对结果必须是布尔值，收到 %r' % (ok,), detail)
     if ok:
         return _mk(STATIC_PASS, '静态核对通过（非动态业务验证）', detail)
     return _mk(defect_kind, '静态核对发现可达路径（需人工确认是否为缺陷）', detail)
@@ -214,102 +323,121 @@ def classify_static_check(ok, detail='', defect_kind=NEW_DEFECT):
 def classify_guard_attempt(precondition_ok, response, expect=None, precondition_detail=''):
     """一次「期望被拦截」的操作判定。
 
-    precondition_ok : bool|dict  前置是否全部成功（dict 需含 ok；False 一律 blocked）
-    response        : dict       客户端 call() 结果 {status,json,text,binary,error}
+    precondition_ok : bool | {'ok': bool, 'detail': str}   非布尔一律 test_error
+    response        : dict  客户端 call() 结果 {status:int|None, json, text, binary, error}
     expect          : dict
-        block_status            期望拦截状态码（int 或 tuple，默认 422）
-        diagnostic_terms        单组诊断词（组内任一命中）；等价于 diagnostic_term_groups 只有一组
-        diagnostic_term_groups  多组诊断词：**每组都要命中**（组内 OR、组间 AND），
-                                用于「字段/对象定位 + 具体错误原因」同时成立
-        diagnostic_not_required 显式声明无需诊断核对（默认 False）。不指定诊断依据且未声明时，
-                                拒绝分支记 test_error —— 不得因「返回了期望错误码」就判通过
-        known_defect            未拦截时按已知基线缺陷记（默认 False）
-        require_no_version_increase  True 时**无论被接受还是被拒绝**都要求版本零新增：
-                                版本必须可读且可比，读不到 → test_error；
-                                拒绝却新增版本 → 独立新缺陷
-        version_before/version_after 版本计数（int）；None 表示读取失败/不可读
-        allow_status            接受态状态码（默认 (200, 201)）
-        accepted_detail         接受时写进 evidence 的补充说明
+        block_status               期望拦截状态码（int 或 int 序列，默认 422）
+        allow_status               接受态状态码（int 或 int 序列，默认 (200, 201)）
+        diagnostic_terms           单组诊断词（组内任一命中）；等价于只给一组
+        diagnostic_term_groups     多组：**必须在同一条诊断消息内**全部命中
+        diagnostic_not_required    显式声明跳过诊断核对（必须严格 True）
+        known_defect               必须是布尔；未拦截时记已知/新缺陷
+        require_no_version_increase 必须是布尔；为 True 时**接受与拒绝分支都**要求
+                                   版本可读且严格等于 before（回退视为证据矛盾 → test_error）
+        version_before/version_after 整数计数或 None（None = 读不到 = 证据不足）
+
+    安全取向：配置错误、类型不符、证据不足一律 test_error —— 宁可判「不可用」，
+    绝不把无关错误或服务端故障算成产品通过。
     """
     expect = dict(expect or {})
-    if isinstance(precondition_ok, dict):
-        precondition_detail = precondition_detail or precondition_ok.get('detail', '')
-        precondition_ok = bool(precondition_ok.get('ok'))
-    if not precondition_ok:
+    ok, pres_detail = _precondition_ok(precondition_ok)
+    precondition_detail = precondition_detail or pres_detail
+    if ok is None:
+        return _mk(TEST_ERROR, '前置配置无效：' + pres_detail, precondition_detail)
+    if not ok:
         return _mk(BLOCKED, '前置未成功；用例不成立，不用旧状态继续该操作', precondition_detail)
 
     response = response or {}
-    status = response.get('status')
-    block_status = expect.get('block_status', 422)
-    block_set = tuple(block_status) if isinstance(block_status, (list, tuple, set)) else (block_status,)
-    allow_status = tuple(expect.get('allow_status', (200, 201)))
+    detail = str(expect.get('accepted_detail') or '')
+
+    block_set, err = _as_status_tuple(expect.get('block_status', 422), 'block_status')
+    if block_set is None:
+        return _mk(TEST_ERROR, err, detail)
+    allow_set, err = _as_status_tuple(expect.get('allow_status', (200, 201)), 'allow_status')
+    if allow_set is None:
+        return _mk(TEST_ERROR, err, detail)
+    if set(block_set) & set(allow_set):
+        return _mk(TEST_ERROR, '用例配置有误：block_status 与 allow_status 重叠 %s，无法区分拦截与接受'
+                   % sorted(set(block_set) & set(allow_set)), detail)
+
+    known = expect.get('known_defect', False)
+    known, err = _as_bool(known, 'known_defect')
+    if known is None:
+        return _mk(TEST_ERROR, err, detail)
+    need_gate = expect.get('require_no_version_increase', False)
+    need_gate, err = _as_bool(need_gate, 'require_no_version_increase')
+    if need_gate is None:
+        return _mk(TEST_ERROR, err, detail)
+    if expect.get('diagnostic_not_required') not in (None, False, True):
+        return _mk(TEST_ERROR, '用例配置有误：diagnostic_not_required 必须是布尔值，收到 %r'
+                   % (expect.get('diagnostic_not_required'),), detail)
+
+    version_before, err = _as_count(expect.get('version_before'), 'version_before')
+    if err:
+        return _mk(TEST_ERROR, err, detail)
+    version_after, err = _as_count(expect.get('version_after'), 'version_after')
+    if err:
+        return _mk(TEST_ERROR, err, detail)
+
     groups = expect.get('diagnostic_term_groups')
     if groups is None:
-        terms = list(expect.get('diagnostic_terms') or [])
-        groups = [terms] if terms else []
-    known = bool(expect.get('known_defect'))
-    detail = str(expect.get('accepted_detail') or '')
-    need_zero_increase = bool(expect.get('require_no_version_increase'))
-    version_before = expect.get('version_before')
-    version_after = expect.get('version_after')
+        terms = expect.get('diagnostic_terms') or []
+        if isinstance(terms, str):
+            return _mk(TEST_ERROR, '用例配置有误：diagnostic_terms 必须是字符串列表，收到字符串 %r' % terms, detail)
+        groups = [list(terms)] if terms else []
 
-    # 配置自检：拦截码与接受码重叠会让判定短路（R4 先于 R6），必须由调用方修正用例配置。
-    overlap = set(block_set) & set(allow_status)
-    if overlap:
-        return _mk(TEST_ERROR, '用例配置有误：block_status 与 allow_status 重叠 %s，无法区分拦截与接受'
-                   % sorted(overlap), detail)
-    # 版本比较必须用整数计数：字符串会按字典序比较（'9' > '10'），静默得出错误结论。
-    if need_zero_increase:
-        for label, value in (('version_before', version_before), ('version_after', version_after)):
-            if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
-                return _mk(TEST_ERROR, '用例配置有误：%s 必须是整数计数或 None，实际为 %r'
-                           % (label, value), detail)
-
+    status = response.get('status')
     if status is None:
         return _mk(TEST_ERROR, '网络失败/无状态码，不能判定为产品通过',
                    '%s %s' % (response.get('error') or '', detail))
+    if isinstance(status, bool) or not isinstance(status, int):
+        return _mk(TEST_ERROR, '响应状态码类型异常（%r）：不能按业务状态判定' % (status,), detail)
     if not _body_present(response):
         return _mk(TEST_ERROR, '响应体为空或不可解析，无法判定结果', 'status=%s %s' % (status, detail))
-    if int(status) >= 500:
+    if status >= 500:
         return _mk(TEST_ERROR, '服务端 %s，不能作为业务拦截或产品通过' % status, detail)
 
-    # 版本证据门（F01）：要求零新增时，拒绝分支同样必须能证明版本未增加。
-    # 读不到版本 → 证据不足（test_error），不得因为「返回了错误码」就宣布校验正确。
-    def version_gate(verdict_on_increase, increase_reason, ok_reason, ok_detail):
-        if not need_zero_increase:
+    def version_gate(on_increase, on_increase_reason, ok_reason):
+        """要求零新增时的统一版本证据门（接受与拒绝分支共用）。"""
+        if not need_gate:
             return None
         if version_before is None or version_after is None:
             return _mk(TEST_ERROR, '要求核对版本零新增但版本状态不可读（before=%s after=%s）：证据不足'
                        % (version_before, version_after), detail)
         if version_after > version_before:
-            return _mk(verdict_on_increase, increase_reason % (version_before, version_after), detail)
-        return _mk(PRODUCT_PASS, ok_reason % (version_before, version_after), ok_detail)
+            return _mk(on_increase, on_increase_reason % (version_before, version_after), detail)
+        if version_after < version_before:
+            return _mk(TEST_ERROR, '版本计数回退（%s→%s）：证据自相矛盾，不能判定'
+                       % (version_before, version_after), detail)
+        return _mk(PRODUCT_PASS, ok_reason % (version_before, version_after), detail)
 
-    if int(status) in block_set:
+    if status in block_set:
         hit, why = _diag_hit(response, groups, expect.get('diagnostic_not_required') is True)
         if not hit:
-            return _mk(TEST_ERROR, '被拒绝但诊断与目标字段/依赖无关（HTTP %s），不能算校验正确：%s'
+            return _mk(TEST_ERROR, '被拒绝但诊断与目标无关（HTTP %s），不能算校验正确：%s'
                        % (status, why), detail)
-        gated = version_gate(NEW_DEFECT,
-                             '拒绝却已新增发布版本（%s→%s）：拦截未生效，独立缺陷',
-                             '期望拦截命中且版本零新增（版本 %s→%s），诊断针对目标',
-                             'HTTP %s %s' % (status, why))
+        gated = version_gate(NEW_DEFECT, '拒绝却已新增发布版本（%s→%s）：拦截未生效，独立缺陷',
+                             '期望拦截命中且版本零新增（版本 %s→%s）')
         if gated is not None:
             return gated
         return _mk(PRODUCT_PASS, '期望拦截命中：HTTP %s 且诊断针对目标' % status, detail)
 
-    if int(status) not in allow_status and 400 <= int(status) < 500:
+    if status not in allow_set and 400 <= status < 500:
         return _mk(TEST_ERROR, '无关 4xx（HTTP %s）：身份/路由/请求形态问题，不能当业务拦截' % status, detail)
 
-    if int(status) in allow_status:
-        if need_zero_increase:
+    if status in allow_set:
+        note = ''
+        if need_gate:
             if version_before is None or version_after is None:
-                return _mk(TEST_ERROR, '要求核对版本零新增但版本状态不可读（before=%s after=%s）：证据不足'
-                           % (version_before, version_after), detail)
-            if version_after > version_before:
-                return _mk(KNOWN_DEFECT if known else NEW_DEFECT,
-                           '缺陷复现：未被拦截且已发布新版本（%s→%s）' % (version_before, version_after), detail)
-        return _mk(KNOWN_DEFECT if known else NEW_DEFECT, '缺陷复现：操作被接受（HTTP %s），未被拦截' % status, detail)
+                note = '（版本状态不可读，未能确认是否新增版本）'
+            elif version_after > version_before:
+                note = '（且已发布新版本 %s→%s）' % (version_before, version_after)
+            elif version_after == version_before:
+                note = '（版本未增加 %s→%s）' % (version_before, version_after)
+            else:
+                note = '（版本计数回退 %s→%s，证据自相矛盾）' % (version_before, version_after)
+        return _mk(KNOWN_DEFECT if known else NEW_DEFECT,
+                   '缺陷复现：操作被接受（HTTP %s），未被拦截%s' % (status, note), detail)
 
     return _mk(TEST_ERROR, '状态码 %s 无法归因' % status, detail)
 
@@ -317,59 +445,68 @@ def classify_guard_attempt(precondition_ok, response, expect=None, precondition_
 def classify_validate_observation(precondition_ok, response, expect=None, precondition_detail=''):
     """校验接口（/api/project-validate 等只读检查）的观察判定（F02）。
 
-    与 classify_guard_attempt 的区别：这里不是「期望被拦截的状态码」，而是
-    「检查通过与否」——必须先过传输 / 状态码 / 响应结构，再看正式诊断字段：
+    必须先过传输 / 状态码 / 响应结构，再看正式诊断字段：
 
-      状态码非期望（如 500）        → test_error（绝不按诊断文案判通过）
-      响应结构非法（errors 非数组） → test_error
-      出现针对目标的阻断诊断        → product_pass（检查确实拦住了）
-      无阻断诊断                    → 缺陷复现（known/new，取决于 known_defect）
+      status 非 int / 非期望码 / >=500  → test_error
+      json 非对象 / errors 字段缺失或非数组 → test_error（结构不符）
+      出现**同一条消息内**命中全部诊断组的 error → product_pass（检查确实拦住了）
+      有 error 但诊断无关 / 无 error  → 缺陷复现或 test_error（见下）
 
-    expect:
-      ok_status        期望成功状态码，默认 200
-      requirement      'blocked' 表示期望出现阻断诊断（默认）
-      diagnostic_terms / diagnostic_term_groups  同 classify_guard_attempt（组间 AND）
-      known_defect     未拦截时记已知缺陷复现
+    expect: ok_status(int|序列, 默认 200)、diagnostic_terms / diagnostic_term_groups、
+            known_defect(bool)、detail(str)
     """
     expect = dict(expect or {})
-    if isinstance(precondition_ok, dict):
-        precondition_detail = precondition_detail or precondition_ok.get('detail', '')
-        precondition_ok = bool(precondition_ok.get('ok'))
-    if not precondition_ok:
+    ok, pres_detail = _precondition_ok(precondition_ok)
+    precondition_detail = precondition_detail or pres_detail
+    if ok is None:
+        return _mk(TEST_ERROR, '前置配置无效：' + pres_detail, precondition_detail)
+    if not ok:
         return _mk(BLOCKED, '前置未成功；该检查观察不成立', precondition_detail)
+
     response = response or {}
-    status = response.get('status')
-    ok_status = tuple(expect.get('ok_status', (200,)))
+    detail = str(expect.get('detail') or '')
+    ok_set, err = _as_status_tuple(expect.get('ok_status', (200,)), 'ok_status')
+    if ok_set is None:
+        return _mk(TEST_ERROR, err, detail)
+    known = expect.get('known_defect', False)
+    known, err = _as_bool(known, 'known_defect')
+    if known is None:
+        return _mk(TEST_ERROR, err, detail)
     groups = expect.get('diagnostic_term_groups')
     if groups is None:
-        terms = list(expect.get('diagnostic_terms') or [])
-        groups = [terms] if terms else []
-    detail = str(expect.get('detail') or '')
-    known = bool(expect.get('known_defect'))
+        terms = expect.get('diagnostic_terms') or []
+        if isinstance(terms, str):
+            return _mk(TEST_ERROR, '用例配置有误：diagnostic_terms 必须是字符串列表，收到字符串 %r' % terms, detail)
+        groups = [list(terms)] if terms else []
+
+    status = response.get('status')
     if status is None:
         return _mk(TEST_ERROR, '检查接口网络失败/无状态码，不能据此判断是否拦截：%s'
                    % (response.get('error') or ''), detail)
-    if int(status) >= 500:
+    if isinstance(status, bool) or not isinstance(status, int):
+        return _mk(TEST_ERROR, '检查接口状态码类型异常（%r）：不能据此判断' % (status,), detail)
+    if status >= 500:
         return _mk(TEST_ERROR, '检查接口 HTTP %s（服务端错误）：不能按响应文案判断是否拦截' % status, detail)
-    if int(status) not in ok_status:
-        return _mk(TEST_ERROR, '检查接口 HTTP %s 非期望成功码 %s：不能据此判断' % (status, list(ok_status)), detail)
+    if status not in ok_set:
+        return _mk(TEST_ERROR, '检查接口 HTTP %s 非期望成功码 %s：不能据此判断' % (status, list(ok_set)), detail)
     body = response.get('json')
     if not isinstance(body, dict):
-        return _mk(TEST_ERROR, '检查接口响应结构非法（非对象，text=%s）：不能据此判断'
-                   % str(response.get('text') or '')[:120], detail)
+        return _mk(TEST_ERROR, '检查接口响应结构非法（非对象）：不能据此判断', detail)
     errs = body.get('errors')
-    if not isinstance(errs, list):
-        return _mk(TEST_ERROR, '检查接口响应缺少 errors 数组（结构不符）：不能据此判断', detail)
+    if not isinstance(errs, list) or not all(isinstance(e, str) for e in errs):
+        return _mk(TEST_ERROR, '检查接口 errors 必须是字符串数组（结构不符）：不能据此判断', detail)
 
+    has_error = bool([e for e in errs if e.strip()])
+    if not has_error:
+        return _mk(KNOWN_DEFECT if known else NEW_DEFECT,
+                   '检查未拦截（HTTP %s errors 为空）：未出现针对目标的阻断诊断%s'
+                   % (status, '' if not groups else '（要求的诊断：%s）'
+                      % '；'.join('|'.join(g) for g in groups)), detail)
     hit, why = _diag_hit(response, groups, expect.get('diagnostic_not_required') is True)
-    if errs and hit:
+    if hit:
         return _mk(PRODUCT_PASS, '检查已阻断且诊断针对目标（errors=%d 条）：%s' % (len(errs), why), detail)
-    if errs and not hit:
-        return _mk(TEST_ERROR, '检查有错误但诊断与目标无关（不能算拦住了该依赖）：%s' % why, detail)
-    return _mk(KNOWN_DEFECT if known else NEW_DEFECT,
-               '检查未拦截（HTTP %s errors=[]）：未出现针对目标的阻断诊断%s'
-               % (status, '' if not groups else '（要求的诊断：%s）'
-                  % '；'.join('|'.join(g) for g in groups)), detail)
+    return _mk(TEST_ERROR, '检查有错误但诊断与目标无关（不能算拦住了该依赖）：%s' % why, detail)
+
 
 
 def run_metadata(repo, script_path=None, run_id=None):

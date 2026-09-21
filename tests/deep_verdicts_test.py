@@ -243,6 +243,87 @@ case('版本计数用整数 → 正常判定（对照）',
                                'version_before': 9, 'version_after': 10}),
      V.NEW_DEFECT)
 
+# ---- 对抗验证（第二轮）：无关错误不得借「泛词同条命中」被算成正确拦截 ----
+# 这些文案取自真实产品模板，曾被判定器误判为 product_pass
+_R02 = [['activePower', 'RVCluster', 'fl-shell-123'],
+        ['未绑定', '输出未绑定', 'OUTPUT_BINDING_MISSING', '尚未绑定', '未选择输出']]
+case('对抗：动作绑定「实现方式未选择（项目接口或函数编排）」不得过 R02 两组',
+     V.classify_guard_attempt(True, resp(422, {'errors': [
+         '动作绑定 Q03Cluster/启动：实现方式未选择（项目接口或函数编排）']}),
+         {'block_status': 422, 'diagnostic_term_groups': _R02}),
+     V.TEST_ERROR)
+case('对抗：存储故障 fail-closed（「读取失败…暂不能校验该绑定」）不得算正确拦截',
+     V.classify_guard_attempt(True, resp(422, {'errors': [
+         '属性来源 RVCluster.activePower：引用的函数编排 fl-x：读取失败（StorageUnavailable），'
+         '暂不能校验该绑定；请稍后重试']}),
+         {'block_status': 422, 'diagnostic_term_groups': _R02}),
+     V.TEST_ERROR)
+case('对抗：无关编排归属错误不得让负对照成立',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['额外编排不存在或不属于当前账号：fl-x']}),
+                              {'block_status': 422, 'diagnostic_term_groups':
+                               [['flow-does-not-exist-abc', 'activePower', 'RVCluster'],
+                                ['不存在', '已删除', '未找到', 'NOT_FOUND', '引用无效']]}),
+     V.TEST_ERROR)
+case('对抗：真 R02 文案（身份+未绑定同条）仍应通过（对照）',
+     V.classify_guard_attempt(True, resp(422, {'errors': [
+         '属性来源 RVCluster.activePower：引用编排输出尚未绑定来源节点输出']}),
+         {'block_status': 422, 'diagnostic_term_groups': _R02}),
+     V.PRODUCT_PASS)
+case('对抗：两字段条目（errors[].name+message）同条目成一条消息 → 通过（对照）',
+     V.classify_guard_attempt(True, resp(422, {'errors': [{'name': 'activePower', 'message': '未绑定'}]}),
+                              {'block_status': 422,
+                               'diagnostic_term_groups': [['activePower'], ['未绑定']]}),
+     V.PRODUCT_PASS)
+case('对抗：接受分支不再借用版本门判通过（2xx + gate 且版本相等 → 仍是缺陷复现）',
+     V.classify_guard_attempt(True, resp(200, {'version': 'v1'}),
+                              {'block_status': 422, 'known_defect': True,
+                               'require_no_version_increase': True,
+                               'version_before': 2, 'version_after': 2}),
+     V.KNOWN_DEFECT)
+case('对抗：状态码非整数（字符串/浮点/布尔）不得按业务状态判定',
+     V.classify_guard_attempt(True, resp('422', {'errors': ['未绑定']}),
+                              {'block_status': 422, 'diagnostic_terms': ['未绑定']}),
+     V.TEST_ERROR)
+case('对抗：diagnostic_terms 传字符串不得退化为逐字符匹配',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['固定值无效']}),
+                              {'block_status': 422, 'diagnostic_terms': '未绑定'}),
+     V.TEST_ERROR)
+case('对抗：空字符串诊断词不得恒真通过',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['任意']}),
+                              {'block_status': 422, 'diagnostic_terms': ['']}),
+     V.TEST_ERROR)
+case('对抗：require_no_version_increase 非布尔不得静默关掉证据门',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['未绑定']}),
+                              {'block_status': 422, 'diagnostic_terms': ['未绑定'],
+                               'require_no_version_increase': 0}),
+     V.TEST_ERROR)
+case('对抗：版本计数回退（2→1）证据自相矛盾 → test_error',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['未绑定']}),
+                              {'block_status': 422, 'diagnostic_terms': ['未绑定'],
+                               'require_no_version_increase': True,
+                               'version_before': 2, 'version_after': 1}),
+     V.TEST_ERROR)
+case('对抗：顶层 field/text 回显不得当诊断',
+     V.classify_guard_attempt(True, resp(422, {'error': '完全无关的错误', 'field': 'activePower'}),
+                              {'block_status': 422, 'diagnostic_terms': ['activePower']}),
+     V.TEST_ERROR)
+case('对抗：状态清单 items[].name 回显不得让校验观察判为已拦截',
+     V.classify_validate_observation(
+         True, resp(200, {'errors': ['数据来源 主表：来源配置格式无效'],
+                          'warnings': ['对象映射 X：显示名称属性未绑定数据字段'],
+                          'items': [{'kind': 'propertySource', 'id': 'X.activePower',
+                                     'name': '属性来源 · X.activePower', 'issues': []}]}),
+         {'ok_status': (200,), 'diagnostic_term_groups': _R02, 'known_defect': True}),
+     V.TEST_ERROR)
+case('对抗：配置类参数类型不符一律 test_error（block_status 传字符串）',
+     V.classify_guard_attempt(True, resp(422, {'errors': ['未绑定']}),
+                              {'block_status': '422', 'diagnostic_terms': ['未绑定']}),
+     V.TEST_ERROR)
+case('对抗：precondition_ok 传非布尔（真值字符串）不得算前置成功',
+     V.classify_guard_attempt('false', resp(422, {'errors': ['未绑定']}),
+                              {'block_status': 422, 'diagnostic_terms': ['未绑定']}),
+     V.TEST_ERROR)
+
 # 12) 旧枚举映射与汇总（含 crash 行按 test_error 归并）case('旧枚举 pass→product_pass', {'result': V.to_result('pass'), 'reason': ''}, V.PRODUCT_PASS)
 case('旧枚举 fail→缺陷复现', {'result': V.to_result('fail'), 'reason': ''}, V.NEW_DEFECT)
 rows = [{'case': 'A', 'verdict': 'pass'}, {'case': 'B', 'verdict': 'known'},

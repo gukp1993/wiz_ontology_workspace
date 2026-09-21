@@ -28,10 +28,18 @@ def case(name, fn, want, note=''):
 
 
 def batches(superseded_cases, valid_cases, file='x.jsonl', kind_s='biz', kind_v='biz',
-            result_v='product_pass'):
+            result_v='product_pass', mixed=False):
+    def sup_rows():
+        rows = []
+        for c in superseded_cases:
+            if mixed and isinstance(c, dict):
+                rows.append(dict(c))
+            else:
+                rows.append({'caseId': c, 'kind': kind_s})
+        return rows
+
     return [
-        {'file': file, 'runLabel': 'sup', 'status': 'superseded',
-         'cases': [{'caseId': c, 'kind': kind_s} for c in superseded_cases]},
+        {'file': file, 'runLabel': 'sup', 'status': 'superseded', 'cases': sup_rows()},
         {'file': file, 'runLabel': 'val', 'status': 'valid',
          'cases': [{'caseId': c, 'result': result_v, 'kind': kind_v} for c in valid_cases]},
     ]
@@ -66,8 +74,12 @@ case('普通场景已覆盖 → 通过', lambda: [b['uncovered'] for b in
                                     M.validate_superseded_coverage(batches(['A'], ['A']))], [[]])
 case('普通场景未覆盖 → 报错拒绝',
      lambda: M.validate_superseded_coverage(batches(['A', 'LOST'], ['A'])), 'reject')
-case('crash 行允许无覆盖且被列出',
-     lambda: M.validate_superseded_coverage(batches(['A', 'I9-crash'], ['A']))[0]['toolErrorCrashRows'],
+case('crash 行：记录声明为工具错误时允许无覆盖且被列出',
+     lambda: M.validate_superseded_coverage(
+         batches([{'caseId': 'A', 'kind': 'biz'},
+                  {'caseId': 'I9-crash', 'kind': '', 'title': 'I9 套件异常中断',
+                   'evidence': 'Traceback (most recent call last): ...'}],
+                 ['A'], mixed=True))[0]['toolErrorCrashRows'],
      ['I9-crash'])
 
 # --- F04：一拆多必须全部子用例都在 ------------------------------------------
@@ -81,13 +93,19 @@ case('F04 拆分 a+b 都在 → 通过',
 case('F04 缺项细节可读（缺 O4-07b）', lambda: split_missing('O4-07', ['O4-07a']), ['O4-07b'])
 
 # --- 独立验证发现的残余豁免通道（已加固并锁定） --------------------------------
-case('业务场景名含 crash 但 kind 非工具错误 → 报错拒绝（不得按中断豁免）',
+case('业务场景名含 crash 但记录未声明工具错误 → 报错拒绝（不得按名字豁免）',
      lambda: M.validate_superseded_coverage(
-         batches(['BizCrashRecovery'], ['BizCrashRecovery'], kind_s='biz')), 'reject')
+         batches([{'caseId': 'BizCrashRecovery', 'kind': 'biz', 'title': '业务场景',
+                   'evidence': '正常证据'}], [], mixed=True)), 'reject')
 case('名字含 crash 且 kind=异常中断 → 允许无覆盖并列出',
      lambda: M.validate_superseded_coverage(
          batches(['I7-crashRecovery'], [], kind_s='异常中断'))[0]['toolErrorCrashRows'],
      ['I7-crashRecovery'])
+case('名字平常但有真堆栈证据 → 允许无覆盖（按证据而非名字）',
+     lambda: M.validate_superseded_coverage(
+         batches([{'caseId': 'SomeFailure', 'kind': '', 'title': '套件异常中断',
+                   'evidence': 'Traceback (most recent call last): ...'}], [], mixed=True))[0]['toolErrorCrashRows'],
+     ['SomeFailure'])
 case('有效批次仅有 info 说明行 → 不得算业务覆盖',
      lambda: M.validate_superseded_coverage(
          batches(['X-01'], ['X-01'], kind_v='info', result_v='info')), 'reject')

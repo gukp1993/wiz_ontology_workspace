@@ -187,8 +187,18 @@ CASE_REPLACEMENTS = [
      'reason': '首跑把「跨账号删 LLM 提供方返回 200」并入同一断言故整体 fail；第 2 跑拆成两行：拒写断言 pass（#96），幂等删除语义单列为 D3 观察（#97）'},
 ]
 
-# 工具错误 kind 的识别（中断豁免必须真的来自套件异常，不能仅凭名字含 crash）
-TOOL_ERROR_KINDS = __import__('re').compile(r'中断|异常|crash|error|traceback', __import__('re').I)
+# 工具错误识别：中断豁免必须**由记录自身声明**（kind 或 title 或 evidence 记载异常中断/堆栈），
+# 不能用 case 名字含 crash 作为依据 —— 业务场景名里出现 crash 不得被豁免。
+TOOL_ERROR_KINDS = __import__('re').compile(r'中断|异常|traceback|crash', __import__('re').I)
+
+
+def is_tool_error_row(row):
+    """该行是否由记录自身声明为测试工具错误/套件异常中断。"""
+    kind = str(row.get('kind') or '')
+    title = str(row.get('title') or '')
+    evidence = str(row.get('evidence') or '')
+    return bool(TOOL_ERROR_KINDS.search(kind) or TOOL_ERROR_KINDS.search(title)
+                or 'Traceback (most recent call last)' in evidence)
 
 # 旧编号被拆成多个子用例：**全部子用例**都必须出现在有效批次（一拆多，F04）。
 CASE_ID_SPLITS = {
@@ -256,25 +266,36 @@ def read_rows(rel):
 
 
 def classify_row(row, rel, line_no):
-    """按新分类判定单行；旧 kind 里记载的工具错误/异常中断归 test_error。"""
+    """按新分类判定单行；旧 kind 里记载的工具错误/异常中断归 test_error。
+
+    安全取向（对抗验证加固）：
+    - 工具中断只按 kind 判定（含「中断/异常/crash/error/traceback」），**不按 case 名**：
+      业务场景名里出现 crash 不能豁免；
+    - 旧枚举只在 LEGACY_MAP 内映射；**枚举外的 verdict 一律 test_error**，
+      不再用「默认 product_pass」兜底（拼写错误/新枚举不得悄悄算成通过）。
+    """
     override = RECLASSIFY.get('%s#%d' % (rel, line_no))
     if override:
         return override['result']
     kind = str(row.get('kind') or '')
-    case = str(row.get('case') or '')
-    if row['verdict'] == 'fail' and ('crash' in case.lower() or '中断' in kind or '异常' in kind):
+    verdict = row.get('verdict')
+    if 'kind' not in row:
+        raise AssertionError('证据行缺少 kind 字段（%s#%d），无法判定' % (rel, line_no))
+    if verdict == 'fail' and is_tool_error_row(row):
         return V.TEST_ERROR
-    if row['verdict'] == 'blocked':
+    if verdict == 'blocked':
         return V.BLOCKED
-    if row['verdict'] == 'known':
+    if verdict == 'known':
         return V.KNOWN_DEFECT
-    if row['verdict'] == 'info' or kind == 'info':
+    if verdict == 'info' or kind == 'info':
         return V.INFO
-    if row['verdict'] == 'fail':
-        # Q05 首跑的三条断言 fail（I5-getAll/I7-bigBody/I9-saveWithErrors）在有效批次里全部 pass，
-        # 有效批次内的 fail 只有 I7-originNoOrigin = D1 缺陷复现。
+    if verdict == 'fail':
+        # 有效批次内的 fail：Q05 首跑的断言 fail 已在有效批次 pass，这里只剩 D1 缺陷复现
         return V.NEW_DEFECT
-    return V.PRODUCT_PASS
+    if verdict == 'pass':
+        return V.PRODUCT_PASS
+    raise AssertionError('证据行 verdict 不在已知枚举内（%s#%d: %r），'
+                         '请先确认该记录含义再登记批次' % (rel, line_no, verdict))
 
 
 def validate_superseded_coverage(batches):
@@ -309,13 +330,11 @@ def validate_superseded_coverage(batches):
             if case.get('legacyVerdict') == 'info' or str(case.get('kind') or '').lower() == 'info':
                 info_only.append(cid)
                 continue
-            if 'crash' in cid.lower():
-                # 套件中断行允许无覆盖，但必须是**工具错误**行：要求以 kind 明确标注
-                # 「异常中断」或 case 以 crash 结尾，避免业务场景名里含 crash 就被豁免。
-                if TOOL_ERROR_KINDS.search(str(case.get('kind') or '')) or cid.lower().endswith('-crash'):
-                    crash.append(cid)
-                else:
-                    uncovered.append('%s（名字含 crash 但 kind 非工具错误，不能按中断豁免）' % cid)
+            # 工具错误行（套件异常中断/堆栈）没有对应业务场景，允许无覆盖但必须列出；
+            # 判定完全依据**记录自身的声明**（kind/title/evidence），与 case 名字无关 ——
+            # 既不会因名字含 crash 放过业务场景，也不会因名字平常而漏认工具错误。
+            if is_tool_error_row(case):
+                crash.append(cid)
                 continue
             if cid in valid_cases:
                 # 有效批次里命中同一 caseId 的行还必须是**业务判定行**，不能被 info 说明行顶替
@@ -379,7 +398,8 @@ def build():
             entry['verdictCounts'] = {'superseded': len(chunk)}
             # 被替代批次同样登记逐行 caseId，供覆盖核对（不参与统计，不分类）
             entry['cases'] = [{'caseId': row.get('case'), 'line': lo + offset,
-                               'legacyVerdict': row.get('verdict'), 'kind': row.get('kind') or ''}
+                               'legacyVerdict': row.get('verdict'), 'kind': row.get('kind') or '',
+                               'title': row.get('title') or '', 'evidence': row.get('evidence') or ''}
                               for offset, row in enumerate(chunk)]
             entry['uniqueCases'] = len({c['caseId'] for c in entry['cases']})
             index['supersededRawRows'] += len(chunk)
