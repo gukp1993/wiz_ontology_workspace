@@ -1,0 +1,25 @@
+{
+  "ticket": "9766418dd5264317921343e558e38f3d",
+  "task": "codex/test A01 R02产品修复独立复验",
+  "status": "verified",
+  "summary": "验收df90573：A01/R02发布门禁修复通过；D-Q02-01仅文案修正通过，恢复能力保持延期未实现。发现非阻断旧动作校验指引及null测试覆盖标签问题，MD给具体修复方案。",
+  "decisions": [
+    "不改业务/原测试，不合并main；不将恢复文案修正记为恢复能力已实现"
+  ],
+  "verification": [
+    "独立6组回归+frontend build退出0；HTTP类型矩阵16/16通过",
+    "隔离18982：定向15=14pass1info，本体22=18pass及既有恢复缺陷/blocked/未测，项目54=53pass1info",
+    "浏览器确认快照文案与空态正确，动作去处理有效但上方帮助仍引用旧字段",
+    "本人PID39899停、18982释放、product-accept-data删除，旧服务与数据未动"
+  ],
+  "next": [],
+  "references": [
+    "文档/需求/20260921_系统全方位深度测试/产品整改独立复验与修复建议_20260921.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-21T05:27:24.021562+00:00",
+  "sequence": 151,
+  "filename": "000151-bc37ade6440d.json",
+  "record_hash": "46ffdea5e3be695b363a4e43d2cf1413d62c313d2fd7b91f98225d1f1b65adfe",
+  "context_advanced": false
+}
