@@ -20,6 +20,8 @@ from workbench.storage import engine as sto
 from workbench.storage import ontology_build as store
 
 _OPS = ('generate', 'scan', 'dialog')
+# provider 缺失时的统一可读文案（422 INVALID_STATE 的 message；对话端点写进 assistantError）
+NO_PROVIDER_MESSAGE = '尚未配置可用的 LLM 提供方：请到「更多工具 → LLM 配置」添加后再重试'
 
 
 # ── 参数工具 ───────────────────────────────────────────────────────────────
@@ -299,7 +301,10 @@ def post_upload_chunk(payload):
     upload_id = _text(payload, 'uploadId')
     index = _int_arg(payload, 'index', low=0)
     chunk_hash = _text(payload, 'hash', limit=128)
-    data_b64 = _text(payload, 'dataBase64')
+    # dataBase64 的上限只由 chunkBytes 决定（D01）：这里按 2 MB 请求体上限放行，
+    # 真正的「分片超量」判定在域层（LimitExceeded → 422 LIMIT_EXCEEDED）。
+    # 不能沿用通用 _text 的 512 字符默认上限，否则任何 >384 字节的分片都会被 400 拒收。
+    data_b64 = _text(payload, 'dataBase64', limit=2_000_000)
     owner_id = _owner()
     with sto.write_tx() as tx:
         return tx.run(lambda conn: material_domain.upload_chunk(
@@ -333,6 +338,8 @@ def post_material_exclude(payload):
     task_id = _text(payload, 'taskId')
     material_id = _text(payload, 'materialId')
     excluded = _flag(payload, 'excluded')
+    # D05：材料清单的 CAS 基线是 materialRevision 的**字符串形态**（前端 String(revision)），
+    # 不是任务 token，也不是数字。必填：缺失/空串 → 400，不匹配 → 409 + currentRevision。
     revision = _text(payload, 'revision', limit=80)
     owner_id = _owner()
     with sto.write_tx() as tx:
@@ -344,7 +351,7 @@ def post_material_exclude(payload):
             if material is None or material['task_id'] != task_id:
                 raise sto.NotFound('材料不存在')
             current = str(row['material_revision'])
-            if revision not in ('', current):
+            if revision != current:
                 raise sto.RevisionConflict(current_revision=current,
                                            message='材料清单已变化，请刷新后重试')
             store.update_material(conn, material_id, owner_id, excluded=excluded,
@@ -380,7 +387,9 @@ def _start_scan(task_id, material_ids=None):
             materials = [m for m in store.list_materials(conn, task_id, owner_id)
                          if not m['excluded'] and (not material_ids or m['id'] in material_ids)]
             if not materials:
-                raise ValueError('没有可扫描的材料（至少需要一份未排除材料）')
+                # 08 §4：无可用材料 → 422 INVALID_STATE（不是 400 形态错误）
+                raise _blocked([{'code': 'NO_MATERIAL', 'field': 'materials',
+                                 'message': '没有可扫描的材料（至少需要一份未排除材料）'}])
             for material in materials:
                 store.update_material(conn, material['id'], owner_id, parse_state='pending', error='')
             run_id, _lease = store.create_run(conn, task_id, owner_id, 'scan',
@@ -457,8 +466,25 @@ def _provider_or_raise():
     from workbench import llm_providers
     provider = llm_providers.default_provider()
     if not provider:
-        raise ValueError('尚未配置可用的 LLM 提供方：请到「更多工具 → LLM 配置」添加后再重试')
+        # 08 §2.1：provider 为 null 时范围确认/生成/恢复等启动类操作 → 422 INVALID_STATE（不是 400）
+        raise _no_provider()
     return provider
+
+
+def _current_provider():
+    """当前默认可用 provider；没有则 None（对话端点据此决定是否落助手错误）。"""
+    from workbench import llm_providers
+    try:
+        return llm_providers.default_provider()
+    except Exception:
+        return None
+
+
+def _no_provider():
+    error = ValueError(NO_PROVIDER_MESSAGE)
+    error.code = 'INVALID_STATE'
+    error.status = 422
+    return error
 
 
 # ── POST：范围对话 ──────────────────────────────────────────────────────────
@@ -484,14 +510,15 @@ def post_message(payload):
                                               {'scopeRevision': scope['revision']})
             return message_id, run_id
         message_id, run_id = tx.run(body)
-    provider = None
-    try:
-        provider = _provider_or_raise()
-    except ValueError as exc:
+    # 08 §6：对话是**唯一例外**——provider 缺失时不返回 422，而是保留用户消息、
+    # 以 200 + assistantError 上报（丢输入比错一个状态码更糟）；启动类操作仍 422。
+    provider = _current_provider()
+    if not provider:
         with sto.write_tx() as tx:
             tx.run(lambda conn: store.append_message(
-                conn, task_id, owner_id, 'assistant', '', error=str(exc)))
-        return {'messageId': message_id, 'assistantPending': False, 'assistantError': str(exc)}, 200
+                conn, task_id, owner_id, 'assistant', '', error=NO_PROVIDER_MESSAGE))
+        return {'messageId': message_id, 'assistantPending': False,
+                'assistantError': NO_PROVIDER_MESSAGE}, 200
     _run_task(owner_id, run_id,
               lambda user, run: pipeline.run_dialog(user, task_id, run, provider))
     return {'messageId': message_id, 'assistantPending': True}, 200
@@ -542,7 +569,7 @@ def post_scope_confirm(payload):
     from workbench.ontology_build import pipeline
     provider = llm_providers.resolve(provider_id) if provider_id else llm_providers.default_provider()
     if not provider:
-        raise ValueError('尚未配置可用的 LLM 提供方：请到「更多工具 → LLM 配置」添加')
+        raise _no_provider()
     with sto.write_tx() as tx:
         try:
             batch_id, run_id, baseline, _lease = tx.run(
@@ -592,19 +619,23 @@ def post_candidates_merge(payload):
         raise ValueError('mergeIds 必须是非空数组')
     merge_ids = [str(item) for item in merge_ids][:50]
     confirmed = _flag(payload, 'confirmed', False)
-    revision = _text(payload, 'revision', required=False, limit=80)
-    if confirmed:
-        with sto.write_tx() as tx:
-            result = tx.run(lambda conn: review_domain.merge_apply(conn, task_id, primary_id, merge_ids, revision))
-        return result, 200
-    with sto.read_connection() as conn:
-        return review_domain.merge_preview(conn, task_id, primary_id, merge_ids), 200
+    if not confirmed:
+        # 预览不改状态：不读 revision（08 §7）
+        with sto.read_connection() as conn:
+            return review_domain.merge_preview(conn, task_id, primary_id, merge_ids), 200
+    # D05：执行合并是**保留项候选级 CAS**——revision 收候选的 r-uuid token，
+    # 必填（缺失/空串 → 400），不匹配 → 409 REVISION_CONFLICT + currentRevision。
+    revision = _text(payload, 'revision', limit=80)
+    with sto.write_tx() as tx:
+        result = tx.run(lambda conn: review_domain.merge_apply(conn, task_id, primary_id, merge_ids, revision))
+    return result, 200
 
 
 def post_review_undo(payload):
     task_id = _text(payload, 'taskId')
     op_id = _text(payload, 'opId')
-    revision = _text(payload, 'revision', required=False, limit=80)
+    # D05：撤销同样按**保留项候选 token** 做 CAS（必填，缺失/空串 400，不匹配 409）
+    revision = _text(payload, 'revision', limit=80)
     with sto.write_tx() as tx:
         result = tx.run(lambda conn: review_domain.undo_review_op(conn, task_id, op_id, revision))
     return result, 200
@@ -612,7 +643,10 @@ def post_review_undo(payload):
 
 def post_regenerate(payload):
     task_id = _text(payload, 'taskId')
-    revision = _int_arg(payload, 'revision', required=False, default=0)
+    # D05：再生成的 revision 是**可选整数**（scopeRevision），不是任务 token。
+    # 省略（或空串）= 跳过范围比对，按当前范围重跑；传值必须是整数且等于当前
+    # scopeRevision，否则 409 REVISION_CONFLICT + currentRevision。
+    revision = _int_arg(payload, 'revision', required=False, default=None)
     owner_id = _owner()
     from workbench.ontology_build import pipeline
     provider = _provider_or_raise()
@@ -622,7 +656,7 @@ def post_regenerate(payload):
             if row is None:
                 raise sto.NotFound('生成任务不存在')
             scope = store.get_scope(conn, task_id, owner_id)
-            if revision and int(revision) != int(scope['revision']):
+            if revision is not None and int(revision) != int(scope['revision']):
                 raise sto.RevisionConflict(current_revision=str(scope['revision']),
                                            message='范围摘要有新的修订，请刷新后重试')
             baseline = task_domain.task_baseline(conn, task_id, owner_id, provider)
@@ -644,7 +678,8 @@ def post_diff_resolve(payload):
     task_id = _text(payload, 'taskId')
     candidate_id = _text(payload, 'candidateId')
     choice = _text(payload, 'choice', limit=16)
-    revision = _text(payload, 'revision', required=False, limit=80)
+    # D05：差异裁决是**该候选**的候选级 CAS（必填 token；缺失/空串 400，不匹配 409）
+    revision = _text(payload, 'revision', limit=80)
     with sto.write_tx() as tx:
         candidate = tx.run(lambda conn: review_domain.resolve_diff(
             conn, task_id, candidate_id, choice, revision))
@@ -654,6 +689,11 @@ def post_diff_resolve(payload):
 # ── POST：交付 ──────────────────────────────────────────────────────────────
 
 def post_deliver_precheck(payload):
+    """交付前检查：只读，总是针对最近批次（不接受 batch 参数）。
+
+    域层通过 DeliveryBlocked（422 + issues）表达无法检查的情形（已交付、无批次、
+    结果已过期）；其余情形 200 且 `ok=false` + issues 可定位。
+    """
     task_id = _text(payload, 'taskId')
     with sto.read_connection() as conn:
         return delivery_domain.precheck(conn, task_id), 200
@@ -662,19 +702,24 @@ def post_deliver_precheck(payload):
 def post_deliver(payload):
     task_id = _text(payload, 'taskId')
     name = _text(payload, 'name', limit=160)
-    check_token = _text(payload, 'checkToken', required=False, limit=64)
+    # D10：checkToken 必填——缺失/空串一律 400，杜绝「跳过预检直接提交」。
+    # 令牌本身失效（选定集合或材料/范围已变）由域层复核并报 422 CHECK_TOKEN_STALE。
+    check_token = _text(payload, 'checkToken', limit=64)
     request_id = _text(payload, 'requestId', limit=80)
     from workbench.ontology_build import delivery
-    try:
-        with sto.write_tx() as tx:
-            return tx.run(lambda conn: delivery.deliver(conn, task_id, name, check_token, request_id)), 200
-    except delivery.DuplicateOntologyName as exc:
-        error = ValueError(str(exc))
-        error.code = 'DUPLICATE_NAME'
-        error.status = 409
-        raise error from None
-    except delivery.DeliveryBlocked as exc:
-        raise _blocked(exc.issues) from None
+    with sto.write_tx() as tx:
+        try:
+            return tx.run(lambda conn: delivery.deliver(
+                conn, task_id, name, check_token, request_id)), 200
+        except delivery.DuplicateOntologyName as exc:
+            # 域层该类未挂 code/status（不改域层）：此处只补映射，不吞异常语义。
+            # 其余域异常（DeliveryBlocked / AlreadyDelivered / RevisionConflict /
+            # NotFound / InvalidStateError）一律原样上抛，由 server.py 按
+            # code/status/issues 映射，禁止再包一层压成 400。
+            error = ValueError(str(exc))
+            error.code = 'DUPLICATE_NAME'
+            error.status = 409
+            raise error from None
 
 
 def _owner():

@@ -431,9 +431,11 @@ def flow_review_semantics():
     status, dmism = api('/api/build-candidates-merge',
                         {'taskId': task_id, 'primaryId': capacity['id'],
                          'mergeIds': [bogus['id']]})
-    check(status == 422 and (dmism.get('issues') or [{}])[0].get('code')
+    check(status == 422 and dmism.get('code') == 'INVALID_STATE'
+          and (dmism.get('issues') or [{}])[0].get('code')
           == 'MERGE_DATA_TYPE_MISMATCH',
-          'dataType 不一致合并 → 422 MERGE_DATA_TYPE_MISMATCH（D17）', actual=(status, dmism))
+          'dataType 不一致合并 → 422 INVALID_STATE/MERGE_DATA_TYPE_MISMATCH（D17）',
+          actual=(status, dmism))
 
     # D03：修正 dataType 后合并；被合并候选从列表/计数/预检选定集合全部消失
     status, upd = api('/api/build-candidate-update',
@@ -555,7 +557,15 @@ def flow_bad_candidates():
     check(status == 200 and pre.get('ok') is False and expected <= codes,
           '预检确定性列出全部结构阻断（含旧枚举值 text 的 INVALID）（D09/D02）',
           actual=(status, pre.get('ok'), sorted(codes)))
+    # D10：checkToken 必填——缺令牌直接提交先是形态错误 400，绝不进入交付事务
+    status, no_token = api('/api/build-deliver', {'taskId': task_id, 'name': '应被阻断',
+                                                  'requestId': 'req-bad-notoken'})
+    check(status == 400 and no_token.get('code') == 'INVALID_ARGUMENT'
+          and 'checkToken' in str(no_token.get('error') or ''),
+          '交付缺少 checkToken → 400 INVALID_ARGUMENT（D10）', actual=(status, no_token))
+    dirty_token = require(pre.get('checkToken'), '预检未返回 checkToken：%s' % _short(pre))
     status, delivered = api('/api/build-deliver', {'taskId': task_id, 'name': '应被阻断',
+                                                   'checkToken': dirty_token,
                                                    'requestId': 'req-bad-1'})
     dv_codes = {issue.get('code') for issue in (delivered.get('issues') or [])}
     check(status == 422 and delivered.get('code') == 'INVALID_STATE' and expected <= dv_codes,
@@ -623,8 +633,196 @@ def flow_timeseries_delivery():
           actual=(status, 'xsd:xsd:' in raw, ts_nodes[:1]))
 
 
-# --- 白盒与小单元：D13 fencing / D02 / D08 / D19 / D12 ------------------------------
+# --- 回归流 5：写端点 revision 口径（D05 路由侧 + D10 checkToken 必填） ---------------
 
+def flow_revision_contracts():
+    """五类写端点：形态错误 400 / CAS 不匹配 409+currentRevision / 语义阻断 422+issues。"""
+    task_id, batch_id, _run = setup_generated_task('修订口径回归')
+    items, _body = candidates_by_name(task_id, batch_id)
+    device = require(items.get('设备'), '候选缺少「设备」')
+    capacity = require(items.get('额定容量'), '候选缺少「额定容量」')
+    bogus = require(items.get('捏造字段'), '候选缺少「捏造字段」')
+    _, detail = api('/api/build-task', query='?taskId=' + task_id)
+    task_token = require((detail.get('task') or {}).get('revision'), '任务详情未返回 revision')
+    scope_revision = int((detail.get('scope') or {}).get('revision') or 0)
+
+    def err_code(body_obj):
+        return body_obj.get('code')
+
+    def current(body_obj):
+        return body_obj.get('currentRevision')
+
+    # 1) candidate-decide：revision 必填（缺失/空串 400），比对的是该候选的 r-uuid token
+    status, missing = api('/api/build-candidate-decide',
+                          {'candidateId': device['id'], 'decision': 'defer'})
+    check(status == 400 and err_code(missing) == 'INVALID_ARGUMENT',
+          '候选决定缺 revision → 400 INVALID_ARGUMENT（D05）', actual=(status, missing))
+    status, empty = api('/api/build-candidate-decide',
+                        {'candidateId': device['id'], 'decision': 'defer', 'revision': ''})
+    check(status == 400 and err_code(empty) == 'INVALID_ARGUMENT',
+          '候选决定空串 revision → 400（不再跳过 CAS）（D05）', actual=(status, empty))
+    status, wrong = api('/api/build-candidate-decide',
+                        {'candidateId': device['id'], 'decision': 'defer',
+                         'revision': 'r-not-a-real-token'})
+    check(status == 409 and err_code(wrong) == 'REVISION_CONFLICT'
+          and current(wrong) == device['revision'],
+          '候选决定传错 token → 409 + currentRevision=候选当前 token（D05）',
+          actual=(status, wrong))
+    status, decided = api('/api/build-candidate-decide',
+                          {'candidateId': device['id'], 'decision': 'defer',
+                           'revision': device['revision']})
+    check(status == 200 and (decided.get('candidate') or {}).get('decision') == 'defer',
+          '候选决定传正确 token 成功', actual=(status, decided))
+
+    # 2) candidate-update：数字 revision → 400（必须是字符串 token）
+    status, numeric = api('/api/build-candidate-update',
+                          {'candidateId': capacity['id'],
+                           'fields': {'definition': '额定容量（回归改写）'}, 'revision': 1})
+    check(status == 400 and err_code(numeric) == 'INVALID_ARGUMENT',
+          '候选编辑传数字 revision → 400（D05）', actual=(status, numeric))
+    status, upd = api('/api/build-candidate-update',
+                      {'candidateId': bogus['id'], 'fields': {'dataType': 'number'},
+                       'revision': bogus['revision']})
+    check(status == 200 and (upd.get('candidate') or {}).get('revision')
+          != bogus['revision'], '候选编辑成功后推进候选 token',
+          actual=(status, _short(upd)))
+
+    # 3) candidates-merge：预览不带 revision；执行必须带保留项候选 token
+    status, preview = api('/api/build-candidates-merge',
+                          {'taskId': task_id, 'primaryId': capacity['id'],
+                           'mergeIds': [bogus['id']], 'confirmed': False})
+    check(status == 200 and isinstance(preview.get('fields'), list)
+          and 'evidenceCount' in preview,
+          '合并预览（confirmed=false）不带 revision 直接 200（响应为扁平预览对象）',
+          actual=(status, _short(preview)))
+    status, no_rev = api('/api/build-candidates-merge',
+                         {'taskId': task_id, 'primaryId': capacity['id'],
+                          'mergeIds': [bogus['id']], 'confirmed': True})
+    check(status == 400 and err_code(no_rev) == 'INVALID_ARGUMENT',
+          '执行合并缺 revision → 400（D05）', actual=(status, no_rev))
+    status, blank_rev = api('/api/build-candidates-merge',
+                            {'taskId': task_id, 'primaryId': capacity['id'],
+                             'mergeIds': [bogus['id']], 'confirmed': True, 'revision': ''})
+    check(status == 400 and err_code(blank_rev) == 'INVALID_ARGUMENT',
+          '执行合并空串 revision → 400（不再退化为 409/无条件写）（D05）',
+          actual=(status, blank_rev))
+    status, task_tok = api('/api/build-candidates-merge',
+                           {'taskId': task_id, 'primaryId': capacity['id'],
+                            'mergeIds': [bogus['id']], 'confirmed': True,
+                            'revision': task_token})
+    check(status == 409 and err_code(task_tok) == 'REVISION_CONFLICT'
+          and current(task_tok) == capacity['revision'],
+          '执行合并误传任务 token → 409 且 currentRevision 是候选 token（D05）',
+          actual=(status, task_tok))
+    status, merged = api('/api/build-candidates-merge',
+                         {'taskId': task_id, 'primaryId': capacity['id'],
+                          'mergeIds': [bogus['id']], 'confirmed': True,
+                          'revision': capacity['revision']})
+    op_id = require(merged.get('opId'), '合并执行未返回 opId：%s' % _short(merged))
+    merged_revision = (merged.get('candidate') or {}).get('revision')
+    check(status == 200 and bool(op_id) and merged_revision
+          and merged_revision != capacity['revision'],
+          '执行合并（保留项候选 token）成功并推进 token', actual=(status, _short(merged)))
+
+    # 4) review-undo：必填候选 token；错 token 409
+    status, no_rev = api('/api/build-review-undo', {'taskId': task_id, 'opId': op_id})
+    check(status == 400 and err_code(no_rev) == 'INVALID_ARGUMENT',
+          '撤销缺 revision → 400（D05）', actual=(status, no_rev))
+    status, blank_rev = api('/api/build-review-undo',
+                            {'taskId': task_id, 'opId': op_id, 'revision': ''})
+    check(status == 400 and err_code(blank_rev) == 'INVALID_ARGUMENT',
+          '撤销空串 revision → 400（域层「空值跳过比对」在路由层被收口）（D05）',
+          actual=(status, blank_rev))
+    status, wrong = api('/api/build-review-undo',
+                        {'taskId': task_id, 'opId': op_id, 'revision': task_token})
+    check(status == 409 and err_code(wrong) == 'REVISION_CONFLICT'
+          and current(wrong) == merged_revision,
+          '撤销传错 token → 409 + currentRevision=保留项当前 token（D05）',
+          actual=(status, wrong))
+    status, undone = api('/api/build-review-undo',
+                         {'taskId': task_id, 'opId': op_id, 'revision': merged_revision})
+    check(status == 200 and undone.get('ok') is True
+          and (undone.get('candidate') or {}).get('id') == capacity['id'],
+          '撤销传正确 token 成功', actual=(status, _short(undone)))
+
+    # 5) regenerate：revision 可选整数（scopeRevision），不再强读 r-uuid token
+    status, token_rev = api('/api/build-regenerate',
+                            {'taskId': task_id, 'revision': 'r-not-an-integer'})
+    check(status == 400 and err_code(token_rev) == 'INVALID_ARGUMENT',
+          '再生成传候选/任务 token → 400（必须是整数，不再按 r-uuid 强读）（D05）',
+          actual=(status, token_rev))
+    status, stale_rev = api('/api/build-regenerate', {'taskId': task_id,
+                                                      'revision': scope_revision + 7})
+    check(status == 409 and err_code(stale_rev) == 'REVISION_CONFLICT'
+          and current(stale_rev) == str(scope_revision),
+          '再生成传过期整数 → 409 + currentRevision=当前 scopeRevision（D05）',
+          actual=(status, stale_rev))
+    status, regen = api('/api/build-regenerate', {'taskId': task_id})
+    run2 = poll_run(task_id, require(regen.get('runId'), '再生成（省略 revision）未返回 runId'))
+    b2 = require(regen.get('batchId'), '再生成未返回 batchId：%s' % _short(regen))
+    check(status == 200 and run2.get('state') == 'succeeded',
+          '再生成省略 revision → 跳过范围比对并成功起跑（08 §7）',
+          actual=(status, run2.get('state'), run2.get('error')))
+    status, regen2 = api('/api/build-regenerate', {'taskId': task_id,
+                                                   'revision': scope_revision})
+    run3 = poll_run(task_id, require(regen2.get('runId'), '按整数 revision 再生成未返回 runId'))
+    check(status == 200 and run3.get('state') == 'succeeded',
+          '再生成传当前 scopeRevision 整数同样通过', actual=(status, run3.get('state')))
+
+    # 6) diff-resolve：该候选的候选级 CAS
+    items_b2, _ = candidates_by_name(task_id, b2)
+    dev2 = require(items_b2.get('设备'), '新批次缺少「设备」')
+    status, no_rev = api('/api/build-diff-resolve',
+                         {'taskId': task_id, 'candidateId': dev2['id'], 'choice': 'acceptNew'})
+    check(status == 400 and err_code(no_rev) == 'INVALID_ARGUMENT',
+          '差异裁决缺 revision → 400（D05）', actual=(status, no_rev))
+    status, blank_rev = api('/api/build-diff-resolve',
+                            {'taskId': task_id, 'candidateId': dev2['id'],
+                             'choice': 'acceptNew', 'revision': ''})
+    check(status == 400 and err_code(blank_rev) == 'INVALID_ARGUMENT',
+          '差异裁决空串 revision → 400（D05）', actual=(status, blank_rev))
+    status, wrong = api('/api/build-diff-resolve',
+                        {'taskId': task_id, 'candidateId': dev2['id'],
+                         'choice': 'acceptNew', 'revision': task_token})
+    check(status == 409 and err_code(wrong) == 'REVISION_CONFLICT'
+          and current(wrong) == dev2['revision'],
+          '差异裁决误传任务 token → 409 + currentRevision=候选 token（D05）',
+          actual=(status, wrong))
+    status, resolved = api('/api/build-diff-resolve',
+                           {'taskId': task_id, 'candidateId': dev2['id'],
+                            'choice': 'acceptNew', 'revision': dev2['revision']})
+    check(status == 200 and (resolved.get('candidate') or {}).get('id') == dev2['id'],
+          '差异裁决传正确候选 token 成功', actual=(status, _short(resolved)))
+
+    # 7) material-exclude：revision 是 materialRevision 的字符串形态（必填）
+    status, mats = api('/api/build-materials', query='?taskId=' + task_id)
+    material_rev = int(mats.get('revision') or 0)
+    material_id = require((mats.get('items') or [{}])[0].get('id'), '材料清单为空')
+    for label, payload_body in (
+            ('缺 revision', {'taskId': task_id, 'materialId': material_id, 'excluded': True}),
+            ('数字 revision', {'taskId': task_id, 'materialId': material_id, 'excluded': True,
+                               'revision': material_rev}),
+            ('空串 revision', {'taskId': task_id, 'materialId': material_id, 'excluded': True,
+                               'revision': ''})):
+        status, body_obj = api('/api/build-material-exclude', payload_body)
+        check(status == 400 and err_code(body_obj) == 'INVALID_ARGUMENT',
+              '物料排除 %s → 400 INVALID_ARGUMENT（D05）' % label, actual=(status, body_obj))
+    status, mismatch = api('/api/build-material-exclude',
+                           {'taskId': task_id, 'materialId': material_id, 'excluded': True,
+                            'revision': str(material_rev + 5)})
+    check(status == 409 and err_code(mismatch) == 'REVISION_CONFLICT'
+          and current(mismatch) == str(material_rev),
+          '物料排除传错字符串 → 409 + currentRevision=字符串物料修订（D05）',
+          actual=(status, mismatch))
+    status, excluded = api('/api/build-material-exclude',
+                           {'taskId': task_id, 'materialId': material_id, 'excluded': True,
+                            'revision': str(material_rev)})
+    check(status == 200 and (excluded.get('material') or {}).get('excluded') is True
+          and int((excluded.get('task') or {}).get('materialRevision') or 0) == material_rev + 1,
+          '物料排除按 String(materialRevision) 通过并推进修订', actual=(status, _short(excluded)))
+
+
+# --- 白盒与小单元：D13 fencing / D02 / D08 / D19 / D12 ------------------------------
 def flow_lease_fencing(task_id):
     """D13：lease 条件写回与重试轮换（存储层白盒）+ runner 阶段边界失配。"""
     uid = require(_main_user_id(), '找不到测试账号 user_id')
@@ -901,8 +1099,10 @@ def main():
     status, blocked = api('/api/build-scope-confirm',
                           {'taskId': task_id, 'revision': revision, 'providerId': provider_id})
     codes = [issue.get('code') for issue in (blocked.get('issues') or [])]
-    check(status == 422 and 'SCOPE_CONFLICT' in codes,
-          '纳入/排除同词且无覆盖说明 → 范围确认被阻断', actual=(status, blocked.get('issues')))
+    check(status == 422 and blocked.get('code') == 'INVALID_STATE'
+          and 'SCOPE_CONFLICT' in codes,
+          '纳入/排除同词且无覆盖说明 → 范围确认被阻断（422 INVALID_STATE + issues）',
+          actual=(status, blocked.get('code'), blocked.get('issues')))
     scope['coverage'] = '设备台账在纳入范围内；收益结算明确排除，两者不重复'
     status, saved = api('/api/build-scope-save', {'taskId': task_id, 'revision': revision,
                                                   'scope': scope})
@@ -1155,6 +1355,29 @@ def main():
                               token=other_token)
     check(status == 404 and abort_other.get('code') == 'NOT_FOUND',
           '跨账号 abort 上传会话按不存在处理（404，D07）', actual=(status, abort_other))
+    # D07 路由侧：四端点都必须把域层细分码原样透出（不得压成 400 INVALID_ARGUMENT）
+    status, init_ghost = api('/api/build-upload-init',
+                             {'taskId': 'no-such-task', 'relPath': 'x.md', 'size': 10})
+    check(status == 404 and init_ghost.get('code') == 'NOT_FOUND',
+          'init 传不存在任务 → 404 NOT_FOUND（D07）', actual=(status, init_ghost))
+    for label, endpoint, ghost in (
+            ('chunk', '/api/build-upload-chunk',
+             {'uploadId': 'no-such-upload', 'index': 0, 'hash': '0' * 64,
+              'dataBase64': base64.b64encode(b'x').decode()}),
+            ('complete', '/api/build-upload-complete',
+             {'uploadId': 'no-such-upload', 'finalHash': '0' * 64}),
+            ('abort', '/api/build-upload-abort', {'uploadId': 'no-such-upload'})):
+        status, body_obj = api(endpoint, ghost)
+        check(status == 404 and body_obj.get('code') == 'NOT_FOUND',
+              '%s 不存在/已结束的上传会话 → 404 NOT_FOUND（D07）' % label,
+              actual=(status, body_obj))
+    # 已完成会话不可再用：域层按「不存在」处理（404），不是 400/500
+    status, after_done = api('/api/build-upload-complete',
+                             {'uploadId': upload_id,
+                              'finalHash': hashlib.sha256(blob).hexdigest()})
+    check(status == 404 and after_done.get('code') == 'NOT_FOUND',
+          'complete 成功后重复 complete → 404 NOT_FOUND（会话已关闭，D07）',
+          actual=(status, after_done))
     check('scope' in FakeLlm.calls and 'extract' in FakeLlm.calls,
           '全程只经本地假 LLM（范围澄清与候选抽取各至少一次）', actual=FakeLlm.calls)
 
@@ -1163,6 +1386,8 @@ def main():
     flow_review_semantics()
     flow_bad_candidates()
     flow_timeseries_delivery()
+    # D05/D10 路由层：五类写端点 revision 口径与交付令牌必填
+    flow_revision_contracts()
     flow_lease_fencing(task_id)
     return 0
 

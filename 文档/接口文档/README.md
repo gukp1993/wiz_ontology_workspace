@@ -18,6 +18,12 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-21 | **新增 08 分册《从物料自动构建本体接口》并完成契约收敛（验收修复最后一波：HTTP 路由层 + 接口文档）**：登记 33 条 `/api/build-*` 路由（10 GET + 23 POST，已逐条核对 `server.py` 白名单）并补入 05 速查表 §1.5（速查表总数 57→97，与白名单实际条数对齐）。冻结口径：
+① **§0 写操作 `revision` 三类令牌互不通用**——任务 token（`build-task-rename`）／候选 token（`build-candidate-update`、`build-candidate-decide`、`build-candidates-merge`（执行）、`build-review-undo`、`build-diff-resolve`）／整数修订（`build-material-exclude` 用 `materialRevision` 的**字符串形态**且必填；`build-scope-save`、`build-scope-confirm` 用整数 `scopeRevision`，省略按 0 处理即等价必填；`build-message`、`build-regenerate` 的整数 `scopeRevision` 可选，省略即跳过比对）。**必填令牌缺失或空串一律 400，不匹配一律 409 + `currentRevision`**，废除路由层「空值跳过 CAS」；
+② `build-deliver` 的 `checkToken` 改为必填（缺失/空串 400，杜绝跳过预检直接提交），令牌内容失效仍 422 `CHECK_TOKEN_STALE`；
+③ 路由层不得再用本地 `except ValueError` 包裹域服务：域层带 `code`/`status`/`issues` 的异常原样上抛由 `server.py` 映射，仅对未挂码的 `DuplicateOntologyName` 补 409 `DUPLICATE_NAME`（唯一的映射补齐）；上传族细分码（409 `UPLOAD_CONFLICT`/`UPLOAD_EXPIRED`、422 `HASH_MISMATCH`/`LIMIT_EXCEEDED`/`ZIP_INVALID`、404 `NOT_FOUND`）不再被压平；`dataBase64` 上限口径改由 `chunkBytes` 推导（路由放行至 2 MB 请求体上限，超限 422）；
+④ 无 provider 时的口径按端点分列（`build-capabilities` 200+`provider:null`；启动类操作 422 `INVALID_STATE`；`build-message` 唯一例外＝用户消息保留 + 200 + `assistantError`）；
+⑤ §1 数据模型响应字段与 `workbench/storage/ontology_build.py` 视图函数逐字对齐，timeSeries `valueType` 枚举冻结为 `string/double/decimal/integer/boolean/date/dateTime`，预检/交付阻断 `issues` 码集合冻结为 10 个；被合并候选（`origin.mergedInto` 非空）从列表/计数/预检选定集合剔除；`build-regenerate` 的旧批次人工排除强制继承为 `defer` + `origin.revived` | 33 个 `/api/build-*` 接口（08 分册全量；本轮代码改动集中在 `/api/build-material-exclude`、`-candidates-merge`、`-review-undo`、`-regenerate`、`-diff-resolve`、`-deliver`、`-message`、`-upload-*`） | qoder |
 | 2026-09-20 | **v2 功能保护冻结（本体与项目统一维护体验改版 v2，G1 契约先行）**：
 ① `/api/project-validate` 响应新增 `baseline`（本次检查实际读取的项目修订/本体引用/被引用编排修订/目录指纹与代际），并冻结依赖读取失败语义（编排读取失败→error 阻断发布；目录缓存损坏→error；存储不可用→503，均不得降级为「零问题」）；
 ② `/api/project-publish` 接入 `requestId` 幂等（复用 `wb_requests`，同 key 同内容回放 `idempotentReplay`、同 key 异内容 409，回执与发布同事务），并冻结发布依赖重验（校验后依赖被改→拒绝发布，`409` + `reason:"DEPENDENCY_CHANGED"`）；
@@ -174,6 +180,7 @@
 | [05-接口清单与规范差距](05-接口清单与规范差距.md) | 全量速查表 + 现状与标准 HTTP/REST 规范的差距与演进路线 |
 | [06-认证与账户接口](06-认证与账户接口.md) | 登录/注册/退出/登录态、会话 Cookie、数据按账号隔离与迁移命令（4 个，2026-09-18） |
 | [07-配置迁移接口](07-配置迁移接口.md) | 本体与项目配置打包导出/导入/结果/清理，包格式与分片上传（7 个，2026-09-19） |
+| [08-从物料自动构建本体接口](08-从物料自动构建本体接口.md) | 生成任务、分片上传与材料解析、范围对话、候选评审（合并/撤销/再生成/差异裁决）、原子交付为新本体草稿；含 §0 写操作 `revision` 口径表与 §2.1 provider 缺失口径（33 个，2026-09-20 新增，2026-09-21 收敛修订） |
 
 ---
 
