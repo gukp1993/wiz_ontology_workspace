@@ -75,6 +75,7 @@ async function requestCandidate(candidateId: string): Promise<unknown> {
   if (fn) return await fn(candidateId)
   return await getJson('/api/build-candidate' + query({ candidateId }))
 }
+// 候选级写操作（08 §7）：revision 传该候选的 r-uuid token。
 async function requestUpdateCandidate(candidateId: string, fields: Record<string, unknown>, revision: string): Promise<unknown> {
   const fn = remoteApi('updateCandidate')
   if (fn) return await fn(candidateId, fields, revision)
@@ -88,28 +89,35 @@ async function requestDecide(candidateId: string, decision: string, reason: stri
 async function requestMergePreview(taskId: string, primaryId: string, mergeIds: string[]): Promise<unknown> {
   const fn = remoteApi('mergePreview')
   if (fn) return await fn(taskId, primaryId, mergeIds)
-  return await postJson('/api/build-candidates-merge', { taskId, primaryId, mergeIds, confirmed: false, revision: task.value?.revision || '' })
+  // 合并预览是只读操作（08 §7 confirmed=false，服务端不做 CAS）：不携带任何 revision。
+  return await postJson('/api/build-candidates-merge', { taskId, primaryId, mergeIds, confirmed: false })
 }
+// 以下三个写操作都是**候选级 CAS**（08 §7）：revision 传候选自己的 r-uuid token，
+// 绝不能传任务级 task.revision（服务端按候选行比对，任务 token 恒 409）。
 async function requestMergeApply(taskId: string, primaryId: string, mergeIds: string[], revision: string): Promise<unknown> {
   const fn = remoteApi('mergeApply')
   if (fn) return await fn(taskId, primaryId, mergeIds, revision)
   return await postJson('/api/build-candidates-merge', { taskId, primaryId, mergeIds, confirmed: true, revision })
 }
+
+/** 撤销合并：revision 是该次合并**保留项候选**的当前 token（服务端与候选行比对）。 */
 async function requestUndo(taskId: string, opId: string, revision: string): Promise<unknown> {
   const fn = remoteApi('undoReviewOp')
   if (fn) return await fn(taskId, opId, revision)
   return await postJson('/api/build-review-undo', { taskId, opId, revision })
 }
-async function requestRegenerate(taskId: string, revision: string): Promise<unknown> {
+/** 重新生成：08 §7 的 revision 是可选整数（范围修订），不是任务 token；本页按最简一致行为省略该字段。 */
+async function requestRegenerate(taskId: string): Promise<unknown> {
   const fn = remoteApi('regenerate')
-  if (fn) return await fn(taskId, revision)
-  return await postJson('/api/build-regenerate', { taskId, revision })
+  if (fn) return await fn(taskId)
+  return await postJson('/api/build-regenerate', { taskId })
 }
 async function requestDiff(taskId: string, batch: string): Promise<unknown> {
   const fn = remoteApi('fetchDiff')
   if (fn) return await fn(taskId, batch || undefined)
   return await getJson('/api/build-diff' + query({ taskId, batch }))
 }
+/** 差异裁决：revision 传被裁决候选的 token（服务端 update_candidate CAS）。 */
 async function requestResolveDiff(taskId: string, candidateId: string, choice: 'keepManual' | 'acceptNew', revision: string): Promise<unknown> {
   const fn = remoteApi('resolveDiff')
   if (fn) return await fn(taskId, candidateId, choice, revision)
@@ -295,6 +303,56 @@ const mergeIds = ref<string[]>([])
 const mergeError = ref('')
 const mergePreview = ref<MergePreviewView | null>(null)
 const lastOpId = ref('')
+/** 最近一次合并的保留项候选 ID：撤销时的候选级 CAS 基线（08 §7 undo 比对的是保留项候选 revision）。 */
+const lastMergePrimary = ref('')
+
+/**
+ * 候选级 CAS 基线表：只登记**服务端下发**的候选 revision（列表/详情/差异/写操作回执），
+ * 后到的服务端值覆盖先到的。前端绝不推测或本地递增 token；基线缺失或已作废（上一次 409）时
+ * 拒绝发请求，必须先由服务端刷新取回新修订——绝不拿旧 token 静默重试。
+ */
+const knownRevisions = ref<Record<string, string>>({})
+/** 409 之后作废的基线：保留表单输入，但阻止再次携带同一个旧 token 提交。 */
+const invalidRevisions = ref<Record<string, boolean>>({})
+
+function rememberRevisions(items: CandidateView[]) {
+  let changed = false
+  const next = { ...knownRevisions.value }
+  const nextInvalid = { ...invalidRevisions.value }
+  for (const item of items) {
+    if (!item.id) continue
+    if (item.revision) {
+      if (next[item.id] !== item.revision) {
+        next[item.id] = item.revision
+        changed = true
+      }
+      // 服务端给出了新修订：作废标记随之解除
+      if (nextInvalid[item.id]) {
+        delete nextInvalid[item.id]
+        changed = true
+      }
+    }
+  }
+  if (changed) {
+    knownRevisions.value = next
+    invalidRevisions.value = nextInvalid
+  }
+}
+
+/** 取候选当前 revision token；基线缺失或已作废返回空串，调用方必须拒绝发送而不是携带任务 token。 */
+function candidateRevision(id: string, fallback = ''): string {
+  if (!id || invalidRevisions.value[id]) return ''
+  return knownRevisions.value[id] || fallback
+}
+
+/** 上一次写操作撞了 409：作废该候选的本地基线（等用户重新载入服务端修订）。 */
+function invalidateRevision(id: string) {
+  if (!id) return
+  const next = { ...knownRevisions.value }
+  delete next[id]
+  knownRevisions.value = next
+  invalidRevisions.value = { ...invalidRevisions.value, [id]: true }
+}
 
 const diff = ref<{ against: string; batchId: string; buckets: Record<string, unknown>; items: CandidateView[] } | null>(null)
 const diffError = ref('')
@@ -425,6 +483,9 @@ async function bootstrap() {
   mergeIds.value = []
   mergePreview.value = null
   lastOpId.value = ''
+  lastMergePrimary.value = ''
+  knownRevisions.value = {}
+  invalidRevisions.value = {}
   diff.value = null
   pageError.value = ''
   await loadTask()
@@ -489,6 +550,8 @@ function register(items: CandidateView[]) {
     if (item.id) next[item.id] = entry
   }
   registry.value = next
+  // 同一批服务端数据顺带登记候选 revision，供候选级 CAS 写操作取用
+  rememberRevisions(items)
 }
 
 async function loadMore() {
@@ -501,7 +564,8 @@ async function applyFilters() {
 }
 
 async function select(id: string) {
-  if (id === selectedId.value && detailRaw.value) return
+  // 本地基线已作废（上一次 409）时，再次点同一候选必须真的重新载入服务端修订，不能直接返回
+  if (id === selectedId.value && detailRaw.value && !invalidRevisions.value[id]) return
   if (dirty.value) {
     editError.value = '有未保存的编辑，请先「保存编辑」或「取消编辑」再切换候选。'
     return
@@ -616,8 +680,15 @@ async function saveEdit() {
   if (item.type === 'link' && (form.cardSource || form.cardTarget)) fields.cardinality = { source: form.cardSource, target: form.cardTarget }
   saving.value = true
   editError.value = ''
+  // 候选级 CAS：携带服务端最近一次下发的该候选 revision
+  const revision = candidateRevision(item.id, item.revision)
+  if (!revision) {
+    editError.value = '保存被拒绝：本候选的上一次操作已冲突，本地修订基线失效。请重新选择该候选载入最新修订后再保存；当前输入仍保留在表单中。'
+    saving.value = false
+    return
+  }
   try {
-    const response = asRecord(await requestUpdateCandidate(item.id, fields, item.revision))
+    const response = asRecord(await requestUpdateCandidate(item.id, fields, revision))
     const updated = response.candidate
     if (updated && typeof updated === 'object') {
       const view = toCandidateView(updated)
@@ -632,9 +703,13 @@ async function saveEdit() {
     mergePreview.value = null
   } catch (error) {
     // 保存失败保留输入：不动 draft/baseline，用户可修正后重试。
-    editError.value = isConflict(error)
-      ? '保存被拒绝：候选已被其他操作更新，请先重新载入核对；当前输入仍保留在表单中。'
-      : '保存失败：' + errorText(error)
+    if (isConflict(error)) {
+      // 旧 token 立即作废：绝不拿它静默重试，需重新载入服务端修订
+      invalidateRevision(item.id)
+      editError.value = '保存被拒绝：候选已被其他操作更新（服务端已有新修订）。请重新选择该候选载入核对后再保存；当前输入仍保留在表单中。'
+    } else {
+      editError.value = '保存失败：' + errorText(error)
+    }
   } finally {
     saving.value = false
   }
@@ -668,8 +743,15 @@ async function decide(decision: 'include' | 'defer' | 'exclude') {
     return
   }
   busy.value = true
+  // 候选级 CAS：服务端已下发新修订（例如上一次列表刷新）时以最新 token 提交，绝不携带已作废基线
+  const revision = candidateRevision(item.id, item.revision)
+  if (!revision) {
+    decideError.value = '决定被拒绝：本候选的上一次操作已冲突。请重新选择该候选载入最新修订后再设置决定。'
+    busy.value = false
+    return
+  }
   try {
-    const response = asRecord(await requestDecide(item.id, decision, reasonDraft.value.trim(), item.revision))
+    const response = asRecord(await requestDecide(item.id, decision, reasonDraft.value.trim(), revision))
     const updated = response.candidate
     if (updated && typeof updated === 'object') {
       const view = toCandidateView(updated)
@@ -682,9 +764,16 @@ async function decide(decision: 'include' | 'defer' | 'exclude') {
     }
     await loadList('replace')
   } catch (error) {
-    decideError.value = isConflict(error)
-      ? '决定被拒绝：候选已被其他操作更新，请重新载入后再试。'
-      : '决定失败：' + errorText(error)
+    if (isConflict(error)) {
+      // 不静默重试旧 token：先从服务端取回最新候选修订，再由用户重新点决定（已填写的依据保留）
+      decideError.value = '决定被拒绝：候选已被其他操作更新。已重新载入最新候选修订，请核对后再次设置决定（已填写的依据保留）。'
+      busy.value = false
+      const typedReason = reasonDraft.value
+      await loadDetail(item.id)
+      reasonDraft.value = typedReason
+      return
+    }
+    decideError.value = '决定失败：' + errorText(error)
   } finally {
     busy.value = false
   }
@@ -762,9 +851,21 @@ async function confirmMerge() {
   if (!preview || busy.value) return
   busy.value = true
   mergeError.value = ''
+  // 候选级 CAS：合并改的是保留项这一行，携带保留项候选的 revision（任务 token 会被服务端拒为 409）
+  const primaryRevision = candidateRevision(preview.primaryId)
+  if (!primaryRevision) {
+    mergeError.value = '合并被拒绝：缺少保留项的服务端修订基线，已重新载入候选，请再次「合并预览」后确认。'
+    mergePreview.value = null
+    await loadList('replace')
+    busy.value = false
+    return
+  }
   try {
-    const response = asRecord(await requestMergeApply(props.taskId, preview.primaryId, preview.mergeIds, task.value?.revision || ''))
+    const response = asRecord(await requestMergeApply(props.taskId, preview.primaryId, preview.mergeIds, primaryRevision))
+    const merged = asRecord(response.candidate)
+    if (merged.id) register([toCandidateView(merged)])
     lastOpId.value = str(response.opId)
+    lastMergePrimary.value = str(merged.id) || preview.primaryId
     clearMerge()
     await loadList('replace')
     if (preview.primaryId) {
@@ -773,8 +874,13 @@ async function confirmMerge() {
     }
   } catch (error) {
     mergeError.value = isConflict(error)
-      ? '合并被拒绝：保留项或候选已被其他操作更新，请重新预览后再试。'
+      ? '合并被拒绝：保留项或候选已被其他操作更新，已刷新候选基线，请重新预览后再试。'
       : '合并失败：' + errorText(error)
+    if (isConflict(error)) {
+      // 不携带旧 token 静默重试：以服务端最新 revision 覆盖本地基线，由用户再次确认
+      mergePreview.value = null
+      await loadList('replace')
+    }
   } finally {
     busy.value = false
   }
@@ -790,15 +896,27 @@ async function undoLastMerge() {
   if (!ok) return
   busy.value = true
   mergeError.value = ''
+  // 服务端撤销比对的是「保留项候选」的当前 revision（08 §7），不是任务 token
+  const primaryRevision = candidateRevision(lastMergePrimary.value)
+  if (!primaryRevision) {
+    // 只刷新列表基线：详情面板可能带着用户正在编辑的表单，不能用服务端内容覆盖
+    mergeError.value = '撤销被拒绝：缺少保留项候选的服务端修订基线，已重新载入候选，请再次尝试撤销。'
+    await loadList('replace')
+    busy.value = false
+    return
+  }
   try {
-    await requestUndo(props.taskId, lastOpId.value, task.value?.revision || '')
+    await requestUndo(props.taskId, lastOpId.value, primaryRevision)
     lastOpId.value = ''
+    lastMergePrimary.value = ''
     await loadList('replace')
     if (selectedId.value) await loadDetail(selectedId.value)
   } catch (error) {
     mergeError.value = isConflict(error)
-      ? '撤销被拒绝：保留项已有后续人工编辑，请先核对受影响字段。'
+      ? '撤销被拒绝：保留项已有后续人工编辑或候选已变化，已刷新候选基线，请核对后再撤销。'
       : '撤销失败：' + errorText(error)
+    // 刷新服务端基线（含 currentRevision 对应的候选行），不拿旧 token 重试
+    if (isConflict(error)) await loadList('replace')
   } finally {
     busy.value = false
   }
@@ -818,7 +936,9 @@ async function runRegenerate() {
   pageError.value = ''
   diffError.value = ''
   try {
-    const response = asRecord(await requestRegenerate(props.taskId, task.value?.revision || ''))
+    // 08 §7 regenerate 的 revision 是可选整数（范围修订）：省略该字段，由服务端以当前基线重跑。
+    // 传任务 r-uuid token 会被参数校验拒为 400。
+    const response = asRecord(await requestRegenerate(props.taskId))
     pageError.value = '已提交重新生成（运行 ' + (str(response.runId) || '—') + ' · 批次 ' + (str(response.batchId) || '—') + '）：生成完成后点「查看差异」查看新增/变动/消失与人工修改冲突。'
     await loadTask()
     await loadList('replace')
@@ -834,11 +954,14 @@ async function loadDiff() {
   busy.value = true
   try {
     const response = asRecord(await requestDiff(props.taskId, batchId.value))
+    const items = asArray(response.items).map(toCandidateView)
+    // 差异条目也是服务端数据：登记 revision，保证逐项裁决带得上候选级 CAS 基线
+    register(items)
     diff.value = {
       against: str(response.against),
       batchId: batchId.value,
       buckets: asRecord(response.buckets),
-      items: asArray(response.items).map(toCandidateView),
+      items,
     }
   } catch (error) {
     diffError.value = '差异加载失败：' + errorText(error)
@@ -851,13 +974,29 @@ async function resolveDiff(candidateId: string, choice: 'keepManual' | 'acceptNe
   if (busy.value) return
   busy.value = true
   diffError.value = ''
+  // 候选级 CAS：裁决写入的是该候选这一行，携带候选 revision（任务 token 恒 409）
+  const revision = candidateRevision(candidateId)
+  if (!revision) {
+    diffError.value = '裁决被拒绝：缺少该候选的服务端修订基线，已重新载入差异，请再次裁决。'
+    await loadDiff()
+    await loadList('replace')
+    busy.value = false
+    return
+  }
   try {
-    await requestResolveDiff(props.taskId, candidateId, choice, task.value?.revision || '')
+    const response = asRecord(await requestResolveDiff(props.taskId, candidateId, choice, revision))
+    const resolved = asRecord(response.candidate)
+    if (resolved.id) register([toCandidateView(resolved)])
     await loadDiff()
     await loadList('replace')
     if (selectedId.value === candidateId) await loadDetail(candidateId)
   } catch (error) {
-    diffError.value = isConflict(error) ? '裁决被拒绝：请重新载入差异后再试。' : '裁决失败：' + errorText(error)
+    diffError.value = isConflict(error) ? '裁决被拒绝：候选已被其他操作更新，已刷新最新基线，请重新载入后再试。' : '裁决失败：' + errorText(error)
+    if (isConflict(error)) {
+      // 用服务端刷新替换旧 token，不自动重发同一请求
+      await loadDiff()
+      await loadList('replace')
+    }
   } finally {
     busy.value = false
   }

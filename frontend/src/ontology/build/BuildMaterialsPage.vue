@@ -7,8 +7,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  abortUpload, conflictRevision, errorMessage, fetchRun, listMaterials, retryMaterial, scanMaterials,
-  setMaterialExcluded, uploadFile,
+  abortUpload, conflictRevision, errorMessage, fetchRun, listMaterials, materialRevisionToken, retryMaterial,
+  scanMaterials, setMaterialExcluded, uploadFile,
 } from './api'
 import {
   KIND_LOCATOR_LABELS, PARSE_STATE_TONE, RUN_STATE_LABELS, RUN_STATE_TONE, STAGE_LABELS, coverageOf,
@@ -219,7 +219,9 @@ async function toggleExcluded(m: Material) {
   if (pendingId.value) return
   pendingId.value = m.id; actionError.value = ''
   try {
-    const r = await setMaterialExcluded(props.taskId, m.id, !m.excluded, materialRevision.value)
+    // 08 §4：排除/恢复携带的是「物料清单修订」的不透明字符串 token，服务端按 str(materialRevision) 比对；
+    // 直接传数字会被参数校验拒为 400（D05）。
+    const r = await setMaterialExcluded(props.taskId, m.id, !m.excluded, materialRevisionToken(materialRevision.value))
     materials.value = materials.value.map(x => x.id === r.material.id ? r.material : x)
     if (r.task && typeof r.task.materialRevision === 'number') materialRevision.value = r.task.materialRevision
     else materialRevision.value += 1

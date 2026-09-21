@@ -155,9 +155,24 @@ export async function listMaterials(taskId: string): Promise<{ items: Material[]
   return await getJson(EP.materials + query({ taskId })) as MaterialList
 }
 
-/** 排除/恢复材料：推进 materialRevision（旧扫描/范围/结果基线随之失效，由页面提示过期）。 */
+/**
+ * 物料清单修订（GET /api/build-materials 的整数 `revision`）→ 排除/恢复接口所需的
+ * **不透明字符串 token**（08 §4：服务端按 `str(materialRevision)` 比对，数字形态 400）。
+ * 缺失（null/undefined）返回空串，调用方据此提示「先刷新清单」而不是发一个注定失败的请求。
+ */
+export function materialRevisionToken(revision: number | string | null | undefined): string {
+  if (revision === null || revision === undefined) return ''
+  if (typeof revision === 'string') return revision.trim()
+  return Number.isFinite(revision) ? String(revision) : ''
+}
+
+/**
+ * 排除/恢复材料：推进 materialRevision（旧扫描/范围/结果基线随之失效，由页面提示过期）。
+ * revision 是**物料清单修订的不透明字符串 token**（08 §4：`String(materialRevision)`），
+ * 后端按 `str(material_revision)` 比对，数字形态会被参数校验拒为 400。
+ */
 export async function setMaterialExcluded(
-  taskId: string, materialId: string, excluded: boolean, revision: string | number,
+  taskId: string, materialId: string, excluded: boolean, revision: string,
 ): Promise<MaterialMutation> {
   return await postJson(EP.materialExclude, { taskId, materialId, excluded, revision }) as MaterialMutation
 }
@@ -225,6 +240,7 @@ export async function fetchCandidate(candidateId: string): Promise<CandidateDeta
   return await getJson(EP.candidate + query({ candidateId })) as CandidateDetail
 }
 
+/** 候选级写操作（08 §7）：revision 一律传该候选自己的 `revision` token（r-uuid），不是任务 revision。 */
 export async function updateCandidate(candidateId: string, fields: Record<string, unknown>, revision: string): Promise<{ candidate: Candidate }> {
   return await postJson(EP.candidateUpdate, { candidateId, fields, revision }) as { candidate: Candidate }
 }
@@ -233,6 +249,11 @@ export async function decideCandidate(candidateId: string, decision: string, rea
   return await postJson(EP.candidateDecide, { candidateId, decision, reason, revision }) as { candidate: Candidate }
 }
 
+/**
+ * 合并候选（08 §7）：
+ * - 预览 `confirmed=false` 只读，不携带 revision（服务端不做 CAS）；
+ * - 执行 `confirmed=true` 是**候选级 CAS**，revision 传保留项（primaryId）候选的 `revision` token。
+ */
 export async function mergePreview(taskId: string, primaryId: string, mergeIds: string[]): Promise<MergePreview> {
   return await postJson(EP.candidatesMerge, { taskId, primaryId, mergeIds, confirmed: false }) as MergePreview
 }
@@ -241,19 +262,24 @@ export async function mergeApply(taskId: string, primaryId: string, mergeIds: st
   return await postJson(EP.candidatesMerge, { taskId, primaryId, mergeIds, confirmed: true, revision }) as MergeResult
 }
 
+/** 撤销评审操作（合并）：revision 传**保留项候选**的当前 `revision` token（候选级 CAS）。 */
 export async function undoReviewOp(taskId: string, opId: string, revision: string): Promise<{ ok: boolean; candidate: Candidate }> {
   return await postJson(EP.reviewUndo, { taskId, opId, revision }) as { ok: boolean; candidate: Candidate }
 }
 
-/** 重新生成：以当前材料/范围基线重跑，产生新批次（旧批次保留只读）。 */
-export async function regenerate(taskId: string, revision: string): Promise<{ runId: string; batchId: string }> {
-  return await postJson(EP.regenerate, { taskId, revision }) as { runId: string; batchId: string }
+/**
+ * 重新生成：以当前材料/范围基线重跑，产生新批次（旧批次保留只读）。
+ * 08 §7 的 revision 是**可选整数**（范围修订），不是任务 token；这里按最简一致行为省略该字段。
+ */
+export async function regenerate(taskId: string): Promise<{ runId: string; batchId: string }> {
+  return await postJson(EP.regenerate, { taskId }) as { runId: string; batchId: string }
 }
 
 export async function fetchDiff(taskId: string, batch?: string): Promise<CandidateDiff> {
   return await getJson(EP.diff + query({ taskId, batch })) as CandidateDiff
 }
 
+/** 差异逐项裁决：revision 传**该候选**的 `revision` token（候选级 CAS）。 */
 export async function resolveDiff(taskId: string, candidateId: string, choice: 'keepManual' | 'acceptNew', revision: string): Promise<{ candidate: Candidate }> {
   return await postJson(EP.diffResolve, { taskId, candidateId, choice, revision }) as { candidate: Candidate }
 }
