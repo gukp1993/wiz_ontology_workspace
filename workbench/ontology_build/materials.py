@@ -576,21 +576,38 @@ def material_blob_path(conn, owner_user_id, material_id):
 # --- ZIP 安全展开 -----------------------------------------------------------------
 
 def delete_task_blob_files(blob_paths):
-    """删除任务登记的 blob 文件（08 §12.2）：路径须落在 blob 目录内防逃逸。
+    """删除任务登记的 blob 文件（08 §12.2）：任何解析结果都必须落在 blob 目录内防逃逸。
 
-    缺失静默（may have been cleaned）；删除失败逐条记录不抛出——文件清理失败
-    不回滚数据库级联删除。返回 {deleted, missing, errors}。
+    登记形态兼容（G24 修复，两侧口径统一）：
+    * **生产/现行形态**：`ontology-build-blobs/<名>`（相对数据目录 data_dir，与
+      upload_complete/_register_extracted 的登记、material_blob_path 的读取同一口径）；
+    * **旧形态**：裸相对名（相对 blob 目录，历史行/早期测试夹具）。
+    两种形态都按候选基准解析，取「落在 blob 目录内且真实存在」者；找不到按 missing
+    计数（可能已被清理）。缺失静默；删除失败逐条记录不抛出——文件清理失败不回滚
+    数据库级联删除。返回 {deleted, missing, errors}。
     """
     base = blob_dir().resolve()
+    data_base = data_dir().resolve()
     result = {'deleted': 0, 'missing': 0, 'errors': []}
     for rel in blob_paths or []:
-        try:
-            target = (base / str(rel or '')).resolve()
-            target.relative_to(base)
-        except (ValueError, OSError) as exc:
-            result['errors'].append('%s: %s' % (rel, exc))
+        raw = str(rel or '').replace('\\', '/').strip()
+        if not raw:
+            result['missing'] += 1
             continue
-        if not target.is_file():
+        # 两种登记形态按序解析（都要求最终落在 blob 目录内，杜绝逃逸）：
+        #   data_base/raw → 生产形态 'ontology-build-blobs/<名>'（相对数据目录）；
+        #   base/raw      → 旧形态裸相对名（相对 blob 目录，历史行/早期夹具）。
+        target = None
+        for root in (data_base, base):
+            try:
+                resolved = (root / raw).resolve()
+                resolved.relative_to(base)
+            except (ValueError, OSError):
+                continue
+            if resolved.is_file():
+                target = resolved
+                break
+        if target is None:
             result['missing'] += 1
             continue
         try:

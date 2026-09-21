@@ -56,22 +56,30 @@ def cleanup_roots():
     del ROOTS[:]
 
 
-def blob_file(rel_name, content: bytes):
-    """在 blob 目录写一个真实文件，返回相对 blob_path（与 materials 正式路径同形态）。"""
+def blob_file(rel_name, content: bytes, form='blob-relative'):
+    """在 blob 目录写一个真实文件，返回登记用 blob_path。
+
+    form='blob-relative'：相对 blob 目录（历史行/早期夹具形态，G24 兼容口径）；
+    form='production'：相对数据目录的 'ontology-build-blobs/<名>'——与
+    materials.upload_complete/_register_extracted 的**生产登记同形态**（G24 回归盲区：
+    此前夹具用了与生产不同的基准，掩盖了删除侧双重前缀缺陷）。
+    """
     target = materials_domain.blob_dir() / rel_name
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(content)
+    if form == 'production':
+        return '%s/%s' % (materials_domain.BLOB_SUBDIR, rel_name)
     return str(target.relative_to(materials_domain.blob_dir()))
 
 
-def build_task_with_payload(owner, task_name, with_blob_content=b'payload-bytes'):
+def build_task_with_payload(owner, task_name, with_blob_content=b'payload-bytes', form='blob-relative'):
     """建任务 + 全关联行（含 blob 磁盘文件），可选再交付一份本体草稿。返回上下文 dict。"""
     ctx = {}
 
     def body(conn):
         task_id = store.create_task(conn, owner, task_name)
         store.touch_task(conn, task_id, owner, status='review', stage_label='评审初稿')
-        blob_path = blob_file('purge-test/%s.bin' % task_id[:8], with_blob_content)
+        blob_path = blob_file('purge-test/%s.bin' % task_id[:8], with_blob_content, form=form)
         blob_id = store.create_blob(conn, owner, task_id, 'a.bin', len(with_blob_content),
                                     'h-' + task_id[:8], blob_path)
         material_id = store.create_material(conn, owner, task_id, blob_id, 'a.bin',
@@ -139,6 +147,30 @@ def main():
     check(not blob_file_abs.exists(), '磁盘文件确认不存在')
     check(asset_store.read_current('model', ctx['task_id'] + '-ont', owner_user_id=UID) is not None,
           '已交付本体草稿保留')
+
+    print('--- 生产登记形态（G24 回归：ontology-build-blobs/<名> 相对数据目录）---')
+    ctx_prod = build_task_with_payload(UID, '生产形态清理', form='production')
+    # 生产形态的物理文件在 <data>/ontology-build-blobs/purge-test/<id>.bin
+    blob_abs_prod = materials_domain.blob_dir() / ('purge-test/%s.bin' % ctx_prod['task_id'][:8])
+    check(blob_abs_prod.is_file(), '前置：生产形态 blob 文件已落盘', str(blob_abs_prod))
+    check(ctx_prod['blob_path'].startswith(materials_domain.BLOB_SUBDIR + '/'),
+          '前置：登记为相对数据目录的生产形态', ctx_prod['blob_path'])
+    with sto.write_tx() as tx:
+        counts_prod, blob_paths_prod = tx.run(lambda conn: store.purge_task(conn, ctx_prod['task_id'], UID))
+    cleaned_prod = materials_domain.delete_task_blob_files(blob_paths_prod)
+    check(counts_prod['wb_build_blobs'] == 1 and cleaned_prod['deleted'] == 1
+          and cleaned_prod['missing'] == 0 and cleaned_prod['errors'] == [],
+          'G24 修复：生产形态登记的 blob 物理文件被删除（不再双重前缀静默跳过）',
+          (blob_paths_prod, cleaned_prod))
+    check(not blob_abs_prod.exists(), '生产形态磁盘文件确认不存在')
+
+    print('--- 逃逸与缺失防御 ---')
+    cleaned_escape = materials_domain.delete_task_blob_files(['../outside.bin', 'gone.bin'])
+    check(cleaned_escape['deleted'] == 0
+          and not (materials_domain.data_dir().parent / 'outside.bin').exists(),
+          '路径穿越登记不删除 blob 目录之外文件（按缺失/拒绝处理）', cleaned_escape)
+    check(cleaned_escape['missing'] == 2,
+          '不存在的登记（含穿越形态）按 missing 计数，不伪造删除成功', cleaned_escape)
 
     print('--- 确认名不符在路由层拒绝（域层仅提供 purge，此处验证不存在即 404 语义）---')
     try:
