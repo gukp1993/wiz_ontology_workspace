@@ -187,6 +187,11 @@ CASE_REPLACEMENTS = [
      'reason': '首跑把「跨账号删 LLM 提供方返回 200」并入同一断言故整体 fail；第 2 跑拆成两行：拒写断言 pass（#96），幂等删除语义单列为 D3 观察（#97）'},
 ]
 
+# 有效批次里被拆分编号的场景（旧编号 → 新编号集合）
+CASE_ID_ALIASES = {
+    'O4-07': {'O4-07a', 'O4-07b'},
+}
+
 _REF_RE = __import__('re').compile(r'^(.+?)#(\d+)\((\S+?)\)$')
 
 
@@ -266,6 +271,44 @@ def classify_row(row, rel, line_no):
     return V.PRODUCT_PASS
 
 
+def validate_superseded_coverage(batches):
+    """核对「被替代批次里的业务场景都被有效批次覆盖」，防止用替代之名丢记录。
+
+    规则：
+    - 套件异常中断记录（caseId 含 `crash`）没有对应业务场景，允许无覆盖，但必须列出来；
+    - 其余 caseId 必须在同文件的某个有效批次里出现，或按 CASE_ID_ALIASES 拆分为有效编号；
+    - 出现无法归属的场景即报错退出（对应「无法归属项标未确认」的强制口径）。
+    """
+    checked = []
+    by_file = {}
+    for entry in batches:
+        by_file.setdefault(entry['file'], []).append(entry)
+    for entry in batches:
+        if entry['status'] == 'valid':
+            continue
+        valid_cases = set()
+        for other in by_file[entry['file']]:
+            if other['status'] == 'valid':
+                valid_cases |= {c['caseId'] for c in other['cases']}
+        crash, uncovered = [], []
+        for case in entry['cases']:
+            cid = str(case['caseId'])
+            if 'crash' in cid.lower():
+                crash.append(cid)
+            elif cid in valid_cases:
+                continue
+            elif CASE_ID_ALIASES.get(cid, set()) & valid_cases:
+                continue
+            else:
+                uncovered.append(cid)
+        assert not uncovered, \
+            '被替代批次 %s 有未被有效批次覆盖的场景：%s（请补替代关系或修正批次登记）' % (entry['runLabel'], uncovered)
+        checked.append({'runLabel': entry['runLabel'], 'file': entry['file'],
+                        'supersededCases': len(entry['cases']),
+                        'toolErrorCrashRows': crash, 'uncovered': uncovered})
+    return checked
+
+
 def build():
     index = {
         'generatedAt': datetime.now(timezone.utc).isoformat(),
@@ -294,6 +337,11 @@ def build():
         entry['scriptBlobSha'] = _blob_sha(batch['scriptCommit'], batch['script'])
         if batch['status'] != 'valid':
             entry['verdictCounts'] = {'superseded': len(chunk)}
+            # 被替代批次同样登记逐行 caseId，供覆盖核对（不参与统计，不分类）
+            entry['cases'] = [{'caseId': row.get('case'), 'line': lo + offset,
+                               'legacyVerdict': row.get('verdict'), 'kind': row.get('kind') or ''}
+                              for offset, row in enumerate(chunk)]
+            entry['uniqueCases'] = len({c['caseId'] for c in entry['cases']})
             index['supersededRawRows'] += len(chunk)
             index['batches'].append(entry)
             continue
@@ -328,6 +376,7 @@ def build():
     index['reclassifications'] = RECLASSIFY
     index['caseReplacements'] = validate_replacements()
     index['rowNotes'] = ROW_NOTES
+    index['supersededCoverage'] = validate_superseded_coverage(index['batches'])
     index['totals'] = {
         'assertionRecords': sum(counts.values()),
         'assertionByClass': ' '.join('%s=%d' % (k, v) for k, v in counts.items() if v),
@@ -377,6 +426,17 @@ def render_markdown(index):
     lines.append('|---|---|---|')
     for item in index['caseReplacements']:
         lines.append('| `%s` | `%s` | %s |' % (item['superseded'], item['replacedBy'], item['reason']))
+    lines.append('')
+    lines.append('### 2.2 被替代批次的覆盖核对（机器强制）')
+    lines.append('')
+    lines.append('| 被替代批次 | 被替代场景数 | 无对应业务的工具错误行 | 未覆盖场景 |')
+    lines.append('|---|---|---|---|')
+    for item in index.get('supersededCoverage', []):
+        lines.append('| %s | %d | %s | %s |' % (item['runLabel'], item['supersededCases'],
+                                                 '、'.join(item['toolErrorCrashRows']) or '—',
+                                                 '、'.join(item['uncovered']) or '无（全部已覆盖）'))
+    lines.append('')
+    lines.append('覆盖核对失败时生成器直接报错退出，不允许用「被替代」掩盖记录。')
     lines.append('')
     lines.append('## 3. 有效批次的分类统计（按新分类）')
     lines.append('')
