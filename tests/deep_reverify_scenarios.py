@@ -40,16 +40,30 @@ def _blob(response):
     return ' '.join(parts)
 
 
+def _count_versions(api, path):
+    """读版本/发布列表条数。**读取失败一律返回 None**，不把 500/空响应当成 0 条（F01）。
+
+    返回 (count|None, 说明)。count 为 None 表示「证据不足」，调用方必须据此判 test_error，
+    不得当作「版本没有增加」。
+    """
+    r = api.get(path)
+    status = r.get('status')
+    if status is None:
+        return None, 'GET %s 无状态码（%s）' % (path, r.get('error') or '网络失败')
+    if status != 200:
+        return None, 'GET %s HTTP %s（非 200，计数不可用）' % (path, status)
+    body = r.get('json')
+    if not isinstance(body, dict) or not isinstance(body.get('items'), list):
+        return None, 'GET %s 响应结构不符（items 非数组）' % path
+    return len(body['items']), 'GET %s HTTP 200 items=%d' % (path, len(body['items']))
+
+
 def _versions_of(api, ontology_id):
-    r = api.get('/api/versions?ontology=' + ontology_id)
-    items = (r['json'] or {}).get('items') if isinstance(r['json'], dict) else None
-    return len(items or []), r
+    return _count_versions(api, '/api/versions?ontology=' + ontology_id)
 
 
 def _releases_of(api, project_id):
-    r = api.get('/api/project-releases?project=' + project_id)
-    items = (r['json'] or {}).get('items') if isinstance(r['json'], dict) else None
-    return len(items or []), r
+    return _count_versions(api, '/api/project-releases?project=' + project_id)
 
 
 # ============================== A01：非法规则/动作选填字段 ==============================
@@ -119,18 +133,23 @@ def scenario_a01(api, rec, ontology_id, tag='O3-04'):
     s = api.post('/api/save', {'state': dict(illegal), 'revision': rev})
     sj = s['json'] if isinstance(s['json'], dict) else {}
     rev2 = sj.get('revision') or rev
-    before, _ = _versions_of(api, ontology_id)
+    before, before_note = _versions_of(api, ontology_id)
     p = api.post('/api/publish', {'state': dict(illegal), 'revision': rev2,
                                   'requestId': 'reverify-a01-' + uuid.uuid4().hex})
     pj = p['json'] if isinstance(p['json'], dict) else {}
-    after, rel_r = _versions_of(api, ontology_id)
+    after, after_note = _versions_of(api, ontology_id)
 
-    diag_terms = ['content', 'effect', '非文本', '文本', '类型', '字符串']
+    # 诊断分组（F03）：第一组必须定位到 content/effect 字段本身，第二组说明是类型/取值非法。
+    # 仅命中「文本/类型」这类泛词不算针对目标。
+    diag_groups = [
+        ['content', 'effect', '内容', '预期效果', '业务效果'],
+        ['非文本', '必须为文本', '字符串', '类型', '格式', '非法', '无效'],
+    ]
     detail = ('validate HTTP %s errors=%s；save HTTP %s errors=%s；publish HTTP %s body=%s；'
-              '版本 %s→%s' % (v['status'], _brief(v_errs), s['status'], _brief(sj.get('errors')),
-                              p['status'], _brief(pj), before, after))
+              '版本 %s→%s（%s；%s）' % (v['status'], _brief(v_errs), s['status'], _brief(sj.get('errors')),
+                                       p['status'], _brief(pj), before, after, before_note, after_note))
     res = V.classify_guard_attempt(True, p,
-                                   {'block_status': 422, 'diagnostic_terms': diag_terms,
+                                   {'block_status': 422, 'diagnostic_term_groups': diag_groups,
                                     'known_defect': True, 'require_no_version_increase': True,
                                     'version_before': before, 'version_after': after},
                                    precondition_detail=detail)
@@ -209,7 +228,12 @@ def scenario_r02(api, rec, project_id, project_state, object_type, prop, tag='R0
     诊断词 + 版本零新增判定，未拦截分支按既有 R02 登记记已知缺陷复现。
     """
     out = {'projectId': project_id, 'cases': {}, 'shellFlowId': None}
-    diag_terms = ['编排', '输出', '未绑定', 'OUTPUT_BINDING_MISSING', 'flow']
+    # 诊断分组（F03）：第一组定位到该属性/该编排引用，第二组说明具体原因（输出未绑定）。
+    # 两组都要命中才算「针对目标」，不再用单个泛词（如 flow/输出）判定。
+    diag_groups = [
+        [prop, object_type, '编排', 'flow', '函数编排'],
+        ['未绑定', '输出未绑定', 'OUTPUT_BINDING_MISSING', '未选择', '绑定'],
+    ]
     rev = (api.get('/api/project-state?project=' + project_id)['json'] or {}).get('revision')
 
     # 1) 创建空壳编排
@@ -273,31 +297,33 @@ def scenario_r02(api, rec, project_id, project_state, object_type, prop, tag='R0
         return out
 
     # 5) project-validate：观察是否拦截（同一根因观察一）
+    #    F02：必须先用 classify_validate_observation 过传输/状态码(200)/响应结构(errors 为数组)，
+    #    再看正式诊断字段；500 或结构不符一律 test_error，绝不按文案记通过。
     r = api.post('/api/project-validate', {'state': pst, 'revision': rev2})
     vj = r['json'] if isinstance(r['json'], dict) else {}
-    errs = vj.get('errors') or []
-    blocked_here = any(('编排' in e or '输出' in e) and (prop in e or 'flow' in e.lower()) for e in errs)
-    if blocked_here:
-        res = {'result': V.PRODUCT_PASS, 'reason': '项目校验已拦截该依赖错误', 'detail': _brief(errs)}
-    else:
-        res = {'result': V.KNOWN_DEFECT,
-               'reason': 'R02 复现：项目校验未拦截「被引用编排自身输出未绑定」',
-               'detail': _brief(errs)}
+    errs = vj.get('errors') if isinstance(vj.get('errors'), list) else None
+    res = V.classify_validate_observation(
+        True, r, {'ok_status': (200,), 'diagnostic_term_groups': diag_groups, 'known_defect': True,
+                  'detail': _brief(errs) if errs is not None else _brief(r.get('json'))})
+    if res['result'] == V.KNOWN_DEFECT:
+        res = dict(res, reason='R02 复现：项目校验未拦截「被引用编排自身输出未绑定」')
+    out['validateObservation'] = {'status': r.get('status'), 'errors': errs, 'result': res['result']}
     rec.add(tag + '-5', res['result'],
             tag + ' project-validate 对空壳编排引用是否拦截（同一根因观察一，不单独计根因）',
             res['reason'] + '；errors=%s' % res['detail'], 'R02-known',
             analysis_unit='observation', root_cause='R02:project_validation._check_flow_binding 不调用 flows.check_flow')
     out['cases'][tag + '-5'] = res['result']
 
-    # 6) project-publish：期望被拦截；版本零新增才算正确阻断
-    before, _ = _releases_of(api, project_id)
+    # 6) project-publish：期望被拦截；版本零新增才算正确阻断（拒绝分支同样受版本门约束）
+    before, before_note = _releases_of(api, project_id)
     r = api.post('/api/project-publish', {'state': pst, 'revision': rev2,
                                           'requestId': 'reverify-r02-' + uuid.uuid4().hex})
     j = r['json'] if isinstance(r['json'], dict) else {}
-    after, _ = _releases_of(api, project_id)
-    detail = ('publish HTTP %s body=%s；发布版本数 %s→%s' % (r['status'], _brief(j), before, after))
+    after, after_note = _releases_of(api, project_id)
+    detail = ('publish HTTP %s body=%s；发布版本数 %s→%s（%s；%s）'
+              % (r['status'], _brief(j), before, after, before_note, after_note))
     res = V.classify_guard_attempt(
-        True, r, {'block_status': 422, 'diagnostic_terms': diag_terms, 'known_defect': True,
+        True, r, {'block_status': 422, 'diagnostic_term_groups': diag_groups, 'known_defect': True,
                   'require_no_version_increase': True, 'version_before': before, 'version_after': after},
         precondition_detail=detail)
     rec.add(tag + '-6', res['result'],
@@ -314,25 +340,45 @@ def scenario_r02(api, rec, project_id, project_state, object_type, prop, tag='R0
                                   {'kind': 'flow', 'flow': 'flow-does-not-exist-' + uuid.uuid4().hex[:8],
                                    'output': 'fout-1', 'inputs': {}})
     rev3 = (api.get('/api/project-state?project=' + project_id)['json'] or {}).get('revision') or rev2
+    # 7a) 负对照的 validate 段：同样先过状态码/结构，再要求出现「编排不存在」诊断
+    gdiag = [['编排', 'flow'], ['不存在', '已删除', '未找到', 'NOT_FOUND']]
     r = api.post('/api/project-validate', {'state': ghost, 'revision': rev3})
     gj = r['json'] if isinstance(r['json'], dict) else {}
-    gerrs = gj.get('errors') or []
-    ghost_validate = r['status'] == 200 and any('不存在' in e for e in gerrs)
-    before2, _ = _releases_of(api, project_id)
+    gerrs = gj.get('errors') if isinstance(gj.get('errors'), list) else None
+    gres = V.classify_validate_observation(
+        True, r, {'ok_status': (200,), 'diagnostic_term_groups': gdiag,
+                  'detail': '负对照 validate：errors=%s' % _brief(gerrs)})
+    ghost_validate_blocked = gres['result'] == V.PRODUCT_PASS
+    # 7b) 负对照的 publish 段：期望 422 拦截且版本零新增
+    before2, before2_note = _releases_of(api, project_id)
     r2 = api.post('/api/project-publish', {'state': ghost, 'revision': rev3,
                                            'requestId': 'reverify-r02neg-' + uuid.uuid4().hex})
-    after2, _ = _releases_of(api, project_id)
-    res = V.classify_guard_attempt(
-        found, r2, {'block_status': 422, 'diagnostic_terms': ['编排不存在', '不存在'],
+    after2, after2_note = _releases_of(api, project_id)
+    pres = V.classify_guard_attempt(
+        found, r2, {'block_status': 422, 'diagnostic_term_groups': gdiag,
                     'require_no_version_increase': True, 'version_before': before2, 'version_after': after2},
-        precondition_detail='负对照：引用不存在编排；validate 拦截=%s errors=%s' % (ghost_validate, _brief(gerrs)))
-    if res['result'] == V.TEST_ERROR and r2['status'] is None:
-        pass
+        precondition_detail='负对照：引用不存在编排；发布版本数 %s→%s（%s；%s）'
+                            % (before2, after2, before2_note, after2_note))
+    # 7c) 两段都满足期望才宣布整条负对照通过（F02：不允许记录后不用于结论）
+    if gres['result'] == V.PRODUCT_PASS and pres['result'] == V.PRODUCT_PASS:
+        res = V._mk(V.PRODUCT_PASS, '负对照通过：validate 拦截且 publish 422 零新增版本',
+                    'validate=%s；publish=%s' % (gres['reason'], pres['reason']))
+    elif gres['result'] == V.PRODUCT_PASS and pres['result'] in (V.KNOWN_DEFECT, V.NEW_DEFECT):
+        res = V._mk(V.TEST_ERROR, '负对照不完整：validate 已拦截但 publish 放行（门禁与校验不一致，需人工确认）',
+                    'validate=%s；publish=%s' % (gres['reason'], pres['reason']))
+    else:
+        res = V._mk(V.TEST_ERROR if V.TEST_ERROR in (gres['result'], pres['result']) else V.BLOCKED,
+                    '负对照未成立：validate=%s / publish=%s，无法用它证明门禁与判定链路有效'
+                    % (gres['result'], pres['result']),
+                    'validate=%s（%s）；publish=%s（%s）'
+                    % (gres['result'], gres['reason'], pres['result'], pres['reason']))
     rec.add(tag + '-7', res['result'],
-            tag + ' 负对照：引用不存在编排应被拦截（证明门禁与判定链路本身有效）',
-            'validate 拦截=%s；%s；%s' % (ghost_validate, res['reason'], res['detail']), 'R02-control',
+            tag + ' 负对照：引用不存在编排应被拦截（validate 与 publish 两段都须满足期望）',
+            '%s；%s' % (res['reason'], res['detail']), 'R02-control',
             analysis_unit='negative-control', root_cause='')
     out['cases'][tag + '-7'] = res['result']
-    out['negativeControl'] = {'validateBlocked': ghost_validate, 'publishStatus': r2['status'],
-                              'versions': [before2, after2]}
+    out['negativeControl'] = {'validateResult': gres['result'], 'validateStatus': r.get('status'),
+                              'validateErrors': gerrs, 'publishResult': pres['result'],
+                              'publishStatus': r2.get('status'), 'versions': [before2, after2],
+                              'combined': res['result']}
     return out

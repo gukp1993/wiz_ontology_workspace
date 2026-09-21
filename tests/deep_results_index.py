@@ -187,10 +187,16 @@ CASE_REPLACEMENTS = [
      'reason': '首跑把「跨账号删 LLM 提供方返回 200」并入同一断言故整体 fail；第 2 跑拆成两行：拒写断言 pass（#96），幂等删除语义单列为 D3 观察（#97）'},
 ]
 
-# 有效批次里被拆分编号的场景（旧编号 → 新编号集合）
-CASE_ID_ALIASES = {
+# 工具错误 kind 的识别（中断豁免必须真的来自套件异常，不能仅凭名字含 crash）
+TOOL_ERROR_KINDS = __import__('re').compile(r'中断|异常|crash|error|traceback', __import__('re').I)
+
+# 旧编号被拆成多个子用例：**全部子用例**都必须出现在有效批次（一拆多，F04）。
+CASE_ID_SPLITS = {
     'O4-07': {'O4-07a', 'O4-07b'},
 }
+
+# 旧编号对应多个**等价**编号：命中任意一个即可（任选其一）。
+CASE_ID_ALTERNATIVES = {}
 
 _REF_RE = __import__('re').compile(r'^(.+?)#(\d+)\((\S+?)\)$')
 
@@ -274,9 +280,12 @@ def classify_row(row, rel, line_no):
 def validate_superseded_coverage(batches):
     """核对「被替代批次里的业务场景都被有效批次覆盖」，防止用替代之名丢记录。
 
-    规则：
+    规则（F04 修订：区分「一拆多」与「任选其一」）：
     - 套件异常中断记录（caseId 含 `crash`）没有对应业务场景，允许无覆盖，但必须列出来；
-    - 其余 caseId 必须在同文件的某个有效批次里出现，或按 CASE_ID_ALIASES 拆分为有效编号；
+    - `CASE_ID_SPLITS`（一拆多）：旧编号被拆成若干**子用例**时，**全部子用例**都必须出现在
+      有效批次里 —— 只覆盖其中一个不能算替代完成（独立复验 F04 指出的漏检）；
+    - `CASE_ID_ALTERNATIVES`（任选其一）：旧编号对应多个**等价**编号，命中任意一个即可；
+    - 其余 caseId 必须原样出现在同文件的某个有效批次里；
     - 出现无法归属的场景即报错退出（对应「无法归属项标未确认」的强制口径）。
     """
     checked = []
@@ -287,25 +296,56 @@ def validate_superseded_coverage(batches):
         if entry['status'] == 'valid':
             continue
         valid_cases = set()
+        valid_rows = {}
         for other in by_file[entry['file']]:
             if other['status'] == 'valid':
-                valid_cases |= {c['caseId'] for c in other['cases']}
-        crash, uncovered = [], []
+                for c in other['cases']:
+                    valid_cases.add(c['caseId'])
+                    valid_rows.setdefault(c['caseId'], []).append(c)
+        crash, info_only, uncovered, split_detail = [], [], [], []
         for case in entry['cases']:
             cid = str(case['caseId'])
+            # 被替代批次里本身只是说明行（如会话建立）的不是业务场景，无需业务覆盖，但须列出
+            if case.get('legacyVerdict') == 'info' or str(case.get('kind') or '').lower() == 'info':
+                info_only.append(cid)
+                continue
             if 'crash' in cid.lower():
-                crash.append(cid)
-            elif cid in valid_cases:
+                # 套件中断行允许无覆盖，但必须是**工具错误**行：要求以 kind 明确标注
+                # 「异常中断」或 case 以 crash 结尾，避免业务场景名里含 crash 就被豁免。
+                if TOOL_ERROR_KINDS.search(str(case.get('kind') or '')) or cid.lower().endswith('-crash'):
+                    crash.append(cid)
+                else:
+                    uncovered.append('%s（名字含 crash 但 kind 非工具错误，不能按中断豁免）' % cid)
                 continue
-            elif CASE_ID_ALIASES.get(cid, set()) & valid_cases:
+            if cid in valid_cases:
+                # 有效批次里命中同一 caseId 的行还必须是**业务判定行**，不能被 info 说明行顶替
+                rows = valid_rows.get(cid) or []
+                if any(not str(r.get('kind') or '').lower().startswith('info') and r.get('result') != V.INFO
+                       for r in rows):
+                    continue
+                uncovered.append('%s（有效批次仅有 info 说明行，不能作为业务覆盖）' % cid)
                 continue
-            else:
-                uncovered.append(cid)
+            required = CASE_ID_SPLITS.get(cid)
+            if required is not None:
+                missing = sorted(required - valid_cases)
+                split_detail.append({'superseded': cid, 'required': sorted(required),
+                                     'missing': missing})
+                if missing:
+                    uncovered.append('%s（拆分后缺：%s）' % (cid, '、'.join(missing)))
+                continue
+            alternatives = CASE_ID_ALTERNATIVES.get(cid)
+            if alternatives is not None:
+                if alternatives & valid_cases:
+                    continue
+                uncovered.append('%s（等价编号均缺失：%s）' % (cid, '、'.join(sorted(alternatives))))
+                continue
+            uncovered.append(cid)
         assert not uncovered, \
             '被替代批次 %s 有未被有效批次覆盖的场景：%s（请补替代关系或修正批次登记）' % (entry['runLabel'], uncovered)
         checked.append({'runLabel': entry['runLabel'], 'file': entry['file'],
                         'supersededCases': len(entry['cases']),
-                        'toolErrorCrashRows': crash, 'uncovered': uncovered})
+                        'toolErrorCrashRows': crash, 'infoOnlyRows': info_only,
+                        'uncovered': uncovered, 'splitCoverage': split_detail})
     return checked
 
 
@@ -429,14 +469,16 @@ def render_markdown(index):
     lines.append('')
     lines.append('### 2.2 被替代批次的覆盖核对（机器强制）')
     lines.append('')
-    lines.append('| 被替代批次 | 被替代场景数 | 无对应业务的工具错误行 | 未覆盖场景 |')
-    lines.append('|---|---|---|---|')
+    lines.append('| 被替代批次 | 被替代记录 | 无对应业务的工具错误行 | 本身即说明行 | 未覆盖场景 |')
+    lines.append('|---|---|---|---|---|')
     for item in index.get('supersededCoverage', []):
-        lines.append('| %s | %d | %s | %s |' % (item['runLabel'], item['supersededCases'],
-                                                 '、'.join(item['toolErrorCrashRows']) or '—',
-                                                 '、'.join(item['uncovered']) or '无（全部已覆盖）'))
+        lines.append('| %s | %d | %s | %s | %s |' % (item['runLabel'], item['supersededCases'],
+                                                     '、'.join(item['toolErrorCrashRows']) or '—',
+                                                     '、'.join(item.get('infoOnlyRows') or []) or '—',
+                                                     '、'.join(item['uncovered']) or '无（全部已覆盖）'))
     lines.append('')
     lines.append('覆盖核对失败时生成器直接报错退出，不允许用「被替代」掩盖记录。')
+    lines.append('业务场景不能由 info 说明行顶替；`*-crash` 行的中断豁免要求 kind 确为工具错误。')
     lines.append('')
     lines.append('## 3. 有效批次的分类统计（按新分类）')
     lines.append('')
@@ -473,8 +515,11 @@ def render_markdown(index):
     lines.append('## 5. 本轮继续验证的新批次（2026-09-21 修订后）')
     lines.append('')
     lines.append('本次端口 18951、数据根 `.runtime/reverify-data`（全新合成根，未写 18931 / 真实根）。')
-    lines.append('修订后的判定函数：`tests/deep_verdicts.py`；自测：`tests/deep_verdicts_test.py`（23 项：')
-    lines.append('正确阻断 / 实际缺陷 / 500 / 无关 4xx / 前置失败 / 空响应 / 网络失败）。')
+    lines.append('修订后的判定函数：`tests/deep_verdicts.py`；自测 `tests/deep_verdicts_test.py`（41 项）与')
+    lines.append('`tests/deep_results_index_test.py`（12 项，覆盖替代/覆盖/拆分核对器）。')
+    lines.append('第二轮（按 S1–S3 独立复验 F01–F05 整改）：拒绝分支同样要求版本零新增且版本可读，')
+    lines.append('诊断只从约定诊断字段取文本（含诊断键下的字符串列表），校验接口须先过状态码/响应结构，')
+    lines.append('一拆多的子用例必须全部覆盖。详见 缺陷清单.md 的「复验整改」段。')
     lines.append('')
     lines.append('### 5.1 本轮运行日志（工具错误一并登记）')
     lines.append('')
