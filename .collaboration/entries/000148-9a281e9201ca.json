@@ -1,0 +1,34 @@
+{
+  "ticket": "842a62c260fc489d8aedd34b1e951e67",
+  "task": "本体与项目辅助填写 F01/F02 剩余验收补验（V4–V9 浏览器取证）",
+  "status": "verified",
+  "summary": "按用户指令接手 Codex 受阻的 V4–V9 浏览器补验。开工实核：HEAD=3ec11d4，被验原型与提交 4c2dd9e 逐字节一致（2078 行/4fd7539f…），工作树 clean；V2 静态 17 项复核全 0、V3 单元 28 例复跑全过。并行 5 组只读子agent（headless Chrome+CDP 真实键鼠，端口 19331–19335，各 only /tmp）：V4 解析矩阵 17/17、V5 采纳范围 5 项、V6 缓冲区/保存/取消 4 项、V7 文案 4 项、V8 保留项 8 项、V9 XSS 5 组全过且弹窗 0、非 file 请求 0。未发现违反既定需求的复现缺陷，未修改原型（4c2dd9e 不变）。V7.1 一处简报偏差已裁定：冻结标准只要求 attr_name 卡含冻结句（指令 V4 表格原文即如此），实测满足，判通过不改码。本轮不合并不上线，总判定交用户。",
+  "decisions": [
+    "V7.1 裁定：冻结判定标准（独立验收指令 V4 表格与 V7.1 正文）只要求 my_model 场景 attr_name 卡 pending 文案含「不补造示例值 SOC；采纳 model_name 不会连带填入本项」，实测逐字满足，判通过；补验简报中「两卡均须含」系简报过严、超出冻结标准，不作为缺陷；model_name 卡「当前两项均无法确认、不能采纳」恰为整改指令允许的补充句，不改代码",
+    "未发现复现缺陷即不修改原型：4c2dd9e 仍为被验提交，不追加 §9 记录，验收证据只交付于报告与 /tmp；本轮补验由开发方环境按用户授权执行，不宣称替代 Codex 独立签名",
+    "Log 通道统计口径：VE 组以 file:// 相对 fetch 探针证明 Log.entryAdded 通道可采集；其余各组正式跑期间该通道 0 条，VA/VC 因自身探针未命中按约定标注「未知」，汇总分层如实呈现"
+  ],
+  "verification": [
+    "V4：解析矩阵 17/17 符合（中文分隔符／，、a // b 不合并、=／＝kv 不当常量、片段含空白、my_model SOC 不拆分、暂不确定禁选）；反例：/ SOC 全 DOM 检索「固定值 SOC」仅出现在 attr_name 卡 1 次",
+    "V5：/ SOC 采纳变化恰为 bind.attr_name/bindv.attr_name（SAVED 零 diff、含迟到写复核）；my_model / 在预置 attr=const/SOC 后不覆盖；已有属性绑定卡原值「属性 簇编号」删除线+默认不勾；相同常量转 note「已按你提供的常量配置（SOC）：无需变更。」零卡；枚举 21 个面板控件 pending 四字段恒空",
+    "V6/V7：采纳只写 BUFFERS；取消编辑回落 SAVED（提示原文逐字命中）；演示保存被必填拦（请填写函数编排。）→选编排后保存 SAVED 恰 3 字段、行状态已配置、reload 复位；未勾字段零改动；kv 引导文案正确；「标注归属」文件与页面 0 命中；禁选与文案一致",
+    "V8：F05 无 conn 保存成功且行状态已配置、生成中关面板/切目标作废提示原文命中、手改后撤销禁用、类型联动清 obsType 并恢复、D4 Redis 建议「实例主键（pk）」、R01 旧值「固定值 storage_cluster」两变体（未答/已答 consts）通过",
+    "V9：XSS A–E（img/svg/script/属性闭合/重渲染）零注入、__x* 全 undefined、纯文本渲染；弹窗正式计数 0；非 file:// 请求 0；console error/warning/未捕获 0（各组探针自证采集有效）。证据：/tmp/kg_f01f02_accept_20260921/{va,vb,vc,vd,ve}/"
+  ],
+  "next": [
+    "整体验收判定交用户：V1–V3 Codex 独立通过 + V4–V9 本轮补验通过、无复现缺陷、未修改原型；如需 Codex 环境亲测签名可在其浏览器限制解除后复跑 V4–V9",
+    "本轮未合并、未推送、未重启主工作台；正式实现范围与既有 P2 清单待用户决定"
+  ],
+  "references": [
+    "被验提交 4c2dd9e；原型 2078 行/4fd7539fd00fcf3984bd1bd07b9b8bbb2288fd39e97f13a792ebaf962eafb735（开工/收尾一致，工作树 clean）",
+    "/tmp/kg_f01f02_accept_20260921/（va–ve 五组证据 JSON、截图、驱动脚本）",
+    ".collaboration/entries/000145-2c5f0904a2e6.json（Codex V1–V3 独立验收：部分覆盖）",
+    "文档/需求/20260920_本体与项目辅助填写/独立验收执行指令_20260921_F01F02.md（V1–V9 冻结判定依据）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T04:35:20.335225+00:00",
+  "sequence": 148,
+  "filename": "000148-9a281e9201ca.json",
+  "record_hash": "3f9c06b82984a80ac42005bd27392f0519c3a517c1d050063a4443bcfef78b39",
+  "context_advanced": true
+}
