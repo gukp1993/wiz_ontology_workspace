@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`4f25e8c07b299e21`
+上下文版本：`c504fb968bcdfa9b`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 本体与项目辅助填写原型：F01/F02 整改（常量输入按位置解析、归属文案统一） · zcode · 已实施，待验收
+
+时间：2026-09-21T03:27:17.314092+00:00；记录：`.collaboration/entries/000142-d01bd6003c09.json`
+
+按整改指令只改离线原型 HTML（不动正式前后端/接口/数据）。开工实核基线 ed8ea32=2068行/de564955…，与指令一致，无他人并发编辑。F01：删除 split(...).filter(Boolean) 丢位解析，新增 parseConstPair() 按 model_name/attr_name 位置解析；分隔符仅 / ／ , ，、前后空白允许且空白不是字段分隔符、恰好一个分隔符→两个位置（可一侧为空）；多分隔符（含 a // b 不合并）、含 =／＝、片段内空白、空输入一律不明确→两张 pending+禁选、无 apply；无分隔符单 token 判无归属标识，两张卡均 pending+disabled，不按空格拆；仅明确的一侧生成可采纳卡；与当前绑定等值转 note「已配置：无需变更」。F02：pending 统一含「不补造示例值 SOC；采纳 model_name 不会连带填入本项」；删除「或用＝标注归属」，含 =／＝ 时提示改用 model_name / attr_name 格式且整串不当作有效常量。整改后基线 2078 行 / 4fd7539f…，提交 4c2dd9e，未合并未推送未重启主工作台。
+
+- 决定：位置解析判据冻结：分隔符仅 / ／ , ，；前后空白允许、空白不是字段分隔符；恰好一个分隔符→两个位置，一侧可空；多分隔符/含=／＝/片段内空白/空输入一律判不明确（只出 pending+disabled 卡，无 apply 写入）；不扩展键值对或自然语言归属解析：含 =／＝ 不解析归属也不把整串当有效常量；无分隔符单 token 不猜归属、不按空格拆分，只提示按 model_name / attr_name 格式补填；model_name/attr_name 分别校验、互不连带；建议值与当前绑定完全一致时转 note「已配置：无需变更」，不生成待替换卡；「暂不确定」仍按既有 UN 语义使两项 pending；本轮仅改原型与需求说明追加记录，不实施正式业务功能、不改 frontend/workbench/接口/数据；新增 4 条 P2（dirty-pill 死分支文案、Tab 提交后改答需清空重答、默认勾选与只补该常量对的口径确认、srcLabel/powOld 未转义拼接）记为待评审不修
+- 验证：解析单元：/tmp/kg_f01f02_20260921/parse_unit.mjs 从原型提取 parseConstPair 原文执行 28/28，覆盖指令§三全部用例、中文分隔符、半角/制表符/全角空格/换行空白、=与＝、片段内空白、a / / b、纯分隔符、旧缺陷回归（/ SOC 不再产生 model_name=SOC）；静态：内联 JS node --check 通过（1810 行）；17 项禁用计数全 0（fetch/XHR/WebSocket/EventSource/sendBeacon/<script src/@import/<link/localStorage/sessionStorage/indexedDB/document.cookie/alert/prompt/confirm/|| 'SOC' 与 parts[1]）；3 处 http(s) 均为假域名或占位文案，无 src=/href= 外部资源；5 组并行只读子agent 真实浏览器复验（各自自起 headless Chrome + CDP 真实键鼠端口 19321–19325，只读未写仓库，开工/收尾 SHA 一致）：GR-A 解析矩阵 13 例通过且 / SOC 全 DOM 扫描确认「固定值 SOC」只在 attr_name 卡；GR-B / SOC 采纳变化字段恰为 bind.attr_name/bindv.attr_name、my_model / 恰为 bind.model_name/bindv.model_name、已有值卡原值真实显示且默认不勾、等值转 note；GR-C 采纳只写 BUFFERS 不写 SAVED、取消编辑回落、仅演示保存更新 SAVED、未勾字段零改动；GR-D 保留项未回归：暂不确定→pending+disabled 零写入、F05 ps_series 无 conn 仍可演示保存、生成中关面板/切目标作废、手动编辑后撤销禁用、类型联动清空 obsType、D4 Redis {id}→实例主键、R01 旧值显示；GR-E XSS 三载荷+6 载荷 10 页压力测试纯文本渲染、window.__xss* 全 undefined、原生弹窗 0、console 三通道零条目（探针正对照证明采集有效）；五组合计 console error 0 / warning 0 / 未捕获异常 0 / Log 0；P0=0/P1=0；未覆盖：真机多浏览器矩阵、原生 select 弹层路径（以 change 路径替代）、完整无障碍走查；未接真实模型/数据库
+- 下一步：交独立验收方复验提交 4c2dd9e / 2078 行 / 4fd7539f…，重点 F01 解析矩阵（/ SOC、my_model /、a // b、=／＝、my_model SOC）与 F02 文案，以及采纳范围与保留项未回归；本提交停在「开发方自测完成，待独立验收」；不合并 main、不推送、不重启主工作台；新增 P2 与正式实现范围待用户与验收方决定
+- 依据/文档：文档/需求/20260920_本体与项目辅助填写/交互原型_v1.html（2078行 / 4fd7539fd00fcf3984bd1bd07b9b8bbb2288fd39e97f13a792ebaf962eafb735）；文档/需求/20260920_本体与项目辅助填写/需求说明.md §9 第六轮记录；提交 4c2dd9e（本轮修复主体，父 ed8ea32=2068行/de564955…）；/tmp/kg_f01f02_20260921/parse_unit.mjs（解析边界单元检查）
 
 ### 本体与项目辅助填写原型：R01/R02 整改与同类扩展修复 · zcode · 已实施，待验收
 
@@ -137,14 +148,3 @@
 - 验证：git status干净（仅本harness两份untracked验收脚本），验收全程HEAD=f5bea60无新增业务提交；tests/codex_reacceptance_backend_20260920.py 43项断言全过（R02校验/路由、R03窗口注入409零写入+重试/回放/冲突、A01发布422零版本等）；tests/codex_reacceptance_a02_20260920.mjs 12项断言全过（domainSaveNode桥层：空格阻断、记录未变、0事件、非文本拒绝、历史键零丢失）；隔离实例 http://127.0.0.1:18921 假账号codexrv浏览器验收，console 0消息；服务资源指纹 index-GpdZRyRU.js 与fresh build一致
 - 下一步：等待用户授权集成/合并；本轮未合并main、未重启18765、未清理worktree与18921实例（PID 27586，保留待指令）
 - 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §13；tests/codex_reacceptance_backend_20260920.py；tests/codex_reacceptance_a02_20260920.mjs
-
-### 本体与项目辅助填写原型委托需求 · codex · 需求已交付
-
-时间：2026-09-20T12:04:28.558493+00:00；记录：`.collaboration/entries/000131-082bbd8f1bdb.json`
-
-按用户改为由其他harness制作原型的要求，交付完整需求与独立执行指令；本轮未生成HTML或实施业务功能。
-
-- 决定：本轮两份文档，不生成开发计划；其他harness生成同目录交互原型_v1.html，后续按清单验收。；覆盖本体5类及项目6类辅助填写场景，7条演示链路、17项验收；使用现有风格及离线假数据。；采纳只进入表单，旧建议失效保护、共享影响确认、缺信息追问必须演示；复杂编排生成与真实模型调用不在本次原型必做范围。
-- 验证：文档场景/验收编号完整性与两份文件范围检查通过，git diff --check通过；未声称原型或浏览器已验收。
-- 下一步：其他harness按执行指令制作独立原型并自检，用户交回后按A01至A17验收。
-- 依据/文档：文档/需求/20260920_本体与项目辅助填写/需求说明.md；文档/需求/20260920_本体与项目辅助填写/执行指令.md
