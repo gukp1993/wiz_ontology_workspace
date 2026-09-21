@@ -2,7 +2,8 @@
      契约：文档/接口文档/08-从物料自动构建本体接口.md §8「交付（原子创建新本体）」。
      布局基准：原型 交互原型_v1.html 的 savePage()——左侧「本次纳入」（各类型计数 / 结构检查 /
      未纳入项 / 材料覆盖缺口），右侧「新本体信息」（名称 + 确认勾选 + 创建按钮）。
-     进入本页即调 deliverPrecheck：预检有阻断时禁用创建并逐条列出（带 candidateId 定位，
+     进入本页先读交付记录（fetchDelivery）：未交付才调 deliverPrecheck（已交付后预检必然失败，
+     直接跳过，预检区保持空）；预检有阻断时禁用创建并逐条列出（带 candidateId 定位，
      点击回 A05 评审定位）。交付唯一入口 POST /api/build-deliver（checkToken + requestId）：
      同一 payload（名称 + checkToken）的超时/网络重试沿用同一个 requestId，不会创建第二个本体；
      改名或重新预检后换新 requestId。已交付（fetchDelivery 有值）只读展示结果，不再提供提交入口。
@@ -198,9 +199,15 @@ async function bootstrap() {
   deferredRows.value = []
   excludedRows.value = []
   untakenError.value = ''
-  // loadDelivery 必须先于 runPrecheck 完成：预检要把「已交付」识别为预期状态而非错误。
+  // loadDelivery 必须先完成：已交付任务**跳过 runPrecheck**（P2-3，第四轮验收 20260921）——
+  // 一个任务只能交付一次，已交付后再预检是必然失败的服务端请求，请求本身多余；
+  // 此时预检区保持空、不显示任何预检错误，未纳入项等其余加载照旧。未交付时行为不变。
   await loadDelivery()
-  await Promise.all([runPrecheck(), loadUntaken('defer'), loadUntaken('exclude')])
+  if (delivery.value) {
+    await Promise.all([loadUntaken('defer'), loadUntaken('exclude')])
+  } else {
+    await Promise.all([runPrecheck(), loadUntaken('defer'), loadUntaken('exclude')])
+  }
   loading.value = false
 }
 

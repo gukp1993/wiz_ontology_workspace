@@ -3,7 +3,10 @@
 //   · fields.dataType 是**平铺字符串**，取值 ∈ protocol.PROPERTY_DATA_TYPES；
 //   · fields.valueType 只在 dataType === 'timeSeries' 时有意义，取值 ∈ protocol.VALUE_TYPES
 //     （= workbench/model_format.py 的 SERIES_VALUE_TYPES，即工作台本体协议口径）；
-//   · **不接受**嵌套对象形态 { type:'timeSeries', valueType:'double' }——服务端会报「不支持的数据类型」。
+//   · **不接受**嵌套对象形态 { type:'timeSeries', valueType:'double' }——服务端会报「不支持的数据类型」；
+//   · dataType 为空表示「未确定」：buildPropertyFields('') 返回空 patch（服务端合并保留原值）。
+//     「已有数据类型的属性禁止清空为未确定」这一口径由评审页 BuildReviewPage.vue 的 saveEdit
+//     执行（P2-1，20260921 验收）；本文件保持纯函数，不做页面级校验、行为不变。
 // 本文件只有纯常量与纯函数：不发请求、不持有状态、不依赖 Vue，Node 测试可直接 import。
 
 /**

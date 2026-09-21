@@ -674,6 +674,13 @@ async function saveEdit() {
       editError.value = '数据类型不在协议允许的取值内（' + PROPERTY_DATA_TYPES.join('、') + '）。请重新选择后再保存。'
       return
     }
+    // P2-1（第四轮验收 20260921，口径：明确禁止清空）：已有数据类型的属性不允许清回「未确定」。
+    // 原因：buildPropertyFields('') 返回空 patch，服务端按「未发送该键」合并保留旧类型，
+    // 表现为「界面可清空、保存后复原」。这里直接拦截不发请求；从未有过类型的候选不受影响。
+    if (!form.dataType && readPropertyFields(item.fields).dataType) {
+      editError.value = '该属性已有数据类型，不能清空为「未确定」；请选择具体类型。'
+      return
+    }
     if (form.dataType === 'timeSeries') {
       if (!form.valueType) { editError.value = '时间序列必须选择观测值类型。'; return }
       if (!isValueType(form.valueType)) {

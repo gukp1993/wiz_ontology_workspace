@@ -651,6 +651,18 @@ def flow_timeseries_delivery():
           and (((ts_nodes[0].get('dataType') or {}).get('valueType')) == 'double'),
           '交付草稿时序属性 valueType=double 且全文无 xsd:xsd: 双前缀（D02）',
           actual=(status, 'xsd:xsd:' in raw, ts_nodes[:1]))
+    # P2-2（第四轮验收 20260921）：timeSeries 切回普通类型不得残留旧观测值类型——
+    # dataType 改回 number 后，响应 candidate.fields 里不允许再出现 valueType 键
+    # （历史实现会残留 double，与「valueType 仅 timeSeries 有意义」的冻结口径冲突）。
+    number_revision = (fixed.get('candidate') or {}).get('revision') or revision
+    status, back = api('/api/build-candidate-update',
+                       {'candidateId': capacity['id'], 'fields': {'dataType': 'number'},
+                        'revision': number_revision})
+    fields_after = (back.get('candidate') or {}).get('fields') or {}
+    check(status == 200 and fields_after.get('dataType') == 'number'
+          and 'valueType' not in fields_after,
+          'timeSeries 切回 number 后 fields 不残留 valueType 键（P2-2）',
+          actual=(status, fields_after))
 
 
 # --- 回归流 4b：规则/动作交付落位（D06） --------------------------------------------

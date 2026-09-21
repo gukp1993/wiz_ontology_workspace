@@ -1,5 +1,6 @@
 // D05/R3-04（20260920 从物料自动构建本体）：候选属性字段（dataType/valueType）平铺口径回归
-//   + A01「查看已创建本体」回链（B.4）。
+//   + A01「查看已创建本体」回链（B.4）+ 第四轮验收 P2（20260921：⑯⑰ 已有类型禁止清空为
+//   「未确定」；⑱⑲ 保存页已交付任务跳过预检请求）。
 // 运行（仓库根）：node --import ./tests/ts_hooks.mjs tests/ontology_build_review_edit.test.mjs
 // 契约：后端 review.update_candidate 只接受**平铺** fields.dataType（字符串枚举）与
 //   fields.valueType（仅 timeSeries，取值 = protocol.VALUE_TYPES = model_format.SERIES_VALUE_TYPES）；
@@ -213,6 +214,25 @@ await check('⑪ 评审页校验：时间序列未选观测值类型时拒绝保
   assert.match(page.editError.value, /时间序列必须选择观测值类型/)
 })
 
+await check('⑯ 评审页校验（P2-1）：已有数据类型清回「未确定」被拦截且不发请求', async () => {
+  let called = false
+  globalThis.fetch = async () => { called = true; return { ok: true, status: 200, json: async () => ({}) } }
+  page.detailRaw.value = candidateRaw({ fields: { dataType: 'timeSeries', valueType: 'double' } })
+  page.resetDraft(page.current.value)
+  page.draft.value.dataType = ''
+  page.draft.value.valueType = ''
+  page.draft.value.name = '有功功率·改'
+  await page.saveEdit()
+  assert.equal(called, false, '已有类型清空必须被拦截，不得发请求')
+  assert.match(page.editError.value, /该属性已有数据类型，不能清空为「未确定」/)
+})
+
+await check('⑰ 评审页校验（P2-1）：原本无数据类型的候选仍允许保持未确定', async () => {
+  const body = await captureSave({}, draft => { draft.name = '未定型属性'; draft.definition = '类型尚无依据' })
+  assert.equal('dataType' in body.fields, false, '未确定类型不发送 dataType 键')
+  assert.equal(page.editError.value, '', '从未有过类型的候选保持未确定不受拦截')
+})
+
 // ── ③ 真实 App.vue：enterBuildOntology 三条分支（B.4）────────────────────────
 const app = await loadSetup('App.vue')
 
@@ -256,6 +276,48 @@ await check('⑮ 评审页不再自带类型表、不再发送嵌套载荷；任
   assert.equal(/dataType\s*=\s*\{\s*type:\s*'timeSeries'/.test(review), false, '不得再写嵌套 dataType')
   const tasks = readFileSync(resolve(SRC, 'ontology/build/BuildTasksPage.vue'), 'utf8')
   assert.match(tasks, /emit\('enter-ontology',\s*row\.task\.deliveryOntologyId\)/, '回链按钮必须携带目标本体 id')
+})
+
+// ── ⑤ 保存页加载流程（P2-3）：已交付任务跳过预检请求 ─────────────────────────
+const savePage = await loadSetup('ontology/build/BuildSavePage.vue', { taskId: 'bk-9' })
+
+/** 按路径片段分流打桩：记录每次请求（方法 + URL），命中即返回对应响应。 */
+function stubSavePageFetch(calls, handlers) {
+  globalThis.fetch = async (url, init) => {
+    const target = String(url)
+    calls.push((init && init.method ? init.method : 'GET') + ' ' + target)
+    for (const [needle, respond] of handlers) {
+      if (target.includes(needle)) return respond()
+    }
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
+}
+
+await check('⑱ 保存页加载（P2-3）：已交付任务跳过预检请求，预检区保持空', async () => {
+  const calls = []
+  stubSavePageFetch(calls, [
+    ['/api/build-delivery', () => ({ ok: true, status: 200, json: async () => ({ delivery: { ontologyId: 'ob-x', createdAt: '2026-09-21T10:00:00', requestId: 'rq-1' } }) })],
+    ['/api/build-candidates', () => ({ ok: true, status: 200, json: async () => ({ items: [], total: 0 }) })],
+  ])
+  await savePage.bootstrap()
+  assert.equal(savePage.delivery.value && savePage.delivery.value.ontologyId, 'ob-x', '交付记录已载入')
+  assert.equal(savePage.precheck.value, null, '已交付不得写入预检结果')
+  assert.equal(savePage.precheckError.value, '', '已交付不得显示预检错误')
+  assert.equal(calls.some(c => c.includes('/api/build-deliver-precheck')), false, '已交付不得发出预检请求')
+  assert.equal(calls.some(c => c.includes('/api/build-candidates')), true, '未纳入项照常加载')
+})
+
+await check('⑲ 保存页加载（P2-3）：未交付任务照常预检（行为不变）', async () => {
+  const calls = []
+  stubSavePageFetch(calls, [
+    ['/api/build-delivery', () => ({ ok: true, status: 200, json: async () => ({}) })],
+    ['/api/build-candidates', () => ({ ok: true, status: 200, json: async () => ({ items: [], total: 0 }) })],
+    ['/api/build-deliver-precheck', () => ({ ok: true, status: 200, json: async () => ({ ok: true, counts: { object: 2 }, issues: [], checkToken: 'tok-1' }) })],
+  ])
+  await savePage.bootstrap()
+  assert.ok(savePage.precheck.value && savePage.precheck.value.ok === true, '未交付仍要跑预检')
+  assert.equal(savePage.precheck.value.checkToken, 'tok-1')
+  assert.equal(calls.some(c => c.includes('/api/build-deliver-precheck')), true, '未交付必须发出预检请求')
 })
 
 report()

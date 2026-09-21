@@ -96,6 +96,7 @@ def update_candidate(conn, candidate_id, fields, revision) -> dict:
     未知键抛 ValueError；dataType 限 protocol.PROPERTY_DATA_TYPES（**平铺字符串**，
     不接受嵌套对象）；valueType 必须 ∈ protocol.VALUE_TYPES（= model_format 的
     SERIES_VALUE_TYPES，与交付侧同一枚举，非法值在这里就拒绝，不等交付才报）；
+    dataType 切到非 timeSeries 时自动移除旧 valueType（普通类型不残留观测值类型）；
     cardinality 必须是 {source, target} 且取值 ∈ {one, many}。CAS 用 revision。
     """
     owner_id = owner()
@@ -125,6 +126,11 @@ def update_candidate(conn, candidate_id, fields, revision) -> dict:
                 raise ValueError('不支持的数据类型：%s（可选：%s）'
                                  % (text or '空', '/'.join(protocol.PROPERTY_DATA_TYPES)))
             updated_fields['dataType'] = text
+            # P2-2（第四轮验收 20260921）：fields.valueType 只在 timeSeries 下有意义——
+            # timeSeries 切回普通类型时移除旧观测值类型，普通类型不再残留 fields.valueType；
+            # 切到 timeSeries 时不在这里动 valueType，其合法性由 validate_candidate 把关。
+            if text != 'timeSeries':
+                updated_fields.pop('valueType', None)
         elif key == 'valueType':
             if isinstance(value, dict):
                 raise ValueError('valueType 需要平铺字符串，可选：%s'
@@ -144,6 +150,11 @@ def update_candidate(conn, candidate_id, fields, revision) -> dict:
                 updated_fields['cardinality'] = _clean_cardinality(value)
         else:  # content / effect：选填文本，允许清空
             updated_fields[key] = str('' if value is None else value).strip()
+    # 同一请求同时携带 dataType 与 valueType 且键序为先 dataType 后 valueType 时，
+    # dataType 分支里的移除会被后面的 valueType 分支重新写入：循环结束后按**最终**
+    # dataType 再收敛一次（valueType 只允许留在 timeSeries 上，含历史残留清理）。
+    if str(updated_fields.get('dataType') or '') != 'timeSeries':
+        updated_fields.pop('valueType', None)
     prospective = dict(view)
     prospective.update(columns)
     prospective['fields'] = updated_fields
