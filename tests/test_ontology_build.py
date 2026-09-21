@@ -43,10 +43,18 @@ os.environ['WIZ_WORKBENCH_ROOT'] = str(TMP)
 os.environ['WIZ_DATABASE_URL'] = 'sqlite:///' + str(TMP / 'data' / 'workbench.sqlite3')
 
 import auth_client  # noqa: E402
+from workbench import model_format  # noqa: E402
 from workbench import storage  # noqa: E402
+from workbench.ontology_build import alignment  # noqa: E402
+from workbench.ontology_build import materials as materials_domain  # noqa: E402
 from workbench.ontology_build import protocol  # noqa: E402
+from workbench.ontology_build import runner  # noqa: E402
+from workbench.ontology_build import tasks as tasks_domain  # noqa: E402
+from workbench.ontology_build import ontology_adapter as adapter_mod  # noqa: E402
 from workbench.paths import DATA_ROOT  # noqa: E402
+from workbench.storage import engine as sto  # noqa: E402
 from workbench.storage import engine as engine_mod  # noqa: E402
+from workbench.storage import ontology_build as ob_store  # noqa: E402
 
 DB_PATH = TMP / 'data' / 'workbench.sqlite3'
 FIXTURE_DIR = TMP / 'materials'
@@ -285,10 +293,10 @@ def locator_problem(snippet, locator):
 
 # --- 上传与轮询 -----------------------------------------------------------------
 
-def upload(path_obj, task_id):
-    data = path_obj.read_bytes()
+def _upload_bytes(data, task_id, rel_path):
+    """按字节内容走完整分片上传三步流（init → chunk* → complete）。"""
     status, init = api('/api/build-upload-init',
-                       {'taskId': task_id, 'relPath': path_obj.name, 'size': len(data)})
+                       {'taskId': task_id, 'relPath': rel_path, 'size': len(data)})
     if status != 200:
         return status, init
     chunk = int(init['chunkBytes'])
@@ -304,6 +312,10 @@ def upload(path_obj, task_id):
         index += 1
     return api('/api/build-upload-complete',
                {'uploadId': init['uploadId'], 'finalHash': hashlib.sha256(data).hexdigest()})
+
+
+def upload(path_obj, task_id):
+    return _upload_bytes(path_obj.read_bytes(), task_id, path_obj.name)
 
 
 def poll_run(task_id, run_id, timeout=150.0):
@@ -328,6 +340,453 @@ def poll_assistant_message(task_id, timeout=60.0):
         if time.time() >= deadline:
             return messages
         time.sleep(0.3)
+
+
+# --- 回归流共用搭建（D03/D04/D09/D11/D14/D17 等） -----------------------------------
+
+def _provider_id():
+    _, caps = api('/api/build-capabilities')
+    return (caps.get('provider') or {}).get('id')
+
+
+def _main_user_id():
+    rows = db_rows("SELECT user_id FROM wb_users WHERE username_key = 'build_e2e_main'")
+    return rows[0]['user_id'] if rows else ''
+
+
+def setup_generated_task(task_name):
+    """建任务→传 3 份合成物料→扫描→确认范围→生成，返回 (task_id, batch_id, run)。"""
+    provider_id = require(_provider_id(), '未找到默认 LLM 提供方')
+    status, created = api('/api/build-task-create', {'name': task_name})
+    task_id = require((created.get('task') or {}).get('id'),
+                      '任务创建失败：%s' % _short(created))
+    for name in ('schema.sql', 'Device.java', 'req.md'):
+        status, body = upload(FIXTURE_DIR / name, task_id)
+        if status != 200:
+            raise Abort('搭建「%s」上传 %s 失败：%s' % (task_name, name, _short(body)))
+    status, scan = api('/api/build-scan', {'taskId': task_id})
+    run = poll_run(task_id, require(scan.get('runId'), '扫描未返回 runId'))
+    if run.get('state') != 'succeeded':
+        raise Abort('搭建「%s」扫描失败：%s' % (task_name, run.get('error')))
+    _, detail = api('/api/build-task', query='?taskId=' + task_id)
+    scope_rev = (detail.get('scope') or {}).get('revision') or 0
+    scope = {'goal': '设备运行管理', 'include': '设备台账、监测数据', 'exclude': '收益结算模块',
+             'relations': '', 'coverage': '', 'openQuestions': []}
+    status, saved = api('/api/build-scope-save',
+                        {'taskId': task_id, 'revision': scope_rev, 'scope': scope})
+    revision = require((saved.get('scope') or {}).get('revision'),
+                       '范围保存失败：%s' % _short(saved))
+    status, confirmed = api('/api/build-scope-confirm',
+                            {'taskId': task_id, 'revision': revision, 'providerId': provider_id})
+    batch_id = require(confirmed.get('batchId'),
+                       '范围确认失败：%s' % _short(confirmed))
+    run = poll_run(task_id, require(confirmed.get('runId'), '确认未返回 runId'))
+    if run.get('state') != 'succeeded':
+        raise Abort('搭建「%s」生成失败：%s' % (task_name, run.get('error')))
+    return task_id, batch_id, run
+
+
+def candidates_by_name(task_id, batch_id):
+    _, body = api('/api/build-candidates', query='?taskId=%s&batch=%s' % (task_id, batch_id))
+    return {c['name']: c for c in (body.get('items') or [])}, body
+
+
+# --- 回归流 2：评审语义（D17/D03/D04/D11 + usage） ----------------------------------
+
+def flow_review_semantics():
+    task_id, batch_id, run = setup_generated_task('评审语义回归')
+    usage = run.get('usage') or {}
+    check(int(usage.get('calls') or 0) >= 1 and int(usage.get('promptBytes') or 0) > 0,
+          '生成运行的 usage 由 LLM 调用累计（不再恒为空）', actual=usage)
+    items, _body = candidates_by_name(task_id, batch_id)
+    device = require(items.get('设备'), '候选缺少「设备」')
+    capacity = require(items.get('额定容量'), '候选缺少「额定容量」')
+    bogus = require(items.get('捏造字段'), '候选缺少「捏造字段」')
+
+    # D17：弱证据候选无说明转纳入 → 422 INVALID_STATE + REASON_REQUIRED（不再是 400）
+    status, blocked = api('/api/build-candidate-decide',
+                          {'candidateId': bogus['id'], 'decision': 'include',
+                           'revision': bogus['revision']})
+    check(status == 422 and blocked.get('code') == 'INVALID_STATE'
+          and (blocked.get('issues') or [{}])[0].get('code') == 'REASON_REQUIRED',
+          '弱证据无说明转纳入 → 422 INVALID_STATE/REASON_REQUIRED（D17）',
+          actual=(status, blocked))
+    status, okinc = api('/api/build-candidate-decide',
+                        {'candidateId': bogus['id'], 'decision': 'include',
+                         'reason': '已人工核对来源，确认保留', 'revision': bogus['revision']})
+    status2, back = api('/api/build-candidate-decide',
+                        {'candidateId': bogus['id'], 'decision': 'defer',
+                         'revision': (okinc.get('candidate') or {}).get('revision')})
+    bogus_revision = (back.get('candidate') or {}).get('revision', bogus['revision'])
+    check(status == 200 and status2 == 200,
+          '补理由后纳入成功；再回退为暂缓（D17）', actual=(status, status2, back))
+
+    # D17：合并的语义阻断都走 422 INVALID_STATE + 细分码
+    status, mism = api('/api/build-candidates-merge',
+                       {'taskId': task_id, 'primaryId': device['id'],
+                        'mergeIds': [capacity['id']]})
+    check(status == 422 and mism.get('code') == 'INVALID_STATE'
+          and (mism.get('issues') or [{}])[0].get('code') == 'MERGE_TYPE_MISMATCH',
+          '跨类型合并 → 422 INVALID_STATE/MERGE_TYPE_MISMATCH（D17）', actual=(status, mism))
+    status, dmism = api('/api/build-candidates-merge',
+                        {'taskId': task_id, 'primaryId': capacity['id'],
+                         'mergeIds': [bogus['id']]})
+    check(status == 422 and (dmism.get('issues') or [{}])[0].get('code')
+          == 'MERGE_DATA_TYPE_MISMATCH',
+          'dataType 不一致合并 → 422 MERGE_DATA_TYPE_MISMATCH（D17）', actual=(status, dmism))
+
+    # D03：修正 dataType 后合并；被合并候选从列表/计数/预检选定集合全部消失
+    status, upd = api('/api/build-candidate-update',
+                      {'candidateId': bogus['id'], 'fields': {'dataType': 'number'},
+                       'revision': bogus_revision})
+    bogus_revision = (upd.get('candidate') or {}).get('revision', bogus_revision)
+    check(status == 200 and upd.get('candidate'), '把 dataType 修正为 number', actual=(status, upd))
+    status, merged = api('/api/build-candidates-merge',
+                         {'taskId': task_id, 'primaryId': capacity['id'],
+                          'mergeIds': [bogus['id']], 'confirmed': True,
+                          'revision': capacity['revision']})
+    check(status == 200 and bool(merged.get('opId'))
+          and (merged.get('candidate') or {}).get('id') == capacity['id'],
+          '执行合并成功（保留项=额定容量）', actual=(status, _short(merged)))
+    items2, body2 = candidates_by_name(task_id, batch_id)
+    counts = body2.get('counts') or {}
+    decision_sum = sum((counts.get('byDecision') or {}).values())
+    check(bogus['id'] not in {c['id'] for c in (body2.get('items') or [])}
+          and body2.get('total') == 2 and decision_sum == 2
+          and bogus['name'] not in items2,
+          '被合并候选不在列表/total/counts（D03）',
+          actual=(body2.get('total'), decision_sum, list(items2)))
+    capacity_revision = (merged.get('candidate') or {}).get('revision', capacity['revision'])
+    status, pre = api('/api/build-deliver-precheck', {'taskId': task_id})
+    selected = set(pre.get('selectedIds') or [])
+    check(status == 200 and pre.get('ok') is True and bogus['id'] not in selected
+          and capacity['id'] in selected,
+          '预检选定集合排除被合并候选（D03）', actual=(status, pre.get('ok'), selected))
+
+    # D04：人工排除的候选在再生成后不得自动复活（强制 defer + origin.revived）
+    status, exc = api('/api/build-candidate-decide',
+                      {'candidateId': capacity['id'], 'decision': 'exclude',
+                       'reason': '本期不含该属性', 'revision': capacity_revision})
+    check(status == 200 and (exc.get('candidate') or {}).get('decision') == 'exclude',
+          '旧批次人工排除候选（为 D04 铺垫）', actual=(status, exc))
+    # D11 铺垫：b1 里人工改名设备；再生成后 keepManual 应把新批次的名称改回人工值
+    status, renamed = api('/api/build-candidate-update',
+                          {'candidateId': device['id'], 'fields': {'name': '储能设备'},
+                           'revision': device['revision']})
+    check(status == 200 and (renamed.get('candidate') or {}).get('name') == '储能设备',
+          'b1 人工改名「储能设备」（D11 铺垫）', actual=(status, _short(renamed)))
+    status, regen = api('/api/build-regenerate', {'taskId': task_id})
+    b2 = require(regen.get('batchId'), '再生成未返回 batchId：%s' % _short(regen))
+    run2 = poll_run(task_id, require(regen.get('runId'), '再生成未返回 runId'))
+    check(run2.get('state') == 'succeeded', '再生成运行 succeeded',
+          actual=run2.get('error') or run2.get('state'))
+    items_b2, _ = candidates_by_name(task_id, b2)
+    cap2 = require(items_b2.get('额定容量'), '新批次缺少「额定容量」')
+    dev2 = require(items_b2.get('设备'), '新批次缺少「设备」')
+    check(cap2['decision'] == 'defer' and (cap2.get('origin') or {}).get('revived') is True,
+          '新批次同键候选被强制 defer 且标记 revived（D04）',
+          actual=(cap2['decision'], cap2.get('origin')))
+    status, diff = api('/api/build-diff', query='?taskId=%s&batch=%s' % (task_id, b2))
+    buckets = diff.get('buckets') or {}
+    changed_ids = {item.get('id'): item for item in (buckets.get('changed') or [])}
+    check(status == 200 and cap2['id'] in (buckets.get('excludedProtected') or []),
+          '差异报告 excludedProtected 命中被排除候选（D04/D11）',
+          actual=(status, buckets.get('excludedProtected')))
+    check('name' in (changed_ids.get(dev2['id']) or {}).get('fieldsChanged', []),
+          'b2 设备与 b1 人工改名构成 changed.name（D11）', actual=changed_ids.get(dev2['id']))
+    status, resolved = api('/api/build-diff-resolve',
+                           {'taskId': task_id, 'candidateId': dev2['id'],
+                            'choice': 'keepManual', 'revision': dev2['revision']})
+    cand = resolved.get('candidate') or {}
+    items_after, _ = candidates_by_name(task_id, b2)
+    cap_after = items_after.get('额定容量') or {}
+    check(status == 200 and cand.get('name') == '储能设备'
+          and cand.get('definition') == '储能设备台账'
+          and cap_after.get('name') == '额定容量'
+          and cap_after.get('decision') == 'defer',
+          'keepManual 取回人工名且不张冠李戴（其他候选原样）（D11）',
+          actual=(status, cand.get('name'), cand.get('definition'),
+                  cap_after.get('name'), cap_after.get('decision')))
+    return None
+
+
+# --- 回归流 3：脏候选确定性阻断（D09/D14/D02） -------------------------------------
+
+def flow_bad_candidates():
+    task_id, batch_id, _run = setup_generated_task('脏数据阻断回归')
+    uid = require(_main_user_id(), '找不到测试账号 user_id')
+    items, _body = candidates_by_name(task_id, batch_id)
+    bogus = require(items.get('捏造字段'), '候选缺少「捏造字段」')
+    status, inc = api('/api/build-candidate-decide',
+                      {'candidateId': bogus['id'], 'decision': 'include',
+                       'reason': '种子回归：纳入以验证结构阻断覆盖全部选定候选',
+                       'revision': bogus['revision']})
+    check(status == 200, '弱证据候选补理由纳入（脏数据回归铺垫）', actual=(status, inc))
+
+    def mutate(conn):
+        conn.execute(sto.text("UPDATE wb_build_candidates SET name = '', definition = '' "
+                              "WHERE task_id = :t AND batch_id = :b AND ckey = 'obj-device'"),
+                     {'t': task_id, 'b': batch_id})
+        conn.execute(sto.text('UPDATE wb_build_candidates SET fields_json = :f '
+                              'WHERE task_id = :t AND batch_id = :b AND ckey = :k'),
+                     {'f': sto.json_dumps({'dataType': 'bogus-type'}),
+                      't': task_id, 'b': batch_id, 'k': 'prop-capacity'})
+        conn.execute(sto.text('UPDATE wb_build_candidates SET fields_json = :f '
+                              'WHERE task_id = :t AND batch_id = :b AND ckey = :k'),
+                     {'f': sto.json_dumps({'dataType': 'timeSeries'}),
+                      't': task_id, 'b': batch_id, 'k': 'prop-bogus'})
+        ob_store.create_candidate(conn, task_id, uid, batch_id, {
+            'type': 'property', 'key': 'prop-ts-invalid', 'name': '温度序列',
+            'definition': '每分钟温度观测', 'fields': {'dataType': 'timeSeries', 'valueType': 'text'},
+            'ownerKey': 'obj-device', 'evidence': {}, 'evidenceStatus': 'supported',
+            'decision': 'include', 'alignedKey': 'seed:property:温度序列'})
+        ob_store.create_candidate(conn, task_id, uid, batch_id, {
+            'type': 'rule', 'key': 'rule-power-limit', 'name': '功率约束',
+            'definition': '储能设备功率上限', 'fields': {'content': 'p <= 额定容量 × 2'},
+            'ownerKey': 'obj-device', 'evidence': {}, 'evidenceStatus': 'supported',
+            'decision': 'include', 'alignedKey': 'seed:rule:功率约束'})
+
+    with sto.write_tx() as tx:
+        tx.run(mutate)
+    expected = {'NAME_REQUIRED', 'DEFINITION_REQUIRED', 'DATA_TYPE_INVALID',
+                'OBSERVATION_VALUE_TYPE_MISSING', 'OBSERVATION_VALUE_TYPE_INVALID'}
+    status, pre = api('/api/build-deliver-precheck', {'taskId': task_id})
+    codes = {issue.get('code') for issue in (pre.get('issues') or [])}
+    check(status == 200 and pre.get('ok') is False and expected <= codes,
+          '预检确定性列出全部结构阻断（含旧枚举值 text 的 INVALID）（D09/D02）',
+          actual=(status, pre.get('ok'), sorted(codes)))
+    status, delivered = api('/api/build-deliver', {'taskId': task_id, 'name': '应被阻断',
+                                                   'requestId': 'req-bad-1'})
+    dv_codes = {issue.get('code') for issue in (delivered.get('issues') or [])}
+    check(status == 422 and delivered.get('code') == 'INVALID_STATE' and expected <= dv_codes,
+          '交付同口径拒绝（不再出现预检通过/交付 400 的分裂）（D09/D17）',
+          actual=(status, delivered.get('code'), sorted(dv_codes)))
+    items, _body = candidates_by_name(task_id, batch_id)
+    rule = require(items.get('功率约束'), '种子规则未出现在列表')
+    device = next((c for c in (_body.get('items') or []) if c.get('key') == 'obj-device'), None)
+    require(device, '种子改造后找不到设备')
+    status, exc = api('/api/build-candidate-decide',
+                      {'candidateId': device['id'], 'decision': 'exclude',
+                       'reason': '宿主排除', 'revision': device['revision']})
+    check(status == 200, '排除宿主对象', actual=(status, exc))
+    status, pre2 = api('/api/build-deliver-precheck', {'taskId': task_id})
+    deps = [issue for issue in (pre2.get('issues') or [])
+            if issue.get('code') == 'DEPENDENCY_NOT_INCLUDED']
+    check(any(issue.get('candidateId') == rule['id'] for issue in deps),
+          '规则经宿主对象（ownerKey）进入交付依赖阻断（D14）',
+          actual=[(i.get('candidateId'), i.get('message')) for i in deps])
+
+
+# --- 回归流 4：时间序列端到端交付（D02） -------------------------------------------
+
+def flow_timeseries_delivery():
+    task_id, batch_id, _run = setup_generated_task('时序交付回归')
+    items, _body = candidates_by_name(task_id, batch_id)
+    capacity = require(items.get('额定容量'), '候选缺少「额定容量」')
+    status, to_ts = api('/api/build-candidate-update',
+                        {'candidateId': capacity['id'],
+                         'fields': {'dataType': 'timeSeries', 'valueType': 'double'},
+                         'revision': capacity['revision']})
+    check(status == 200
+          and (to_ts.get('candidate') or {}).get('fields', {}).get('valueType') == 'double',
+          '属性改为 timeSeries/double 保存成功', actual=(status, _short(to_ts)))
+    revision = (to_ts.get('candidate') or {}).get('revision', capacity['revision'])
+    status, dirty = api('/api/build-candidate-update',
+                        {'candidateId': capacity['id'], 'fields': {'valueType': 'text'},
+                         'revision': revision})
+    revision = (dirty.get('candidate') or {}).get('revision', revision)
+    status, pre = api('/api/build-deliver-precheck', {'taskId': task_id})
+    codes = {issue.get('code') for issue in (pre.get('issues') or [])}
+    check(status == 200 and pre.get('ok') is False
+          and 'OBSERVATION_VALUE_TYPE_INVALID' in codes,
+          '旧枚举值 text 不再合法：预检 ok=false 且确定性报 INVALID（D02）',
+          actual=(status, pre.get('ok'), sorted(codes)))
+    status, fixed = api('/api/build-candidate-update',
+                        {'candidateId': capacity['id'], 'fields': {'valueType': 'double'},
+                         'revision': revision})
+    status, pre2 = api('/api/build-deliver-precheck', {'taskId': task_id})
+    token = require(pre2.get('checkToken'), '预检未返回 checkToken：%s' % _short(pre2))
+    check(status == 200 and pre2.get('ok') is True and not pre2.get('issues'),
+          '修正后预检通过（D02 预检/交付同枚举）', actual=(status, pre2.get('ok'), pre2.get('issues')))
+    status, delivered = api('/api/build-deliver', {'taskId': task_id, 'name': '储能时序本体回归',
+                                                   'checkToken': token, 'requestId': 'req-ts-1'})
+    ontology_id = require(delivered.get('ontologyId'), '时序交付失败：%s' % _short(delivered))
+    check(status == 200, 'timeSeries 属性端到端交付 200', actual=(status, _short(delivered)))
+    status, state = api('/api/state', query='?ontology=' + ontology_id)
+    raw = json.dumps(state, ensure_ascii=False)
+    properties = ((state.get('state') or {}).get('ontology') or {}).get('properties') or []
+    ts_nodes = [node for node in properties
+                if '容量' in str(node.get('displayName') or node.get('name') or '')]
+    check(status == 200 and 'xsd:xsd:' not in raw and ts_nodes
+          and (((ts_nodes[0].get('dataType') or {}).get('valueType')) == 'double'),
+          '交付草稿时序属性 valueType=double 且全文无 xsd:xsd: 双前缀（D02）',
+          actual=(status, 'xsd:xsd:' in raw, ts_nodes[:1]))
+
+
+# --- 白盒与小单元：D13 fencing / D02 / D08 / D19 / D12 ------------------------------
+
+def flow_lease_fencing(task_id):
+    """D13：lease 条件写回与重试轮换（存储层白盒）+ runner 阶段边界失配。"""
+    uid = require(_main_user_id(), '找不到测试账号 user_id')
+    outcome = {}
+
+    def body(conn):
+        run_id, lease = ob_store.create_run(conn, task_id, uid, 'generate', {}, '')
+        outcome['run_id'], outcome['lease'] = run_id, lease
+        outcome['wrong_hit'] = ob_store.update_run(conn, run_id, uid, state='running',
+                                                   stage='x', lease='not-my-lease')
+        outcome['state_after_wrong'] = (ob_store.run_state(conn, run_id, uid) or {}).get('state')
+        outcome['right_hit'] = ob_store.update_run(conn, run_id, uid, state='running',
+                                                   stage='y', lease=lease)
+        ob_store.update_run(conn, run_id, uid, attempt=2)  # 重试接管：轮换 lease
+        outcome['new_lease'] = (ob_store.run_state(conn, run_id, uid) or {}).get('lease_token')
+        outcome['stale_hit'] = ob_store.update_run(conn, run_id, uid, state='succeeded',
+                                                   error='迟到的旧结果', lease=lease)
+        outcome['final'] = ob_store.run_state(conn, run_id, uid)
+
+    with sto.write_tx() as tx:
+        tx.run(body)
+    run_id = outcome.get('run_id') or ''
+    check(outcome.get('wrong_hit') is False and outcome.get('state_after_wrong') == 'queued',
+          '携带错误 lease 的写回被拒绝且未改状态（D13）', actual=dict(outcome, run_id=None))
+    check(bool(outcome.get('right_hit')), '携带正确 lease 的写回命中（D13）')
+    check(outcome.get('new_lease') and outcome.get('new_lease') != outcome.get('lease'),
+          'attempt 推进（重试接管）轮换 lease_token（D13）',
+          actual=(outcome.get('lease'), outcome.get('new_lease')))
+    check(outcome.get('stale_hit') is False
+          and (outcome.get('final') or {}).get('state') != 'succeeded',
+          '轮换后旧 worker 的迟到终态写回被丢弃（D13：取消+重试不双写）',
+          actual=(outcome.get('stale_hit'), (outcome.get('final') or {}).get('state')))
+    raised = False
+    runner._leases[(str(uid), str(run_id))] = 'stale-worker-token'
+    try:
+        with sto.read_connection() as conn:
+            try:
+                runner.check_cancelled(conn, run_id, uid)
+            except runner.Cancelled:
+                raised = True
+    finally:
+        runner._leases.pop((str(uid), str(run_id)), None)
+    check(raised, 'runner 阶段边界：lease 失配立即 Cancelled（D13）')
+
+
+def unit_domain_rules():
+    # D02：协议枚举与模型格式单一来源
+    check(set(protocol.VALUE_TYPES) == set(model_format.SERIES_VALUE_TYPES),
+          'protocol.VALUE_TYPES 与 model_format.SERIES_VALUE_TYPES 完全一致（D02）',
+          actual=(protocol.VALUE_TYPES, sorted(model_format.SERIES_VALUE_TYPES)))
+
+    # D02：适配器单前缀 + 脏值拒绝
+    obj = {'id': 'c1', 'key': 'o1', 'type': 'object', 'name': '设备', 'definition': '台账',
+           'fields': {}, 'ownerKey': '', 'evidence': {'_record': ['f1']},
+           'evidenceStatus': 'supported', 'conflicts': []}
+    prop = {'id': 'c2', 'key': 'p1', 'type': 'property', 'name': '功率', 'definition': '有功功率',
+            'fields': {'dataType': 'timeSeries', 'valueType': 'double'}, 'ownerKey': 'o1',
+            'evidence': {}, 'evidenceStatus': 'supported', 'conflicts': []}
+    ontology, _id_map, _warnings = adapter_mod.assemble([obj, prop])
+    graph_text = json.dumps(ontology, ensure_ascii=False)
+    check('"xsd:double"' in graph_text and 'xsd:xsd:' not in graph_text,
+          'timeSeries range 为单一前缀 xsd:double（D02）', actual=graph_text[:200])
+    missing = dict(prop, id='c3', key='p2', fields={'dataType': 'timeSeries'})
+    raised = False
+    try:
+        adapter_mod.assemble([obj, missing])
+    except adapter_mod.AdapterError:
+        raised = True
+    check(raised, '缺 valueType 的时序属性装配即报错（不再静默降级为文本）（D02）')
+    bad = dict(prop, id='c4', key='p3', fields={'dataType': 'timeSeries', 'valueType': 'number'})
+    raised = False
+    try:
+        adapter_mod.assemble([obj, bad])
+    except adapter_mod.AdapterError:
+        raised = True
+    check(raised, 'valueType 不在枚举内（旧值 number/text）抛 AdapterError（D02）')
+
+    # D08：宿主参与对齐键（键与 ID 引用都解析；跨批次用规范名）
+    def _obj(ckey, cid, name):
+        return {'id': cid, 'key': ckey, 'type': 'object', 'name': name, 'definition': 'd',
+                'fields': {}, 'ownerKey': '', 'evidence': {'_record': ['f']},
+                'evidenceStatus': 'supported', 'conflicts': []}
+
+    def _prop(ckey, name, owner, data_type='number'):
+        return {'id': ckey, 'key': ckey, 'type': 'property', 'name': name, 'definition': 'd',
+                'fields': {'dataType': data_type}, 'ownerKey': owner,
+                'evidence': {'definition': ['f']}, 'evidenceStatus': 'supported', 'conflicts': []}
+
+    different = alignment.align([_obj('oa', 'i1', '设备'), _obj('ob', 'i2', '储能簇'),
+                                 _prop('p1', '容量', 'oa'), _prop('p2', '容量', 'ob')])
+    check(len(different['candidates']) == 4,
+          '同名同 dataType 不同宿主：不自动合并（D08）',
+          actual=len(different['candidates']), expected=4)
+    mixed = alignment.align([_obj('oa', 'i1', '设备'), _obj('ob', 'i2', '储能簇'),
+                             _prop('p1', '容量', 'oa'), _prop('p2', '容量', 'i1')])
+    merged_prop = [c for c in mixed['candidates'] if c['type'] == 'property']
+    check(len(mixed['candidates']) == 3 and len(merged_prop) == 1,
+          'ownerKey 用键或对象 ID 都解析到同一宿主并正常合并（D08）',
+          actual=(len(mixed['candidates']), len(merged_prop)))
+    check(merged_prop and merged_prop[0].get('alignedKey') == 'property:容量#number@设备',
+          'alignedKey 携带规范化宿主名（跨批次稳定）（D08）',
+          actual=merged_prop[0].get('alignedKey') if merged_prop else None)
+
+    # D19：范围冲突判定收紧为全等 + 逐对豁免 + 长词不丢
+    def _scope(**over):
+        base = {'goal': 'g', 'include': '', 'exclude': '', 'coverage': '', 'openQuestions': []}
+        base.update(over)
+        return base
+
+    codes_of = lambda issues: [i.get('code') for i in issues]  # noqa: E731
+    check(not codes_of(tasks_domain.scope_has_blocking_issues(
+        _scope(include='储能', exclude='储能簇'))),
+        '「储能」与「储能簇」不再前缀子串误报（D19）')
+    long_term = '电池簇电压均衡控制策略说明'
+    check('SCOPE_CONFLICT' in codes_of(tasks_domain.scope_has_blocking_issues(
+        _scope(include=long_term, exclude=long_term))),
+        '超过 12 字的长词冲突仍被检出（D19）', actual=long_term)
+    check('SCOPE_CONFLICT' in codes_of(tasks_domain.scope_has_blocking_issues(
+        _scope(include='PCS、BMS', exclude='PCS', coverage='本期聚焦电芯'))),
+        '无关的覆盖说明不再全局豁免冲突（D19）')
+    check(not codes_of(tasks_domain.scope_has_blocking_issues(
+        _scope(include='PCS、BMS', exclude='PCS', coverage='PCS 先按排除处理，口径以本文说明为准'))),
+        '覆盖说明点名该冲突词后豁免（D19）')
+
+    # D12：zip_bomb_guard 压缩比 + 展开期实际字节预算
+    bomb_path = TMP / 'zipbomb-unit.zip'
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('zeros.bin', bytes(5 * 1024 * 1024))
+    bomb_path.write_bytes(buffer.getvalue())
+    ok, reason = materials_domain.zip_bomb_guard(bomb_path)
+    check(ok is False and '解压炸弹' in reason,
+          '5MiB 声明 + 极小压缩量被压缩比规则拒绝（D12）', actual=(ok, reason))
+    normal_path = TMP / 'zipnormal-unit.zip'
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('a.md', '# 设备说明\n' * 50)
+    normal_path.write_bytes(buffer.getvalue())
+    ok, reason = materials_domain.zip_bomb_guard(normal_path)
+    check(ok is True, '普通文本压缩包通过防爆检查（D12 无误伤）', actual=(ok, reason))
+    saved_limit = protocol.ZIP_EXPANDED_BYTES
+    real_path = TMP / 'zipreal-unit.zip'
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('big.txt', b'x' * 2000)
+    real_path.write_bytes(buffer.getvalue())
+    raised_limit = False
+    budget = {'bytes': 0, 'entries': 0, 'real': 0}
+    try:
+        protocol.ZIP_EXPANDED_BYTES = 1000  # 预算压到 1KB：2000 字节的合法条目也必须中止
+        with zipfile.ZipFile(str(real_path)) as archive:
+            info = archive.infolist()[0]
+            try:
+                materials_domain._write_member(archive, info, TMP / 'member-part.out',
+                                               int(info.file_size), budget)
+            except materials_domain.LimitExceeded:
+                raised_limit = True
+    finally:
+        protocol.ZIP_EXPANDED_BYTES = saved_limit
+    check(raised_limit and budget['real'] > 1000,
+          '实际解压字节超过共享预算立即中止（D12 实字节计数）',
+          actual=(raised_limit, budget))
 
 
 # --- 主流程 ---------------------------------------------------------------------
@@ -527,15 +986,24 @@ def main():
     check(status == 200 and replay.get('ontologyId') == ontology_id
           and replay.get('replayed') is True,
           '同 requestId 重放返回同一 ontologyId 且 replayed=true', actual=(status, replay))
+    # D10：同 requestId 换 payload（换名）→ 幂等指纹失配 → 409 REVISION_CONFLICT
+    status, mutated = api('/api/build-deliver', {'taskId': task_id, 'name': '同请求号换内容',
+                                                 'checkToken': token, 'requestId': request_id})
+    check(status == 409 and mutated.get('code') == 'REVISION_CONFLICT',
+          '同 requestId 不同 payload → 409 REVISION_CONFLICT（D10）',
+          actual=(status, mutated.get('code'), mutated.get('message')))
+    # D10：已交付任务 + 不同 requestId → 409 ALREADY_DELIVERED（不再是 422 清单）
     status, other = api('/api/build-deliver', {'taskId': task_id, 'name': '端到端设备本体二次',
                                                'checkToken': token, 'requestId': 'req-build-e2e-2'})
-    other_codes = [issue.get('code') for issue in (other.get('issues') or [])]
-    check(status in (409, 422) and 'ALREADY_DELIVERED' in other_codes,
-          '不同 requestId 再次交付被拒（409/422）', actual=(status, other_codes))
+    check(status == 409 and other.get('code') == 'ALREADY_DELIVERED'
+          and not (other.get('issues') or []),
+          '不同 requestId 再次交付 → 409 ALREADY_DELIVERED（D10）', actual=(status, other))
     status, precheck2 = api('/api/build-deliver-precheck', {'taskId': task_id})
     codes2 = [issue.get('code') for issue in (precheck2.get('issues') or [])]
-    check(status in (409, 422) and 'ALREADY_DELIVERED' in codes2,
-          '交付后预检被拒（一个任务只能交付一次）', actual=(status, codes2))
+    check(status == 422 and precheck2.get('code') == 'INVALID_STATE'
+          and 'ALREADY_DELIVERED' in codes2,
+          '交付后预检 422 INVALID_STATE + issues 含 ALREADY_DELIVERED（D10/D17 口径）',
+          actual=(status, precheck2.get('code'), codes2))
     _, listing = api('/api/build-tasks', query='?limit=5')
     task = next((t for t in (listing.get('items') or []) if t.get('id') == task_id), {})
     check(task.get('status') == 'delivered',
@@ -574,17 +1042,17 @@ def main():
 
     # 11) 上传安全边界
     before = len(db_rows('SELECT 1 FROM wb_build_materials WHERE task_id = ?', (task_id,)))
-    status, _ = api('/api/build-upload-init',
-                    {'taskId': task_id, 'relPath': '../evil.txt', 'size': 10})
-    check(status in (400, 404)
+    status, evil = api('/api/build-upload-init',
+                       {'taskId': task_id, 'relPath': '../evil.txt', 'size': 10})
+    check(status == 400 and evil.get('code') == 'INVALID_ARGUMENT'
           and not db_rows("SELECT 1 FROM wb_build_uploads WHERE rel_path LIKE '%evil%'"),
-          '上传路径穿越被拒且未登记上传会话', actual=(status,))
-    status, _ = api('/api/build-upload-init',
-                    {'taskId': task_id, 'relPath': 'big.bin',
-                     'size': protocol.FILE_BYTES + 1024})
-    check(status in (400, 413, 422)
+          '上传路径穿越被拒（400 INVALID_ARGUMENT）且未登记上传会话', actual=(status, evil))
+    status, big = api('/api/build-upload-init',
+                      {'taskId': task_id, 'relPath': 'big.bin',
+                       'size': protocol.FILE_BYTES + 1024})
+    check(status == 422 and big.get('code') == 'LIMIT_EXCEEDED'
           and not db_rows("SELECT 1 FROM wb_build_uploads WHERE rel_path = 'big.bin'"),
-          '超过单文件限额的上传被拒（不落库）', actual=status, expected='400/413/422')
+          '超过单文件限额的上传被拒（422 LIMIT_EXCEEDED，不落库）', actual=(status, big))
 
     escape_name = 'wiz-escape-' + os.urandom(4).hex() + '.txt'
     buffer = io.BytesIO()
@@ -606,13 +1074,96 @@ def main():
     after = len(db_rows('SELECT 1 FROM wb_build_materials WHERE task_id = ?', (task_id,)))
     leaked = list(TMP.rglob(escape_name)) + ([TMP.parent / escape_name]
                                              if (TMP.parent / escape_name).exists() else [])
-    check(zip_init_status == 200 and status in (400, 422) and after == before and not leaked
+    check(zip_init_status == 200 and status == 422 and zip_result.get('code') == 'ZIP_INVALID'
+          and after == before and not leaked
           and not db_rows("SELECT 1 FROM wb_build_materials WHERE rel_path LIKE '%readme%'"),
-          'ZIP 目录穿越整包被拒：无材料登记、无文件逃逸',
+          'ZIP 目录穿越整包被拒（422 ZIP_INVALID）：无材料登记、无文件逃逸',
           actual=(zip_init_status, status, before, after, [str(p) for p in leaked],
                   _short(zip_result)))
+
+    # 11b) 真实分片上传（D01）：>384 字节的分片必须能通过，多分片续传/幂等/冲突码必须正确
+    status, bound_task = api('/api/build-task-create', {'name': '分片上限回归'})
+    bound_id = require((bound_task.get('task') or {}).get('id'),
+                       '分片回归任务创建失败：%s' % _short(bound_task))
+    # 5KB 单分片（此前必 400「参数 dataBase64 过长」）
+    small = bytes((1000 + i * 7) % 251 for i in range(5 * 1024))
+    status, small_result = _upload_bytes(small, bound_id, 'notes/blocks.bin.txt')
+    check(status == 200 and (small_result.get('materials') or [{}])[0].get('size') == len(small),
+          '>384 字节分片上传成功并登记材料（D01）', actual=(status, _short(small_result)))
+    # 多分片（>chunkBytes）：续传幂等、跳号 400、乱序内容 409、摘要不符 422、完整后登记
+    total_bytes = protocol.CHUNK_BYTES + 88_000
+    blob = bytes((3 + i * 31) % 256 for i in range(4096)) * (total_bytes // 4096 + 1)
+    blob = blob[:total_bytes]
+    status, init = api('/api/build-upload-init',
+                       {'taskId': bound_id, 'relPath': 'notes/big.bin', 'size': len(blob)})
+    upload_id = require(init.get('uploadId'), '多分片上传 init 失败：%s' % _short(init))
+    check(status == 200 and init.get('chunkBytes') == protocol.CHUNK_BYTES
+          and init.get('maxChunks') == 2,
+          '多分片 init 返回 chunkBytes/maxChunks', actual=(status, init))
+    first = blob[:protocol.CHUNK_BYTES]
+    second = blob[protocol.CHUNK_BYTES:]
+    first_hash = hashlib.sha256(first).hexdigest()
+    status, one = api('/api/build-upload-chunk',
+                      {'uploadId': upload_id, 'index': 0, 'hash': first_hash,
+                       'dataBase64': base64.b64encode(first).decode()})
+    check(status == 200 and one.get('received') == 1 and one.get('nextIndex') == 1,
+          '512KB 分片（base64 %d 字符）上传成功' % len(base64.b64encode(first).decode()),
+          actual=(status, one))
+    status, again = api('/api/build-upload-chunk',
+                        {'uploadId': upload_id, 'index': 0, 'hash': first_hash,
+                         'dataBase64': base64.b64encode(first).decode()})
+    check(status == 200 and again.get('received') == 1,
+          '同 index 同 hash 幂等重放', actual=(status, again))
+    status, conflict = api('/api/build-upload-chunk',
+                           {'uploadId': upload_id, 'index': 0,
+                            'hash': hashlib.sha256(second).hexdigest(),
+                            'dataBase64': base64.b64encode(second).decode()})
+    check(status == 409 and conflict.get('code') == 'UPLOAD_CONFLICT',
+          '同 index 不同内容 → 409 UPLOAD_CONFLICT（D07）', actual=(status, conflict))
+    status, skip = api('/api/build-upload-chunk',
+                       {'uploadId': upload_id, 'index': 5, 'hash': first_hash,
+                        'dataBase64': base64.b64encode(first).decode()})
+    check(status == 400 and skip.get('code') == 'INVALID_ARGUMENT',
+          '跳号分片 → 400', actual=(status, skip))
+    status, mismatch = api('/api/build-upload-chunk',
+                           {'uploadId': upload_id, 'index': 1, 'hash': '0' * 64,
+                            'dataBase64': base64.b64encode(second).decode()})
+    check(status == 422 and mismatch.get('code') == 'HASH_MISMATCH',
+          '分片摘要不符 → 422 HASH_MISMATCH（D07）', actual=(status, mismatch))
+    status, oversize = api('/api/build-upload-chunk',
+                           {'uploadId': upload_id, 'index': 1, 'hash': first_hash,
+                            'dataBase64': 'A' * (protocol.CHUNK_BASE64_CHARS + 8)})
+    check(status == 422 and oversize.get('code') == 'LIMIT_EXCEEDED',
+          'base64 超过 chunkBytes 上限 → 422 LIMIT_EXCEEDED（不是 400 参数过长）',
+          actual=(status, oversize))
+    status, two = api('/api/build-upload-chunk',
+                      {'uploadId': upload_id, 'index': 1,
+                       'hash': hashlib.sha256(second).hexdigest(),
+                       'dataBase64': base64.b64encode(second).decode()})
+    check(status == 200 and two.get('received') == 2, '尾分片上传成功', actual=(status, two))
+    status, early = api('/api/build-upload-complete',
+                        {'uploadId': upload_id, 'finalHash': 'f' * 64})
+    check(status == 422 and early.get('code') == 'HASH_MISMATCH',
+          '整体摘要不符 → 422 HASH_MISMATCH（D07）', actual=(status, early))
+    status, done = api('/api/build-upload-complete',
+                       {'uploadId': upload_id,
+                        'finalHash': hashlib.sha256(blob).hexdigest()})
+    materials = done.get('materials') or []
+    check(status == 200 and len(materials) == 1 and materials[0].get('size') == len(blob),
+          '多分片续传完成后按声明大小登记材料', actual=(status, _short(done)))
+    status, abort_other = http('/api/build-upload-abort', {'uploadId': upload_id},
+                              token=other_token)
+    check(status == 404 and abort_other.get('code') == 'NOT_FOUND',
+          '跨账号 abort 上传会话按不存在处理（404，D07）', actual=(status, abort_other))
     check('scope' in FakeLlm.calls and 'extract' in FakeLlm.calls,
           '全程只经本地假 LLM（范围澄清与候选抽取各至少一次）', actual=FakeLlm.calls)
+
+    # 12) 验收缺陷防回归流（D02/D03/D04/D08/D09/D11/D12/D13/D14/D17/D19 + usage）
+    unit_domain_rules()
+    flow_review_semantics()
+    flow_bad_candidates()
+    flow_timeseries_delivery()
+    flow_lease_fencing(task_id)
     return 0
 
 

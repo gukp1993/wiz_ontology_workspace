@@ -8,8 +8,6 @@
 不调用会自行提交的 workspaces.create；这里直接走 storage.ontology_build 的
 事务内建资产函数（create_ontology_asset）。
 """
-import hashlib
-
 from workbench import auth, storage
 from workbench.ontology_build import ontology_adapter as adapter
 from workbench.ontology_build import protocol
@@ -19,11 +17,25 @@ from workbench.storage import ontology_build as store
 
 
 class DeliveryBlocked(ValueError):
-    """交付被确定性校验阻断（HTTP 422，带 issues）。"""
+    """交付被确定性校验阻断（HTTP 422，带 issues；INVALID_STATE 口径见契约 08 §8）。"""
+
+    code = 'INVALID_STATE'
 
     def __init__(self, issues, message='交付前检查未通过'):
         self.issues = issues
         super().__init__(message)
+
+
+class AlreadyDelivered(ValueError):
+    """任务已交付后再次创建（D10，契约 08 §8）：HTTP 409 ALREADY_DELIVERED。
+
+    刻意**不携带 issues**——server 的映射规则是先 issues 后 status；这里要的是
+    状态码语义（409 冲突）而不是 422 校验清单。预检（precheck）仍返回
+    DeliveryBlocked（422 + issues），因为预检是检查端点，问题清单更有用。
+    """
+
+    code = 'ALREADY_DELIVERED'
+    status = 409
 
 
 class DuplicateOntologyName(ValueError):
@@ -50,9 +62,12 @@ def _blocking_issues(conn, task_id, owner_id, batch_id):
     ids = {c['id'] for c in items}
     for candidate in selected:
         for issue in review.validate_candidate(conn, task_id, candidate):
-            if issue['code'] in ('MISSING_NAME', 'MISSING_DEFINITION', 'INVALID_DATA_TYPE',
-                                 'LINK_ENDPOINT_UNRESOLVED', 'PROPERTY_OWNER_UNRESOLVED',
-                                 'LINK_CARDINALITY_MISSING', 'OBSERVATION_VALUE_TYPE_MISSING'):
+            # D09：过滤码必须与 review.validate_candidate 实际产出的码名一致，
+            # 否则结构性缺陷会被静默放过（预检 ok 但交付 400/422 的分裂即源于此）。
+            if issue['code'] in ('NAME_REQUIRED', 'DEFINITION_REQUIRED', 'DATA_TYPE_INVALID',
+                                 'CARDINALITY_INVALID', 'LINK_ENDPOINT_UNRESOLVED',
+                                 'PROPERTY_OWNER_UNRESOLVED', 'OBSERVATION_VALUE_TYPE_MISSING',
+                                 'OBSERVATION_VALUE_TYPE_INVALID'):
                 issues.append({'code': issue['code'], 'candidateId': candidate['id'],
                                'message': '%s：%s' % (candidate['name'], issue['message'])})
     # 端点引用必须指向本批候选（合并后可能只剩主候选，端点使用已合并键也算合法）
@@ -119,13 +134,25 @@ def precheck(conn, task_id, batch_id=None):
 
 
 def prepare_payload(conn, task_id, batch_id=None):
-    """构造编辑器态 ontology（JSON-LD @graph）与 ID 映射（事务内纯计算；不写库）。"""
+    """构造编辑器态 ontology（JSON-LD @graph）与 ID 映射（事务内纯计算；不写库）。
+
+    D10：交付在域内**重验基线**——stale 批次（材料/范围已变化）绝不允许组装交付，
+    路由层的 checkToken 校验只是第一道；这里即使绕过 token 检查也拦得住。
+    """
     owner_id = owner()
     batch = store.get_batch(conn, batch_id, owner_id) if batch_id else store.latest_batch(conn, task_id, owner_id)
     if batch is None:
         raise DeliveryBlocked([{'code': 'NO_BATCH', 'message': '尚未生成候选'}], '尚未生成候选')
+    if batch['stale']:
+        raise DeliveryBlocked([{'code': 'STALE_RESULT',
+                                'message': '材料或范围已变化，当前结果已过期；请重新确认范围并生成后再创建'}],
+                              '结果已过期')
     items, selected = _selected_candidates(conn, task_id, owner_id, batch['batch_id'])
-    ontology, id_map, warnings = adapter.assemble(selected)
+    try:
+        ontology, id_map, warnings = adapter.assemble(selected)
+    except adapter.AdapterError as exc:
+        # 装配异常同样按 422 阻断清单上报（D09：绝不以裸 ValueError 形态漏成 400）
+        raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': str(exc)}])
     issues = adapter.verify_structure(ontology)
     if issues:
         raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': text} for text in issues])
@@ -148,8 +175,12 @@ def _new_ontology_id():
 def deliver(conn, task_id, name, check_token, request_id):
     """在调用方事务内原子创建新本体草稿 + 回执。
 
-    幂等：同 requestId 且同 payload digest → 返回原结果（网络重试安全）；
-    同 requestId 不同 payload → 409；已交付任务不同 requestId → 409（只交付一次）。
+    幂等与冲突（D10，契约 08 §8）：
+    * 同 requestId 且**请求内容指纹一致**（本体名 + 选定集合内容）→ 返回原结果
+      （网络重试安全；回执检查先于其余状态校验，避免重试被 stale/token 变化误拦）；
+    * 同 requestId 不同 payload（名称或选定内容变了）→ 409 REVISION_CONFLICT；
+    * 任务已交付且 requestId 不同 → 409 ALREADY_DELIVERED（一个任务只交付一次，
+      见 AlreadyDelivered：不带 issues，走状态码映射而不是 422 清单）。
     """
     owner_id = owner()
     display = str(name or '').strip()
@@ -165,31 +196,36 @@ def deliver(conn, task_id, name, check_token, request_id):
     if row is None:
         raise sto.NotFound('生成任务不存在')
 
-    ontology, id_map, warnings, batch_id = prepare_payload(conn, task_id)
-    # 幂等指纹只取**选定集合内容**：定义 ID 每次装配都由服务端重新随机分配，
-    # 以图内容作指纹会让同一请求的重放被判成不同 payload（重放必须命中）。
-    digest = _selection_digest(conn, task_id, owner_id, batch_id)
-    if check_token and str(check_token) != _expected_token(conn, task_id, owner_id, batch_id):
-        raise DeliveryBlocked([{'code': 'CHECK_TOKEN_STALE',
-                                'message': '选定集合或材料/范围已变化，请重新运行交付前检查'}],
-                              '交付前检查已失效')
-    issues = _blocking_issues(conn, task_id, owner_id, batch_id)
-    if issues:
-        raise DeliveryBlocked(issues)
-
-    # 幂等回执：先按 requestId 识别成功回执（网络重试安全），不能因 revision/ID 变化误报失败
+    batch = store.latest_batch(conn, task_id, owner_id)
+    # 幂等回执：先按 requestId 识别成功回执（网络重试安全），不能因 revision/ID 变化误报失败。
+    # 指纹必须包含**请求 payload 内容**（D10）：只按 requestId 命中会把换名重放当重试。
+    digest = _payload_digest(conn, display, task_id, owner_id, batch)
     record = store.get_delivery_by_request(conn, owner_id, request_id)
     if record:
         if record['taskId'] != task_id or record.get('payloadDigest') != digest:
             raise sto.RevisionConflict(message='同一 requestId 提交了不同内容，请刷新后重试')
         return {'ontologyId': record['ontologyId'], 'taskId': record['taskId'],
                 'deliveredAt': record['createdAt'], 'replayed': True}
+    if batch is None:
+        raise DeliveryBlocked([{'code': 'NO_BATCH', 'message': '尚未生成候选，请先确认范围并生成'}],
+                              '尚未生成候选')
+    # D09：确定性的结构/依赖阻断先算先报（与预检完全同口径）——绝不允许装配异常
+    # 抢跑成 400 模糊错误，出现「预检列了问题、交付却说参数不对」的分裂。
+    issues = _blocking_issues(conn, task_id, owner_id, batch['batch_id'])
+    if issues:
+        raise DeliveryBlocked(issues)
+
+    # 域内重验基线与结构（stale 批次在此拦截，不依赖路由层 token 校验）
+    ontology, id_map, warnings, batch_id = prepare_payload(conn, task_id)
+    if check_token and str(check_token) != _expected_token(conn, task_id, owner_id, batch_id):
+        raise DeliveryBlocked([{'code': 'CHECK_TOKEN_STALE',
+                                'message': '选定集合或材料/范围已变化，请重新运行交付前检查'}],
+                              '交付前检查已失效')
+
     existing = store.get_delivery(conn, task_id, owner_id)
     if existing:
-        raise DeliveryBlocked([{'code': 'ALREADY_DELIVERED',
-                                'message': '该任务已交付本体（%s），不能重复创建；'
-                                           '如需再建请复制为新任务' % existing['ontologyId']}],
-                              '该任务已交付')
+        raise AlreadyDelivered('该任务已交付本体（%s），不能重复创建；如需再建请复制为新任务'
+                               % existing['ontologyId'])
 
     from workbench.storage import assets as asset_store
     asset_store.bump_guard(conn, 'asset-name:model')
@@ -212,6 +248,17 @@ def deliver(conn, task_id, name, check_token, request_id):
                      delivery_ontology_id=ontology_id)
     return {'ontologyId': ontology_id, 'taskId': task_id, 'deliveredAt': sto.utcnow(),
             'revision': created['revision'], 'warnings': warnings, 'replayed': False}
+
+
+def _payload_digest(conn, display, task_id, owner_id, batch):
+    """**请求内容**指纹（D10）：请求体（本体名 + 任务）叠加选定集合内容指纹。
+
+    只取选定集合时，同 requestId 换个本体名重放会被误判为「同一 payload 的重试」；
+    定义 ID 由服务端每次装配随机分配，绝不能入指纹（否则真实重试永不命中）。
+    """
+    selection = _selection_digest(conn, task_id, owner_id, batch['batch_id']) if batch else ''
+    return sto.content_hash(sto.json_dumps({'name': display, 'taskId': task_id,
+                                           'selection': selection}).encode('utf-8'))
 
 
 def _selection_digest(conn, task_id, owner_id, batch_id):

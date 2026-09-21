@@ -32,6 +32,22 @@ _FIELD_ORDER = ('name', 'definition', 'ownerKey', 'dataType', 'valueType', 'sour
 _DEPENDENCY_BLOCKED = 'DEPENDENCY_NOT_INCLUDED'
 
 
+class InvalidStateError(ValueError):
+    """评审语义阻断（D17）：HTTP 422 `INVALID_STATE` + `issues`（server.py 按属性映射）。
+
+    与形态错误（ValueError → 400）区分：证据不足转纳入缺理由、合并类型/数据类型
+    不兼容、已合并候选再操作等都是**状态**问题，不是请求字段格式问题。
+    消息保持中文可读，issues 里带同一条便于前端逐条定位。
+    """
+
+    code = 'INVALID_STATE'
+    status = 422
+
+    def __init__(self, message, field='', issue_code=''):
+        self.issues = [{'code': issue_code or self.code, 'field': field, 'message': message}]
+        super().__init__(message)
+
+
 def owner() -> str:
     return auth.require_user_id()
 
@@ -135,7 +151,8 @@ def decide(conn, candidate_id, decision, reason, revision) -> dict:
     status = view.get('evidenceStatus') or ''
     if value == 'include' and status != 'supported' and not text:
         label = protocol.EVIDENCE_STATUS_LABELS.get(status, status or '未确认')
-        raise ValueError('证据状态为「%s」，转为拟纳入前请填写人工确认理由' % label)
+        raise InvalidStateError('证据状态为「%s」，转为拟纳入前请填写人工确认理由' % label,
+                                field='reason', issue_code='REASON_REQUIRED')
     fresh = store.update_candidate(conn, candidate_id, owner_id, expected_revision=revision,
                                    decision=value, reason=text, reviewed=True)
     return store.candidate_view(fresh)
@@ -294,9 +311,15 @@ def validate_candidate(conn, task_id, candidate) -> list:
         if data_type not in protocol.PROPERTY_DATA_TYPES:
             issues.append(_issue('DATA_TYPE_INVALID', 'dataType',
                                  '属性「%s」的数据类型不受支持：%s' % (label, data_type or '空')))
-        elif data_type == 'timeSeries' and not str(fields.get('valueType') or '').strip():
-            issues.append(_issue('OBSERVATION_VALUE_TYPE_MISSING', 'valueType',
-                                 '时间序列属性「%s」缺少观测值类型' % label))
+        elif data_type == 'timeSeries':
+            value_type = str(fields.get('valueType') or '').strip()
+            if not value_type:
+                issues.append(_issue('OBSERVATION_VALUE_TYPE_MISSING', 'valueType',
+                                     '时间序列属性「%s」缺少观测值类型' % label))
+            elif value_type not in protocol.VALUE_TYPES:
+                issues.append(_issue('OBSERVATION_VALUE_TYPE_INVALID', 'valueType',
+                                     '时间序列属性「%s」的观测值类型「%s」不在枚举内（可选：%s）'
+                                     % (label, value_type, '/'.join(protocol.VALUE_TYPES))))
         owner_ref = str(candidate.get('ownerKey') or '').strip()
         node = _resolve(owner_ref, by_id, by_key)
         if node is None or node.get('type') != 'object':
@@ -402,13 +425,19 @@ def _cardinality(fields):
 
 
 def _relation_refs(node):
-    """候选的对外引用：(槽位, 引用值, 角色说明)。"""
+    """候选的对外引用：(槽位, 引用值, 角色说明)。
+
+    规则/动作同样通过 ownerKey 关联宿主对象（D14，契约 08 §8）：排除宿主必须
+    阻断其规则/动作交付，不能只盯属性与链接。
+    """
     fields = node.get('fields') if isinstance(node.get('fields'), dict) else {}
     if node.get('type') == 'property':
         return [('ownerKey', str(node.get('ownerKey') or ''), '所属对象')]
     if node.get('type') == 'link':
         return [('sourceRef', str(fields.get('sourceRef') or ''), '源端对象'),
                 ('targetRef', str(fields.get('targetRef') or ''), '目标端对象')]
+    if node.get('type') in ('rule', 'action'):
+        return [('ownerKey', str(node.get('ownerKey') or ''), '宿主对象')]
     return []
 
 
@@ -475,7 +504,10 @@ def _diff_fields(primary, merges):
 
 
 def _merge_plan(conn, task_id, primary_id, merge_ids):
-    """合并前置校验：同任务、同类型、数据类型/基数角色兼容；返回 (owner, 保留项, 被合并项, 全部候选)。"""
+    """合并前置校验：同任务、同类型、数据类型/基数角色兼容；返回 (owner, 保留项, 被合并项, 全部候选)。
+
+    语义不兼容一律 InvalidStateError（D17：422 INVALID_STATE + issues，不是 400）。
+    """
     owner_id = owner()
     pool = store.all_candidates(conn, task_id, owner_id, include_merged=True)
     by_id = {node['id']: node for node in pool}
@@ -483,14 +515,17 @@ def _merge_plan(conn, task_id, primary_id, merge_ids):
     if primary is None:
         raise sto.NotFound('候选定义不存在')
     if primary['origin'].get('mergedInto'):
-        raise ValueError('候选定义「%s」已被合并，不能作为保留项' % (primary['name'] or '未命名'))
+        raise InvalidStateError('候选定义「%s」已被合并，不能作为保留项'
+                                % (primary['name'] or '未命名'),
+                                field='primaryId', issue_code='ALREADY_MERGED')
     ordered = []
     for raw in merge_ids or []:
         merged_id = str(raw or '').strip()
         if not merged_id:
             continue
         if merged_id == primary['id']:
-            raise ValueError('保留项不能同时作为被合并项')
+            raise InvalidStateError('保留项不能同时作为被合并项', field='mergeIds',
+                                    issue_code='MERGE_TARGET_INVALID')
         if merged_id in ordered:
             continue
         ordered.append(merged_id)
@@ -502,20 +537,25 @@ def _merge_plan(conn, task_id, primary_id, merge_ids):
         if node is None:
             raise sto.NotFound('候选定义不存在')
         if node['type'] != primary['type']:
-            raise ValueError('仅同类型候选可合并：「%s」与「%s」类型不同'
-                             % (primary['name'] or '未命名', node['name'] or '未命名'))
+            raise InvalidStateError('仅同类型候选可合并：「%s」与「%s」类型不同'
+                                    % (primary['name'] or '未命名', node['name'] or '未命名'),
+                                    field='mergeIds', issue_code='MERGE_TYPE_MISMATCH')
         if node['origin'].get('mergedInto'):
-            raise ValueError('候选「%s」已被合并，不能重复合并' % (node['name'] or '未命名'))
+            raise InvalidStateError('候选「%s」已被合并，不能重复合并'
+                                    % (node['name'] or '未命名'),
+                                    field='mergeIds', issue_code='ALREADY_MERGED')
         if primary['type'] == 'property':
             left = str((primary.get('fields') or {}).get('dataType') or '')
             right = str((node.get('fields') or {}).get('dataType') or '')
             if left != right:
-                raise ValueError('数据类型不一致，不能合并')
+                raise InvalidStateError('数据类型不一致，不能合并', field='dataType',
+                                        issue_code='MERGE_DATA_TYPE_MISMATCH')
         elif primary['type'] == 'link':
             left = _cardinality(primary.get('fields') or {})
             right = _cardinality(node.get('fields') or {})
             if left and right and left != right:
-                raise ValueError('链接基数角色不一致，不能合并')
+                raise InvalidStateError('链接基数角色不一致，不能合并', field='cardinality',
+                                        issue_code='MERGE_CARDINALITY_MISMATCH')
         merges.append(node)
     return owner_id, primary, merges, pool
 
@@ -574,8 +614,12 @@ def _text(value):
 def build_diff(conn, task_id, owner_user_id, old_batch_id, new_batch_id):
     """比较新旧批次的候选：新增 / 变动 / 消失 / 保留 / 已排除保护。
 
-    对齐键用候选的 alignedKey（同名同类型；属性还要求 dataType 一致），
+    对齐键用候选的 alignedKey（同名同类型；属性还要求 dataType 与宿主对象一致），
     由生成管线在 alignment 阶段写入。**旧批次完全不改动**（只读回看）。
+
+    本函数可能在 GET 只读连接上执行（D04）：**绝不写库**——排除保护（旧批次
+    exclude → 新批次强制 defer + revived 标记）由生成管线在写事务内完成，
+    这里只如实报告 `excludedProtected` 桶。
     """
     old_items = store.all_candidates(conn, task_id, owner_user_id, batch_id=old_batch_id) \
         if old_batch_id else []
@@ -597,14 +641,9 @@ def build_diff(conn, task_id, owner_user_id, old_batch_id, new_batch_id):
         else:
             kept.append(candidate['id'])
         if previous['decision'] == 'exclude':
-            # 已排除候选不自动复活：新批次同键候选强制暂缓并标记（需人工重新处理）
+            # 已排除候选不自动复活：生成写事务已把新批次同键候选强制 defer + 标记
+            # revived（pipeline.inherit_manual_exclusions），此处只读汇报，绝不写库。
             protected.append(candidate['id'])
-            origin = dict(candidate.get('origin') or {})
-            origin['revived'] = True
-            store.update_candidate(conn, candidate['id'], owner_user_id,
-                                   decision='defer', origin=origin)
-            candidate['decision'] = 'defer'
-            candidate['origin'] = origin
     for key, candidate in old_by_key.items():
         if key not in new_by_key:
             removed.append(candidate['id'])
@@ -640,10 +679,17 @@ def _manually_edited(candidate):
 
 
 def resolve_diff(conn, task_id, candidate_id, choice, revision):
-    """处理人工修改冲突：keepManual=保留旧批次的人工字段；acceptNew=采用新生成结果。"""
+    """处理人工修改冲突：keepManual=保留旧批次的人工字段；acceptNew=采用新生成结果。
+
+    keepManual（D11）：对齐键取候选行的 `aligned_key` 列（origin_json 里没有
+    alignedKey，旧实现读错字段导致恒 400/错配）；对照批与 /api/build-diff 同口径
+    （最近一个非本候选批次的批次）。**只覆盖旧批次中确实存在的取值**：旧候选
+    未命名/未填的字段不得清空新候选，其余字段一律保留新批次内容。
+    """
     if choice not in ('keepManual', 'acceptNew'):
         raise ValueError('choice 只能是 keepManual 或 acceptNew')
-    candidate = store.get_candidate(conn, candidate_id, owner_user_id=owner())
+    owner_id = owner()
+    candidate = store.get_candidate(conn, candidate_id, owner_user_id=owner_id)
     if candidate is None:
         raise sto.NotFound('候选定义不存在')
     if candidate['task_id'] != task_id:
@@ -652,22 +698,36 @@ def resolve_diff(conn, task_id, candidate_id, choice, revision):
         # 只清冲突标记，字段保持新批次内容（人工可继续编辑）
         origin = dict(_loads(candidate['origin_json'], {}))
         origin.pop('manualConflict', None)
-        return store.update_candidate(conn, candidate_id, owner(), expected_revision=revision or None,
-                                      origin=origin)
-    # keepManual：把旧批次同名同类型候选的人工字段复制过来
-    batches = store.list_batches(conn, task_id, owner())
-    old_batch = next((b['id'] for b in batches if b['id'] != candidate['batch_id']), None)
-    if not old_batch:
-        raise ValueError('没有可对齐的旧批次')
-    aligned = str(_loads(candidate['origin_json'], {}).get('alignedKey') or '')
-    previous = next((c for c in store.all_candidates(conn, task_id, owner(), batch_id=old_batch)
-                     if (c.get('alignedKey') or '') == aligned), None)
-    if previous is None:
-        raise ValueError('旧批次中没有可对齐的候选')
-    return store.update_candidate(conn, candidate_id, owner(), expected_revision=revision or None,
-                                  name=previous['name'], definition=previous['definition'],
-                                  fields=previous['fields'], owner_key=previous['ownerKey'],
-                                  reviewed=True, reason=previous.get('reason') or '')
+        updated = store.update_candidate(conn, candidate_id, owner_id,
+                                        expected_revision=revision or None, origin=origin)
+    else:
+        # keepManual：把旧批次同对齐键候选的**人工取值字段**复制过来（不张冠李戴）
+        aligned = str(candidate['aligned_key'] or candidate['candidate_id'])
+        old_batch = next((b['id'] for b in store.list_batches(conn, task_id, owner_id, limit=10)
+                          if b['id'] != candidate['batch_id']), None)
+        if not old_batch:
+            raise ValueError('没有可对齐的旧批次')
+        previous = next((c for c in store.all_candidates(conn, task_id, owner_id,
+                                                          batch_id=old_batch)
+                         if str(c.get('alignedKey') or c['id']) == aligned), None)
+        if previous is None:
+            raise ValueError('旧批次中没有可对齐的候选')
+        merged_fields = dict(_loads(candidate['fields_json'], {}))
+        for key, value in (previous.get('fields') or {}).items():
+            if value not in (None, '', [], {}):
+                merged_fields[key] = value
+        columns = {}
+        if str(previous.get('name') or '').strip():
+            columns['name'] = previous['name']
+        if str(previous.get('definition') or '').strip():
+            columns['definition'] = previous['definition']
+        if str(previous.get('ownerKey') or '').strip():
+            columns['owner_key'] = previous['ownerKey']
+        updated = store.update_candidate(conn, candidate_id, owner_id,
+                                         expected_revision=revision or None,
+                                         fields=merged_fields, reviewed=True,
+                                         reason=previous.get('reason') or '', **columns)
+    return store.candidate_view(updated)
 
 
 def _loads(raw, fallback):

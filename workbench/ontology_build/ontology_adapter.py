@@ -27,10 +27,15 @@ def _new_id(prefix):
 NODE_TYPES = {'object': 'owl:Class', 'property': 'owl:DatatypeProperty',
               'link': 'owl:ObjectProperty', 'rule': 'mg:BusinessRule', 'action': 'mg:Action'}
 
-# xsd 标量映射：数据契约里的数据类型 → 图节点 rdfs:range
+# xsd 标量映射：数据契约里的数据类型 → 图节点 rdfs:range（值已含唯一前缀，禁止再拼接）
 _XSD = {'text': 'xsd:string', 'number': 'xsd:double', 'boolean': 'xsd:boolean',
-        'dateTime': 'xsd:dateTime', 'array': 'xsd:string', 'struct': 'xsd:string',
-        'numberSeries': 'xsd:double'}
+        'dateTime': 'xsd:dateTime', 'array': 'xsd:string', 'struct': 'xsd:string'}
+# 时间序列观测值类型 → rdfs:range（D02）：与 model_format.py 的
+# `node['rdfs:range'] = {'@id': 'xsd:' + dtype['valueType']}` 同一口径，
+# 单一前缀；取值集合必须等于 protocol.VALUE_TYPES（= SERIES_VALUE_TYPES）。
+_SERIES_XSD = {'string': 'xsd:string', 'double': 'xsd:double', 'decimal': 'xsd:decimal',
+               'integer': 'xsd:integer', 'boolean': 'xsd:boolean', 'date': 'xsd:date',
+               'dateTime': 'xsd:dateTime'}
 
 
 def field_value(fields, key, default=None):
@@ -42,8 +47,10 @@ def build_data_type(fields):
     """候选 fields → (dataType 描述, 图节点 range 与标记, warnings)。
 
     普通类型：`{type: <枚举>}`；时间序列：`{type:'timeSeries', valueType:<标量>}`
-    （与 20260915 时间序列数据类型调整一致）。观测值类型缺失时按 text 记录并
-    返回 warning（不猜数值/精度/单位）。
+    （与 20260915 时间序列数据类型调整一致）。观测值类型缺失或不在
+    protocol.VALUE_TYPES（= model_format.SERIES_VALUE_TYPES）内一律抛
+    AdapterError——预检与交付阻断已按同一枚举确定性拒绝（D02/D09），
+    这里绝不静默降级成文本（静默改写人工确认过的类型）。
     """
     warnings = []
     raw = str((fields or {}).get('dataType') or 'text')
@@ -51,11 +58,11 @@ def build_data_type(fields):
         raise AdapterError('不支持的数据类型：%s' % raw)
     if raw == 'timeSeries':
         value_type = str((fields or {}).get('valueType') or '')
-        if value_type not in protocol.VALUE_TYPES:
-            warnings.append('时间序列缺少观测值类型，已按文本记录；请在对象建模阶段确认')
-            value_type = 'text'
+        if value_type not in _SERIES_XSD:
+            raise AdapterError('时间序列属性缺少有效的观测值类型（可选：%s）'
+                               % '/'.join(protocol.VALUE_TYPES))
         return ({'type': 'timeSeries', 'valueType': value_type},
-                {'@id': 'xsd:' + _XSD.get(value_type, 'xsd:string')}, 'timeSeries', warnings)
+                {'@id': _SERIES_XSD[value_type]}, 'timeSeries', warnings)
     return ({'type': raw}, {'@id': _XSD.get(raw, 'xsd:string')}, 'scalar', warnings)
 
 

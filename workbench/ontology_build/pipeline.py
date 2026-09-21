@@ -45,7 +45,8 @@ DEFINITION_ORDER_NOTE = ('definitionOrder 为候选层预检（对象→属性�
 
 _STRUCTURAL_CODES = frozenset({
     'TYPE_INVALID', 'NAME_REQUIRED', 'DEFINITION_REQUIRED', 'DATA_TYPE_INVALID',
-    'OBSERVATION_VALUE_TYPE_MISSING', 'PROPERTY_OWNER_MISSING', 'LINK_ENDPOINT_MISSING',
+    'OBSERVATION_VALUE_TYPE_MISSING', 'OBSERVATION_VALUE_TYPE_INVALID',
+    'PROPERTY_OWNER_MISSING', 'LINK_ENDPOINT_MISSING',
     'CARDINALITY_INVALID', 'KEY_DUPLICATE',
 })
 _FIELDS_BY_TYPE = {
@@ -192,7 +193,8 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
                                    'retrieve 步按需构建（避免把全部事实一次性读进内存）。'}}
     _tx(lambda conn: (runner.check_cancelled(conn, run_id, owner_id),
                       store.update_run(conn, run_id, owner_id, usage=_usage(),
-                                       checkpoint=checkpoint)))
+                                       checkpoint=checkpoint,
+                                       lease=runner.lease_of(owner_id, run_id) or None)))
 
     if total == 0:
         raise PipelineError('没有可解析的材料：请先上传材料并确认未被排除')
@@ -334,9 +336,12 @@ def verify_candidates(candidates, fact_ids):
                 if value_type:
                     fields['valueType'] = value_type
                 if value_type not in protocol.VALUE_TYPES:
-                    push('OBSERVATION_VALUE_TYPE_MISSING', 'valueType',
-                         '时间序列属性「%s」缺少观测值类型（可选：%s）'
-                         % (name or '未命名', '/'.join(protocol.VALUE_TYPES)))
+                    push('OBSERVATION_VALUE_TYPE_MISSING' if not value_type
+                         else 'OBSERVATION_VALUE_TYPE_INVALID', 'valueType',
+                         '时间序列属性「%s」%s（可选：%s）'
+                         % (name or '未命名', '缺少观测值类型' if not value_type
+                            else '的观测值类型「%s」不在枚举内' % value_type,
+                            '/'.join(protocol.VALUE_TYPES)))
             if not _text(candidate.get('ownerKey')):
                 push('PROPERTY_OWNER_MISSING', 'ownerKey',
                      '属性「%s」未给出所属对象' % (name or '未命名'))
@@ -433,7 +438,11 @@ def adapt_candidates(candidates):
 
 
 def _candidate_payload(candidate, batch_id):
-    """候选（内存结构）→ store.create_candidate 载荷（origin 记录批次与来源键）。"""
+    """候选（内存结构）→ store.create_candidate 载荷（origin 记录批次与来源键）。
+
+    origin 以候选自带的 origin 字典为底（D04 继承标记 revived 等随批次写入），
+    再覆盖批次/来源键等系统字段；不认识的键原样保留，不静默丢人工继承信息。
+    """
     origin = candidate.get('origin') if isinstance(candidate.get('origin'), dict) else {}
     merged_from = candidate.get('mergedFromKeys')
     payload = {
@@ -448,13 +457,16 @@ def _candidate_payload(candidate, batch_id):
         'conflicts': candidate.get('conflicts') if isinstance(candidate.get('conflicts'), list) else [],
         'decision': _text(candidate.get('decision')) or 'defer',
         'issues': candidate.get('issues') if isinstance(candidate.get('issues'), list) else [],
-        'origin': {'batch': batch_id, 'key': _text(candidate.get('key')),
-                   'mergedFrom': [str(item) for item in (merged_from or []) if _text(item)],
-                   'mergedInto': None},
         'alignedKey': _text(candidate.get('alignedKey')),
     }
-    if origin.get('steps'):
-        payload['origin']['steps'] = origin['steps']
+    origin_payload = dict(origin)
+    origin_payload.update({
+        'batch': batch_id,
+        'key': _text(candidate.get('key')),
+        'mergedFrom': [str(item) for item in (merged_from or []) if _text(item)],
+        'mergedInto': origin.get('mergedInto'),
+    })
+    payload['origin'] = origin_payload
     return payload
 
 
@@ -474,6 +486,47 @@ def _append_candidates(conn, owner_id, task_id, batch_id, items):
         created.append(store.create_candidate(conn, task_id, owner_id, batch_id,
                                               _candidate_payload(item, batch_id)))
     return created
+
+
+def _excluded_aligned_keys_previous(conn, owner_id, task_id, batch_id):
+    """上一有效批次里人工排除（decision=exclude）候选的 alignedKey 集合（D04）。
+
+    只回看最近一个有候选的旧批次（与再生成差异比较 build_diff 的对照批一致）。
+    """
+    for previous in store.list_batches(conn, task_id, owner_id, limit=20):
+        if previous['id'] == batch_id:
+            continue
+        old_items = store.all_candidates(conn, task_id, owner_id, batch_id=previous['id'])
+        if not old_items:
+            continue
+        return {str(item.get('alignedKey') or '') for item in old_items
+                if item.get('decision') == 'exclude' and str(item.get('alignedKey') or '')}
+    return set()
+
+
+def inherit_manual_exclusions(conn, owner_id, task_id, batch_id, items):
+    """人工决定继承（D04，需求 §8.3 硬禁令）：旧批次已排除的候选绝不自动复活。
+
+    新批次按 alignedKey 对齐命中旧批次 decision=exclude 的候选时，强制 defer 并在
+    origin 标记 `revived=true`（提示人工重新处理），必须在生成写事务内执行。
+    返回被保护的候选数。
+    """
+    excluded_keys = _excluded_aligned_keys_previous(conn, owner_id, task_id, batch_id)
+    protected = 0
+    if not excluded_keys:
+        return protected
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get('alignedKey') or '') not in excluded_keys:
+            continue
+        item['decision'] = 'defer'
+        origin = item.get('origin') if isinstance(item.get('origin'), dict) else {}
+        origin = dict(origin)
+        origin['revived'] = True
+        item['origin'] = origin
+        protected += 1
+    return protected
 
 
 # --- 生成：检索 → 对齐 → 抽象 → 校验 → 适配 ---------------------------------------
@@ -587,8 +640,14 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
                      % (protocol.MAX_CANDIDATES_PER_BATCH, len(final)))
     runner.stage(owner_id, run_id, 'adapt', label, {'done': len(final), 'total': len(final)})
 
-    _tx(lambda conn: (runner.check_cancelled(conn, run_id, owner_id),
-                      _write_candidates(conn, owner_id, task_id, batch_id, final)))
+    def _final_write(conn):
+        runner.check_cancelled(conn, run_id, owner_id)
+        protected = inherit_manual_exclusions(conn, owner_id, task_id, batch_id, final)
+        if protected:
+            _note(notes, '上一批次人工排除的 %d 个候选在新批次未自动复活：已强制暂缓并标记 '
+                         'revived，需人工确认后重新纳入。' % protected)
+        return _write_candidates(conn, owner_id, task_id, batch_id, final)
+    _tx(_final_write)
     summary = {
         'runId': run_id, 'kind': 'generate', 'state': 'succeeded', 'batchId': batch_id,
         'facts': {'total': len(facts), 'pool': len(pool), 'sent': len(model_facts),
@@ -609,7 +668,8 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
                                'droppedRefs': summary['droppedRefs'],
                                'definitionOrder': adapted['definitionOrder'][:100],
                                'truncatedOrder': max(0, len(adapted['definitionOrder']) - 100)}}
-    _tx(lambda conn: store.update_run(conn, run_id, owner_id, usage=usage, checkpoint=checkpoint))
+    _tx(lambda conn: store.update_run(conn, run_id, owner_id, usage=usage, checkpoint=checkpoint,
+                                      lease=runner.lease_of(owner_id, run_id) or None))
     return summary
 
 
@@ -649,7 +709,8 @@ def run_dialog(owner_user_id, task_id, run_id, provider):
                              'patchKeys': sorted(patch.keys()),
                              'scopeRevision': int(context['scope'].get('revision') or 0),
                              'note': '助手 patch 仅为建议，不会自动覆盖人工保存的范围。'}}
-    _tx(lambda conn: store.update_run(conn, run_id, owner_id, usage=usage, checkpoint=checkpoint))
+    _tx(lambda conn: store.update_run(conn, run_id, owner_id, usage=usage, checkpoint=checkpoint,
+                                      lease=runner.lease_of(owner_id, run_id) or None))
     if not result.get('ok'):
         raise PipelineError(error)
     return {'runId': run_id, 'kind': 'dialog', 'state': 'succeeded', 'messageId': message_id,

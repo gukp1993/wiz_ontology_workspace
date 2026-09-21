@@ -6,7 +6,8 @@
    佐证，只在 duplicates 里指向首个副本。供复核页与管线抽取前查看证据分布。
 2. `align(candidates)` —— 同一批候选内合并。规则是保守的：
    * 只有 **同名（casefold 后一致）+ 同类型** 才合并；仅名称相同、类型不同绝不合并；
-   * 属性额外要求 dataType 一致（不同数据类型的属性不自动合并）；
+   * 属性额外要求 dataType 一致且宿主对象（ownerKey 解析到的规范名）一致
+     （D08：不同数据类型的属性不自动合并，宿主不同的同名属性也不自动合并）；
    * 证据取并集（去重）；
    * 两侧取值不同（含一侧缺失）的字段一律写入 conflicts 保留两侧，绝不自动取舍；
    * 出现冲突 → evidenceStatus='conflict'；无冲突时：全部来源 supported 且证据非空 →
@@ -44,8 +45,14 @@ def _same(left, right):
     return _jsonable(left) == _jsonable(right)
 
 
-def align_key(candidate):
-    """候选的分组键（同名同类型；属性还要求 dataType 一致）。无名称返回 ''。"""
+def align_key(candidate, owner_name=None):
+    """候选的分组键（同名同类型；属性还要求 dataType 与宿主对象一致）。无名称返回 ''。
+
+    D08：属性候选的键附加规范化的宿主对象名（`align(candidates)` 里由
+    ownerKey 解析得到；解析不到时用 'unknown'）。同名同 dataType 但宿主不同
+    的属性因此不再进入同一分组，绝不自动合并。宿主用**规范名**而不是批次内
+    key，保证跨批次 alignedKey 稳定（差异比较/决策继承依赖这一点）。
+    """
     candidate = candidate if isinstance(candidate, dict) else {}
     name = _normal_name(candidate.get('name'))
     if not name:
@@ -56,6 +63,8 @@ def align_key(candidate):
         fields = candidate.get('fields') if isinstance(candidate.get('fields'), dict) else {}
         data_type = _text(fields.get('dataType')).casefold()
         key += '#%s' % (data_type or 'unknown')
+        host = _normal_name(owner_name)
+        key += '@%s' % (host or 'unknown')
     return key
 
 
@@ -126,17 +135,41 @@ def merge_group(members):
     return primary, conflicts, notes
 
 
+def _ref_index(items):
+    """候选引用索引：临时键与 ID 都能解析（与 ontology_adapter._resolve 口径一致）。"""
+    index = {}
+    for candidate in items:
+        for field in ('key', 'id'):
+            ref = _text(candidate.get(field))
+            if ref and ref not in index:
+                index[ref] = candidate
+    return index
+
+
+def _owner_name_for(candidate, index):
+    """属性/规则/动作的 ownerKey → 宿主对象候选的名称；解析不到返回 None（键里记 unknown）。"""
+    if _text(candidate.get('type')).casefold() not in ('property',):
+        return None
+    owner = index.get(_text(candidate.get('ownerKey')))
+    if isinstance(owner, dict) and _text(owner.get('type')).casefold() == 'object':
+        return _text(owner.get('name'))
+    return None
+
+
 def align(candidates):
     """候选列表（同一批）→ 对齐后的候选列表 + 说明。
 
     返回 {'candidates': [...], 'notes': [...], 'stats': {...}}；
     合并后的候选带 alignedKey / conflicts / mergedFromKeys，evidenceStatus 按上述规则重算。
+    属性的对齐键含宿主对象名（D08）：宿主先经本批引用索引解析（临时键或 ID），
+    解析不到按 'unknown' 参与分组。
     """
     items = [candidate for candidate in (candidates or []) if isinstance(candidate, dict)]
+    index = _ref_index(items)
     groups, order = {}, []
-    for index, candidate in enumerate(items):
-        key = align_key(candidate)
-        bucket_key = key or '#unnamed-%d' % index  # 无名称候选绝不合并
+    for cand_index, candidate in enumerate(items):
+        key = align_key(candidate, _owner_name_for(candidate, index))
+        bucket_key = key or '#unnamed-%d' % cand_index  # 无名称候选绝不合并
         if bucket_key not in groups:
             groups[bucket_key] = []
             order.append(bucket_key)
@@ -146,7 +179,7 @@ def align(candidates):
     merged_total = conflicts_total = 0
     for bucket_key in order:
         members = groups[bucket_key]
-        key = align_key(members[0])
+        key = align_key(members[0], _owner_name_for(members[0], index))
         if len(members) == 1:
             candidate = dict(members[0])
             conflicts = [item for item in (candidate.get('conflicts') or []) if isinstance(item, dict)]

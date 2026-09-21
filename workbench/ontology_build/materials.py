@@ -29,31 +29,56 @@ from workbench.storage import ontology_build as store
 
 
 class UploadError(ValueError):
-    """上传/物料校验失败（HTTP 4xx）；失败后绝不登记可用材料。"""
+    """上传/物料校验失败（HTTP 4xx）；失败后绝不登记可用材料。
+
+    `code` / `status` 由 server.py 的 ValueError 分支读取，按 08 §4 映射状态码；
+    基类保持 400 `INVALID_ARGUMENT`（形态错误：序号无效、base64 非法等）。
+    """
+
+    code = 'INVALID_ARGUMENT'
+    status = 400
 
 
 class UploadConflict(UploadError):
     """同一分片序号提交了不同内容（HTTP 409 UPLOAD_CONFLICT）。"""
 
+    code = 'UPLOAD_CONFLICT'
+    status = 409
+
 
 class HashMismatch(UploadError):
     """分片或整体摘要不符（HTTP 422 HASH_MISMATCH）。"""
 
+    code = 'HASH_MISMATCH'
+    status = 422
+
 
 class LimitExceeded(UploadError):
-    """超出协议限额（HTTP 413/422 LIMIT_EXCEEDED）。"""
+    """超出协议限额（HTTP 422 LIMIT_EXCEEDED；请求体本身过宽由 413 PAYLOAD_TOO_LARGE 拦）。"""
+
+    code = 'LIMIT_EXCEEDED'
+    status = 422
 
 
 class UploadExpired(UploadError):
-    """上传超过 protocol.UPLOAD_TTL_SECONDS，必须重新 init（不可续传）。"""
+    """上传超过 protocol.UPLOAD_TTL_SECONDS，必须重新 init（不可续传，HTTP 409）。"""
+
+    code = 'UPLOAD_EXPIRED'
+    status = 409
 
 
 class UploadNotFound(UploadError):
     """上传不存在、已结束或跨账号（按不存在处理，HTTP 404）。"""
 
+    code = 'NOT_FOUND'
+    status = 404
+
 
 class ZipInvalid(UploadError):
     """压缩包结构不安全或不可读（HTTP 422 ZIP_INVALID）。"""
+
+    code = 'ZIP_INVALID'
+    status = 422
 
 
 BLOB_SUBDIR = 'ontology-build-blobs'
@@ -65,6 +90,10 @@ CLEANUP_BATCH = 200
 ZIP_MAX_DEPTH = 2
 LARGE_BINARY_BYTES = 8 * 1024 * 1024
 _IO_BLOCK = 256 * 1024
+# D12 解压炸弹口径：单条目声明展开量超过该值且压缩比超过 ZIP_BOMB_RATIO 即整包拒绝
+# （小文件的天然高比例不算炸弹；1 MiB × 200:1 以下属正常文本/SQL 压缩）。
+ZIP_BOMB_RATIO_MIN_BYTES = 1024 * 1024
+ZIP_BOMB_RATIO = 200
 
 # ZIP 默认排除策略（相对材料自身路径匹配；命中的条目记入 excluded_paths，不进入材料清单）
 _EXCLUDE_DIRS = frozenset({'node_modules', '.git', 'dist', 'build', 'target', '__pycache__'})
@@ -270,6 +299,10 @@ def _decode_chunk(data_b64):
     if isinstance(data_b64, bytes):
         raw = data_b64
     elif isinstance(data_b64, str):
+        # 先按 base64 文本长度粗筛（D01）：标准 base64 的编码长度上界由 chunkBytes 决定，
+        # 超过就一定超分片限额，直接按 LIMIT_EXCEEDED(422) 报，省掉一次无谓的解码。
+        if len(data_b64) > protocol.CHUNK_BASE64_CHARS:
+            raise LimitExceeded('分片超过上限 %d 字节' % protocol.CHUNK_BYTES)
         try:
             raw = data_b64.encode('ascii')
         except UnicodeEncodeError:
@@ -389,7 +422,9 @@ def upload_complete(conn, owner_user_id, upload_id, final_hash):
         _discard_upload(conn, row)
         raise UploadError('材料临时文件不可读：%s' % exc)
     if digest != str(final_hash or '').strip().lower():
-        _discard_upload(conn, row)
+        # D07 口径：整体摘要与请求携带的 finalHash 不符，最可能是客户端算错了摘要——
+        # 这是**可纠正的请求错误**（422 HASH_MISMATCH），不得销毁会话或临时文件，
+        # 客户端带正确摘要重发 complete 即可登记。内容级损坏（实际大小≠声明）仍整包回收。
         raise HashMismatch('材料内容与声明摘要不一致')
     kind = protocol.detect_kind(rel_path, head=_head(part, 8))
     if kind == 'zip':
@@ -501,6 +536,9 @@ def zip_bomb_guard(path):
     """打开 Office/压缩包前的低成本防爆检查（只读目录，不解压）。
 
     返回 (ok, reason)；解析器在打开 DOCX/XLSX 前调用，避免解压炸弹。
+    D12：目录声明值可被打包方伪造，这里除条目数与声明总量外，另对**单条目压缩比**
+    设限（大声明量 + 极小压缩量 = 典型炸弹特征）；展开期的实际字节计数由
+    `expand_zip/_write_member` 兜底（ parsers 内部的读取上限另见 parsers/zipguard）。
     """
     try:
         with zipfile.ZipFile(str(path)) as archive:
@@ -513,9 +551,14 @@ def zip_bomb_guard(path):
         return False, '压缩包条目数 %d 超过上限 %d' % (len(infos), protocol.ZIP_MAX_ENTRIES)
     total = 0
     for info in infos:
-        total += max(0, int(info.file_size or 0))
+        size = max(0, int(info.file_size or 0))
+        total += size
         if total > protocol.ZIP_EXPANDED_BYTES:
             return False, '解压总量超过上限 %d 字节' % protocol.ZIP_EXPANDED_BYTES
+        compressed = max(0, int(info.compress_size or 0))
+        if size > ZIP_BOMB_RATIO_MIN_BYTES and compressed and size > compressed * ZIP_BOMB_RATIO:
+            return False, ('条目「%s」声明展开 %d 字节但压缩后仅 %d 字节（比例超过 %d:1），'
+                           '判定为解压炸弹' % (info.filename, size, compressed, ZIP_BOMB_RATIO))
     return True, ''
 
 
@@ -590,7 +633,7 @@ def _unique_rel_path(rel_path, used):
     return candidate
 
 
-def _write_member(archive, info, dest, expected):
+def _write_member(archive, info, dest, expected, budget=None):
     digest = hashlib.sha256()
     written = 0
     handle = None
@@ -605,6 +648,13 @@ def _write_member(archive, info, dest, expected):
                 written += len(block)
                 if written > expected:
                     raise ZipInvalid('压缩包条目实际大小与目录不一致：%s' % info.filename)
+                # D12：跨条目、跨嵌套层的**实际**解出字节统一计入共享预算，
+                # 目录声明值造假也拦得住（超预算立即中止整包展开）。
+                if budget is not None:
+                    budget['real'] = budget.get('real', 0) + len(block)
+                    if budget['real'] > protocol.ZIP_EXPANDED_BYTES:
+                        raise LimitExceeded('实际解压总量超过上限 %d 字节'
+                                            % protocol.ZIP_EXPANDED_BYTES)
                 digest.update(block)
                 out.write(block)
     except UploadError:
@@ -653,7 +703,7 @@ def _walk_zip(archive_path, prefix, staging, depth, budget, extracted, excluded,
                 continue
             budget['bytes'] += size
             staged = Path(staging) / (sto.new_id() + '.part')
-            written, digest = _write_member(archive, info, staged, size)
+            written, digest = _write_member(archive, info, staged, size, budget)
             kind = protocol.detect_kind(inner, head=_head(staged, 8))
             if kind == 'zip':
                 if depth >= ZIP_MAX_DEPTH:
@@ -721,7 +771,7 @@ def expand_zip(conn, owner_user_id, task_id, zip_path, rel_path):
         raise UploadError('压缩包不可读：%s' % exc)
     staging = _ensure_dir(temp_dir() / ('expand-' + sto.new_id()))
     extracted, excluded, used = [], [], set()
-    budget = {'bytes': 0, 'entries': 0}
+    budget = {'bytes': 0, 'entries': 0, 'real': 0}
     try:
         _walk_zip(source, base_path, staging, 1, budget, extracted, excluded, used)
         return _register_extracted(conn, owner_id, task_id, extracted, source_group), excluded

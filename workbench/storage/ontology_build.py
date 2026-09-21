@@ -521,7 +521,15 @@ def latest_run(conn, task_id, owner_user_id, kind=None):
 
 def update_run(conn, run_id, owner_user_id, state=None, stage=None, stage_label=None,
                progress=None, error=None, retryable=None, usage=None, cancel_requested=None,
-               checkpoint=None, attempt=None, now=None):
+               checkpoint=None, attempt=None, lease=None, now=None):
+    """更新运行行；返回是否命中（rowcount==1）。
+
+    fencing（D13）：
+    * 传入 `attempt`（重试计数推进）即视为新一次接管，**同步轮换 lease_token**，
+      旧 worker 手里的一切写入从此失效；
+    * 传入 `lease` 时 UPDATE 带 `lease_token = :lease` 条件，不匹配返回 False，
+      由调用方（runner）丢弃晚结果，绝不静默改写新接管运行的状态。
+    """
     sets, params = ['updated_at = :n'], {'n': now or sto.utcnow(), 'r': run_id,
                                          'o': owner_user_id or ''}
     if state is not None:
@@ -544,8 +552,25 @@ def update_run(conn, run_id, owner_user_id, state=None, stage=None, stage_label=
         sets.append('checkpoint_json = :cp'); params['cp'] = _dumps(checkpoint)
     if attempt is not None:
         sets.append('attempt = :a'); params['a'] = int(attempt)
-    conn.execute(sto.text('UPDATE wb_build_runs SET ' + ', '.join(sets) +
-                          ' WHERE run_id = :r AND owner_user_id = :o'), params)
+        new_lease = sto.new_id()
+        sets.append('lease_token = :lease_new'); params['lease_new'] = new_lease
+    where = ' WHERE run_id = :r AND owner_user_id = :o'
+    if lease:
+        params['lease'] = lease
+        where += ' AND lease_token = :lease'
+    result = conn.execute(sto.text('UPDATE wb_build_runs SET ' + ', '.join(sets) + where),
+                          params)
+    return result.rowcount == 1
+
+
+def rotate_run_lease(conn, run_id, owner_user_id):
+    """显式轮换 fencing token（重试接管时调用）；返回新 lease，运行不存在返回 ''。"""
+    new_lease = sto.new_id()
+    result = conn.execute(sto.text('UPDATE wb_build_runs SET lease_token = :l, updated_at = :n '
+                                   'WHERE run_id = :r AND owner_user_id = :o'),
+                          {'l': new_lease, 'n': sto.utcnow(), 'r': run_id,
+                           'o': owner_user_id or ''})
+    return new_lease if result.rowcount == 1 else ''
 
 
 def run_state(conn, run_id, owner_user_id):
@@ -655,6 +680,17 @@ def get_candidate(conn, candidate_id, owner_user_id):
                         {'c': candidate_id, 'o': owner_user_id or ''}).mappings().first()
 
 
+def _unmerged_clause():
+    """「未被合并掉」的 SQL 判定（D03）：origin_json 里 mergedInto 为空/缺失/null。
+
+    候选 ID 是裸 uuid（无 'bc-' 前缀），旧的 `NOT LIKE '%"mergedInto": "bc%'` 永不
+    匹配；必须按 JSON 字段实际取值判断。origin_json 为 NULL/''（历史行）同样保留。
+    MySQL 8 的 JSON_EXTRACT 与 SQLite json_extract 同名同路径语法（预留兼容）。
+    """
+    return ("(origin_json IS NULL OR origin_json = '' OR "
+            "json_extract(origin_json, '$.mergedInto') IS NULL)")
+
+
 def list_candidates(conn, task_id, owner_user_id, batch_id=None, ctype=None, decision=None,
                     evidence_status=None, query=None, offset=0, limit=100, include_merged=False):
     """候选列表 + 计数；默认过滤已合并候选（origin.mergedInto 非空）。"""
@@ -671,7 +707,7 @@ def list_candidates(conn, task_id, owner_user_id, batch_id=None, ctype=None, dec
     if query:
         where.append('(name LIKE :q OR definition LIKE :q)'); params['q'] = '%' + str(query) + '%'
     if not include_merged:
-        where.append("origin_json NOT LIKE '%\"mergedInto\": \"bc%'")
+        where.append(_unmerged_clause())
     clause = ' AND '.join(where)
     total = int(conn.execute(sto.text('SELECT COUNT(*) FROM wb_build_candidates WHERE ' + clause),
                              params).scalar() or 0)
@@ -690,7 +726,7 @@ def all_candidates(conn, task_id, owner_user_id, batch_id=None, include_merged=F
 
 def candidate_counts(conn, task_id, owner_user_id, batch_id=None):
     params = {'t': task_id, 'o': owner_user_id or ''}
-    where = ['task_id = :t', 'owner_user_id = :o']
+    where = ['task_id = :t', 'owner_user_id = :o', _unmerged_clause()]
     if batch_id:
         where.append('batch_id = :b'); params['b'] = batch_id
     clause = ' AND '.join(where)

@@ -124,9 +124,14 @@ def task_baseline(conn, task_id, owner_id, provider=None):
 
 
 def scope_has_blocking_issues(scope):
-    """重大矛盾（同一模块同时纳入与排除且无解释）→ 阻断范围确认。
+    """重大矛盾（同一词同时出现在纳入与排除范围且无解释）→ 阻断范围确认。
 
-    规则保守可解释：纳入与排除文本里同时出现同一非平凡词，且 coverage 未给出说明。
+    D19 收紧后的保守规则：
+    * 只有 **完全相等**（casefold 后）才算冲突——「储能」是「储能簇」的子串
+      并不代表同一模块，旧的字串包含规则会大面积误报；
+    * 覆盖说明**逐冲突对**豁免：coverage 文本明确提到该词才免报这一对，
+      一句无关的话不再把全部冲突整体放行；
+    * 长词（>12 字）不再被分词窗口静默丢弃（窗口放宽到 2–64）。
     """
     include = str(scope.get('include') or '')
     exclude = str(scope.get('exclude') or '')
@@ -135,20 +140,20 @@ def scope_has_blocking_issues(scope):
         return []
     issues = []
     include_words, exclude_words = _tokens(include), _tokens(exclude)
+    exclude_folded = {word.casefold() for word in exclude_words}
     conflicts, seen = [], set()
     for word in include_words:
-        for other in exclude_words:
-            # 完全相等，或一方是另一方的子串（「储能」⊂「储能簇」是同一模块的两种写法）
-            if word == other or word in other or other in word:
-                pair = tuple(sorted((word, other)))
-                if pair not in seen:
-                    seen.add(pair)
-                    conflicts.append((word, other))
-    if conflicts and not coverage:
-        for word, other in conflicts:
-            issues.append({'code': 'SCOPE_CONFLICT', 'field': 'exclude',
-                           'message': '「%s」与「%s」分别出现在纳入与排除范围，'
-                                      '请在覆盖说明中给出取舍口径' % (word, other)})
+        folded = word.casefold()
+        if folded in exclude_folded and folded not in seen:
+            seen.add(folded)
+            conflicts.append(word)
+    coverage_folded = coverage.casefold()
+    for word in conflicts:
+        if coverage_folded and word.casefold() in coverage_folded:
+            continue  # 该冲突对已被覆盖说明点名
+        issues.append({'code': 'SCOPE_CONFLICT', 'field': 'exclude',
+                       'message': '「%s」同时出现在纳入与排除范围，'
+                                  '请在覆盖说明中给出取舍口径' % word})
     blocking_open = [q for q in (scope.get('openQuestions') or []) if isinstance(q, dict) and q.get('blocking')]
     for question in blocking_open:
         issues.append({'code': 'SCOPE_OPEN_QUESTION', 'field': 'openQuestions',
@@ -157,17 +162,17 @@ def scope_has_blocking_issues(scope):
 
 
 def _tokens(text):
-    """粗分块：按常见分隔符切出 2–12 字的业务词（不做语义处理，只用于一致性检查）。"""
+    """粗分块：按常见分隔符切出 2–64 字的业务词（不做语义处理，只用于一致性检查）。"""
     out = []
     buf = ''
     for ch in str(text):
         if ch.isalnum() or ch in ('_', '-'):
             buf += ch
         else:
-            if 2 <= len(buf) <= 12:
+            if 2 <= len(buf) <= 64:
                 out.append(buf)
             buf = ''
-    if 2 <= len(buf) <= 12:
+    if 2 <= len(buf) <= 64:
         out.append(buf)
     return out
 

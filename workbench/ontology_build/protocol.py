@@ -7,6 +7,9 @@ import re
 
 # --- 限额（工程保守默认，能力接口原样展示；不得宣称更大容量） ---
 CHUNK_BYTES = 512 * 1024
+# 分片 base64 文本上限：由 CHUNK_BYTES 独立推出（4*ceil(chunk/3)），
+# 与通用参数上限（512 字符）无关；否则 >384 字节的分片必然被 400 拒收（D01）。
+CHUNK_BASE64_CHARS = ((CHUNK_BYTES + 2) // 3) * 4
 FILE_BYTES = 50 * 1024 * 1024
 TASK_BYTES = 200 * 1024 * 1024
 ZIP_EXPANDED_BYTES = 300 * 1024 * 1024
@@ -68,7 +71,10 @@ TYPE_LABELS = {'object': '对象', 'property': '属性', 'link': '链接', 'rule
 
 # 现有本体协议的数据类型枚举（与 model_format.py / modelFormat.ts 对齐）
 PROPERTY_DATA_TYPES = ('text', 'number', 'boolean', 'dateTime', 'array', 'struct', 'timeSeries')
-VALUE_TYPES = ('text', 'number', 'boolean', 'dateTime')
+# 时间序列观测值类型：必须与 workbench/model_format.py 的 SERIES_VALUE_TYPES 完全一致（D02）。
+# model_format 校验 dataType.valueType ∈ SERIES_VALUE_TYPES，这里漂移一格就会出现
+# 「预检 ok=true、deliver 400」的假成功；改一处必改另一处并在 08 分册登记。
+VALUE_TYPES = ('string', 'double', 'decimal', 'integer', 'boolean', 'date', 'dateTime')
 
 # --- ID 前缀 ---
 TASK_PREFIX = 'bk-'

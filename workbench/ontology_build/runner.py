@@ -25,6 +25,24 @@ class Cancelled(Exception):
 _pool_lock = threading.Lock()
 _semaphore = threading.BoundedSemaphore(protocol.RUN_WORKERS)
 _active = set()
+# fencing token 登记表（D13）：worker 启动时捕获当时的 lease_token；重试接管会轮换
+# lease，旧 worker 的阶段推进 / 结果写回 / 终态写回全部按不匹配丢弃。
+_leases = {}
+
+
+def _capture_lease(user_id, run_id):
+    try:
+        with sto.read_connection() as conn:
+            state = store.run_state(conn, run_id, user_id)
+        return str((state or {}).get('lease_token') or '')
+    except Exception:
+        return ''
+
+
+def lease_of(user_id, run_id):
+    """本 worker 持有的 fencing token（供管线直写 update_run 时带条件；未知返回 ''）。"""
+    with _pool_lock:
+        return _leases.get((str(user_id), str(run_id)), '')
 
 
 def _owner_user(user_id):
@@ -54,9 +72,11 @@ def submit(user_id, run_id, job):
             auth.bind_request(None)
             with _pool_lock:
                 _active.discard((user_id, run_id))
+                _leases.pop((str(user_id), str(run_id)), None)
 
     with _pool_lock:
         _active.add((user_id, run_id))
+        _leases[(str(user_id), str(run_id))] = _capture_lease(user_id, run_id)
     auth.bind_request(None)  # 提交者可能是请求线程，避免身份泄漏进新线程
     thread = threading.Thread(target=wrapper, name='build-run-%s' % run_id[:8], daemon=True)
     thread.start()
@@ -69,17 +89,26 @@ def _message(exc):
 
 
 def _finish(user_id, run_id, state, error='', retryable=False):
-    """短事务写回终态（已成为终态的运行不再改写：保留更精确的结果）。"""
+    """短事务写回终态（已成为终态的运行不再改写：保留更精确的结果）。
+
+    fencing：lease 不匹配（运行已被取消后重试/被新接管）直接丢弃晚结果，
+    绝不把新接管的 queued/running 覆盖成 failed/cancelled。
+    """
     try:
+        expected = lease_of(user_id, run_id)
+
         def body(conn):
             row = store.get_run(conn, run_id, user_id)
             if row is None:
+                return
+            if expected and str(row['lease_token']) != expected:
                 return
             if row['state'] in ('succeeded', 'failed', 'cancelled', 'interrupted'):
                 if state != 'succeeded' or row['state'] in ('failed', 'cancelled', 'interrupted'):
                     return
             store.update_run(conn, run_id, user_id, state=state, error=error,
-                             retryable=retryable, cancel_requested=(state == 'cancelled'))
+                             retryable=retryable, cancel_requested=(state == 'cancelled'),
+                             lease=expected or None)
         with sto.write_tx() as tx:
             tx.run(body)
     except Exception:
@@ -87,10 +116,13 @@ def _finish(user_id, run_id, state, error='', retryable=False):
 
 
 def check_cancelled(conn, run_id, owner_user_id):
-    """阶段边界复查：已取消 / 未运行 → 抛 Cancelled（晚结果禁止写入）。"""
+    """阶段边界复查：已取消 / 未运行 / lease 已被轮换 → 抛 Cancelled（晚结果禁止写入）。"""
     state = store.run_state(conn, run_id, owner_user_id)
     if state is None:
         raise Cancelled('运行不存在')
+    expected = lease_of(owner_user_id, run_id)
+    if expected and str(state.get('lease_token') or '') != expected:
+        raise Cancelled('运行已被重试接管或已轮换执行权，旧结果不再写入')
     if state['cancel_requested'] or state['state'] in ('cancelled', 'interrupted'):
         raise Cancelled('用户已取消')
 
@@ -101,10 +133,16 @@ def stage(user_id, run_id, stage, label=None, progress=None):
     进度是「真实阶段 + 已处理数量」，不做虚假倒计时：progress 由调用方按实际
     处理条目数给出。取消检查在同一事务里完成，避免晚结果写进新基线。
     """
+    expected = lease_of(user_id, run_id)
+
     def body(conn):
         check_cancelled(conn, run_id, user_id)
-        store.update_run(conn, run_id, user_id, state='running', stage=stage,
-                         stage_label=label or '', progress=progress if progress is not None else None)
+        hit = store.update_run(conn, run_id, user_id, state='running', stage=stage,
+                               stage_label=label or '',
+                               progress=progress if progress is not None else None,
+                               lease=expected or None)
+        if hit is False:
+            raise Cancelled('运行执行权已转移，晚结果丢弃')
     with sto.write_tx() as tx:
         tx.run(body)
 
@@ -113,13 +151,21 @@ def finish_success(user_id, run_id, usage=None):
     """把运行标成功；生成类运行同时把任务推进到「评审初稿」。
 
     状态推进与运行终态在同一事务内完成：任务阶段必须反映真实进度，
-    不能运行早成功了而任务还停在「生成中」。
+    不能运行早成功了而任务还停在「生成中」。lease 不匹配则整体丢弃。
     """
     from workbench.ontology_build import protocol
 
+    expected = lease_of(user_id, run_id)
+
     def body(conn):
-        store.update_run(conn, run_id, user_id, state='succeeded', error='',
-                         retryable=False, usage=usage or {}, checkpoint=None)
+        # usage=None 时 update_run 不动 usage_json 列：管线在生成过程里已按 LLM 调用
+        # 累计写入（calls/promptBytes/completionBytes/durationMs），终态补写绝不能
+        # 用空字典把它覆盖回零（可选修复项：run.usage 恒为空的真正原因）。
+        hit = store.update_run(conn, run_id, user_id, state='succeeded', error='',
+                               retryable=False, usage=usage or None, checkpoint=None,
+                               lease=expected or None)
+        if hit is False:
+            return
         row = store.get_run(conn, run_id, user_id)
         if row is None or row['kind'] != 'generate':
             return
