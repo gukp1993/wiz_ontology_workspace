@@ -1,0 +1,26 @@
+{
+  "ticket": "8fc232ce77794483bbcc052e87f4bafb",
+  "task": "本体与项目辅助填写正式实现计划与zcode指令",
+  "status": "ready",
+  "summary": "按用户要求交付正式实现开发计划与执行指令，覆盖11场景、真实模型结构化建议、上下文权限/脱敏/校验、局部draft采纳、显式保存、异步失效保护。仅交付文档，未创建worktree或开发。",
+  "decisions": [
+    "原型预置响应和斜杠参数解析不移植到生产；生产补充答案按questionId分别绑定。",
+    "T0先冻结API与字段映射再按T0-T12任务表分批并行；创建worktree和合并仍需明确授权。"
+  ],
+  "verification": [
+    "只读核对llm_client、统一HTTP出口、表单draft/保存基础；文档diff检查。"
+  ],
+  "next": [
+    "用户将指令交zcode，明确创建worktree并开发后执行，自测提交交独立验收，不合并。"
+  ],
+  "references": [
+    "文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md",
+    "文档/需求/20260920_本体与项目辅助填写/执行指令_正式实现.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-21T04:47:43.445446+00:00",
+  "sequence": 151,
+  "filename": "000151-58dbb48eedb6.json",
+  "record_hash": "c09f9f7da56985a31bfa681b3606f776c59e2884b19e0388c7224c1cb5331e93",
+  "context_advanced": true
+}
