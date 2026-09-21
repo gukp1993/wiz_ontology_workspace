@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`c67b01d0d4af9b86`
+上下文版本：`9f989fafc5e51f37`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,27 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### ontology-build-v2-governance（第一轮验收整改 R6，worktree/build-governance） · zcode · 已实施，待验收
+
+时间：2026-09-21T19:18:41.745556+00:00；记录：`.collaboration/entries/000172-d5c35beafb67.json`
+
+第一轮验收 4 项（1 严重+3 一般）全部修复，分两次提交：8c6c9d9 = 严重#1 G24 blob 物理删除双前缀缺陷（删除侧改数据目录/blob 目录双基准解析，兼容生产登记 ontology-build-blobs/<名> 与旧裸相对名形态，穿越登记按缺失处理、绝不删目录外文件；purge 测试补生产形态回归——旧夹具路径基准与生产不同正是漏测根因）；5b95df8 = 一般#2 G19 兜底限额改单任务累计口径（storage.scan_fallback_usage 按任务全部 scan 运行检查点求和，重试/再扫描不重置；检查点只记本轮消耗避免跨运行重复计数）+ 一般#3 环境变量可配置（WIZ_BUILD_LLM_FALLBACK_MAX_FILES/_MAX_BYTES，正整数，启动前生效，默认 200 个/50MB 不变，capabilities 展示生效值）+ 一般#4 G23 abstract 模式落实真实复用持久化筛选/对齐产物（不重算确定性阶段，必炸桩探针实证）；08 分册 §4.3/§1.5/§12.2 与 README 同步更新，开发计划追加 §12.3 修正记录。
+
+- 决定：G24 选删除侧兼容双形态而非改登记口径（登记与 material_blob_path 读取同源，兼容存量生产数据）；G19 限额按需求改单任务累计，未动需求；每轮消耗落检查点、跨运行求和即任务累计（对账可查）；G23 选实现复用（改动小且与 §7.1 一致），原文案转真
+- 验证：tests/test_ontology_build.py 226/226（新增累计限额断言：限额 1 时重试仍降级且本轮消耗 0；环境变量覆盖/非法回退 3 项；abstract 必炸桩探针）；tests/test_ontology_build_task_purge.py 17/17（生产形态物理删除实测 + 穿越/缺失防御）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；vue-tsc 0 错误、npm run build 通过
+- 下一步：待测试 agent 复验（只针对四项修复）；遗留预存债务如实报告：tests/test_ontology_build_task_purge.py:115 基线即有的 F841（root 未使用），按「既有代码不重排」未动；生产实例 6137 个孤儿 blob 的存量数据清理不在本轮范围（代码缺陷已修复，数据处置需用户决定）
+- 依据/文档：worktree/build-governance 分支 codex/build-governance：8c6c9d9（G24）、5b95df8（G19×2+G23）；文档/接口文档/08-从物料自动构建本体接口.md §4.3/§1.5/§12.2；文档/需求/20260920_从物料自动构建本体/开发计划.md §12.3
+
+### build-governance V2六项增量 测试agent独立验收 第一轮 · zcode · 受阻
+
+时间：2026-09-21T19:02:01.335973+00:00；记录：`.collaboration/entries/000171-a016c92a38aa.json`
+
+独立验收完成：六项增量中 G17/G18/G20/G21/G23 通过，G19 基本通过（限额「每轮扫描」vs 需求「单任务」、限额不可配置 2 项一般偏差待用户裁定），G22 复核通过，G24 不通过——发现严重缺陷：任务级联删除后 blob 物理文件全部残留（materials.py delete_task_blob_files 以 blob_dir() 为基准拼接相对 data_dir 的 blob_path，双重前缀永远 missing 静默跳过；基线 425a28d 已存在、非本轮 7 提交引入；实测 2 任务 7 文件 100% 残留；purge 测试夹具路径基准与生产不一致故未拦截）。finish_guard 场景1 断言改动经基线实证（git archive 425a28d 跑旧测试 25/27）为合理适配非掩盖回归，场景3 基线失败系真实缺陷已被本轮 finish_success 修复。回归：定向测试全过（222/95/60/27/11/10 等），run.py all 46过/5失败均为 worktree 缺 ontology/ 的环境性失败（主仓库交叉验证通过），external 按约定跳过；迁移 0003→0004 升级/幂等/存量 ALTER 路径全过；vue-tsc/build/前端 mjs 全过；隔离实例 18971 实测黑名单422+过滤报告/分片幂等/.xyz如实降级/重试排除/级联删除输入名确认全过，实例已按 PID 停止。完整报告：/tmp/v2_test_report_round1.md
+
+- 验证：后端定向测试独立复跑全过：test_ontology_build 222/222、parsers 95/95、storage_contract 60/60、transfer 27/27、purge 11/11、其余 ontology_build 系列 17/27/23/42/34 全过；tests/run.py all 46过/5失败；5 个失败均为 worktree 缺真实 ontology/ 的环境性（非本轮改动文件，主仓库交叉验证 save_iteration 8/8 通过）；external 按约定跳过；迁移 0003→0004：链正确、升级/重复幂等/存量库 ALTER（旧行保留默认{}）/全新库 heads 全过；前端 vue-tsc 与 npm run build 通过；两个 build mjs 测试 8/8 与全过；隔离实例 18971 实测：黑名单 422+过滤报告、分片同index同hash幂等、.xyz 如实降级 partial、重试 parsed=1/reused=1、排除+409 CAS、级联删除确认；缺陷实证=删除后 7 个 blob 文件残留
+- 下一步：开发 agent 修复 #1 blob 文件级联清理（改 base=data_dir 或改登记口径，二选一保持读写一致）并补按生产 blob_path 形态的回归用例，交付新 SHA 后复测；用户裁定 G19 限额口径（每轮扫描 vs 单任务）与可配置性落点；修正 G23 abstract 模式文案（契约/api.ts 注释/测试标题）或实现改为真复用
+- 依据/文档：/tmp/v2_test_report_round1.md；worktree/build-governance@73bd704（基线425a28d+7提交）；文档/接口文档/08-从物料自动构建本体接口.md §13/§4.3/§12.5/§12.6；workbench/ontology_build/materials.py:484,578-599
 
 ### ontology-build-v2-governance（V2-2～V2-8，worktree/build-governance） · zcode · 已实施，待验收
 
@@ -128,25 +149,3 @@ V2 六项增量全部实施并逐项提交（基于 425a28d，分支 codex/build
 
 - 验证：核对依赖顺序、完成标准与授权停止点；未改代码、未创建worktree、未更新服务。
 - 依据/文档：文档/需求/20260921_项目能力补齐推进计划/推进计划表.md
-
-### repo-cleanup 验收B项整改（原分支修复，不合并main） · zcode · 已实施，待验收
-
-时间：2026-09-21T07:06:08.564299+00:00；记录：`.collaboration/entries/000161-f127da84bd51.json`
-
-按独立验收记录修复要求整改：df941aa 单独提交补做真正的退出跟踪（git rm -r --cached ontology/ .idea/，996 文件出索引），提交后实测全达标——ontology tracked=0、.idea tracked=0、tracked 总数 1860→864、磁盘 ontology 仍 991 个文件、data/keys diff=0。09ae5e2 登记开发计划 §7 整改记录（根因：拆分提交前 git reset 撤销了 rm --cached 暂存，git add -u 无法恢复删除暂存；自验未在 reset 后复测 ls-files）并修正验收指令两处期望值（交付物顶层 md 期望 8 非 ≥12；tracked 期望 ≈864 非 855）。历史提交不改写，错误数字以整改记录与提交信息更正为准。
-
-- 决定：整改提交单独成提交不混入其他改动（按验收记录要求 1）；不改写本地历史：验收以最终树为准，d7f79ce/ec0c0aa 的信息错位在整改提交信息与开发计划 §7 中如实更正记录；验收指令期望值随实测修正并在指令文件内原位更新，保证复验口径一致
-- 验证：git ls-files | grep -c '^ontology/' = 0；'^\.idea/' = 0；git ls-files | wc -l = 864（1860−996）；find ontology -type f | wc -l = 991 磁盘原样；git diff --stat -- data/ keys/ 空（真实数据零接触）；工作树 clean；新 HEAD df941aa（业务整改）+ 09ae5e2（文档）
-- 下一步：交原验收人复验：以 df941aa 为准重走指令 §B 与附带质量问题核对（提交信息错位已在整改记录更正，历史不改写）；复验通过后停在待用户授权集成
-- 依据/文档：文档/需求/20260921_仓库架构整理与代码规范/独立验收记录_20260921.md（修复要求）；文档/需求/20260921_仓库架构整理与代码规范/开发计划.md §7；提交 df941aa、09ae5e2
-
-### 仓库架构整理与代码规范（codex/repo-cleanup）独立验收 · zcode · 受阻
-
-时间：2026-09-21T07:02:06.633953+00:00；记录：`.collaboration/entries/000160-c3ae1a62dfa2.json`
-
-用户直接指令 zcode 执行独立验收（角色由用户指定，默认 Codex 被覆盖）。按验收指令全项执行，总体判定【不通过】：B 项核心交付退出跟踪实际未发生——git ls-tree -r d7f79ce 内 ontology 仍 991 个、--name-status 0 条 D 记录，.idea 仍 5 个；tracked 1858（基线 b4a56a9 实测 1852，非声称的 1758→855）。.gitignore 规则已加但对仍在索引内的文件无效，合并后仓库仍带全部 ontology 数据。A 文档重组通过（交付物顶层 md=8，指令期望≥12系把 4 个子目录误计入顶层；基线实证顶层 0 份+归位 8 份与开发计划 A1 一致）。C 通过（ruff 全过/eslint 0 error/build 3.77s/quick 3/3）。D 通过（all 48/49，唯一败 parsers 2 项 D15 经 main 对照 83/85 同败确认为 pypdf 环境缺口；TS 6/6；语义抽查 6/6，但 4 个修复点实际落在 d7f79ce 而非指令所述 ec0c0aa）。根因推断：交付条目自验记录『git diff --cached 核验 ontology 991 个 D』证明暂存区当时确有删除，后续提交前疑似被 git add -A 在 .gitignore 生效前覆盖回索引，且提交前未复测关键断言。验收记录已提交 b3e912b。
-
-- 决定：B 项判定依据为提交树实证（git ls-tree / git show --name-status），非索引或工作区瞬时状态，不可辩解为暂存异常；A 项指令期望值≥12 与基线事实不符（基线交付物顶层 0 份 md），按开发计划 A1（归位 8 份）判实现正确，属验收指令笔误；pypdf 2 项 D15 按指令 §2 的 main 对照实验归为既有环境缺口，不计本次缺陷
-- 验证：B 核心证据：git ls-tree -r d7f79ce | grep -c ^ontology/ = 991；git show d7f79ce --name-status | grep -c '^D.*ontology' = 0；git ls-files | wc -l = 1858；基线 b4a56a9 树 = 1852；.gitignore 第 10/11 行有 /ontology/ 与 .idea/；A：评审与纪要 6/概念与说明 4/交付物顶层 md 8/归档同名残留 0/设计方案 rename 历史连续（b8627db←ddc4d31）/AGENTS 与 README 全部文档引用存在；C：ruff 'All checks passed!'；npm run lint exit 0；npm run build 3.77s；tests/run.py quick 3/3；D：run.py all 48/49（败=test_ontology_build_parsers 2×D15）；main 树同文件 83/85 同 2 项败；6 个 TS 套件全 OK；语义抽查 6 条全过（model_routes import/test_mapping_descriptions 版本号返回/FlowEditor 影子移 watch/LinkMappings :title/eeb7097 bridgeState/B904×5 from None+下划线前缀×3 无原名残留）；数据零接触：git diff b4a56a9..HEAD --stat -- data/ keys/ = 0；磁盘 ontology 991 文件完好；主仓库 vault 未动；验收 HEAD 6f61f6c 相对 eeb7097 仅多指令/交接文档（git diff --stat 确认）
-- 下一步：原分支修复：git rm -r --cached ontology/ .idea/ 单独成提交（磁盘保留），提交后实测 ontology=0/.idea=0/tracked≈862/磁盘仍 991/data+keys diff=0，交付新 SHA 重新验收；建议同步修正提交信息与内容错位（d7f79ce 混入 lint 基线、ec0c0aa 仅 1 文件却声称基线+存量修复）；本地未合并分支可整理历史或在新提交如实更正；不合并 main、不清理工作树、不更新主服务，均待用户明确指令
-- 依据/文档：文档/需求/20260921_仓库架构整理与代码规范/独立验收记录_20260921.md；验收记录提交 b3e912b；验收 HEAD 6f61f6c；被验业务提交 b8627db/d7f79ce/ec0c0aa/eeb7097；基线 b4a56a9
