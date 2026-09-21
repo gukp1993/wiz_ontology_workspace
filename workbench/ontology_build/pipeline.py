@@ -150,7 +150,9 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False, pro
       用户显式重试时用）。
     * 解析三级分派（V2-3）：专用解析器（code/ddl/docx/pdf/xlsx/md/image）→ LLM 兜底
       （kind=other 且可读出文本；provider 缺失/超限/失败则降级文本线索，逐文件注明原因）。
-      兜底解析消耗模型调用，限额见 protocol.LLM_FALLBACK_*（默认 200 个 / 50MB 每轮扫描）。
+      兜底解析消耗模型调用；限额为**单任务累计**（protocol.LLM_FALLBACK_*，默认 200 个 /
+      50MB，可用环境变量 WIZ_BUILD_LLM_FALLBACK_MAX_FILES/_MAX_BYTES 覆盖），已消耗量按
+      任务全部 scan 运行检查点累计，重试/再扫描不重置。
     * 无材料 / 全部失败 → 抛 PipelineError（run 记失败），但**已完成材料的结果保留**。
     * 长解析期间不持锁；每个材料完成即推进 progress {'done': n, 'total': m}。
     """
@@ -164,7 +166,14 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False, pro
     parsed = reused = failed = facts_total = 0
     modules, details = [], []
     usage = _usage()
-    fallback_budget = {'files': 0, 'bytes': 0}
+    # V2-3（G19）：兜底限额是**单任务累计**口径——预算从该任务此前全部 scan 运行的
+    # 已消耗量起步（排除本次运行），重试/再扫描不重置；fallback_budget 是累计执行计数器，
+    # fallback_used 只记**本次运行**消耗（检查点落库的就是它，跨运行求和才是任务累计）。
+    seeded = _tx(lambda conn: store.scan_fallback_usage(conn, task_id, owner_id,
+                                                        exclude_run_id=run_id))
+    fallback_budget = {'files': int(seeded.get('files') or 0),
+                       'bytes': int(seeded.get('bytes') or 0)}
+    fallback_used = {'files': 0, 'bytes': 0}
     for index, item in enumerate(plan, start=1):
         if item['reusable']:
             reused += 1
@@ -185,7 +194,7 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False, pro
             else:
                 try:
                     result, usage = _parse_with_dispatch(owner_id, run_id, item, provider,
-                                                         fallback_budget, usage)
+                                                         fallback_budget, fallback_used, usage)
                 except Exception as exc:  # noqa: BLE001 - 单材料异常降级为该材料失败
                     result = None
                     outcome = {'state': 'failed', 'facts': 0, 'modules': [],
@@ -213,8 +222,8 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False, pro
                  {'done': total, 'total': total})
     checkpoint = {'scan': {'materials': total, 'parsed': parsed, 'reused': reused, 'failed': failed,
                            'facts': facts_total, 'modules': modules,
-                           'fallbackFiles': fallback_budget['files'],
-                           'fallbackBytes': fallback_budget['bytes'],
+                           'fallbackFiles': fallback_used['files'],
+                           'fallbackBytes': fallback_used['bytes'],
                            'note': '结构索引按材料解析覆盖摘要登记；token 级检索索引在生成阶段的 '
                                    'retrieve 步按需构建（避免把全部事实一次性读进内存）。'}}
     _tx(lambda conn: (runner.check_cancelled(conn, run_id, owner_id),
@@ -232,8 +241,12 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False, pro
             'modules': modules, 'details': details, 'usage': usage}
 
 
-def _parse_with_dispatch(owner_id, run_id, item, provider, fallback_budget, usage):
-    """三级分派：专用解析器 / LLM 兜底 / 文本线索降级。返回 (ParseResult, usage)。"""
+def _parse_with_dispatch(owner_id, run_id, item, provider, fallback_budget, fallback_used, usage):
+    """三级分派：专用解析器 / LLM 兜底 / 文本线索降级。返回 (ParseResult, usage)。
+
+    fallback_budget 是单任务累计执行计数器（含此前运行消耗，只用于限额判定）；
+    fallback_used 记本次运行的兜底消耗（落检查点，跨运行求和 = 任务累计）。
+    """
     result = parse_material(item['path'], item['id'], item['kind'], item['relPath'])
     if item['kind'] in DEDICATED_KINDS:
         return result, usage
@@ -251,8 +264,11 @@ def _parse_with_dispatch(owner_id, run_id, item, provider, fallback_budget, usag
     fallback, new_usage = _llm_fallback_result(item, provider)
     usage = _add_usage(usage, new_usage)
     if not isinstance(fallback, dict):   # 成功：返回 ParseResult（弱证据事实）
+        size = int(item.get('size') or 0)
         fallback_budget['files'] += 1
-        fallback_budget['bytes'] += int(item.get('size') or 0)
+        fallback_budget['bytes'] += size
+        fallback_used['files'] += 1
+        fallback_used['bytes'] += size
         return fallback, usage
     _annotate_downgrade(result, 'LLM 兜底解析失败（%s），已按文本线索降级，可修复模型配置后重试。'
                         % (fallback.get('error') or '未知错误'))
@@ -769,10 +785,17 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
     label = protocol.GENERATE_STAGE_LABELS['retrieve']
     saved_plan = saved.get('plan') if isinstance(saved.get('plan'), dict) else {}
     plan_ids = [str(item) for item in (saved_plan.get('modelFactIds') or [])]
-    plan_reusable = (resume_mode != 'abstract' and plan_ids
+    # 阶段检查点（V2-8）：auto 与 abstract 都复用已持久化的确定性产物（筛选/对齐不重算）；
+    # 两者只差在批次——auto 只补失败批，abstract 重跑全部抽象批。
+    plan_reusable = (plan_ids
                      and int(saved_plan.get('scopeRevision') or -1) == int(scope.get('revision') or 0)
                      and all(item in by_id for item in plan_ids))
     if plan_reusable:
+        if resume_mode == 'abstract':
+            _note(notes, '从 abstract 阶段重试：复用上次运行持久化的筛选/对齐产物'
+                         '（%d 条事实，确定性阶段未重算），重跑全部 %d 个抽象批次。'
+                         % (len(saved_plan.get('modelFactIds') or []),
+                            -(-len(saved_plan.get('modelFactIds') or []) // protocol.LLM_BATCH_FACTS)))
         model_facts = [by_id[item] for item in plan_ids if item in by_id]
         relevant_n = int(saved_plan.get('relevant') or 0)
         related_n = int(saved_plan.get('related') or 0)

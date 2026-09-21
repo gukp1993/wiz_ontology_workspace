@@ -49,6 +49,7 @@ from workbench.ontology_build import alignment  # noqa: E402
 from workbench.ontology_build import blacklist as blacklist_domain  # noqa: E402
 from workbench.ontology_build import llm as build_llm  # noqa: E402
 from workbench.ontology_build import pipeline as build_pipeline  # noqa: E402
+from workbench.ontology_build import retrieval  # noqa: E402
 from workbench.ontology_build.parsers import image_parser  # noqa: E402
 from workbench.ontology_build.parsers import ocr_support  # noqa: E402
 from workbench.ontology_build import materials as materials_domain  # noqa: E402
@@ -1071,15 +1072,25 @@ def flow_generate_resume():
         check(run3.get('state') == 'failed', '注入后再生成失败（待 abstract 重试）',
               actual=run3.get('state'))
         FakeLlm.extract_fail_remaining = 0
-        status, resumed = api('/api/build-run-resume',
-                              {'taskId': task_id, 'runId': run_id3, 'resumeMode': 'abstract'})
-        check(status == 200, 'build-run-resume(abstract) 受理', actual=(status, _short(resumed)))
-        run3 = poll_run(task_id, run_id3)
-        delta = FakeLlm.extract_attempts - attempts_before
-        # 第一次再生成 2 次调用（1 失败 1 成功）+ abstract 重跑全部 2 批 = 4
-        check(run3.get('state') == 'succeeded' and delta == 4,
-              'abstract 重试：复用筛选/对齐产物但重跑全部批次（抽取调用 +2）',
-              actual=(run3.get('state'), delta))
+        # 复用探针：把确定性检索替换为必炸桩——若 abstract 重试重算筛选/对齐会立即失败；
+        # 成功即证明产物确实复用、确定性阶段未重算（V2-8 §7.1 阶段检查点）。
+        saved_select, saved_index = retrieval.select_scope, retrieval.build_index
+        def _must_not_recompute(*args, **kwargs):
+            raise RuntimeError('确定性阶段不应重算（应复用持久化产物）')
+        retrieval.select_scope = _must_not_recompute
+        retrieval.build_index = _must_not_recompute
+        try:
+            status, resumed = api('/api/build-run-resume',
+                                  {'taskId': task_id, 'runId': run_id3, 'resumeMode': 'abstract'})
+            check(status == 200, 'build-run-resume(abstract) 受理', actual=(status, _short(resumed)))
+            run3 = poll_run(task_id, run_id3)
+            delta = FakeLlm.extract_attempts - attempts_before
+            # 第一次再生成 2 次调用（1 失败 1 成功）+ abstract 重跑全部 2 批 = 4
+            check(run3.get('state') == 'succeeded' and delta == 4,
+                  'abstract 重试：复用筛选/对齐产物（探针桩未触发）且重跑全部批次（抽取调用 +2）',
+                  actual=(run3.get('state'), delta, run3.get('error')))
+        finally:
+            retrieval.select_scope, retrieval.build_index = saved_select, saved_index
     finally:
         FakeLlm.extract_fail_remaining = 0
 
@@ -1191,12 +1202,13 @@ def flow_llm_fallback():
     check(verified2 and verified2[0].get('evidenceStatus') == 'supported',
           '不含兜底证据的候选不受弱证据降级影响', actual=verified2 and verified2[0].get('evidenceStatus'))
 
-    # 限额路径：文件数限额压到 0 → 兜底跳过、回退文本线索降级且原因可读
+    # 限额路径（单任务累计口径）：此前扫描已累计消耗 2 个兜底文件，把文件数限额压到 1
+    # 后重试——若按“每轮”语义预算会重置为 0/1（兜底会执行）；按“单任务累计”则超限降级。
     _, fresh = api('/api/build-materials', query='?taskId=' + task_id)
     log_row = states.get('export.log') or {}
     saved_files, saved_bytes = protocol.LLM_FALLBACK_MAX_FILES, protocol.LLM_FALLBACK_MAX_BYTES
     try:
-        protocol.LLM_FALLBACK_MAX_FILES = 0
+        protocol.LLM_FALLBACK_MAX_FILES = 1
         status, retry = api('/api/build-material-retry',
                             {'taskId': task_id, 'materialId': log_row.get('id')})
         run = poll_run(task_id, require(retry.get('runId'), '限额重试未返回 runId'))
@@ -1205,10 +1217,32 @@ def flow_llm_fallback():
         log_after = next((m for m in listing.get('items') or [] if m['relPath'] == 'export.log'), {})
         check((log_after.get('coverage') or {}).get('modules') == ['text']
               and any('限额' in str(note) for note in (log_after.get('coverage') or {}).get('notes', [])),
-              '超过兜底限额 → 回退文本线索降级并在 coverage 注明原因（G19 不静默）',
+              '单任务累计限额：重试不重置预算 → 超限回退文本线索降级并注明原因（G19 不静默）',
               actual=_short(log_after))
+        scan_ckpt = ((run.get('checkpoint') or {}).get('scan') or {})
+        check(scan_ckpt.get('fallbackFiles') == 0 and scan_ckpt.get('fallbackBytes') == 0,
+              '超限运行自身未消耗兜底文件（检查点 fallbackFiles/fallbackBytes 均为 0）',
+              actual=run.get('checkpoint'))
     finally:
         protocol.LLM_FALLBACK_MAX_FILES, protocol.LLM_FALLBACK_MAX_BYTES = saved_files, saved_bytes
+
+    # 限额可配置（G19）：环境变量在服务启动前覆盖默认值（正整数；非法/非正值回退默认）
+    saved_env = os.environ.get('WIZ_BUILD_LLM_FALLBACK_MAX_FILES')
+    try:
+        os.environ['WIZ_BUILD_LLM_FALLBACK_MAX_FILES'] = '123'
+        check(protocol._limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', 200) == 123,
+              '环境变量覆盖兜底文件数限额（WIZ_BUILD_LLM_FALLBACK_MAX_FILES）')
+        os.environ['WIZ_BUILD_LLM_FALLBACK_MAX_FILES'] = 'abc'
+        check(protocol._limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', 200) == 200,
+              '非法环境变量取值回退默认（不 crash）')
+        os.environ['WIZ_BUILD_LLM_FALLBACK_MAX_FILES'] = '-5'
+        check(protocol._limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', 200) == 200,
+              '非正值环境变量回退默认')
+    finally:
+        if saved_env is None:
+            os.environ.pop('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', None)
+        else:
+            os.environ['WIZ_BUILD_LLM_FALLBACK_MAX_FILES'] = saved_env
 
     # 失败路径：兜底调用注入失败 → 逐文件降级文本线索并报告原因，不阻塞其余文件
     config_row = states.get('config.ini') or {}

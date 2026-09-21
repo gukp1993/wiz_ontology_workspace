@@ -152,7 +152,8 @@ export interface BuildRun {
   updatedAt: string
 }
 
-/** 生成检查点摘要（V2-8；不含 factId 明细）。 */
+/** 检查点摘要（V2-8；不含 factId 明细）：generate 为批次/阶段检查点；
+ *  scan 携带本轮兜底消耗（G19 单任务累计限额的对账来源，08 §4.3）。 */
 export interface RunCheckpoint {
   generate?: {
     batchId: string
@@ -170,6 +171,12 @@ export interface RunCheckpoint {
       done: number[]
       failed: { position: number; error: string }[]
     }
+  }
+  scan?: {
+    materials: number
+    /** 本轮自身兜底消耗（跨运行求和 = 单任务累计，08 §4.3） */
+    fallbackFiles: number
+    fallbackBytes: number
   }
 }
 

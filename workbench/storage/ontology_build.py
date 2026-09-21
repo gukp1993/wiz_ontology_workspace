@@ -622,36 +622,45 @@ def run_view(row):
 
 
 def run_checkpoint_view(row):
-    """checkpoint_json → 对外摘要（`{generate: {...}}`，与前端 RunCheckpoint 同形）；
-    非生成运行/未持久化返回 None。"""
+    """checkpoint_json → 对外摘要（`{generate:…}` / `{scan:…}`，与前端 RunCheckpoint 同形）；
+    未持久化检查点返回 None。"""
     try:
         raw = row['checkpoint_json']
     except (KeyError, IndexError):
         return None
     checkpoint = _loads(raw if raw is not None else '{}', {})
+    view = {}
     gen = checkpoint.get('generate')
-    if not isinstance(gen, dict):
-        return None
-    plan = gen.get('plan') if isinstance(gen.get('plan'), dict) else {}
-    batches = gen.get('batches') if isinstance(gen.get('batches'), dict) else {}
-    failed = [item for item in batches.get('failed') or [] if isinstance(item, dict)]
-    return {'generate': {
-        'batchId': str(gen.get('batchId') or ''),
-        'scopeRevision': int(gen.get('scopeRevision') or 0),
-        'materialRevision': int(gen.get('materialRevision') or 0),
-        'planPersisted': bool(plan.get('modelFactIds')),
-        'modelFacts': len(plan.get('modelFactIds') or []),
-        'relevant': int(plan.get('relevant') or 0),
-        'related': int(plan.get('related') or 0),
-        'excluded': int(plan.get('excluded') or 0),
-        'batches': {
-            'size': int(batches.get('size') or 0),
-            'total': int(batches.get('total') or 0),
-            'done': [int(p) for p in batches.get('done') or []],
-            'failed': [{'position': int(item.get('position') or 0),
-                        'error': str(item.get('error') or '')} for item in failed],
-        },
-    }}
+    if isinstance(gen, dict):
+        plan = gen.get('plan') if isinstance(gen.get('plan'), dict) else {}
+        batches = gen.get('batches') if isinstance(gen.get('batches'), dict) else {}
+        failed = [item for item in batches.get('failed') or [] if isinstance(item, dict)]
+        view['generate'] = {
+            'batchId': str(gen.get('batchId') or ''),
+            'scopeRevision': int(gen.get('scopeRevision') or 0),
+            'materialRevision': int(gen.get('materialRevision') or 0),
+            'planPersisted': bool(plan.get('modelFactIds')),
+            'modelFacts': len(plan.get('modelFactIds') or []),
+            'relevant': int(plan.get('relevant') or 0),
+            'related': int(plan.get('related') or 0),
+            'excluded': int(plan.get('excluded') or 0),
+            'batches': {
+                'size': int(batches.get('size') or 0),
+                'total': int(batches.get('total') or 0),
+                'done': [int(p) for p in batches.get('done') or []],
+                'failed': [{'position': int(item.get('position') or 0),
+                            'error': str(item.get('error') or '')} for item in failed],
+            },
+        }
+    scan = checkpoint.get('scan')
+    if isinstance(scan, dict):
+        # V2-3（G19）：本轮兜底消耗量——单任务累计预算的对账来源（08 §4.3）
+        view['scan'] = {
+            'materials': int(scan.get('materials') or 0),
+            'fallbackFiles': int(scan.get('fallbackFiles') or 0),
+            'fallbackBytes': int(scan.get('fallbackBytes') or 0),
+        }
+    return view or None
 
 
 def get_run(conn, run_id, owner_user_id):
@@ -721,6 +730,30 @@ def rotate_run_lease(conn, run_id, owner_user_id):
                           {'l': new_lease, 'n': sto.utcnow(), 'r': run_id,
                            'o': owner_user_id or ''})
     return new_lease if result.rowcount == 1 else ''
+
+
+def scan_fallback_usage(conn, task_id, owner_user_id, exclude_run_id=None):
+    """任务级 LLM 兜底已消耗量累计（V2-3/G19：限额是**单任务累计**口径，不随重试重置）。
+
+    汇总该任务全部 scan 运行检查点里的 `scan.fallbackFiles` / `scan.fallbackBytes`
+    （每个检查点只记**该轮自身**的兜底消耗，求和即任务累计）；`exclude_run_id` 排除
+    当前运行自身（其消耗尚未落库，由本轮预算实时累加）。
+    """
+    rows = conn.execute(sto.text("SELECT run_id, checkpoint_json FROM wb_build_runs "
+                                 "WHERE task_id = :t AND owner_user_id = :o AND kind = 'scan'"),
+                        {'t': task_id, 'o': owner_user_id or ''}).mappings().all()
+    files = used_bytes = 0
+    for row in rows:
+        if exclude_run_id is not None and str(row['run_id']) == str(exclude_run_id):
+            continue
+        checkpoint = _loads(row['checkpoint_json'] if row['checkpoint_json'] is not None else '{}', {})
+        scan = checkpoint.get('scan') if isinstance(checkpoint.get('scan'), dict) else {}
+        try:
+            files += int(scan.get('fallbackFiles') or 0)
+            used_bytes += int(scan.get('fallbackBytes') or 0)
+        except (TypeError, ValueError):
+            continue
+    return {'files': files, 'bytes': used_bytes}
 
 
 def run_state(conn, run_id, owner_user_id):

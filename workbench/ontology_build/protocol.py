@@ -3,6 +3,7 @@
 所有模块只从这里取状态字符串、限额与 ID 前缀；接口文档 08 分册与前端必须与此一致。
 本模块不 import 存储层，保持可被解析器/前端契约测试单独加载。
 """
+import os
 import re
 
 # --- 限额（工程保守默认，能力接口原样展示；不得宣称更大容量） ---
@@ -25,13 +26,29 @@ RUN_WORKERS = 2
 SNIPPET_LIMIT = 500
 PROMPT_VERSION = 'v1'
 PARSER_VERSION = 'v1'
-# V2-3（G19）LLM 兜底解析限额：单任务兜底文件数 / 字节数（超限回退文本线索降级并在
-# 扫描报告注明）；切片按字符计（独立于上传 chunkBytes：512KiB 文本会超出模型上下文，
-# 6000 字符约为可安全发送的输入规模）；单文件最多切片数限制调用成本。
-LLM_FALLBACK_MAX_FILES = 200
-LLM_FALLBACK_MAX_BYTES = 50 * 1024 * 1024
+# V2-3（G19）LLM 兜底解析限额：单任务兜底文件数 / 字节数（跨多次扫描/单物料重试累计，
+# 不因重试重置——已消耗量按任务全部 scan 运行检查点累计，见 storage.scan_fallback_usage）；
+# 超限回退文本线索降级并在扫描报告注明。可配置：环境变量在服务启动前覆盖默认值
+# （正整数；未设置/非法用默认，改动需重启服务生效），capabilities 的 llmFallback
+# 展示当前生效值。
 LLM_FALLBACK_SLICE_CHARS = 6000
 LLM_FALLBACK_MAX_SLICES = 16
+
+
+def _limit_from_env(name, default):
+    """从环境变量读取正整数限额；未设置/非法/非正值返回默认（可配置限额的唯一入口）。"""
+    raw = str(os.environ.get(name) or '').strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+LLM_FALLBACK_MAX_FILES = _limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', 200)
+LLM_FALLBACK_MAX_BYTES = _limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_BYTES', 50 * 1024 * 1024)
 
 LIMITS = {
     'chunkBytes': CHUNK_BYTES,
