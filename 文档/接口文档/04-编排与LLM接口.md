@@ -414,6 +414,7 @@ POST /api/assist-context
 | --- | --- | --- | --- |
 | `space` | string | 是 | `ontology` \| `project` |
 | `projectId` | string | space=project | 项目 id；项目区按当前账号可见范围校验 |
+| `ontologyId` | string | 否 | 本体工作区 id（space=ontology 有效）；省略/空 = 默认工作区 `storage`；目标不可见或属他人一律 404 `NOT_FOUND`；签入 contextToken 并参与一致性校验 |
 | `targetKind` | string | 是 | 见 §5.0 |
 | `targetId` | string | 否 | 编辑目标稳定 id；新建（尚未保存）时为空 |
 | `purpose` | string | 是 | `fill` \| `check` \| `explain` |
