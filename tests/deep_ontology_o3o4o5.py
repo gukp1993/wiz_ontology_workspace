@@ -3,11 +3,9 @@
 
 运行：.runtime/venv/bin/python tests/deep_ontology_o3o4o5.py
 """
-import io
 import json
 import sys
 import uuid
-import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))

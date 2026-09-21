@@ -1,5 +1,4 @@
 """V4 sqlSteps 取值规则校验与保存往返回归（隔离根 + 独立端口，不执行 SQL）。"""
-import copy
 import os
 import sys
 import tempfile
@@ -10,7 +9,7 @@ _tmp = tempfile.TemporaryDirectory(prefix='wiz_sql_steps_')
 os.environ['WIZ_WORKBENCH_ROOT'] = _tmp.name
 os.environ['WIZ_WORKBENCH_PORT'] = '18961'
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from make_validation_golden import project, binding, QUERY_ONTOLOGY  # noqa: E402
+from make_validation_golden import project, binding  # noqa: E402
 from workbench import projects  # noqa: E402
 from workbench.query_rules import query_rule_errors, rule_input_errors, sql_steps_errors  # noqa: E402
 

@@ -113,7 +113,7 @@ class CappedZipFile:
             stream = self._archive.open(member)
         except zipfile.BadZipFile as exc:
             raise ZipBombDetected('部件 %s 无法安全打开（压缩包结构异常）：%s' % (member, exc),
-                                  member, 0, self._member_limit)
+                                  member, 0, self._member_limit) from exc
         with stream:
             while True:
                 part = stream.read(READ_CHUNK_BYTES)

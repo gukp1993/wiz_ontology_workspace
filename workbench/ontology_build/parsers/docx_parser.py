@@ -26,7 +26,6 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 from workbench.ontology_build.parsers.base import failure
-from workbench.ontology_build.parsers import textline
 from workbench.ontology_build.parsers import zipguard
 from workbench.ontology_build.parsers.textline import FactSink, failed_segment, finish, rel_of
 

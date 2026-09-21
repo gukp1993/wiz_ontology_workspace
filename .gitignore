@@ -5,7 +5,10 @@ __pycache__/
 node_modules/
 frontend/dist/
 .DS_Store
-ontology/vault/
+# ontology/ 为用户真实数据目录：旧文件存储树已退出 git 跟踪（20260921），
+# 本地保留作迁移备份；在线权威数据在 data/workbench.sqlite3（见架构边界 §13）
+/ontology/
+.idea/
 
 # 工作台数据库与备份（运行时产物，不入 git）
 data/

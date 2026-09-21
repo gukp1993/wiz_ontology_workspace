@@ -36,7 +36,7 @@ import FlowList from './flow/FlowList.vue'
 import FlowEditor from './flow/FlowEditor.vue'
 import ModelSettings from './tools/LlmProviders.vue'
 import ConfigurationTransfer from './settings/ConfigurationTransfer.vue'
-import { decodeState, requestBody, type WorkbenchState } from './ontology/modelFormat'
+import { decodeState, type WorkbenchState } from './ontology/modelFormat'
 import { shortcutAction } from './app/shortcuts'
 import { READ_TIMEOUT_MS, SaveRequestError, isOriginRejected, localAccessUrl } from './app/http'
 import { createSaver, type SaveStatus } from './app/saveCoordinator'
@@ -49,7 +49,7 @@ import * as oapi from './ontology/api'
 import * as papi from './project/api'
 import * as fapi from './flow/api'
 import { stripCatalogs } from './project/api'
-import { projectContentSignature, baselineEquals } from './project/checkBaseline'
+import { projectContentSignature } from './project/checkBaseline'
 import { configSignature } from './flow/flowModel'
 
 const clone = (x: any) => JSON.parse(JSON.stringify(x))
@@ -116,8 +116,8 @@ function notify(text: string, bad = false) { message.value = bad ? friendlyIssue
 
 // --- 本体区 Saver：load GET /api/state（decodeState），submit POST /api/save（requestBody 自动 encodeState，附 projectState 沿用旧格式） ---
 const ontologyId = new URLSearchParams(location.search).get('ontology') || 'storage'
-const ontologyQuery = '?ontology=' + encodeURIComponent(ontologyId)
-const ontologyName = ref(''), ontologyList = ref<{ id: string; name: string }[]>([]), newOntologyName = ref(''), creatingOntology = ref(false), latestVersion = ref('')
+const _ontologyQuery = '?ontology=' + encodeURIComponent(ontologyId)
+const ontologyName = ref(''), ontologyList = ref<{ id: string; name: string }[]>([]), newOntologyName = ref(''), _creatingOntology = ref(false), latestVersion = ref('')
 const versionList = ref<any[]>([]), releases = ref<any[]>([]), preview = ref<any>(null), validationReport = ref<any>(null)
 const ontologySaveErrors = ref<string[]>([])
 const showOntologyDialog = ref(false)
@@ -181,7 +181,7 @@ const projectState = projectSaver.working
 const projectRevision = projectSaver.revision
 const projectDirty = computed(() => projectSaver.status.value !== 'saved')
 const flowState = flowSaver.working
-const flowDirty = computed(() => flowSaver.status.value !== 'saved')
+const _flowDirty = computed(() => flowSaver.status.value !== 'saved')
 // 当前项目的数据连接（仅元数据，含 MySQL 与 Redis）：SQL/Redis 节点下拉与编排配置检查的引用上下文
 const projectConnections = computed(() => (projectState.value?.connections?.connections || [])
   .map((c: any) => ({ id: c.id, name: c.name, engine: c.engine })))
@@ -587,11 +587,11 @@ const projectAreaWaiting = computed(() => projectViews.includes(view.value) && !
 // 顶栏面包屑文案（展示型 computed）：沿用原 header crumb 三分支逻辑，随单层顶栏搬迁，页面标题另见 pages[view]。
 const crumbPath = computed(() => onGlobalView.value ? '设置 / ' + (pages[view.value] || '设置') : flowViews.includes(view.value) ? `${flowState.value?.name || '未选择编排'} / 函数编排 · 项目映射` : space.value === 'project' ? `${projectState.value?.name || '未选择项目'} / 项目配置 · 引用 ${refOntologyLabel.value} ${projectState.value?.ontologyVersion || ''}` : `${ontologyName.value || '未创建本体'} / 抽象定义`)
 // 旧调用点迁移：openFunction/openProperties/openBindings/showKnowledge/showGraph → 新 view 名 + focus。
-function openFunction(id: string) { contractFocusId.value = id; navigate('contracts') }
+function _openFunction(id: string) { contractFocusId.value = id; navigate('contracts') }
 function openProperties(type: string, id = '') { propertyFocusType.value = type; propertyFocusId.value = id; navigate('objects') }
 function openBindings(type: string) { bindingFocusType.value = type; navigate(projectState.value ? 'binding' : 'p-home') }
 function showKnowledge(id = '') { knowledgeFocus.value = id; navigate('knowledge') }
-function showGraph(id: string) { navigate('objects', { type: id }) }
+function _showGraph(id: string) { navigate('objects', { type: id }) }
 
 // --- 变更入口：组件 emit('changed') → touch() 自动保存（900ms 合并）；撤销/重做 → commitNow() 立即产生新修订 ---
 function changed() { editGeneration.value++; ontologySaveErrors.value = []; validationReport.value = null; ontologySaver.touch(); if (message.value) { message.value = '内容已修改，之前的操作结果已过期；请重新校验。'; error.value = false } }
@@ -655,7 +655,7 @@ async function applyHistory(kind: 'undo' | 'redo') {
     if (!restored) return
     if (isFlow) { flowState.value = restored; flowCheck.value = null }
     else { state.value = restored; validationReport.value = null }
-    editGeneration.value++; isFlow ? flowEditGeneration.value++ : 0
+    editGeneration.value++; if (isFlow) flowEditGeneration.value++
     notify(kind === 'undo' ? '已撤销：' + label + '，正在保存…' : '已重做：' + label + '，正在保存…')
     await saver.commitNow()
     if (saver.status.value === 'saved') notify(kind === 'undo' ? '已撤销：' + label + '，已保存' : '已重做：' + label + '，已保存')
@@ -664,10 +664,10 @@ async function applyHistory(kind: 'undo' | 'redo') {
 }
 function undo() { void applyHistory('undo') }
 function redo() { void applyHistory('redo') }
-function undoProject() { /* 项目映射/连接无业务撤销（20260918） */ }
-function redoProject() { /* 同上 */ }
-function undoFlow() { undo() }
-function redoFlow() { redo() }
+function _undoProject() { /* 项目映射/连接无业务撤销（20260918） */ }
+function _redoProject() { /* 同上 */ }
+function _undoFlow() { undo() }
+function _redoFlow() { redo() }
 
 // --- 函数编排：打开/复制/删除（编排列表页触发；切换前 flush 由 Saver 状态兜底） ---
 async function openFlow(id: string) {
@@ -692,13 +692,13 @@ function onFlowDeleted(id: string) {
 const api = (path: string, extra: any = {}) => oapi.ontologyPost(path, { state: state.value, revision: revision.value, projectState: projectState.value ? stripCatalogs(projectState.value) : undefined, ...extra })
 const projectApi = (path: string, extra: any = {}) => papi.projectPost(path, { state: projectState.value, revision: projectRevision.value, ...extra })
 async function checkWorkflow() { busy.value = true; const generation = editGeneration.value; try { const report = await api('workflow-check'); if (generation === editGeneration.value) validationReport.value = report; else notify('检查期间内容已修改，请重新检查。') } catch (e) { notify((e as Error).message, true) } finally { busy.value = false } }
-async function validateModel() { if (busy.value) return; busy.value = true; const generation = editGeneration.value; try { const d = await api('validate'); if (generation !== editGeneration.value) return notify('校验期间内容已修改，请重新校验。'); notify(d.errors.length ? d.errors.join('；') : '校验通过', !!d.errors.length) } catch (e) { notify((e as Error).message, true) } finally { busy.value = false } }
+async function _validateModel() { if (busy.value) return; busy.value = true; const generation = editGeneration.value; try { const d = await api('validate'); if (generation !== editGeneration.value) return notify('校验期间内容已修改，请重新校验。'); notify(d.errors.length ? d.errors.join('；') : '校验通过', !!d.errors.length) } catch (e) { notify((e as Error).message, true) } finally { busy.value = false } }
 async function runPreview() { busy.value = true; try { preview.value = await api('preview'); if (preview.value.errors.length) notify(preview.value.errors.join('；'), true) } catch (e) { notify((e as Error).message, true) } finally { busy.value = false } }
 async function loadVersionList() { try { versionList.value = [...(await oapi.listVersions(ontologyId)).items].reverse() } catch (e) { notify((e as Error).message, true) } }
 async function loadReleases() { try { releases.value = await oapi.listReleases(ontologyId) } catch (e) { notify((e as Error).message, true) } }
 // 数据函数保留在此（P09 的发布页自行调用/迁移）；App 侧不再挂载发布与版本页面。
-async function exportZip() { try { const blob = await oapi.exportDraftBlob({ state: state.value }); const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = ontologyName.value + '-草稿.zip'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) } catch (e) { notify((e as Error).message, true) } }
-async function restoreRelease(releaseName: string) { if (busy.value || !(await appConfirm({ message: '将此快照恢复为当前本体的草稿？现有已保存草稿会自动备份，其他本体不受影响。' }))) return; busy.value = true; try { await ontologySaver.flush(); await oapi.restoreRelease({ state: state.value, revision: revision.value, release: releaseName }); location.reload() } catch (e) { notify((e as Error).message, true); busy.value = false } }
+async function _exportZip() { try { const blob = await oapi.exportDraftBlob({ state: state.value }); const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = ontologyName.value + '-草稿.zip'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) } catch (e) { notify((e as Error).message, true) } }
+async function _restoreRelease(releaseName: string) { if (busy.value || !(await appConfirm({ message: '将此快照恢复为当前本体的草稿？现有已保存草稿会自动备份，其他本体不受影响。' }))) return; busy.value = true; try { await ontologySaver.flush(); await oapi.restoreRelease({ state: state.value, revision: revision.value, release: releaseName }); location.reload() } catch (e) { notify((e as Error).message, true); busy.value = false } }
 
 // --- 本体切换/新建：先 flush，未落盘且用户不确认则中止（beforeunload 由 Saver 拦截兜底） ---
 async function guardUnsaved(saver: typeof ontologySaver) { await saver.flush(); if (saver.status.value !== 'saved' && !(await appConfirm({ message: '有未保存的修改自动保存未成功，继续将丢弃这些修改。确定继续？', danger: true }))) throw new Error('cancelled') }
@@ -984,7 +984,7 @@ function keydown(e: KeyboardEvent) { const action = shortcutAction(e, { modal: s
   const target = e.target as HTMLElement | null
   if ((action === 'undo' || action === 'redo') && target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return // 文本撤销归输入控件
   e.preventDefault(); ({ save: commitCurrent, undo: () => undo(), redo: () => redo(), escape: () => { showOntologyDialog.value = false; if (leaveResolver) keepEditing() } } as any)[action]?.() }
-const areaLabel = computed(() => area.value === 'project' ? '项目空间' : '本体空间')
+const _areaLabel = computed(() => area.value === 'project' ? '项目空间' : '本体空间')
 // 局部表单未提交时刷新/关闭也保护（工作区草稿由各 Saver 的 beforeunload 保护）
 function unloadGuard(e: BeforeUnloadEvent) { if (dirtyGuards().length) { e.preventDefault(); e.returnValue = '' } }
 
@@ -1179,7 +1179,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <ActionLibrary v-if="view==='actions'" :state="state" :focus-id="definitionFocusId" :focus-origin="definitionOrigin" :canvas-return="canvasReturn?.nodeId || ''" :edit-focus="editFocusFlag" :return-to="definitionReturn" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
 <ValueTypeManager v-if="view==='valuetypes'" :state="state" @properties="openProperties" @before-change="pushUndo" @changed="changed"/>
 <section v-if="view==='learning' && !state.learning" class="card empty">此本体暂无导入或教学材料。</section><section v-if="view==='learning' && state.learning"><div class="card"><div class="badge">LEARNING PATH · 储能业务示例</div><h2>{{state.learning.title}}</h2><p>先理解“是什么”，再定义“怎么算”，最后绑定“数据在哪里”。你不需要先参与现场审核。</p><ol><li v-for="step in state.learning.steps" :key="step">{{step}}</li></ol><div class="tools"><button class="primary" @click="navigate('objects')">① 看对象建模</button><button @click="navigate('contracts')">② 看SOC规则</button><button @click="navigate('instances')">③ 看70%结果</button></div></div><div class="card"><h2>旧图42个节点，哪些属于本体？</h2><p class="muted">对象类型才是默认画布节点。属性挂在对象上；观测、指标与算法有各自的定义文件。</p><div class="scroll"><table><thead><tr><th>原节点</th><th>归类</th><th>新表达</th><th>为什么</th></tr></thead><tbody><tr v-for="item in state.learning.classification" :key="item.source_id"><td>{{item.original_name}}</td><td><strong>{{item.category}}</strong></td><td>{{item.name}}</td><td>{{item.reason}}</td></tr></tbody></table></div></div><div class="card"><h2>教学假设</h2><ul><li v-for="a in state.learning.assumptions" :key="a">{{a}}</li></ul><p class="muted">这些假设让例子可理解、可验证；不代表现场数据已经核实。</p></div></section>
-<section v-if="view==='instances'"><div v-if="!preview" class="card"><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div></div><div v-else-if="preview.errors.length" class="card">{{preview.errors.join('；')}}</div><template v-else><div class="columns"><div class="card"><h2>南区储能系统 SOC</h2><div class="result">{{preview.result.value??'—'}}<small> %</small></div><p>{{preview.result.reason||'质量有效 · 模拟快照'}}</p><p class="muted">2026-09-08 10:00 +08:00</p></div><div class="card"><h2>计算血缘</h2><p v-for="r in preview.result.lineage">{{r.object_id}}<br>{{r.soc_pct}}% × {{r.capacity_basis_kwh}} kWh<br><small class="muted">{{r.sampled_at}} · {{r.source_table}}</small></p></div></div><div class="card scroll"><h2>项目实例</h2><table><thead><tr><th>名称</th><th>类型</th><th>归属</th></tr></thead><tbody><tr v-for="o in preview.objects"><td>{{o.display_name||o.properties.name}}</td><td>{{o.type}}</td><td>{{Object.values(o.parents).join(', ')||'—'}}</td></tr></tbody></table></div></template></section>
+<section v-if="view==='instances'"><div v-if="!preview" class="card"><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div></div><div v-else-if="preview.errors.length" class="card">{{preview.errors.join('；')}}</div><template v-else><div class="columns"><div class="card"><h2>南区储能系统 SOC</h2><div class="result">{{preview.result.value??'—'}}<small> %</small></div><p>{{preview.result.reason||'质量有效 · 模拟快照'}}</p><p class="muted">2026-09-08 10:00 +08:00</p></div><div class="card"><h2>计算血缘</h2><p v-for="(r, ri) in preview.result.lineage" :key="ri">{{r.object_id}}<br>{{r.soc_pct}}% × {{r.capacity_basis_kwh}} kWh<br><small class="muted">{{r.sampled_at}} · {{r.source_table}}</small></p></div></div><div class="card scroll"><h2>项目实例</h2><table><thead><tr><th>名称</th><th>类型</th><th>归属</th></tr></thead><tbody><tr v-for="(o, oi) in preview.objects" :key="oi"><td>{{o.display_name||o.properties.name}}</td><td>{{o.type}}</td><td>{{Object.values(o.parents).join(', ')||'—'}}</td></tr></tbody></table></div></template></section>
 </template>
 </main></div>
 <div v-if="leaveDialog" class="modal-backdrop" @click.self="keepEditing"><section class="modal-card" role="dialog" aria-modal="true" aria-label="未保存的表单修改"><h2>当前表单还有未保存的修改</h2><p class="field-help">工作区已有草稿不会丢失。离开只会放弃本次表单修改。</p><div class="dialogtools"><button @click="discardEditing">放弃本次修改并离开</button><button class="primary" @click="keepEditing">继续编辑</button></div></section></div>

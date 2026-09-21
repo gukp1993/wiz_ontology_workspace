@@ -535,7 +535,7 @@ def _p5_query_rules(api, rec, closed_port):
 
 def _p6_validate_publish_upgrade(api, rec):
     onto_id = CTX_STATE['onto_id']
-    onto_version = CTX_STATE['onto_version']
+    _onto_version = CTX_STATE['onto_version']
     pid = CTX_STATE['proj_id']
 
     # 干净可发布状态：完整身份 + field 映射，validate errors 针对本对象应为空
@@ -646,7 +646,7 @@ def _p8_r02(api, rec):
     pid = CTX_STATE['proj_id']
     r = api.get(f'/api/project-state?project={pid}')
     pst = copy.deepcopy((r['json'] or {}).get('state') or {})
-    rev = (r['json'] or {}).get('revision')
+    _rev = (r['json'] or {}).get('revision')
     pst['connections'] = {'connections': [mysql_conn('conn-clean', 'Q03干净连接', 3)]}
     pst['implementations'] = []
     pst.setdefault('bindings', {})['catalogs'] = {}

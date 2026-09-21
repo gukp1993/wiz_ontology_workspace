@@ -95,7 +95,7 @@ for key, title in (('name', '名称'), ('description', '业务描述')):
     errs = definition_errors(onto_state([dict(A2, **{key: '  '})]))
     check(any(f'缺少{title}' in e for e in errs), f'R02 v2 动作缺 {title} 仍报错（必填项不变）', errs)
 
-for field, keep in [('criteria', None), ('permission', None)]:
+for field, _keep in [('criteria', None), ('permission', None)]:
     record = {k: v for k, v in LEGACY.items() if k != field}
     errs = definition_errors(onto_state([dict(record)]))
     check(any(field in e for e in errs), f'验收7 历史动作缺 {field} 仍按旧校验报错', errs)

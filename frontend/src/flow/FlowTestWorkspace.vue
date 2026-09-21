@@ -332,6 +332,7 @@ function openScope(kind: 'all' | 'single' | 'segment', nodeId?: string) {
   // R04 主入口：首次默认整条；之后恢复当前范围/输入/结果（不强制重置）
   if (!scopeInitialized) { scopeKind.value = 'all'; singleId.value = ''; onSegChange(); scopeInitialized = true }
 }
+defineEmits(['back'])
 defineExpose({ openScope })
 </script>
 <template>

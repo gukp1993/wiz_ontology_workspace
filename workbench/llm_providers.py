@@ -19,7 +19,6 @@ from workbench.storage import assets as store
 from workbench.storage import configuration as config_store
 from workbench.storage.engine import read_connection, write_tx, utcnow
 from sqlalchemy import text as sql_text
-from workbench.storage import secret_store
 
 VAULT = None  # 旧文件目录已下线；保留名字避免外部误用
 _ID = re.compile(r'llm-[a-z0-9][a-z0-9-]{0,31}')

@@ -229,7 +229,7 @@ export function scanSheets(wb: any): { scan: Record<string, SheetScan>; issues: 
     }
     scan[name] = { headerRow, headers, dataRows }
   }
-  const extraSheets = (wb.SheetNames || []).filter((n: string) => !(SHEETS as readonly string[]).includes(n))
+  const _extraSheets = (wb.SheetNames || []).filter((n: string) => !(SHEETS as readonly string[]).includes(n))
   return { scan, issues }
 }
 

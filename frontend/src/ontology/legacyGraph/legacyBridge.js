@@ -11,7 +11,7 @@
 // 撤销/重做：快照 = 领域五片（@graph + businessRules/Associations + actions/Associations）的深克隆；
 //   应用即整体替换这五片（换回真实模型，不是只动画布）；本体切换或外部变更后重建基线。
 import { reactive } from 'vue'
-import { graphSignature } from '../ontologyGraphModel'
+import { _graphSignature } from '../ontologyGraphModel'
 import {
   effectiveAssociations, commitAssociations, actionFieldErrors,
 } from '../actionModel'
@@ -19,8 +19,8 @@ import {
   ruleAssociationsOf, commitRuleAssociations, ruleFieldErrors,
 } from '../businessRuleModel'
 import { textFieldError } from '../recordFields'
-import { effectiveProperty, localProperties, referencesOf } from '../propertyModel'
-import { graphReferences } from '../editorModel'
+import { effectiveProperty, localProperties, _referencesOf } from '../propertyModel'
+import { _graphReferences } from '../editorModel'
 import { actionDeleteCheck, linkDeleteCheck, objectDeleteCheck, propertyDeleteCheck, ruleDeleteCheck, sharedDeleteCheck } from '../dependencyModel'
 import { prefGet, prefSet } from '../../app/auth'
 import { dataTypeToLabel, labelToDataType } from './shared/fields.js'
@@ -124,7 +124,7 @@ function dtOf(p) {
 
 // ---------- 领域桥 ----------
 
-export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emitChanged, commitNow, saveStatus }) {
+export function createLegacyBridge({ getState, _ontologyId, emitBeforeChange, emitChanged, _commitNow, _saveStatus }) {
   const state = reactive({
     graphName: '',
     draft: { name: '', nodes: [], edges: [] },
@@ -208,7 +208,7 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
   // ---- 领域命令 ----
   const newHex = () => crypto.randomUUID().replaceAll('-', '')
   const graph = () => getState().ontology['@graph']
-  const workflow = () => getState().workflow
+  const _workflow = () => getState().workflow
 
   function domainCreateNode({ type, name }) {
     const s = getState()
@@ -488,7 +488,7 @@ export function createLegacyBridge({ getState, ontologyId, emitBeforeChange, emi
     finish()
     return {}
   }
-  function detachShared(p) {
+  function _detachShared(p) {
     // 「转为私有」语义（保留对象属性并继承共享显示字段）。20260920 验收 R3 后，
     // 共享引用边删除不再调用本函数（那条路径是「移除引用」）；本函数仅作保留能力。
     const shared = graph().find(n => n['@id'] === p['mg:sharedProperty']?.['@id'])

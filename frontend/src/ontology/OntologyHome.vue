@@ -27,7 +27,7 @@ function downloadTemplate(){
   a.href=templateHref(); a.download='本体模型填写模板.xlsx'
   document.body.appendChild(a); a.click(); a.remove()
 }
-function onImported(){importOpen.value=false;void checkDraft()}
+function _onImported(){importOpen.value=false;void checkDraft()}
 
 // ── 当前本体与定义统计（口径：按定义数；引用节点/私有属性不计入五列）──
 const ontologyId=computed(()=>String(props.state?.workspaceId||''))

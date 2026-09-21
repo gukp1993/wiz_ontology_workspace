@@ -278,7 +278,7 @@ import { buildJsonIdLocal, jsonIdLosses, buildOfflineBundle, downloadBlob } from
 import { toast } from './composables/useToast'
 import { confirmDialog } from './composables/useConfirm'
 import { GRAPH_STYLE } from './shared/graphStyle'
-import { TYPE_COLOR, TYPE_PREFIX, NODE_PREFIX } from './shared/constants'
+import { TYPE_COLOR, _TYPE_PREFIX } from './shared/constants'
 import { fieldEntries } from './shared/fields'
 import { nodeW, nodeH } from './shared/layout'
 import NewNodeModal from './components/NewNodeModal.vue'
@@ -306,13 +306,13 @@ const bridge = createLegacyBridge({
   emitBeforeChange: (label) => emit('before-change', typeof label === 'object' && label ? label : { actionLabel: String(label || '图谱编辑') }),
   emitChanged: () => emit('changed'),
 })
-const state = bridge.state
+const bridgeState = bridge.state
 // 五类常量：必须在任何初始化即调用的函数（loadTypeVisible 等）之前声明（TDZ 防护）
 const ALL_TYPES = ['对象', '共享属性', '私有属性', '规则', '动作']
 
 const canvasEl = ref(null)
 const cy = shallowRef(null)
-let seq = 0
+const _seq = 0
 let newNodeSeq = 0 // 新建节点错开步进，防止连续新建堆叠在中心
 let initializing = false
 
@@ -359,7 +359,7 @@ const edgeTipText = ref('')
 const edgeTipX = ref(0)
 const edgeTipY = ref(0)
 
-const coordinatesInputEl = ref(null)
+const _coordinatesInputEl = ref(null)
 // 只读预览 / 最大化 / 多图预览清单（适配层：旧 router 跳转改为组件内切换）
 const rootEl = ref(null)
 const viewMode = ref('editor') // 'editor' | 'preview' | 'multi'
@@ -415,21 +415,21 @@ function centerPos() {
 }
 function elementsFromDraft() {
   const els = []
-  state.draft.nodes.forEach((n) => {
+  bridgeState.draft.nodes.forEach((n) => {
     els.push({
       data: { id: n.id, name: n.name, type: n.type, w: nodeW(n.name), h: nodeH(n.name), data: n.data || {} },
       classes: n.type,
       position: { x: n.x || 0, y: n.y || 0 },
     })
   })
-  state.draft.edges.forEach((e) => {
+  bridgeState.draft.edges.forEach((e) => {
     els.push({ data: { id: e.id, source: e.source, target: e.target, relation: e.relation, description: e.description, kind: e.kind, domainId: e.domainId } })
   })
   return els
 }
 function currentDraft() {
   const draft = {
-    name: state.draft.name,
+    name: bridgeState.draft.name,
     nodes: cy.value.nodes().map((n) => ({
       id: n.id(),
       type: n.data('type'),
@@ -462,7 +462,7 @@ function updateCounts() {
 }
 // 类型显隐记忆走 bridge 偏好（账号+本体隔离），替代旧全局 localStorage key
 function loadTypeVisible() {
-  const v = state.typeVisiblePref
+  const v = bridgeState.typeVisiblePref
   if (v && ALL_TYPES.every((t) => typeof v[t] === 'boolean')) return { ...v }
   const out = {}
   ALL_TYPES.forEach((t) => { out[t] = true })
@@ -479,7 +479,7 @@ function applyTypeFilter() {
 }
 function toggleType(t) {
   typeVisible.value[t] = !typeVisible.value[t]
-  state.typeVisiblePref = { ...typeVisible.value }
+  bridgeState.typeVisiblePref = { ...typeVisible.value }
   bridge.persistPrefs()
   applyTypeFilter()
   fitAllGraph() // 显隐变化后回到可见部分的全图视野
@@ -852,7 +852,7 @@ const UNDO_LIMIT = 50
 let undoStack = []
 let redoStack = []
 let pendingDrag = null // 拖拽手势：{ snapshot, moved }
-let skipUndoReset = false // 保留：导入重建时不清撤销历史（当前无 jsonId 导入，保留旧结构）
+const skipUndoReset = false // 保留：导入重建时不清撤销历史（当前无 jsonId 导入，保留旧结构）
 let syncing = false // applyGraphState 期间抑制 add/remove 监听（域变已单独 emit changed）
 
 function captureState() {
@@ -917,7 +917,7 @@ function refreshFromBridge() {
   if (!cy.value) return
   syncing = true
   try {
-    applyGraphState(state.draft)
+    applyGraphState(bridgeState.draft)
   } finally { syncing = false }
   updateCounts()
   applySearch()
@@ -1001,7 +1001,7 @@ function bindCyEvents() {
   // 不再弹出画布内编辑弹窗（图上内容都来自对象建模，编辑统一在源端）。
   cy.value.on('dbltap', 'node', (evt) => {
     if (linking.value) return
-    const n = state.draft.nodes.find((x) => x.id === evt.target.id())
+    const n = bridgeState.draft.nodes.find((x) => x.id === evt.target.id())
     if (n) openEditInWorkspace(n)
   })
   cy.value.on('grab', 'node', () => {
@@ -1107,7 +1107,7 @@ function initCy() {
   newNodeSeq = 0
   bindCyEvents()
   // 视口偏好（适配：旧版不存视口；现按账号+本体隔离持久化）
-  const vp = state.prefsViewport
+  const vp = bridgeState.prefsViewport
   const validVp = vp && Number.isFinite(vp.zoom) && vp.pan && Number.isFinite(vp.pan.x) && Number.isFinite(vp.pan.y)
     && !(Math.abs(vp.zoom - 0.1) < 1e-6 && vp.pan.x === 0 && vp.pan.y === 0) // 退化值（0 尺寸画布写下的 minZoom/pan=0）不恢复
   if (validVp) {
@@ -1122,7 +1122,7 @@ function initCy() {
     // 尺寸为 0 时（容器尚未布局/被遮挡）不保存视口：那时 zoom/pan 是退化值，
     // 写入会把下次打开钉在 minZoom（实测 0.1）。
     if (cy.value.width() <= 0 || cy.value.height() <= 0) return
-    state.prefsViewport = { zoom: cy.value.zoom(), pan: { x: cy.value.pan().x, y: cy.value.pan().y } }
+    bridgeState.prefsViewport = { zoom: cy.value.zoom(), pan: { x: cy.value.pan().x, y: cy.value.pan().y } }
     bridge.persistPrefs()
   })
   updateCounts()
@@ -1201,7 +1201,7 @@ function closeAllModals() {
 }
 
 // ---------- 节点操作 ----------
-function openNewNode() {
+function _openNewNode() {
   exitLinking()
   clearInspector()
   showNewNode.value = true
@@ -1353,7 +1353,7 @@ function confirmLink() {
   }
   showNewEdge.value = true
 }
-function toggleLinking() {
+function _toggleLinking() {
   linking.value = !linking.value
   linkSource.value = null
   clearInspector()
@@ -1439,10 +1439,10 @@ function openEdgeInWorkspace(el) {
   if (!edgeId) return
   const now = Date.now()
   if (lastEdgeJump.id === edgeId && now - lastEdgeJump.at < 500) return
-  const edge = state.draft.edges.find((e) => e.id === edgeId)
+  const edge = bridgeState.draft.edges.find((e) => e.id === edgeId)
   if (!edge) return
-  const src = state.draft.nodes.find((n) => n.id === edge.source)
-  const tgt = state.draft.nodes.find((n) => n.id === edge.target)
+  const src = bridgeState.draft.nodes.find((n) => n.id === edge.source)
+  const tgt = bridgeState.draft.nodes.find((n) => n.id === edge.target)
   if (!src) { toast('连线起点已不存在', true); return }
   lastEdgeJump = { id: edgeId, at: now }
   const common = { canvas: true, canvasNode: edge.id }
@@ -1471,7 +1471,7 @@ function clearInspector() {
 // 节点面板「编辑」→ 跳转到该节点的编辑页面（2026-09-20 用户要求；双击同效，见 dbltap 处理）
 function editInspNode() {
   if (insp.value?.kind !== 'node') return
-  const n = state.draft.nodes.find((x) => x.id === insp.value.id)
+  const n = bridgeState.draft.nodes.find((x) => x.id === insp.value.id)
   if (!n) { toast('节点已不存在', true); return }
   openEditInWorkspace(n)
 }
@@ -1502,7 +1502,7 @@ async function deleteSelection(els) {
 }
 
 // 工具栏「删除」：删除当前选中的节点/连线，与键盘 Delete 同一逻辑
-function deleteSelectedNodes() {
+function _deleteSelectedNodes() {
   const sel = cy.value?.$(':selected')
   if (!sel || !sel.length) {
     toast('请先在画布上选中要删除的节点或连线', true)
@@ -1512,7 +1512,7 @@ function deleteSelectedNodes() {
 }
 
 // ---------- 图谱（本体）----------
-function openGraphs() {
+function _openGraphs() {
   exitLinking()
   clearInspector()
   showGraphs.value = true
@@ -1525,19 +1525,19 @@ function onGraphSwitched() {
   initCy()
   if (cy.value.nodes().length) cy.value.fit(undefined, 50)
   updateCounts()
-  if (!cy.value.nodes().length) toast('本体「' + state.graphName + '」暂无内容，点击「新建节点」开始')
+  if (!cy.value.nodes().length) toast('本体「' + bridgeState.graphName + '」暂无内容，点击「新建节点」开始')
 }
 
 // ---------- 保存 / 版本 ----------
 // 保存=当前草稿协调器立即提交（409/失败由工作台五态与冲突面板呈现，不假成功）
-function saveDraftFlow() {
+function _saveDraftFlow() {
   exitLinking()
   dismissLayoutUndo()
   commitNow()
   toast('已提交保存')
 }
 // 版本管理入口 → 当前「本体校验与发布」页（发布版本只读、修订历史在该页维护）
-function openVersions() {
+function _openVersions() {
   exitLinking()
   emit('navigate', 'o-release')
 }
@@ -1555,7 +1555,7 @@ function goPreview() {
 }
 
 // ---------- 导入 ----------
-async function onCoordinatesFile(e) {
+async function _onCoordinatesFile(e) {
   const file = e.target.files[0]
   e.target.value = ''
   if (!file) return
@@ -1607,16 +1607,16 @@ async function onCoordinatesFile(e) {
   toast('已导入坐标：' + applied + ' 个节点' + (missing ? '，' + missing + ' 个未匹配' : ''))
 }
 // ---------- 导出（客户端本地生成；不经旧后端） ----------
-async function exportBundleFlow() {
+async function _exportBundleFlow() {
   if (!hasGraph.value) {
     toast('请先选择本体', true)
     return
   }
-  const { blob, name } = buildOfflineBundle(currentDraft(), state.graphName)
+  const { blob, name } = buildOfflineBundle(currentDraft(), bridgeState.graphName)
   downloadBlob(blob, name)
   toast('已导出图谱包：' + name + '（坐标 + 离线预览 HTML，断网可查看）')
 }
-async function exportJsonIdFlow() {
+async function _exportJsonIdFlow() {
   if (!hasGraph.value) {
     toast('请先选择本体', true)
     return
@@ -1629,12 +1629,12 @@ async function exportJsonIdFlow() {
       '\n\n完整迁移请使用「设置 → 配置迁移」。', '我知道了')
     return
   }
-  const jsonid = buildJsonIdLocal(draft, state.graphName)
+  const jsonid = buildJsonIdLocal(draft, bridgeState.graphName)
   const blob = new Blob([JSON.stringify(jsonid, null, 1)], { type: 'application/json;charset=utf-8' })
-  downloadBlob(blob, (state.graphName || 'graph') + '.jsonId')
-  toast('已导出 jsonId：' + (state.graphName || 'graph'))
+  downloadBlob(blob, (bridgeState.graphName || 'graph') + '.jsonId')
+  toast('已导出 jsonId：' + (bridgeState.graphName || 'graph'))
 }
-function gotoImport() {
+function _gotoImport() {
   emit('navigate', 'o-home')
   toast('请在本体工作概览使用「导入本体」')
 }
@@ -1650,7 +1650,7 @@ function bootstrap() {
     applyColumnLayout()
     syncPositionsToBridge()
   }
-  if (cy.value.nodes().length && !state.prefsViewport) cy.value.fit(undefined, 50)
+  if (cy.value.nodes().length && !bridgeState.prefsViewport) cy.value.fit(undefined, 50)
   updateCounts()
   applyFocusTarget()
 }

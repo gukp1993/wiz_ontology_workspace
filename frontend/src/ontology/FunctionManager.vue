@@ -57,7 +57,7 @@ let locateTimer:ReturnType<typeof setTimeout>|undefined
 async function locate(id:string){selected.value='';draft.value=null;query.value='';locateId.value=id;await nextTick();document.getElementById('contract-row-'+id)?.scrollIntoView({behavior:'smooth',block:'center'});if(locateTimer)clearTimeout(locateTimer);locateTimer=setTimeout(()=>{locateId.value=''},2500)}
 
 const guard={isDirty:()=>!!draft.value&&JSON.stringify(draft.value)!==original,discard:()=>closeEditor()}
-watch(()=>!!draft.value,open=>{open?guardApi.register(guard):guardApi.unregister(guard)},{immediate:true})
+watch(()=>!!draft.value,open=>{if(open)guardApi.register(guard);else guardApi.unregister(guard)},{immediate:true})
 onBeforeUnmount(()=>{guardApi.unregister(guard);if(locateTimer)clearTimeout(locateTimer)})
 
 // --- 签名行（紧凑）：名称 + 类型引用（object/property/base 三选）+ 引用目标；可增删多行 ---

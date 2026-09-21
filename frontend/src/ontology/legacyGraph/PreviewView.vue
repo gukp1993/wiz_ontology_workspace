@@ -177,7 +177,7 @@ const props = defineProps({
   ontologyId: { type: String, required: true },
   version: { type: String, required: true },
 })
-const emit = defineEmits(['back'])
+const _emit = defineEmits(['back'])
 const draft = ref({ name: '', nodes: [], edges: [] })
 const graphName = ref('')
 const canvasEl = ref(null)
@@ -194,7 +194,7 @@ const STORE_KEY = 'kgview:' + (props.ontologyId || 'graph') + ':' + props.versio
 const INSP_W_KEY = 'kgview:inspW'
 // 右侧「图谱详情」面板宽度（可拖动，记忆到 localStorage；限 280px ~ 60% 视口）
 const inspectorW = ref(324)
-try { inspectorW.value = Math.min(0.6 * window.innerWidth, Math.max(280, Number(prefGet(INSP_W_KEY)) || 324)) } catch (e) {}
+try { inspectorW.value = Math.min(0.6 * window.innerWidth, Math.max(280, Number(prefGet(INSP_W_KEY)) || 324)) } catch (_e) {}
 const gridCols = computed(() => `232px minmax(520px, 1fr) ${inspectorW.value}px`)
 const SCOPES = [
   { v: 'all', label: '全部关系' },
@@ -270,7 +270,7 @@ function applyInitialLayoutIfStacked() {
 }
 function initCy() {
   let savedPos = null
-  try { savedPos = JSON.parse(prefGet(STORE_KEY) || 'null') } catch (e) {}
+  try { savedPos = JSON.parse(prefGet(STORE_KEY) || 'null') } catch (_e) {}
   const elements = draft.value.nodes.map((n) => {
     const saved = (savedPos && savedPos[n.id]) || {}
     return {
@@ -407,7 +407,7 @@ function applyScope() {
     setVis(e, scopeNodes.has(e.source().id()) && scopeNodes.has(e.target().id()))
   })
   const els = cy.value.nodes().filter((n) => scopeNodes.has(n.id()) && n.data('baseVis'))
-  if (els.length) { try { cy.value.fit(els, 60) } catch (e) {} }
+  if (els.length) { try { cy.value.fit(els, 60) } catch (_e) {} }
 }
 
 function selectNode(id) { selNode.value = id; relScope.value = 'all'; applyScope() }
@@ -431,9 +431,9 @@ function showAll() {
   applyFilter()
   fitView()
 }
-function fitView() { if (cy.value) try { cy.value.fit(undefined, 60) } catch (e) {} }
+function fitView() { if (cy.value) try { cy.value.fit(undefined, 60) } catch (_e) {} }
 function resetView() {
-  try { prefSet(STORE_KEY, '') } catch (e) {}
+  try { prefSet(STORE_KEY, '') } catch (_e) {}
   draft.value.nodes.forEach((n) => {
     const el = cy.value.getElementById(n.id)
     if (el) el.position({ x: n.x || 0, y: n.y || 0 })
@@ -463,7 +463,7 @@ function fitColumnThirds() {
     const panx = cw / 2 - mid * zoom
     const pany = ch / 2 - ((bb.y1 + bb.y2) / 2) * zoom
     cy.value.viewport({ zoom, pan: { x: panx, y: pany } })
-  } catch (e) { try { cy.value.fit(undefined, 60) } catch (e2) {} }
+  } catch (_e) { try { cy.value.fit(undefined, 60) } catch (_e2) {} }
 }
 
 // ---- 右侧详情面板拖拽调宽 ----
@@ -480,7 +480,7 @@ function startResize(e) {
     document.removeEventListener('mouseup', onUp)
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
-    try { prefSet(INSP_W_KEY, String(inspectorW.value)) } catch (err) {}
+    try { prefSet(INSP_W_KEY, String(inspectorW.value)) } catch (_err) {}
   }
   document.addEventListener('mousemove', onMove)
   document.addEventListener('mouseup', onUp)
@@ -493,7 +493,7 @@ function persistPositions() {
   if (!cy.value) return
   const pos = {}
   cy.value.nodes().forEach((n) => { pos[n.id()] = n.position() })
-  try { prefSet(STORE_KEY, JSON.stringify(pos)) } catch (e) {}
+  try { prefSet(STORE_KEY, JSON.stringify(pos)) } catch (_e) {}
 }
 
 
@@ -511,7 +511,7 @@ onMounted(async () => {
     graphName.value = (state.workflow.objective?.name || '').replace(' · ', ' · ')
     initCy()
     let hasSaved = false
-    try { hasSaved = !!prefGet(STORE_KEY) } catch (e) {}
+    try { hasSaved = !!prefGet(STORE_KEY) } catch (_e) {}
     if (!hasSaved) {
       setTimeout(() => fitColumnThirds(), 50)
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitColumnThirds())

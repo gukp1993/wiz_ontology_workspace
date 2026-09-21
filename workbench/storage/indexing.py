@@ -5,7 +5,6 @@
 唯一键 (snapshot_id, definition_kind, stable_id_hash, owner_hash)，hash 命中后
 由调用方核对原字符串。索引缺失时调用方回源完整文档重建，绝不返回假空列表。
 """
-import json
 
 from workbench.storage import engine as sto
 

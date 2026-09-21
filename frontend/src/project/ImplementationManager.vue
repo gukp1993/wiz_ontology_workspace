@@ -15,7 +15,7 @@ import AppSelect from '../shared/AppSelect.vue'
 import {localProperties,effectiveProperty,signatureDataType,dataTypeLabel} from '../ontology/propertyModel'
 import type{FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 const props=defineProps<{projectState:any;refState:any;filterType?:string;focusImpl?:string}>()
-const emit=defineEmits(['before-change','changed'])
+const _emit=defineEmits(['before-change','changed'])
 const clone=(x:any)=>JSON.parse(JSON.stringify(x))
 // --- T00 表单守卫接入（契约见 app/formGuard.ts；项目区 area='project'） ---
 const guardApi=inject<FormGuardAPI>('form-guard')!
@@ -35,7 +35,7 @@ const implFor=(contractId:string)=>props.projectState.implementations.find((i:an
 const contractsFor=(t:string)=>contracts.value.filter((c:any)=>!c.applicable_objects?.length||c.applicable_objects.includes('mg:'+t)||c.applicable_objects.includes(t))
 const statusOf=(c:any)=>{const impl=implFor(c.id);if(!impl)return '未实现';return impl.rule?.trim()?'已配置':'未配置'}
 // 签名摘要与类型标签（只读契约签名用；属性引用解析为生效定义名称）
-const typeName=(t:string)=>({string:'文本',double:'数值',integer:'整数',boolean:'是/否',timestamp:'时间',array:'数组',struct:'结构体'}[t]||t||'')
+const _typeName=(t:string)=>({string:'文本',double:'数值',integer:'整数',boolean:'是/否',timestamp:'时间',array:'数组',struct:'结构体'}[t]||t||'')
 function sigTypeLabel(ref:any){if(!ref||!ref.kind)return '待选类型';if(ref.kind==='base')return '类型 · '+dataTypeLabel(signatureDataType(ref,graph.value))
   if(ref.kind==='object'){const t=graph.value.find((n:any)=>n['@id']===ref.id);return '对象 · '+(t?.['rdfs:label']||ref.id||'')}
   if(ref.kind==='property'){const p=graph.value.find((n:any)=>n['@id']===ref.id);return '属性 · '+(p?String(label(p)):ref.id||'')}
@@ -52,7 +52,7 @@ function newImplTemplate(contractId:string){return {id:crypto.randomUUID(),contr
 function openContract(c:any){if(!c)return;editingId.value=c.id;const existing=implFor(c.id);isNewImpl.value=!existing;const d=clone(existing||newImplTemplate(c.id));d.inputBindings??=[];d.outputDeclarations??=[];d.rule??='';d.connection??='';d.environment??='';draft.value=d;original=JSON.stringify(d);formError.value='';attemptedSave.value=false}
 function closeEditor(){editingId.value='';draft.value=null;original='';isNewImpl.value=false;formError.value='';attemptedSave.value=false;saving.value=false}
 const guard={isDirty:()=>!!draft.value&&JSON.stringify(draft.value)!==original,discard:()=>closeEditor()}
-watch(()=>!!draft.value,open=>{open?guardApi.register(guard):guardApi.unregister(guard)},{immediate:true})
+watch(()=>!!draft.value,open=>{if(open)guardApi.register(guard);else guardApi.unregister(guard)},{immediate:true})
 onBeforeUnmount(()=>guardApi.unregister(guard))
 // 保存成功后返回列表并定位高亮（不丢焦点：列表行滚动到视野内）
 const locateId=ref('')

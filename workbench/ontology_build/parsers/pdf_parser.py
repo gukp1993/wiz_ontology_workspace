@@ -22,7 +22,6 @@
 import re
 
 from workbench.ontology_build.parsers.base import failure
-from workbench.ontology_build.parsers import textline
 from workbench.ontology_build.parsers.textline import FactSink, failed_segment, finish, rel_of
 
 MIN_PAGE_CHARS = 20          # 低于该字符数判定为扫描页/空白页

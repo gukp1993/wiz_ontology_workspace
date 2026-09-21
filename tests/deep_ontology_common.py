@@ -13,7 +13,7 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deep_ontology_client import CTX, blank_state  # noqa: E402
+from deep_ontology_client import blank_state  # noqa: E402
 from workbench.model_format import encode_state  # noqa: E402
 
 CARDINALITIES = ('one-to-one', 'one-to-many', 'many-to-one', 'many-to-many')

@@ -1,7 +1,5 @@
 """Business definitions with explicit, allow-listed local demonstrations."""
 import copy
-import json
-from .properties import effective
 from .contracts import signature_errors, is_contract
 def empty_workflow(name=''):
     return {'objective':{'name':name,'question':'','scope':'','acceptance':''},'functions':[],'actions':[],'interfaces':[],'release':{'note':'','reviewer':''}}

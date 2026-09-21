@@ -24,7 +24,7 @@ def run(name, fn):
         print(f'通过：{name}')
     except AssertionError as exc:
         print(f'失败：{name}\n  {exc}')
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
 
 def in_subprocess(env_extra, code):

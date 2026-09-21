@@ -350,7 +350,7 @@ def get_model_definitions(query):
 
 def _rebuild_index(conn, snapshot_id):
     """从完整文档重建定义索引投影（只读查询缺失索引时的回源路径）。"""
-    from workbench.storage import indexing
+    from workbench.storage import engine as store, indexing
     snapshot = store.read_snapshot(conn, snapshot_id)
     if snapshot is None:
         return

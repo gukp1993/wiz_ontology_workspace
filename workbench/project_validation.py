@@ -417,7 +417,7 @@ def _check_implementations(ctx, errors, items):
                     if not other:
                         issues.append('输入绑定引用的实现不存在')
                     else:
-                        other_contract = functions.get(other.get('contractId'), {})
+                        _other_contract = functions.get(other.get('contractId'), {})
                         if not any(o.get('outputId') == source.get('outputId') for o in other.get('outputDeclarations', [])):
                             issues.append('输入绑定引用的输出未在该实现中声明')
                 else:
@@ -765,7 +765,7 @@ def _check_property_sources(ctx, errors, warnings, items):
                 dep_fn = implementations.get(dep_value.get('implementation'))
                 if calc_functions.is_calc_function(dep_fn):
                     dep_entries = dep_value.get('inputs') if isinstance(dep_value.get('inputs'), dict) else {}
-                    for dep_input_id, dep_entry in dep_entries.items():
+                    for _dep_input_id, dep_entry in dep_entries.items():
                         if not isinstance(dep_entry, dict) or dep_entry.get('from') != 'property':
                             continue
                         dep_ref = str(dep_entry.get('property', '') or '')
@@ -775,7 +775,7 @@ def _check_property_sources(ctx, errors, warnings, items):
             if dep_is_flow:
                 # 函数编排输入的属性引用同样构成依赖边（循环检测与计算函数同一套规则）。
                 dep_entries = dep_value.get('inputs') if isinstance(dep_value.get('inputs'), dict) else {}
-                for dep_input_id, dep_entry in dep_entries.items():
+                for _dep_input_id, dep_entry in dep_entries.items():
                     if not isinstance(dep_entry, dict) or dep_entry.get('from') != 'property':
                         continue
                     dep_ref = str(dep_entry.get('property', '') or '')

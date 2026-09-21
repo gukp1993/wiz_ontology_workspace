@@ -10,7 +10,7 @@ const emit = defineEmits(['done'])
 const mode = ref<'login' | 'register'>('login')
 const username = ref(''), password = ref(''), busy = ref(false), error = ref('')
 
-const title = computed(() => (mode.value === 'login' ? '登录' : '注册账号'))
+const _title = computed(() => (mode.value === 'login' ? '登录' : '注册账号'))
 const submitLabel = computed(() => (mode.value === 'login' ? '登录' : '注册并进入'))
 const canSubmit = computed(() => !!username.value.trim() && !!password.value && !busy.value)
 

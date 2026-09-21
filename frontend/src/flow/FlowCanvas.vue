@@ -16,7 +16,7 @@ const overlay = ref<{ id: string; x: number; y: number; checked: boolean; name: 
 let cy: any = null, observer: ResizeObserver | null = null
 let noticeTimer: any = null
 const notice = ref('')
-function notify(text: string) { notice.value = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => notice.value = '', 3500) }
+function _notify(text: string) { notice.value = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => notice.value = '', 3500) }
 
 const BADGES: Record<string, (r: any) => string> = {
   waiting: () => '◌ 等待结果',

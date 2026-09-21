@@ -17,7 +17,6 @@ import json
 
 from workbench.storage import engine as sto
 from workbench.storage import secret_store
-from workbench.storage import assets
 
 NAMESPACE_CONNECTION = 'connection'
 NAMESPACE_API = 'api'

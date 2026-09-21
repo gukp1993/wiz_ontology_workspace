@@ -103,7 +103,7 @@ for bad in (1, 3.14, True, ['先核验数据质量'], {'口径': 'x'}):
     errs = definition_errors(onto_state([dict(RULE, content=bad)], []))
     matched = [e for e in errs if '必须为文本' in e and 'content' in e]
     check(len(matched) == 1
-          and f'「储能运行异常判定」(rule-1)' in matched[0]
+          and '「储能运行异常判定」(rule-1)' in matched[0]
           and f'当前类型 {type(bad).__name__}' in matched[0]
           and '请改为文本或删除该字段' in matched[0],
           f'A01 content 为 {type(bad).__name__} 报恰好一条错误（单条消息含规则名/标识/字段名/类型原因/建议）', errs)

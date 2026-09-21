@@ -71,7 +71,7 @@ def normalize_config(payload):
         try:
             out['dbIndex'] = int(payload.get('dbIndex', 0))
         except (TypeError, ValueError):
-            raise ValueError('Redis DB 索引需要是整数')
+            raise ValueError('Redis DB 索引需要是整数') from None
         if not 0 <= out['dbIndex'] < 2**31:
             raise ValueError('Redis DB 索引超出范围')
     return out

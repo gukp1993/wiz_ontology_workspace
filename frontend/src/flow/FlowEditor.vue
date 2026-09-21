@@ -284,7 +284,7 @@ function openOutputBind(sourceId: string) {
   openDialog()
   outDialog.value = { sourceId, chosenOutputId: decls[0].id, chosenPortId: free.id, issue: '' }
 }
-const outDialogType = computed(() => {
+const _outDialogType = computed(() => {
   if (!outDialog.value) return ''
   const poll = props.state.inputs // 仅触发响应性重算（state 变化后重算选项）
   void poll
@@ -318,17 +318,25 @@ function applyOutDialog() {
   nextTick(() => canvasRef.value?.sync())
   closeDialog()
 }
+// 弹窗阴影初始化/重置（弹窗打开或切换所选输入时）：从「编排输入」发起则目标输入
+// 预置为该入口参数的引用（用户仍可在弹窗内改来源）。抽到 watcher 保证 computed 无副作用。
+watch(() => linkDialog.value && linkDialog.value.chosenInputId, () => {
+  const dialog = linkDialog.value
+  if (!dialog) return
+  const input = dialog.inputs.find((i: any) => i.id === dialog.chosenInputId)
+  if (!input) return
+  if (!dialog.shadow || dialog.shadow.id !== input.id) {
+    const preset = dialog.fromInput
+      ? { kind: 'flowInput', inputId: (props.state.inputs || []).find((i: any) => i && typeof i === 'object')?.id || '' }
+      : null
+    dialog.shadow = { ...input, source: preset && preset.inputId ? preset : clone(input.source) }
+  }
+})
 const linkShadowOwner = computed(() => {
   if (!linkDialog.value) return null
   const input = linkDialog.value.inputs.find((i: any) => i.id === linkDialog.value!.chosenInputId)
   if (!input) return null
-  if (!linkDialog.value.shadow || linkDialog.value.shadow.id !== input.id) {
-    // 从「编排输入」发起：目标输入预置为该入口参数的引用（用户仍可在弹窗内改来源）
-    const preset = linkDialog.value.fromInput
-      ? { kind: 'flowInput', inputId: (props.state.inputs || []).find((i: any) => i && typeof i === 'object')?.id || '' }
-      : null
-    linkDialog.value.shadow = { ...input, source: preset && preset.inputId ? preset : clone(input.source) }
-  }
+  if (!linkDialog.value.shadow || linkDialog.value.shadow.id !== input.id) return null  // 影子尚未同步（watcher 同帧内补齐）
   return { nodeId: linkDialog.value.targetId, input: linkDialog.value.shadow }
 })
 /** 弹窗内即时可读问题（不阻断选择）：来源/目标类型不相容、来源为空等，确认时以它为准。 */

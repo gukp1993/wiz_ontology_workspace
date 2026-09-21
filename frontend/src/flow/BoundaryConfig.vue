@@ -5,7 +5,7 @@ import { computed } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import TypeEditor from './TypeEditor.vue'
-import { TYPE_LABELS, fieldOf, outputCandidates, flowInputRemovalImpact, resolveSourceType, sourceSummary, typesCompatible, uid } from './flowModel'
+import { outputCandidates, flowInputRemovalImpact, resolveSourceType, typesCompatible, uid } from './flowModel'
 const props = defineProps<{ state: any; kind: 'input' | 'output' }>()
 const emit = defineEmits(['before-change', 'changed'])
 const candidates = computed(() => outputCandidates(props.state, null))

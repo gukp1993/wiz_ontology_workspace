@@ -180,7 +180,7 @@ def collect_export(model_ids, project_ids, extra_flow_ids, owner=None):
             return {'blockers': blockers, 'warnings': warnings}
 
         # 项目各版本引用的本体自动补齐（M04）
-        for pid, item in projects.items():
+        for _pid, item in projects.items():
             for snap in [item['draft']] + item['releases']:
                 for ref in _project_ontology_refs(snap['payload']):
                     ref_id = str(ref.get('ontologyId') or '')
@@ -262,7 +262,7 @@ def collect_export(model_ids, project_ids, extra_flow_ids, owner=None):
                 meta['referencedBy'] = provider_refs[provider_id]
                 model_configs.append(meta)
         credential_declarations = []
-        for pid, item in projects.items():
+        for _pid, item in projects.items():
             for row in config_store.list_credentials(conn, config_store.NAMESPACE_API,
                                                      item['asset']['asset_uid']):
                 credential_declarations.append({'declarationId': row['resource_id'],
@@ -458,7 +458,7 @@ def build_export_preview(model_ids, project_ids, extra_flow_ids, owner=None):
     preview = {'snapshotAt': snapshot['snapshotAt'],
                'assets': {'models': [], 'projects': [], 'flows': [], 'modelConfigs': []},
                'dependencyEdges': [], 'warnings': list(snapshot['warnings']), 'blockers': []}
-    for key, kind, prefix in (('models', KIND_MODEL, 'm'), ('projects', KIND_PROJECT, 'p')):
+    for key, _kind, prefix in (('models', KIND_MODEL, 'm'), ('projects', KIND_PROJECT, 'p')):
         for source_id, item in snapshot[key].items():
             package_key = prefix + secrets.token_hex(4)
             item['packageKey'] = package_key
@@ -473,7 +473,7 @@ def build_export_preview(model_ids, project_ids, extra_flow_ids, owner=None):
             package_key = 'f' + secrets.token_hex(4)
             item['copies'].append({'packageKey': package_key, 'projects': []})
         else:
-            for gi, group in enumerate(snapshot['flowGroups'].get(source_id) or [{'projects': []}]):
+            for _gi, group in enumerate(snapshot['flowGroups'].get(source_id) or [{'projects': []}]):
                 package_key = 'f' + secrets.token_hex(4)
                 item['copies'].append({'packageKey': package_key, 'projects': group['projects']})
         for ci, copy in enumerate(item['copies']):
@@ -664,7 +664,7 @@ def stage_chunk(owner, upload_id, index, b64_data, chunk_hash):
     try:
         raw = base64.b64decode(b64_data, validate=True)
     except (binascii.Error, ValueError):
-        raise ValueError('分片数据不是有效的 base64。')
+        raise ValueError('分片数据不是有效的 base64。') from None
     if len(raw) > CHUNK_SIZE:
         raise ValueError(f'单个分片不得超过 {CHUNK_SIZE // 1024} KiB。')
     chunk_hash = str(chunk_hash or '').lower()
@@ -882,7 +882,7 @@ def _preview_model_configs(files):
     try:
         data = json.loads(raw.decode('utf-8'))
     except (ValueError, UnicodeDecodeError):
-        raise PackageFormatError('configuration/models.json 不是有效的 JSON。')
+        raise PackageFormatError('configuration/models.json 不是有效的 JSON。') from None
     return [{'packageKey': 'c-' + str(p.get('providerId')), 'sourceName': p.get('name') or '',
              'missingApiKey': True} for p in (data.get('providers') or [])]
 
@@ -1073,7 +1073,7 @@ def import_transaction(owner, preview, request_id, final_names):
 
             def write_project_snapshot(raw_payload, purpose, rel_meta=None):
                 payload = dict(raw_payload)
-                source_ref = _project_ref_model(payload)
+                _source_ref = _project_ref_model(payload)
                 ref_version = str(payload.get('ontologyVersion')
                                   or (payload.get('project') or {}).get('ontology_version') or '')
                 new_ontology = _resolve_new_ontology(manifest, payload, new_ids)
@@ -1118,7 +1118,7 @@ def import_transaction(owner, preview, request_id, final_names):
         #    合并键 = (declarationId, projectId)——同一包两次导入各有独立待补项）
         pending = config_store.get_user_setting(conn, owner, PENDING_KEY, []) or []
         declarations = _pack_credential_declarations(files)
-        new_projects = {a['packageKey']: a for a in manifest['assets'] if a['kind'] == KIND_PROJECT}
+        _new_projects = {a['packageKey']: a for a in manifest['assets'] if a['kind'] == KIND_PROJECT}
         pending_entries = []
         existing_keys = {(p.get('declarationId'), p.get('projectId')) for p in pending}
         for asset in manifest['assets']:
