@@ -1,0 +1,34 @@
+{
+  "ticket": "3f92f37d8f1f4d5780aa1049fa173070",
+  "task": "ontology-build 第4轮R4-01修复（内容写点事务内核对取消/执行权）",
+  "status": "implemented",
+  "summary": "R4-01（P1）修复完成，未提交未合并：runner.py 新增 content_tx——同一 BEGIN IMMEDIATE 写事务内先 check_cancelled（含 lease 核对）再写内容；pipeline.py 清点 12 处 _tx，6 处业务内容写点换 content_tx（scan 标 running/写事实、generate 批次清空/abstract 追加候选/最终整批写入、dialog 追加消息），3 处 run 行写与 3 处入口快照读不动；新建 tests/test_ontology_build_late_write.py 五场景双 worker 时序回归。详见 文档/需求/20260920_从物料自动构建本体/开发计划.md 待追加记录。",
+  "decisions": [
+    "内容写点口径：候选/消息/材料事实（含 parse_state）与批次整批替换都算业务内容；run 行阶段/进度/usage/checkpoint 写维持 lease 条件 update_run 不动",
+    "abstract 批次清空（delete_candidates_of_batch）一并纳入 content_tx：同为候选内容变更，语义与原内联 check 完全等价",
+    "_final_write 的内联 check_cancelled 移除，由 content_tx 统一核对，人工排除继承+整批替换保持单一内容事务"
+  ],
+  "verification": [
+    ".venv/bin/python tests/test_ontology_build_late_write.py → 23/23（两次）",
+    ".venv/bin/python tests/test_ontology_build_runner_isolation.py → 34/34",
+    ".venv/bin/python tests/test_ontology_build_exclusion_inheritance.py → 17/17、merge_refs → 42/42",
+    "归档探针（报告§8抄至/tmp）exit=1：len(rows)==2 断言失败，仅剩 B 新结果 1 条，旧候选不再落库，缺陷已修复"
+  ],
+  "next": [
+    "交 Codex 复验 R4-01：复跑新回归与归档探针（应失败）",
+    "协调者统一跑 tests/run.py all + test_ontology_build.py 组合回归（本轮按指令未跑）",
+    "通过后停在待用户授权集成；本轮未 git add/commit"
+  ],
+  "references": [
+    "workbench/ontology_build/runner.py",
+    "workbench/ontology_build/pipeline.py",
+    "tests/test_ontology_build_late_write.py",
+    "文档/需求/20260920_从物料自动构建本体/验收报告_第4轮_20260921.md §5/§8"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T04:10:20.851263+00:00",
+  "sequence": 132,
+  "filename": "000132-3ce162adb157.json",
+  "record_hash": "76d5f4a1035389ca4505faa557774680561aa4d183d712029b2a4f7407434469",
+  "context_advanced": false
+}

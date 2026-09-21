@@ -1,0 +1,33 @@
+{
+  "ticket": "8d24c571da0c47a1bea1d7f41b0c0fec",
+  "task": "ontology-build 第4轮P2建议修复（P2-1/P2-2/P2-3）",
+  "status": "implemented",
+  "summary": "第4轮验收报告§6三条非阻断P2已实施，未提交未合并：P2-1 BuildReviewPage.saveEdit 明确禁止清空口径——候选已有 dataType（readPropertyFields 判定，含嵌套兼容）而表单选空时置 editError「该属性已有数据类型，不能清空为「未确定」；请选择具体类型。」不发请求，原本无类型的候选不受影响；candidateFields.ts 顶部注释声明该口径由页面 saveEdit 执行、helper 保持纯函数。P2-2 review.update_candidate 字段合并：dataType 分支写入新平铺类型后若非 timeSeries 即 pop valueType，循环后再按最终 dataType 收敛一次（防同请求先 dataType 后 valueType 键序回写），切到 timeSeries 的合法性校验不动。P2-3 BuildSavePage 加载流程先 loadDelivery，delivery 非空跳过 runPrecheck（预检区保持空、不显示预检错误），未纳入项照常加载，未交付行为不变。只改 6 个授权文件；runner.py/pipeline.py/session_context.md 的改动属并行 R4-01 agent，本轮未触碰，未启停任何服务。",
+  "decisions": [
+    "P2-1 采用「明确禁止清空」口径：已有类型的属性清回未确定在页面 saveEdit 拦截（空 patch 会被服务端合并语义复原，界面不得假清空）；从未有类型的候选仍可保持未确定",
+    "P2-2 以最终 dataType 收敛 valueType：非 timeSeries 一律不保留 fields.valueType（含同请求双键键序与历史残留）；timeSeries 的 valueType 缺失/非法仍由 validate_candidate 把关，未新增阻断码",
+    "P2-3 仅改 bootstrap 加载流程；submit/refreshDelivery 内的 runPrecheck 调用维持现状（不在授权范围）"
+  ],
+  "verification": [
+    "node --import ./tests/ts_hooks.mjs tests/ontology_build_review_edit.test.mjs → 19/19（新增⑯已有类型清空被拦截不发请求、⑰原无类型保持未确定不受影响、⑱已交付跳过预检请求且 precheck/precheckError 为空、⑲未交付照常预检）",
+    ".venv/bin/python tests/test_ontology_build.py 完整跑两次 → 均 163/163（162+1：新增「timeSeries 切回 number 后 fields 不残留 valueType 键（P2-2）」断言通过，无 flake 失败）",
+    "node --import ./tests/ts_hooks.mjs tests/ontology_build_frontend.test.mjs → 通过；cd frontend && npx vue-tsc --noEmit -p tsconfig.json → 0 错误；npm run build → 成功（仅既有 chunk>500kB 提示）"
+  ],
+  "next": [
+    "交 Codex 复验三条 P2：建议复跑 test_ontology_build.py、ontology_build_review_edit.test.mjs、vue-tsc/build，并核对 review.py update_candidate 收敛口径与 BuildSavePage 加载分支",
+    "本轮未 git add/commit（按指令）；与并行 R4-01 改动的组合回归（tests/run.py all 等）由协调者统一安排"
+  ],
+  "references": [
+    "workbench/ontology_build/review.py（update_candidate）",
+    "frontend/src/ontology/build/BuildReviewPage.vue、BuildSavePage.vue、candidateFields.ts",
+    "tests/test_ontology_build.py（flow_timeseries_delivery 末尾 P2-2 断言）",
+    "tests/ontology_build_review_edit.test.mjs（⑯⑰⑱⑲）",
+    "文档/需求/20260920_从物料自动构建本体/验收报告_第4轮_20260921.md §6"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T04:13:41.688482+00:00",
+  "sequence": 133,
+  "filename": "000133-6e9ab94d2dcb.json",
+  "record_hash": "05b4047ba873ae35ee1e154cc13e76947a2fc7824866b3439153661700d62593",
+  "context_advanced": false
+}
