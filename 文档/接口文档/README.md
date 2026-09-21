@@ -18,6 +18,7 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-21 | 08 分册 §8.2 交付草稿装配位置修复（D06）：规则 → `workflow.businessRules`（+`businessRuleAssociations`）、动作 → `workflow.actions`（简化动作 definitionVersion 2，+`actionAssociations`），对象关联引用宿主对象稳定 @id；本体图/metadata 不再生成 `mg:BusinessRule`/`mg:Action`；`content`/`effect` 选填、不生成 `output`（20260920 精简口径）。接口路径与请求/响应字段不变，交付草稿内部结构收敛 | `/api/build-deliver`（交付草稿结构）、08 §8.2 | qoder |
 | 2026-09-21 | **新增 08 分册《从物料自动构建本体接口》并完成契约收敛（验收修复最后一波：HTTP 路由层 + 接口文档）**：登记 33 条 `/api/build-*` 路由（10 GET + 23 POST，已逐条核对 `server.py` 白名单）并补入 05 速查表 §1.5（速查表总数 57→97，与白名单实际条数对齐）。冻结口径：
 ① **§0 写操作 `revision` 三类令牌互不通用**——任务 token（`build-task-rename`）／候选 token（`build-candidate-update`、`build-candidate-decide`、`build-candidates-merge`（执行）、`build-review-undo`、`build-diff-resolve`）／整数修订（`build-material-exclude` 用 `materialRevision` 的**字符串形态**且必填；`build-scope-save`、`build-scope-confirm` 用整数 `scopeRevision`，省略按 0 处理即等价必填；`build-message`、`build-regenerate` 的整数 `scopeRevision` 可选，省略即跳过比对）。**必填令牌缺失或空串一律 400，不匹配一律 409 + `currentRevision`**，废除路由层「空值跳过 CAS」；
 ② `build-deliver` 的 `checkToken` 改为必填（缺失/空串 400，杜绝跳过预检直接提交），令牌内容失效仍 422 `CHECK_TOKEN_STALE`；

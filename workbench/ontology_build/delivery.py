@@ -134,10 +134,12 @@ def precheck(conn, task_id, batch_id=None):
 
 
 def prepare_payload(conn, task_id, batch_id=None):
-    """构造编辑器态 ontology（JSON-LD @graph）与 ID 映射（事务内纯计算；不写库）。
+    """构造编辑器态 ontology（JSON-LD @graph）、workflow 装配与 ID 映射（事务内纯计算；不写库）。
 
     D10：交付在域内**重验基线**——stale 批次（材料/范围已变化）绝不允许组装交付，
     路由层的 checkToken 校验只是第一道；这里即使绕过 token 检查也拦得住。
+    D06：规则/动作不进本体图，由 assemble 装配为 workflow.businessRules/actions 与关联集合，
+    随返回值一并交给 build_state 写入草稿的 workflow 组件。
     """
     owner_id = owner()
     batch = store.get_batch(conn, batch_id, owner_id) if batch_id else store.latest_batch(conn, task_id, owner_id)
@@ -149,14 +151,14 @@ def prepare_payload(conn, task_id, batch_id=None):
                               '结果已过期')
     items, selected = _selected_candidates(conn, task_id, owner_id, batch['batch_id'])
     try:
-        ontology, id_map, warnings = adapter.assemble(selected)
+        ontology, workflow, id_map, warnings = adapter.assemble(selected)
     except adapter.AdapterError as exc:
         # 装配异常同样按 422 阻断清单上报（D09：绝不以裸 ValueError 形态漏成 400）
         raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': str(exc)}])
-    issues = adapter.verify_structure(ontology)
+    issues = adapter.verify_structure(ontology, workflow)
     if issues:
         raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': text} for text in issues])
-    return ontology, id_map, warnings, batch['batch_id']
+    return ontology, workflow, id_map, warnings, batch['batch_id']
 
 
 def _check_name(conn, owner_id, name):
@@ -216,7 +218,7 @@ def deliver(conn, task_id, name, check_token, request_id):
         raise DeliveryBlocked(issues)
 
     # 域内重验基线与结构（stale 批次在此拦截，不依赖路由层 token 校验）
-    ontology, id_map, warnings, batch_id = prepare_payload(conn, task_id)
+    ontology, workflow, id_map, warnings, batch_id = prepare_payload(conn, task_id)
     if check_token and str(check_token) != _expected_token(conn, task_id, owner_id, batch_id):
         raise DeliveryBlocked([{'code': 'CHECK_TOKEN_STALE',
                                 'message': '选定集合或材料/范围已变化，请重新运行交付前检查'}],
@@ -233,7 +235,7 @@ def deliver(conn, task_id, name, check_token, request_id):
     ontology_id = _new_ontology_id()
     from workbench.storage import assets as asset_store
     from workbench import workspaces
-    state = adapter.build_state(ontology, display)
+    state = adapter.build_state(ontology, display, workflow)
     state['workspaceId'] = ontology_id
     created = store.create_ontology_asset(conn, owner_id, ontology_id, display,
                                          workspaces._payload_of(state),
@@ -241,7 +243,9 @@ def deliver(conn, task_id, name, check_token, request_id):
                                          summary={'source': 'ontology-build', 'taskId': task_id,
                                                   'batchId': batch_id, 'candidateMap': id_map,
                                                   'warnings': warnings,
-                                                  'definitionCount': len(ontology.get('@graph') or [])})
+                                                  'definitionCount': len(ontology.get('@graph') or [])
+                                                  + len(workflow.get('businessRules') or [])
+                                                  + len(workflow.get('actions') or [])})
     store.insert_delivery(conn, task_id, owner_id, request_id, digest, ontology_id)
     store.touch_task(conn, task_id, owner_id, status='delivered',
                      stage_label=protocol.TASK_STAGE_LABELS['delivered'],

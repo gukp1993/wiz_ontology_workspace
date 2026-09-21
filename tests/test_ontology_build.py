@@ -633,8 +633,95 @@ def flow_timeseries_delivery():
           actual=(status, 'xsd:xsd:' in raw, ts_nodes[:1]))
 
 
-# --- 回归流 5：写端点 revision 口径（D05 路由侧 + D10 checkToken 必填） ---------------
+# --- 回归流 4b：规则/动作交付落位（D06） --------------------------------------------
 
+def flow_rules_actions_delivery():
+    """D06：交付含规则/动作的候选后，草稿落 workflow.businessRules/actions（带对象关联），
+    本体 metadata 无自造 resourceType；交付草稿可经 /api/save 原样回环（协议合法）。"""
+    task_id, batch_id, _run = setup_generated_task('规则动作交付回归')
+    uid = require(_main_user_id(), '找不到测试账号 user_id')
+
+    def seed(conn):
+        ob_store.create_candidate(conn, task_id, uid, batch_id, {
+            'type': 'rule', 'key': 'rule-soc-low', 'name': 'SOC告警下限',
+            'definition': 'SOC 低于 10% 时触发告警', 'fields': {'content': 'soc < 0.10'},
+            'ownerKey': 'obj-device', 'evidence': {}, 'evidenceStatus': 'supported',
+            'decision': 'include', 'alignedKey': 'seed:rule:SOC告警下限'})
+        ob_store.create_candidate(conn, task_id, uid, batch_id, {
+            'type': 'rule', 'key': 'rule-name-unique', 'name': '命名唯一约束',
+            'definition': '同类设备名称不得重复', 'fields': {},
+            'ownerKey': 'obj-device', 'evidence': {}, 'evidenceStatus': 'supported',
+            'decision': 'include', 'alignedKey': 'seed:rule:命名唯一约束'})
+        ob_store.create_candidate(conn, task_id, uid, batch_id, {
+            'type': 'action', 'key': 'act-reset-alarm', 'name': '复位告警',
+            'definition': '复归设备当前活动告警', 'fields': {'effect': '告警状态被清除'},
+            'ownerKey': 'obj-device', 'evidence': {}, 'evidenceStatus': 'supported',
+            'decision': 'include', 'alignedKey': 'seed:action:复位告警'})
+
+    with sto.write_tx() as tx:
+        tx.run(seed)
+    status, pre = api('/api/build-deliver-precheck', {'taskId': task_id})
+    token = require(pre.get('checkToken'), '预检未返回 checkToken：%s' % _short(pre))
+    check(status == 200 and pre.get('ok') is True and not pre.get('issues'),
+          '含规则/动作的选定集合预检通过（D06）', actual=(status, pre.get('ok'), pre.get('issues')))
+    status, delivered = api('/api/build-deliver', {'taskId': task_id, 'name': '规则动作交付回归本体',
+                                                   'checkToken': token, 'requestId': 'req-rules-1'})
+    check(status == 200, '含规则/动作交付 200', actual=(status, _short(delivered)))
+    ontology_id = require(delivered.get('ontologyId'), '规则动作交付失败：%s' % _short(delivered))
+    status, state = api('/api/state', query='?ontology=' + ontology_id)
+    payload = (state.get('state') or {}) if status == 200 else {}
+    ontology = payload.get('ontology') or {}
+    workflow = payload.get('workflow') or {}
+    rules = {str(r.get('name')): r for r in (workflow.get('businessRules') or [])}
+    actions = {str(a.get('name')): a for a in (workflow.get('actions') or [])}
+    check(status == 200 and 'SOC告警下限' in rules and '命名唯一约束' in rules
+          and '复位告警' in actions,
+          '/api/state 的 workflow.businessRules/actions 含交付内容（D06）',
+          actual=(status, sorted(rules), sorted(actions)))
+    soc = rules.get('SOC告警下限') or {}
+    unique_rule = rules.get('命名唯一约束') or {}
+    reset = actions.get('复位告警') or {}
+    check(soc.get('description') == 'SOC 低于 10% 时触发告警' and soc.get('content') == 'soc < 0.10'
+          and 'content' not in unique_rule and 'output' not in soc and 'output' not in unique_rule,
+          '规则含名称/业务定义/选填内容，空内容不编造、不生成 output（D06）',
+          actual=(soc, unique_rule))
+    check(reset.get('effect') == '告警状态被清除' and reset.get('definitionVersion') == 2
+          and reset.get('status') in ('experimental', 'active', 'deprecated'),
+          '动作为简化动作 v2 结构（名称/定义/预期效果/状态）（D06）', actual=reset)
+    object_ids = {node.get('id') for node in (ontology.get('objectTypes') or [])}
+    rule_ids = {str(r.get('id')) for r in (workflow.get('businessRules') or [])}
+    rule_assoc = workflow.get('businessRuleAssociations') or []
+    action_assoc = workflow.get('actionAssociations') or []
+    check(len(rule_assoc) == 2 and all(a.get('objectTypeId') in object_ids
+                                       and a.get('ruleId') in rule_ids for a in rule_assoc)
+          and len(action_assoc) == 1
+          and action_assoc[0].get('objectTypeId') in object_ids
+          and action_assoc[0].get('actionId') == reset.get('id'),
+          '对象关联走现行关联集合、引用稳定 ID（D06）', actual=(rule_assoc, action_assoc))
+    raw = json.dumps(payload, ensure_ascii=False)
+    check('"mg:BusinessRule"' not in raw and '"mg:Action"' not in raw,
+          '交付草稿全文无 mg:BusinessRule/mg:Action 自造 resourceType（D06）')
+    defined = [node.get('id') for node in (ontology.get('objectTypes') or [])
+               + (ontology.get('properties') or []) + (ontology.get('linkTypes') or [])]
+    order = ontology.get('definitionOrder') or []
+    check(set(order) == set(defined) and len(order) == len(defined),
+          '规则/动作移出图后 definitionOrder 仍与图定义集合一致（D06）',
+          actual=(order, defined))
+    # 原样回环保存：交付草稿是协议合法的编辑器态（decode→validate→encode 无损）
+    status, saved = api('/api/save', {'state': payload, 'revision': state.get('revision')})
+    check(status == 200 and bool(saved.get('revision')),
+          '交付草稿（含规则/动作）POST /api/save 原样回环 200（D06 协议合法）',
+          actual=(status, _short(saved)))
+    status, reload = api('/api/state', query='?ontology=' + ontology_id)
+    wf_after = (reload.get('state') or {}).get('workflow') or {}
+    check(status == 200 and len(wf_after.get('businessRules') or []) == 2
+          and len(wf_after.get('actions') or []) >= 1
+          and len(wf_after.get('businessRuleAssociations') or []) == 2,
+          '保存回环后规则/动作与关联仍在 workflow（未落回 metadata）（D06）',
+          actual=(status, sorted(str(r.get("name")) for r in (wf_after.get('businessRules') or []))))
+
+
+# --- 回归流 5：写端点 revision 口径（D05 路由侧 + D10 checkToken 必填） ---------------
 def flow_revision_contracts():
     """五类写端点：形态错误 400 / CAS 不匹配 409+currentRevision / 语义阻断 422+issues。"""
     task_id, batch_id, _run = setup_generated_task('修订口径回归')
@@ -881,7 +968,7 @@ def unit_domain_rules():
     prop = {'id': 'c2', 'key': 'p1', 'type': 'property', 'name': '功率', 'definition': '有功功率',
             'fields': {'dataType': 'timeSeries', 'valueType': 'double'}, 'ownerKey': 'o1',
             'evidence': {}, 'evidenceStatus': 'supported', 'conflicts': []}
-    ontology, _id_map, _warnings = adapter_mod.assemble([obj, prop])
+    ontology, _workflow, _id_map, _warnings = adapter_mod.assemble([obj, prop])
     graph_text = json.dumps(ontology, ensure_ascii=False)
     check('"xsd:double"' in graph_text and 'xsd:xsd:' not in graph_text,
           'timeSeries range 为单一前缀 xsd:double（D02）', actual=graph_text[:200])
@@ -899,6 +986,53 @@ def unit_domain_rules():
     except adapter_mod.AdapterError:
         raised = True
     check(raised, 'valueType 不在枚举内（旧值 number/text）抛 AdapterError（D02）')
+
+    # D06：规则/动作装配进 workflow，不进本体 @graph；关联用宿主对象稳定 ID
+    rule = {'id': 'c5', 'key': 'r1', 'type': 'rule', 'name': '功率约束', 'definition': '储能设备功率上限',
+            'fields': {'content': 'p <= 额定容量 × 2'}, 'ownerKey': 'o1',
+            'evidence': {}, 'evidenceStatus': 'supported', 'conflicts': []}
+    action = {'id': 'c6', 'key': 'a1', 'type': 'action', 'name': '复位告警', 'definition': '复归设备活动告警',
+              'fields': {}, 'ownerKey': 'o1',
+              'evidence': {}, 'evidenceStatus': 'supported', 'conflicts': []}
+    onto2, wf2, _map2, _warn2 = adapter_mod.assemble([obj, prop, rule, action])
+    graph_text2 = json.dumps(onto2, ensure_ascii=False)
+    check('mg:BusinessRule' not in graph_text2 and 'mg:Action' not in graph_text2
+          and all(node.get('@type') in adapter_mod.NODE_TYPES.values() for node in onto2['@graph']),
+          '本体 @graph 不再出现 mg:BusinessRule/mg:Action 自造节点类型（D06）',
+          actual=[node.get('@type') for node in onto2['@graph']])
+    rule_rec = (wf2.get('businessRules') or [{}])[0]
+    action_rec = (wf2.get('actions') or [{}])[0]
+    obj_id = onto2['@graph'][0]['@id']
+    check(rule_rec.get('name') == '功率约束' and rule_rec.get('description') == '储能设备功率上限'
+          and rule_rec.get('content') == 'p <= 额定容量 × 2' and 'output' not in rule_rec
+          and str(rule_rec.get('id', '')).startswith('rule_'),
+          '规则 → workflow.businessRules：name/description/content 按现行协议、不造 output（D06）',
+          actual=rule_rec)
+    check(action_rec.get('name') == '复位告警' and action_rec.get('description') == '复归设备活动告警'
+          and action_rec.get('definitionVersion') == 2 and 'effect' not in action_rec
+          and action_rec.get('status') in ('experimental', 'active', 'deprecated')
+          and str(action_rec.get('id', '')).startswith('act_'),
+          '动作 → workflow.actions：简化动作 v2 结构，effect 选填不编造（D06）', actual=action_rec)
+    check(wf2.get('businessRuleAssociations') == [{'objectTypeId': obj_id, 'ruleId': rule_rec.get('id')}]
+          and wf2.get('actionAssociations') == [{'objectTypeId': obj_id, 'actionId': action_rec.get('id')}],
+          '规则/动作经关联集合用宿主对象稳定 @id 引用（D06）',
+          actual=(wf2.get('businessRuleAssociations'), wf2.get('actionAssociations')))
+    check(adapter_mod.verify_structure(onto2, wf2) == [],
+          '图 + workflow 装配通过交付前结构自检（D06）',
+          actual=adapter_mod.verify_structure(onto2, wf2))
+    dangling = {'businessRules': [], 'actions': [{'id': 'act_x', 'name': '悬空', 'description': 'd'}],
+                'businessRuleAssociations': [],
+                'actionAssociations': [{'objectTypeId': 'obj_missing', 'actionId': 'act_x'}]}
+    check(bool(adapter_mod.verify_structure(onto2, dangling)),
+          '悬空动作关联被结构自检报告（D06 自检有效）')
+    state2 = adapter_mod.build_state(onto2, 'D06 自检', wf2)
+    check(len(state2['workflow'].get('businessRules') or []) == 1
+          and len(state2['workflow'].get('actions') or []) == 1
+          and len(state2['workflow'].get('businessRuleAssociations') or []) == 1
+          and len(state2['workflow'].get('actionAssociations') or []) == 1
+          and state2['ontology'].get('@graph') == onto2['@graph'],
+          'build_state 把规则/动作写进 state.workflow，本体保持图形态（D06）',
+          actual=list(state2['workflow']))
 
     # D08：宿主参与对齐键（键与 ID 引用都解析；跨批次用规范名）
     def _obj(ckey, cid, name):
@@ -1386,6 +1520,7 @@ def main():
     flow_review_semantics()
     flow_bad_candidates()
     flow_timeseries_delivery()
+    flow_rules_actions_delivery()
     # D05/D10 路由层：五类写端点 revision 口径与交付令牌必填
     flow_revision_contracts()
     flow_lease_fencing(task_id)
