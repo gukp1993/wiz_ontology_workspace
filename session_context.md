@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`4c68c06594c3d414`
+上下文版本：`926818e71d69628d`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,49 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 从物料自动构建本体 · 第5轮独立复验 · codex/ontology-build · codex · 已验证
+
+时间：2026-09-21T04:27:55.682887+00:00；记录：`.collaboration/entries/000135-d4fb4afadb40.json`
+
+复验0188d9e：R4-01及三项P2整改通过；保留非阻断P2取消收尾竞态，完整修复方案已写入第5轮报告。未修改业务代码、合并main或重启服务。
+
+- 验证：独立复跑上轮晚响应反例通过；late_write 23/23。；后端all 45/45测试文件通过；review_edit 19/19；前端build通过。；独立隔离线程探针复现最后内容写入后取消被finish_success覆盖；无旧内容污染。；本轮未做浏览器端到端、真实LLM、外部MySQL或main集成验证。
+- 下一步：R5-01建议后续修复并补回归；当前待用户明确集成授权。
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收报告_第5轮_20260921.md
+
+### 从物料自动构建本体 · 第4轮验收整改（R4-01 + 三项P2） · zcode · 已实施，待验收
+
+时间：2026-09-21T04:17:39.294786+00:00；记录：`.collaboration/entries/000134-0468581bb2a9.json`
+
+按第4轮验收报告修复 R4-01（P1）并落实三项 P2，提交 1f66b7c（R4-01）、24879ab（P2）、0188d9e（文档）。R4-01：runner 新增 content_tx() 在同一写事务内核对取消与执行权后再写内容，pipeline 6 处内容写点全部换用；新回归覆盖报告 §5 全部验收场景。未合并 main、未重启 18765、未清理环境。
+
+- 决定：内容写保护靠同一 BEGIN IMMEDIATE 事务内的 check_cancelled（含 lease 比对）：SQLite 写事务串行化保证核对通过后 lease 轮换无法并发插入，晚到内容不可能在核对后落库。；pipeline 12 处 _tx 分类处理：6 处内容写（scan标记运行/事实、generate批次清空/abstract追加/最终写入、dialog消息）走 content_tx；run 行写保持既有 lease 条件；入口快照读不变。；P2-1 选「禁止清空」口径：已有 dataType 改回未确定时页面报错不发请求；P2-2 后端在 dataType 改非 timeSeries 时清理残留 valueType；P2-3 已交付任务跳过预检请求。
+- 验证：tests/run.py all 45/45（新增 test_ontology_build_late_write.py 并入 unit 组，23/23）。；tests/test_ontology_build.py 163/163（两次）；runner_isolation 34/34、exclusion_inheritance 17/17、merge_refs 42/42；review_edit mjs 19/19；vue-tsc 0 错误、build 通过。；报告 §8 归档探针复跑：generate/dialog 两场景 B 成功后释放 A，库里均只剩 B 新结果各 1 条，旧结果零落库，B 的进度与终态未被 A 改动。；两个并行子agent分文件实施（runner/pipeline+晚写入回归；review/前端三文件+P2断言），协调者跑组合回归、探针自证并串行提交。
+- 下一步：交 Codex 第 5 轮独立复验：重点 R4-01（跑 test_ontology_build_late_write.py 与报告 §8 探针，确认旧内容零落库）与三项 P2；其余项通过证据可复用。；未验证项维持：真实模型语义质量（G16/T25）、OCR、规模校准、窄屏与键盘可达性（G15/T24）、T12/T20 故障注入、与最新 main 组合重验。；验收通过后停在待用户授权集成；未合并 main、未重启 18765、dist 未部署、开发环境保留。
+- 依据/文档：提交：1f66b7c（R4-01）、24879ab（P2 三项）、0188d9e（文档）；分支 codex/ontology-build；文档/需求/20260920_从物料自动构建本体/验收报告_第4轮_20260921.md §5/§6（被整改项）；tests/test_ontology_build_late_write.py（五场景 23/23，§8 探针的正式回归化）；文档/需求/20260920_从物料自动构建本体/开发计划.md §11（第 4 轮整改记录）
+
+### ontology-build 第4轮P2建议修复（P2-1/P2-2/P2-3） · zcode · 已实施，待验收
+
+时间：2026-09-21T04:13:41.688482+00:00；记录：`.collaboration/entries/000133-6e9ab94d2dcb.json`
+
+第4轮验收报告§6三条非阻断P2已实施，未提交未合并：P2-1 BuildReviewPage.saveEdit 明确禁止清空口径——候选已有 dataType（readPropertyFields 判定，含嵌套兼容）而表单选空时置 editError「该属性已有数据类型，不能清空为「未确定」；请选择具体类型。」不发请求，原本无类型的候选不受影响；candidateFields.ts 顶部注释声明该口径由页面 saveEdit 执行、helper 保持纯函数。P2-2 review.update_candidate 字段合并：dataType 分支写入新平铺类型后若非 timeSeries 即 pop valueType，循环后再按最终 dataType 收敛一次（防同请求先 dataType 后 valueType 键序回写），切到 timeSeries 的合法性校验不动。P2-3 BuildSavePage 加载流程先 loadDelivery，delivery 非空跳过 runPrecheck（预检区保持空、不显示预检错误），未纳入项照常加载，未交付行为不变。只改 6 个授权文件；runner.py/pipeline.py/session_context.md 的改动属并行 R4-01 agent，本轮未触碰，未启停任何服务。
+
+- 决定：P2-1 采用「明确禁止清空」口径：已有类型的属性清回未确定在页面 saveEdit 拦截（空 patch 会被服务端合并语义复原，界面不得假清空）；从未有类型的候选仍可保持未确定；P2-2 以最终 dataType 收敛 valueType：非 timeSeries 一律不保留 fields.valueType（含同请求双键键序与历史残留）；timeSeries 的 valueType 缺失/非法仍由 validate_candidate 把关，未新增阻断码；P2-3 仅改 bootstrap 加载流程；submit/refreshDelivery 内的 runPrecheck 调用维持现状（不在授权范围）
+- 验证：node --import ./tests/ts_hooks.mjs tests/ontology_build_review_edit.test.mjs → 19/19（新增⑯已有类型清空被拦截不发请求、⑰原无类型保持未确定不受影响、⑱已交付跳过预检请求且 precheck/precheckError 为空、⑲未交付照常预检）；.venv/bin/python tests/test_ontology_build.py 完整跑两次 → 均 163/163（162+1：新增「timeSeries 切回 number 后 fields 不残留 valueType 键（P2-2）」断言通过，无 flake 失败）；node --import ./tests/ts_hooks.mjs tests/ontology_build_frontend.test.mjs → 通过；cd frontend && npx vue-tsc --noEmit -p tsconfig.json → 0 错误；npm run build → 成功（仅既有 chunk>500kB 提示）
+- 下一步：交 Codex 复验三条 P2：建议复跑 test_ontology_build.py、ontology_build_review_edit.test.mjs、vue-tsc/build，并核对 review.py update_candidate 收敛口径与 BuildSavePage 加载分支；本轮未 git add/commit（按指令）；与并行 R4-01 改动的组合回归（tests/run.py all 等）由协调者统一安排
+- 依据/文档：workbench/ontology_build/review.py（update_candidate）；frontend/src/ontology/build/BuildReviewPage.vue、BuildSavePage.vue、candidateFields.ts；tests/test_ontology_build.py（flow_timeseries_delivery 末尾 P2-2 断言）；tests/ontology_build_review_edit.test.mjs（⑯⑰⑱⑲）；文档/需求/20260920_从物料自动构建本体/验收报告_第4轮_20260921.md §6
+
+### ontology-build 第4轮R4-01修复（内容写点事务内核对取消/执行权） · zcode · 已实施，待验收
+
+时间：2026-09-21T04:10:20.851263+00:00；记录：`.collaboration/entries/000132-3ce162adb157.json`
+
+R4-01（P1）修复完成，未提交未合并：runner.py 新增 content_tx——同一 BEGIN IMMEDIATE 写事务内先 check_cancelled（含 lease 核对）再写内容；pipeline.py 清点 12 处 _tx，6 处业务内容写点换 content_tx（scan 标 running/写事实、generate 批次清空/abstract 追加候选/最终整批写入、dialog 追加消息），3 处 run 行写与 3 处入口快照读不动；新建 tests/test_ontology_build_late_write.py 五场景双 worker 时序回归。详见 文档/需求/20260920_从物料自动构建本体/开发计划.md 待追加记录。
+
+- 决定：内容写点口径：候选/消息/材料事实（含 parse_state）与批次整批替换都算业务内容；run 行阶段/进度/usage/checkpoint 写维持 lease 条件 update_run 不动；abstract 批次清空（delete_candidates_of_batch）一并纳入 content_tx：同为候选内容变更，语义与原内联 check 完全等价；_final_write 的内联 check_cancelled 移除，由 content_tx 统一核对，人工排除继承+整批替换保持单一内容事务
+- 验证：.venv/bin/python tests/test_ontology_build_late_write.py → 23/23（两次）；.venv/bin/python tests/test_ontology_build_runner_isolation.py → 34/34；.venv/bin/python tests/test_ontology_build_exclusion_inheritance.py → 17/17、merge_refs → 42/42；归档探针（报告§8抄至/tmp）exit=1：len(rows)==2 断言失败，仅剩 B 新结果 1 条，旧候选不再落库，缺陷已修复
+- 下一步：交 Codex 复验 R4-01：复跑新回归与归档探针（应失败）；协调者统一跑 tests/run.py all + test_ontology_build.py 组合回归（本轮按指令未跑）；通过后停在待用户授权集成；本轮未 git add/commit
+- 依据/文档：workbench/ontology_build/runner.py；workbench/ontology_build/pipeline.py；tests/test_ontology_build_late_write.py；文档/需求/20260920_从物料自动构建本体/验收报告_第4轮_20260921.md §5/§8
 
 ### codex/ontology-build 第4轮R3修复独立复验 · codex · 已验证
 
@@ -109,48 +152,3 @@
 - 验证：三份文档自动清理及保护边界、相对链接检查通过；git diff --check通过。当前只有main工作树，没有执行实际清理。
 - 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 创建工作树与集成合并明确提示词约定 · codex · 已确认决定
-
-时间：2026-09-20T08:31:39.494829+00:00；记录：`.collaboration/entries/000123-b63d4d42d13a.json`
-
-按用户最新要求修改AGENTS和共享基线：创建worktree与集成合并均由用户明确触发；同步自动构建需求的计划和指令，定义标准提示词与阶段停止点。未创建工作树或执行合并。
-
-- 决定：默认zcode收到创建指令后创建worktree；仅创建指令不开始开发，后续开发/修复复用同一环境。；Codex独立验收指定提交，通过后停在待用户授权集成；验收通过不隐含合并。；用户明确集成并合并后Codex负责临时集成worktree、普通冲突修复、组合验证和main更新；不重复询问同一授权，不默认重启主服务。；文档模板或其他工具交接不构成执行授权；用户可明确合并多个授权阶段，需求冲突另行确认。
-- 验证：AGENTS/计划/指令的提示词、授权边界和相对链接检查通过；git diff --check通过。无业务代码改动。
-- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 独立分支工作树与串行集成规范固化 · codex · 已确认决定
-
-时间：2026-09-20T08:24:26.103154+00:00；记录：`.collaboration/entries/000122-dcd5e6a120cd.json`
-
-按用户授权将独立分支/worktree/端口/数据与串行集成规范写入AGENTS，并同步共享稳定基线及本体自动构建计划、执行指令。仅文档变更，未创建分支或搬移当前开发。
-
-- 决定：后续业务开发每需求从已提交main创建独立分支和worktree，隔离端口、数据及依赖；当前main未提交任务不自动stash/reset/搬移。；单一集成负责人在临时集成环境合入最新main并验证；main干净且基线未变后快进更新，冲突处理不能直接ours/theirs。；所有后续开发计划与执行指令必须自包含开工、环境登记、验证、合并、启动、回退及清理流程。；纯讨论、需求/原型与治理文档可仅提交自身文档；本规则不是已安装的自动分支/合并服务。
-- 验证：AGENTS及本次计划/指令的隔离、合并、回退关键条款和相对链接检查通过。；git diff --check通过；无业务代码改动，未构建、测试或重启服务。
-- 下一步：后续生成指令采用新规则；正在main开发的任务由原执行者完成阶段或协调迁移，不自动操作。
-- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 统一维护改版v2独立验收 · codex · 已验证
-
-时间：2026-09-20T08:06:47.302898+00:00；记录：`.collaboration/entries/000121-d44011600c1f.json`
-
-基线06eee30独立验收未通过：确认3项P1；已追加开发计划11.5，未修改业务代码。
-
-- 决定：延期UI不列验收项；不能以实施记录全部通过代替独立证据。
-- 验证：构建通过，前端5套定向回归和后端发布/编排/目录/升级专项通过；目录套件仍有2项规格观察。；R01真实App客户端mount抛flowState初始化前访问异常，原SSR测试漏检。；R02空壳编排check_flow报输出未绑定，项目属性校验errors仍为空。；R03目录payload读取后、首次依赖token读取前更新目录，发布返回200并生成v3，预期409零写入。；隔离根与假账号验证，无真实数据修改；未做浏览器视觉验收。
-- 下一步：修复R01-R03后定向复验，校正文档F06/F07通过结论及测试规格观察。
-- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md
-
-### 执行 20260920_本体与项目统一维护体验改版 执行指令（v2 功能保护，多Agent并行）——实施完成交接 · zcode · 已实施，待验收
-
-时间：2026-09-20T07:47:40.655262+00:00；记录：`.collaboration/entries/000120-b48bbedf7bad.json`
-
-v2 功能保护七个工作包全部完成并提交：L 集成（d2cc6b9）、C 目录凭据（53f46f9）、A 本体三项复验修正（cc1b833）、E 映射保留+两处 P0（9d57276）、D 前端基线（8e2f7c1）、B 领域校验（4a1dcb5）。测试：run.py all 39/39、金样重生成回放 97/507、前端 node 全套通过、F 独立 QA 三套（135+47+60 项）全过、npm run build 通过；隔离实例浏览器验收 5 项通过（UI 发布 v2 与幂等回放、删被引用连接阻断、损坏目录发布阻断等）。开发计划 §11.2 冻结记录、§11.3 进度、§11.4 F01–F10 逐项结论与未验证项已终稿。
-
-- 决定：幂等指纹只含内容（不含 revision，回放优先于 CAS）；保存边界 422 REFERENCE_IN_USE 覆盖四类引用形态、同批移除放行；依赖重验快照=编排 head+目录指纹代际。；F 独立 QA 两个 P0 已修：损坏目录阻断校验与发布（路由兜底+B 形参双路径）、目录存储失败 GET/POST 同 503。；F 两个 P2 观察项：数组顺序视为内容差异（已登记 03 §2.3）；动作绑定 unreadable 文案仍沿用「不存在」（行为正确 fail-closed，记为待跟进）。；B 的 P1-5 后半（编排自身 check_flow 阻断）因会打挂对抗夹具而回滚，列为待办；金样按 B 预期条目重生成并回放通过。；既有失败 mapping_forms.test.mjs（四提交复现、范围外，P02 延期）不复写；现行编排绑定路径由 flow_editor_bind 覆盖。
-- 验证：后端：python3 tests/run.py all → 39/39（quick 3/3、http 10/10、unit 28/28）；金样 97 样例 507 断言；test_publish_guards 14 步；test_references 21 步；test_project_flow_source 38 步；test_upgrade_impact 7 项。；前端：22 个 node 测试文件全部通过；typecheck 0；npm run build 通过。；F 独立 QA：对抗性 135 项、目录语义 47 项、UI 保护 60 项全过；P0 修复后加回归步骤 m/n 锁定。；浏览器验收（隔离 18871，验收后实例与数据已清理）：概览「1 项待处理」；删被内联 SQL 引用连接阻断且提示精确；校验阻断→发布禁用；修正后 UI 发布 v2 且同 requestId 回放；真实重载与服务端一致。
-- 下一步：Codex 复验 F01–F10 证据，并决定 P1-5/B-4 两个待办是否本期补齐。；待办（非本期阻塞）：编排自身 check_flow 阻断启用+F 夹具同步；动作绑定 unreadable 文案统一；App.vue TDZ 由他人修复。
-- 依据/文档：文档/接口文档/02 §2.2、03 §2.1–§2.4/§3.3、01 §5.1、05 §1.2、README 变更记录；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2–§11.4；提交：d2cc6b9、53f46f9、cc1b833、9d57276、8e2f7c1、4a1dcb5
