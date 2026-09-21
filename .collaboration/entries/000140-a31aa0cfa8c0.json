@@ -1,0 +1,25 @@
+{
+  "ticket": "f1dff102d372443aa9f99831e3f1e336",
+  "task": "codex/test S1-S3独立复验47d5a8f",
+  "status": "verified",
+  "summary": "复验不通过：统计索引及实际HTTP复跑成立，但独立反例证明422版本增加仍pass、R02 validate500仍pass、诊断整响应误匹配、拆分覆盖漏半仍过；交付独立复验记录，未修改原测试/业务。",
+  "decisions": [],
+  "verification": [
+    "判定测试23/23；索引14批次187记录94替代9根因、文档去生成时间可重现；5行抽验一致。",
+    "定向15条、完整本体22条、完整项目54条均完成；A01/R02仍known，未全面重测。",
+    "独立内存反例F01-F04实锤；project-save失败正确blocked，错行号正确拒绝。",
+    "18961/PID36857已停止，独立s1s3-accept-data清理；其余环境未操作。"
+  ],
+  "next": [
+    "执行者修F01-F04及F05标记后定向复验，不需先修业务或重做历史全套测试。"
+  ],
+  "references": [
+    "文档/需求/20260921_系统全方位深度测试/S1S3独立复验记录_20260921.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-21T02:12:27.386625+00:00",
+  "sequence": 140,
+  "filename": "000140-a31aa0cfa8c0.json",
+  "record_hash": "4ee2b5621936c9c8cdfa9d70f619afa48eb60663032c6c937f6a379113209e32",
+  "context_advanced": false
+}

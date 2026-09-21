@@ -1178,5 +1178,58 @@ sample('mapping_desc_ok', project(
 sample('mapping_desc_plain_only', project() | {'bindings': {'notice': '', 'object_bindings': [], 'observation_binding': {}, 'source_candidates': [], 'mappingDescriptions': DESC_OK, 'catalogs': CATALOG}})
 sample('mapping_desc_stale', project() | {'bindings': {'notice': '', 'object_bindings': [], 'observation_binding': {}, 'source_candidates': [], 'mappingDescriptions': DESC_STALE, 'catalogs': CATALOG}})
 
+# --- R02 金样（2026-09-21）：项目引用编排自身配置有效性 ----------------------------
+# flow 绑定此前不放金样：样例依赖环境编排数据（见 48 号样例注释），而编排库按账号
+# 隔离在数据根里。本节在隔离临时根内播种**固定 flowId** 的金样专用编排；回放侧
+# （test_validation_split.py）调用同一 seed_golden_flows()（幂等）得到同构内容，
+# 依赖三态在生成与回放两侧稳定返回 found，金样才能锁定
+# 「被项目引用的编排配置无效 → 阻断发布」的 R02 修复语义。
+
+_GOLDEN_FLOWS = (
+    # (flowId, 名称, 是否接节点, 输出声明)。不接节点 → 输出缺 binding →
+    # check_flow error OUTPUT_BINDING_MISSING（空壳编排，R02 反例）。
+    ('gldbadflow00001', '金样未绑定输出编排', False,
+     [{'id': 'out_power', 'name': 'power', 'label': '功率', 'type': {'type': 'number'}}]),
+    ('gldokflow000001', '金样合法编排', True,
+     [{'id': 'out_power', 'name': 'power', 'label': '功率', 'type': {'type': 'number'}}]),
+)
+
+
+def seed_golden_flows():
+    """在隔离数据根播种金样专用编排（固定 flowId，生成/回放两侧内容同构；幂等）。"""
+    from workbench import flows as _flows
+    for fid, name, wired, outputs in _GOLDEN_FLOWS:
+        if _flows.current_token(fid) is not None:
+            continue  # 已播种：重复运行不推进已有草稿
+        state = _flows.blank_flow(fid, name)
+        state['outputs'] = [dict(o) for o in outputs]
+        if wired:
+            state['nodes'] = [{'id': 'nd_impl', 'kind': 'python', 'name': '实现',
+                               'inputs': [],
+                               'outputs': [{'id': 'nd_out_power', 'name': 'power', 'label': '功率',
+                                            'type': {'type': 'number'}}],
+                               'implementation': {'language': 'python',
+                                                  'code': 'def main():\n    return None\n'}}]
+            state['outputs'][0]['binding'] = {'kind': 'node', 'nodeId': 'nd_impl',
+                                              'outputId': 'nd_out_power'}
+        _flows.save_draft(state)
+
+
+seed_golden_flows()
+
+
+def flow_src(flow_id, output):
+    return {'kind': 'flow', 'flow': flow_id, 'output': output, 'inputs': {}}
+
+
+sample('57_flow_binding_output_unbound', project(bindings=[binding(properties={
+    'rated_power': flow_src('gldbadflow00001', 'out_power')})]))
+# 被引用编排输出未绑定来源（OUTPUT_BINDING_MISSING）→ 新增阻断项：
+# 属性定位 + 编排标识 + 未绑定原因在同一条 error 里（R02 修复语义）
+
+sample('58_flow_binding_config_valid', project(bindings=[binding(properties={
+    'rated_power': flow_src('gldokflow000001', 'out_power')})]))
+# 被引用编排自身配置有效 → 不产生编排配置类阻断（防过度阻断护栏）
+
 if __name__ == '__main__':
     main()

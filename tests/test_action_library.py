@@ -119,16 +119,36 @@ for value in (None, '', '   '):
 
 # A01（2026-09-20 验收修复）：v2 动作 effect 非文本（对象/数组/数值/布尔）必须受控报错，
 # 不再被静默跳过（此前 effect 完全不检查，数组/对象可正式发布）
+# （20260921 合并口径：文案统一为 test 分支富格式「必须为文本」，断言随之同步）
 for value in ({'wrong': 'object'}, ['wrong'], 3, True):
     errs = definition_errors(onto_state([dict(A2, effect=value)]))
-    check(any('必须是文本' in e for e in errs),
-          f'A01 v2 动作 effect 为 {value!r} → 校验报「必须是文本」', errs)
+    check(any('必须为文本' in e for e in errs),
+          f'A01 v2 动作 effect 为 {value!r} → 校验报「必须为文本」', errs)
 null_desc_action = definition_errors(onto_state([dict(A2, description=None)]))
 check(any('缺少业务描述' in e and '停止充放电' in e for e in null_desc_action),
       'A01 v2 动作 description=null → 定位动作与字段的可读文案（不再 AttributeError 泛化）', null_desc_action)
 check(not any('NoneType' in e for e in null_desc_action), 'A01 description=null 文案不暴露 NoneType', null_desc_action)
 check(not definition_errors(onto_state([dict(A2, name='停止充放电', description='d')])),
       'A01 最小 v2 动作（无 effect 键）仍零错误')
+
+# A01（20260921）：v2 动作 effect 选填但提供时必须为文本——数字/布尔/数组/对象逐类型拒绝，
+# 单条消息同时含动作名称、标识、字段名（effect）、「必须为文本」原因与修复建议；不隐式转字符串
+for bad in (1, 3.14, True, ['功率为 0'], {'效果': 'x'}):
+    errs = definition_errors(onto_state([dict(A2, effect=bad)]))
+    matched = [e for e in errs if '必须为文本' in e and 'effect' in e]
+    check(len(matched) == 1
+          and '「停止充放电」(act_stop)' in matched[0]
+          and f'当前类型 {type(bad).__name__}' in matched[0]
+          and '请改为文本或删除该字段' in matched[0],
+          f'A01 v2 动作 effect 为 {type(bad).__name__} 报恰好一条错误（单条消息含名称/标识/字段名/类型原因/建议）', errs)
+
+# A01 不误伤：合法动作与非法 effect 记录并存（含合法历史动作），只有非法记录报错
+mixed_actions = [dict(A2), dict(A2, id='act-bad', name='非法效果动作', effect=['a']), dict(LEGACY)]
+errs = definition_errors(onto_state(mixed_actions))
+matched = [e for e in errs if '必须为文本' in e]
+check(len(matched) == 1 and 'act-bad' in matched[0] and 'effect' in matched[0]
+      and not any('act_stop' in e for e in matched) and not any('action.change_system' in e for e in matched),
+      'A01 合法/历史动作与非法 effect 动作并存：只有非法记录报单条错误（不误伤）', errs)
 
 # --- 2. 关联集合校验（验收 4：删除保护；§5 去重/悬空） ------------------------------
 
@@ -351,8 +371,8 @@ for bad_value, title in ((['wrong'], '数组'), ({'wrong': 'object'}, '对象'),
     bad_state = copy.deepcopy(act_state)
     bad_state['workflow']['actions'][0]['effect'] = bad_value
     resp, status = publish_route(act_id, bad_state)
-    check(status == 422 and any('必须是文本' in e for e in resp.get('errors', [])),
-          f'A01 动作 effect 为{title} → 正式发布路由 422 且给「必须是文本」', (status, resp))
+    check(status == 422 and any('必须为文本' in e for e in resp.get('errors', [])),
+          f'A01 动作 effect 为{title} → 正式发布路由 422 且给「必须为文本」', (status, resp))
     check(version_labels(act_id) == labels_ok,
           f'A01 动作 effect 为{title} 拒绝发布后零新增版本', version_labels(act_id))
 

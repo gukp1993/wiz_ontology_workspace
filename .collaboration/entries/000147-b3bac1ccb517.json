@@ -1,0 +1,28 @@
+{
+  "ticket": "efb773d1a0d04c1d88ba43661034641b",
+  "task": "D-Q02-01 页面口径修复（OntologyRelease.vue 快照文案）",
+  "status": "implemented",
+  "summary": "仅改 frontend/src/ontology/OntologyRelease.vue 文案：快照区改述为迁移导入的 release-ZIP 工件、发布版本指向上方「已发布版本」且不可在此恢复；区块标题改「迁移导入的快照（N）」，空态补澄清，版本卡去掉「不可变快照」措辞。恢复功能/确认/按钮行为未动，未改其他文件。",
+  "decisions": [
+    "遵守 D-Q02-01 恢复能力延期决定：只修页面口径，不实现恢复改版",
+    "版本列表沿用现有标题「已发布版本」保持措辞一致"
+  ],
+  "verification": [
+    "npm run typecheck 通过（vue-tsc 0 错误）",
+    "npm run build 成功（built in 3.80s，chunk 警告为既有）",
+    "grep 确认旧文案「每次发布都会留」已不存在；git status 仅 OntologyRelease.vue 被修改"
+  ],
+  "next": [
+    "待 Codex 独立验收 D-Q02-01 页面口径部分",
+    "恢复能力改版仍处延期，不在本轮范围"
+  ],
+  "references": [
+    "frontend/src/ontology/OntologyRelease.vue"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T04:26:07.970780+00:00",
+  "sequence": 147,
+  "filename": "000147-b3bac1ccb517.json",
+  "record_hash": "a7b14acef615b4368b0c36ebb91f05691e502d9757c0ceb6d71448f05bedb358",
+  "context_advanced": false
+}

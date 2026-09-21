@@ -97,6 +97,24 @@ for key, title in (('content', '规则内容'), ('output', '输出结果')):
 check(not definition_errors(onto_state([{'id': 'rule-min', 'name': '最小规则', 'description': '只填必填两项'}], [])),
       'R01 只填名称+业务定义的新规则即可保存/发布（content/output 均无键）')
 
+# A01（20260921）：content 选填但提供时必须为文本——数字/布尔/数组/对象逐类型拒绝，单条消息同时含
+# 规则名称、标识、字段名（content）、「必须为文本」原因与修复建议；不经 str() 隐式转成合法说明
+for bad in (1, 3.14, True, ['先核验数据质量'], {'口径': 'x'}):
+    errs = definition_errors(onto_state([dict(RULE, content=bad)], []))
+    matched = [e for e in errs if '必须为文本' in e and 'content' in e]
+    check(len(matched) == 1
+          and f'「储能运行异常判定」(rule-1)' in matched[0]
+          and f'当前类型 {type(bad).__name__}' in matched[0]
+          and '请改为文本或删除该字段' in matched[0],
+          f'A01 content 为 {type(bad).__name__} 报恰好一条错误（单条消息含规则名/标识/字段名/类型原因/建议）', errs)
+
+# A01 不误伤：同一状态里合法规则与非法 content 记录并存，只有非法记录报错
+mixed_rules = [dict(RULE), dict(RULE, id='rule-bad', name='非法内容规则', description='定义占位', content={'x': 1})]
+errs = definition_errors(onto_state(mixed_rules, []))
+check(len(errs) == 1 and 'rule-bad' in errs[0] and '非法内容规则' in errs[0]
+      and 'content' in errs[0] and '必须为文本' in errs[0],
+      'A01 合法规则与非法 content 规则并存：只有非法记录报单条错误（不误伤）', errs)
+
 dup = dict(RULE, name='另一条')
 errs = definition_errors(onto_state([dict(RULE), dup], []))
 check(any('重复标识' in e for e in errs), '规则标识重复报错', errs)
@@ -212,11 +230,12 @@ check(not definition_errors(onto_state([blank_output], [])) and not str(blank_ou
 
 # --- A01（2026-09-20 验收修复）：字段类型边界 + 正式发布路由拒绝且零版本写入 ---------------
 # 独立复现：规则 content 传对象、动作 effect 传数组，此前经正式 post_publish 返回 200 并出版本。
-check(any('必须是文本' in e for e in definition_errors(onto_state([dict(RULE, content={'wrong': 'object'})], []))),
-      'A01 规则 content 为对象 → 校验报「必须是文本」（不 str 掩盖）',
+# （20260921 合并口径：content 文案统一为富格式「必须为文本」，以下断言随之同步；name 仍走必填助手「必须是文本」）
+check(any('必须为文本' in e for e in definition_errors(onto_state([dict(RULE, content={'wrong': 'object'})], []))),
+      'A01 规则 content 为对象 → 校验报「必须为文本」（不 str 掩盖）',
       definition_errors(onto_state([dict(RULE, content={'wrong': 'object'})], [])))
-check(any('必须是文本' in e for e in definition_errors(onto_state([dict(RULE, content=['wrong'])], []))),
-      'A01 规则 content 为数组 → 校验报「必须是文本」')
+check(any('必须为文本' in e for e in definition_errors(onto_state([dict(RULE, content=['wrong'])], []))),
+      'A01 规则 content 为数组 → 校验报「必须为文本」')
 check(any('必须是文本' in e for e in definition_errors(onto_state([dict(RULE, name={'bad': 1})], []))),
       'A01 规则 name 为对象 → 校验报「必须是文本」')
 null_desc = definition_errors(onto_state([dict(RULE, description=None)], []))
@@ -259,8 +278,8 @@ for bad_value, title in (({'wrong': 'object'}, '对象'), (['wrong'], '数组'),
     bad_state = copy.deepcopy(a01_state)
     bad_state['workflow']['businessRules'][0]['content'] = bad_value
     resp, status = publish_route(a01_id, bad_state)
-    check(status == 422 and any('必须是文本' in e for e in resp.get('errors', [])),
-          f'A01 规则 content 为{title} → 正式发布路由 422 且给「必须是文本」', (status, resp))
+    check(status == 422 and any('必须为文本' in e for e in resp.get('errors', [])),
+          f'A01 规则 content 为{title} → 正式发布路由 422 且给「必须为文本」', (status, resp))
     check(version_labels(a01_id) == labels_after_ok,
           f'A01 规则 content 为{title} 拒绝发布后零新增版本', version_labels(a01_id))
 

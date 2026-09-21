@@ -642,7 +642,10 @@ def _check_flow_binding(value, flow_state, b, ot, prop, graph, node, shape, dep_
     所选输出与输入绑定是否与当前编排签名一致。"""
     blocking = []
     if flow_state is None:
-        return ['引用的函数编排不存在或已删除']
+        flow_ref = str(value.get('flow', '') or '').strip()
+        # 既有文案保留「不存在」语义并补上编排定位（属性定位由调用方「属性来源 ot.prop：」前缀给出）。
+        return ([f'引用的函数编排不存在或已删除（{flow_ref}）'] if flow_ref
+                else ['引用的函数编排不存在或已删除'])
     declared_outs = [o for o in flow_state.get('outputs', []) if isinstance(o, dict)]
     selected = next((o for o in declared_outs if str(o.get('id', '')) == str(value.get('output', '') or '')), None)
     if not str(value.get('output', '') or ''):
@@ -1146,7 +1149,12 @@ def _check_property_sources(ctx, errors, warnings, items):
                         binding_blocking = _check_flow_binding(value, flow_state, b, ot, prop,
                                                                graph, node, shape, dep_edges)
                         struct_errors = _flow_struct_errors(flow_id, flow_state, ctx)
-                        blocking.extend(f'引用的函数编排：{e}' for e in struct_errors)
+                        # R02 文案（20260921 合并口径）：单条消息带编排标识 名称(id) 与具体原因，
+                        # 与属性定位前缀「属性来源 ot.prop：」组成完整定位。
+                        flow_name = str(flow_state.get('name') or '').strip() if isinstance(flow_state, dict) else ''
+                        flow_label = flow_name or flow_id
+                        blocking.extend(f'引用的编排 {flow_label}({flow_id}) 配置无效：{e}'
+                                        for e in struct_errors)
                         blocking.extend(binding_blocking)
             elif kind in ('field', 'related'):
                 source_id = str(value.get('source', '') or '')
