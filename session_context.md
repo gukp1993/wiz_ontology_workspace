@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`81a874dab7a9ff69`
+上下文版本：`6cc0e9c0aa8f4175`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -18,7 +18,98 @@
 - 2026-09-18 审查修改意见已交付：文档/代码审查修改意见_20260918.md。设置交接机制时看到后续代码已有导出/恢复及错误处理修改，不能继续把旧缺陷全部标为待修；本轮未重新验收这些业务修复。
 - 9 月 15 日旧共享上下文已完整归档到 文档/需求/20260918_共享上下文自动交接/历史共享上下文_截至20260915.md；仅供历史追溯，不作为当前事实。
 
+- 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
+
 ## 最近交接（新 → 旧）
+
+### 从物料自动构建本体 第2轮独立复验 · codex · 已验证
+
+时间：2026-09-21T02:29:01.217346+00:00；记录：`.collaboration/entries/000128-19a06a79a19b.json`
+
+第2轮复验结论：通过。D01-D19全部修复并在f52207f+报告commit上运行时复验确认；验收报告附录A已提交。停在待用户授权集成，未合并main、未删开发环境、未重启主工作台18765。
+
+- 决定：修复提交：a6e3dfb(D01/D03/D05/D07/D10-D12/D14残留)、70231bd(D16/D17)、8c381d6(D04/D09/D15前端)、dd81187(D02/D13/D18/D19协议与解析)、f52207f(D06本体装配)，另有附录A验收报告commit；验收边界：G15浏览器视觉/键盘、G16真实模型语义、OCR、limits标定、T12/T20故障注入保持未验收，不标通过；分支基线滞后main（缺b690a1a规则动作字段精简），集成时需与main组合重验
+- 验证：tests/test_ontology_build.py 160/160；test_ontology_build_parsers.py 95/95；run.py all 41/41；npm run build 0错误；node tests/ontology_build_frontend.test.mjs 8组通过（仓库根cwd）；18871隔离实例运行时探针：V1全流程交付(含timeSeries+rule+action+link)、V2错误码/CAS、D06复核ALL PASS；G01/G14账号隔离回归通过；未连接真实业务库，未读取主环境密钥
+- 下一步：等待用户明确集成/合并指令；合并前在临时集成分支与main(b690a1a)组合重验；遗留非阻塞项见验收报告§11与附录A.3：confirm_scope/run-resume 400 vs 422、parseTimeoutSeconds未实现等
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收报告.md；branch codex/ontology-build @ f52207f+报告commit
+
+### 从物料自动构建本体 · Codex第1轮独立验收 · codex · 已验证
+
+时间：2026-09-20T16:05:18.233763+00:00；记录：`.collaboration/entries/000127-2a7750680301.json`
+
+验收 6a7033f 不通过：P0 六项（>384B分片上传必400、timeSeries交付必败且预检放行、合并候选复活进交付集、再生成复活人工排除、前端五处revision错配UI操作全断、规则落metadata不可见）+P1 十三项；主链路协议级端到端与小文件全流程实测可通。报告提交 7013a53（验收文档，独立于业务提交）。
+
+- 决定：缺陷编号 D01-D19，P0/P1 必须修复、P2/P3 可后置；修复在 codex/ontology-build 原 worktree 继续，不合并 main；浏览器点击级验证因内嵌视口不可用改以前端payload精确HTTP复现替代，G15/T24 保持未验收；真实模型语义(T25/G16)与OCR、限额校准维持未验证，不并入通过结论
+- 验证：test_ontology_build 51/51、tests/run.py all 40/40、npm run build、前端node测试35/36（mapping_forms为main既有失败）独立复跑；隔离实例18871重启至HEAD后协议级E2E：小文件全流程、证据降级、合并撤销(正确token)、交付幂等实测通过；2733B chunk 400、timeSeries交付400、合并后列表复活、b2排除b3复活include、merge/undo/regenerate/exclude假冲突或400运行时坐实；跨账号404/未登录401/路径穿越与ZIP拦截复测通过
+- 下一步：修复方按 D01-D19 在原worktree修复并提交，禁止合并main；Codex按D编号逐项复验后更新验收报告附录A；集成合并仍需用户明确授权
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收报告.md；报告提交 7013a53；被验收 SHA 6a7033f
+
+### 从物料自动构建本体 · 实施（codex/ontology-build） · zcode · 已实施，待验收
+
+时间：2026-09-20T14:57:34.384110+00:00；记录：`.collaboration/entries/000126-721a27d46945.json`
+
+按 文档/需求/20260920_从物料自动构建本体 完成 P0–P7 全链路实施并提交三个 commit：d8250be（后端任务族与生成管线）、90fa3c1（前端六页与导航接线）、6a7033f（开发计划登记）。真实链路：分片上传→本地解析（Java/JPA、DDL、MD 等带定位事实）→多轮范围对话→证据驱动生成→候选评审（编辑/决定/合并撤销/依赖阻断）→原子创建新本体草稿。未合并 main、未重启主工作台、未删除开发环境。
+
+- 决定：接口文档 08 分册为唯一契约先行冻结，再实现后端与前端（文档先行同 commit）。；任务族数据独立于本体资产（wb_build_* 12 表，迁移 20260920_0003）；交付时才在同一写事务创建新草稿，绝不先建空本体。；交付幂等指纹只取选定集合内容（定义 ID 每次由服务端重新分配，不能进指纹）；requestId 命中回执优先于 CAS。；生成类运行成功时在同一事务把任务推进到 review；范围确认先写回范围再冻结基线（否则批次基线恒落后一版、stale 恒真）。；证据引用必须落在当前任务允许集合内，模型给出的不存在的 factId 一律剔除并把该字段降为推断/不足。
+- 验证：tests/test_ontology_build.py 51/51 通过（真实 HTTP + 本地假 LLM + 合成物料；覆盖上传分片幂等与冲突、解析定位回读、捏造证据剔除、依赖阻断与恢复、幂等重放同一 ontologyId、二次交付拒绝、跨账号 404、未登录 401、路径穿越与 ZIP 逃逸拦截），已登记 tests/run.py http 组。；python3 tests/run.py all → 40/40；前端 vue-tsc 0 错误、npm run build 通过。；隔离实例 18871 真浏览器走通 A01→A06：创建任务、上传三份材料、扫描（识别 java/jpa、markdown、ddl 片段数与定位）、多轮对话（助手真实回复且补丁只作建议不覆盖人工）、保存摘要、确认生成、五阶段完成、候选入库（冲突项默认暂缓）、交付创建本体草稿并可进入对象建模。；实施中修复 13 处真实缺陷（见开发计划 §11），其中 8 处为浏览器或接口实测发现：任务状态不推进、本体 ID 非规范 UUID、幂等指纹不稳、storage.NotFound 未映射 404、批次 stale 恒真、范围矛盾检测过弱、/api/build-diff 500、页面泄漏原型编号 A03–A06。
+- 下一步：交 Codex 独立验收：建议按需求 G01–G16 与开发计划 T01–T25 逐条核对，重点复验捏造证据剔除、依赖阻断、交付幂等与原子性、跨账号隔离。；未验证项（已在开发计划 §11 明示）：真实 LLM 语义质量与多领域样本（T25/G16）、OCR、规模限额校准、人工修改冲突的浏览器点击级链路、768 窄屏与键盘可达性（T24 部分）。；浏览器验收中 IAB 会话在同 host 多端口间被覆盖导致两次掉登录（环境限制，非功能缺陷）。；验收通过后停在待用户授权集成；未合并 main、未重启 18765、dist 未部署。
+- 依据/文档：提交：d8250be、90fa3c1、6a7033f（分支 codex/ontology-build）；文档/接口文档/08-从物料自动构建本体接口.md；文档/需求/20260920_从物料自动构建本体/开发计划.md（§0 环境表、§11 实施记录与未验证项）；workbench/ontology_build/、workbench/ontology_build_routes.py、workbench/storage/ontology_build.py、workbench/migrations/versions/20260920_0003_ontology_build.py；frontend/src/ontology/build/、tests/test_ontology_build.py
+
+### 20260920_从物料自动构建本体 前端接线（App/navigation/OntologyHome） · zcode · 已实施，待验收
+
+时间：2026-09-20T12:13:28.237356+00:00；记录：`.collaboration/entries/000125-0910365888e6.json`
+
+把 ontology/build/ 已完成六页（A01-A06）接进工作台导航：本体区新增视图 build「从物料生成」（子入口，不新增平台主菜单）；App.vue 新增 buildStage/buildTaskId/buildRunId 并按子页面真实 emit 驱动流程；OntologyHome.vue 增加入口按钮。仅改 3 个文件，未动 build/ 下 6 页与 api/types。
+
+- 决定：navigation.ts：pages 增加 build='从物料生成'；alias 兼容 /build、/ontology/build、ontology/build、ontology-build；menuOntology 末位加 build（本体区菜单，非平台主菜单）。；App.vue：build 独立于本体草稿加载态渲染，未选本体也能进（G01）；emit 按代码真实契约接线：open-task→materials、continue→scope、generated(runId)→progress、review→review、back 各级回退，A06 saved→记账来源并 switchOntology 进对象建模。；A05 只声明 saved 未触发且无前进入口、A06 无回评审按钮；按原型在 App 侧补步骤条（物料/确定范围/生成/评审初稿/保存新本体）提供评审初稿↔保存新本体入口，不改子页面。；来源回链（G13）：本体 id→任务 id 存账号级浏览器偏好 wiz-build-source，对象建模页显示「← 查看生成来源任务」。；无本体页「创建第一个本体」卡片加「从物料生成」次按钮，未改既有文案结构。
+- 验证：npx vue-tsc --noEmit -p tsconfig.json：0 错误。npm run build：成功，产出 dist/assets/index-C5OE6mZW.js 与 index-mUXEVsI7.css（仅既有 chunk>500kB 提示）。；node --import ./tests/ts_hooks.mjs：global_settings_nav 7/7、global_interaction 7/7、dependency_guard 22/22、ontology_lazy_load 11/11、project_check_staleness 9/9、reference_changes、config_transfer 均通过。；脚本校验 navigation：四种旧写法全部归一 build；initialSpace('#build')='ontology'；build 不在 projectSpaceViews/globalViews。
+- 下一步：待 Codex 独立验收；本轮无浏览器端到端实测（A05/A06 真接口流转依赖 workbench/ontology_build* 后端与迁移 20260920_0003，非本轮改动）。；按本轮指令未 git add/commit。
+- 依据/文档：frontend/src/App.vue；frontend/src/app/navigation.ts；frontend/src/ontology/OntologyHome.vue；文档/需求/20260920_从物料自动构建本体/需求说明.md
+
+### 集成成功后自动清理开发环境约定 · codex · 已确认决定
+
+时间：2026-09-20T08:35:50.005451+00:00；记录：`.collaboration/entries/000124-d510e725ab27.json`
+
+用户要求集成完即删除对应开发环境，已固化到AGENTS、稳定基线和当前自动构建计划/指令。仅规则修改，未删除任何目录或分支。
+
+- 决定：集成并合并授权包含集成验证和main合并成功后的自动清理，无需另发清理指令或等待主服务重启。；清理本任务开发/临时集成worktree、已合并分支、专属依赖/运行产物及登记可丢弃的隔离测试数据；先保存提交/验收证据，停止匹配的服务并释放端口。；未提交/未合并、他人仍写入、未知或需保留数据阻断相关清理并报告，不强制删除；真实主库、原始物料和其他任务不在范围。
+- 验证：三份文档自动清理及保护边界、相对链接检查通过；git diff --check通过。当前只有main工作树，没有执行实际清理。
+- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 创建工作树与集成合并明确提示词约定 · codex · 已确认决定
+
+时间：2026-09-20T08:31:39.494829+00:00；记录：`.collaboration/entries/000123-b63d4d42d13a.json`
+
+按用户最新要求修改AGENTS和共享基线：创建worktree与集成合并均由用户明确触发；同步自动构建需求的计划和指令，定义标准提示词与阶段停止点。未创建工作树或执行合并。
+
+- 决定：默认zcode收到创建指令后创建worktree；仅创建指令不开始开发，后续开发/修复复用同一环境。；Codex独立验收指定提交，通过后停在待用户授权集成；验收通过不隐含合并。；用户明确集成并合并后Codex负责临时集成worktree、普通冲突修复、组合验证和main更新；不重复询问同一授权，不默认重启主服务。；文档模板或其他工具交接不构成执行授权；用户可明确合并多个授权阶段，需求冲突另行确认。
+- 验证：AGENTS/计划/指令的提示词、授权边界和相对链接检查通过；git diff --check通过。无业务代码改动。
+- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 独立分支工作树与串行集成规范固化 · codex · 已确认决定
+
+时间：2026-09-20T08:24:26.103154+00:00；记录：`.collaboration/entries/000122-dcd5e6a120cd.json`
+
+按用户授权将独立分支/worktree/端口/数据与串行集成规范写入AGENTS，并同步共享稳定基线及本体自动构建计划、执行指令。仅文档变更，未创建分支或搬移当前开发。
+
+- 决定：后续业务开发每需求从已提交main创建独立分支和worktree，隔离端口、数据及依赖；当前main未提交任务不自动stash/reset/搬移。；单一集成负责人在临时集成环境合入最新main并验证；main干净且基线未变后快进更新，冲突处理不能直接ours/theirs。；所有后续开发计划与执行指令必须自包含开工、环境登记、验证、合并、启动、回退及清理流程。；纯讨论、需求/原型与治理文档可仅提交自身文档；本规则不是已安装的自动分支/合并服务。
+- 验证：AGENTS及本次计划/指令的隔离、合并、回退关键条款和相对链接检查通过。；git diff --check通过；无业务代码改动，未构建、测试或重启服务。
+- 下一步：后续生成指令采用新规则；正在main开发的任务由原执行者完成阶段或协调迁移，不自动操作。
+- 依据/文档：AGENTS.md；.collaboration/baseline.md；文档/需求/20260920_从物料自动构建本体/开发计划.md；文档/需求/20260920_从物料自动构建本体/执行指令.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 统一维护改版v2独立验收 · codex · 已验证
+
+时间：2026-09-20T08:06:47.302898+00:00；记录：`.collaboration/entries/000121-d44011600c1f.json`
+
+基线06eee30独立验收未通过：确认3项P1；已追加开发计划11.5，未修改业务代码。
+
+- 决定：延期UI不列验收项；不能以实施记录全部通过代替独立证据。
+- 验证：构建通过，前端5套定向回归和后端发布/编排/目录/升级专项通过；目录套件仍有2项规格观察。；R01真实App客户端mount抛flowState初始化前访问异常，原SSR测试漏检。；R02空壳编排check_flow报输出未绑定，项目属性校验errors仍为空。；R03目录payload读取后、首次依赖token读取前更新目录，发布返回200并生成v3，预期409零写入。；隔离根与假账号验证，无真实数据修改；未做浏览器视觉验收。
+- 下一步：修复R01-R03后定向复验，校正文档F06/F07通过结论及测试规格观察。
+- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md
 
 ### 执行 20260920_本体与项目统一维护体验改版 执行指令（v2 功能保护，多Agent并行）——实施完成交接 · zcode · 已实施，待验收
 
@@ -64,86 +155,3 @@ W3 阶段：A 三项最小修复完成（B1 前端补 applicable_objects 三入�
 - 下一步：等 B（project_validation/project_mapping/影响匹配）与 D（key 签名修正等）回收；随后金样预期差异生成与回放。；W4：npm run build（cs统一一次）、隔离实例浏览器验收（F）、§11.4 逐项 F01–F10、按工作包提交。
 - 依据/文档：文档/接口文档/02-本体区接口.md §2.2、03-项目区接口.md §2.1-§2.4/§3.3、README 变更记录；workbench/{references,projects,project_routes,flows,catalogs,secrets,server}.py；tests/{test_publish_guards,test_references,ui_protection_independent,connection_manager,source_config_retention}.py|mjs
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 角色F 独立QA：复核L发布守卫与C目录/凭据语义（只新增测试） · zcode · 已实施，待验收
-
-时间：2026-09-20T07:07:44.269945+00:00；记录：`.collaboration/entries/000116-25597eede82e.json`
-
-新增两个独立测试文件（动态端口+独立临时根+假账号），未改任何生产文件与他人测试。tests/test_publish_guards_adversarial.py 135项断言全过：4路并发同requestId同内容（Barrier真并发，3轮全200）只多一个版本v1、wb_requests一行、各响应version/revision完全一致、无5xx与裸约束异常；带旧revision重试回放优先CAS；同key异内容409零写入；dict键序不同仍回放，数组顺序不同则409不回放（观察项）；catalogs/_draft漂移不影响回放；保存边界422+state逐字节零写入，覆盖object_bindings/implementations/inlineSql/sources四种引用形态，同批移除放行；注入窗口改编排head→409 DEPENDENCY_CHANGED、releases不增、revision不推进、无回执，恢复同key重试成功；CAS与422不写回执；跨账号及同账号他项目均不串号。tests/test_catalog_independent.py 硬断言47项全过+6项规格观察：fingerprint仅改name/id不变、host/port/database/username/tls/caPath/dbIndex逐个变化；store_if_current正向可写、改地址/换凭据/删连接/代际过期四种注入全False且payload+generation逐字节不变；损坏payload抛CatalogCacheUnreadable带connection_ids、strict=False跳过、GET不5xx；secrets.save幽灵项目拒绝且不建资产、不可读回、代际0。
-
-- 决定：只新增 tests/test_publish_guards_adversarial.py 与 tests/test_catalog_independent.py；未修改 workbench/ 生产代码，未改 L 的 test_publish_guards.py 与 C 的 test_connection_catalog.py。；幂等指纹实测为 canonical（sort_keys）：dict 键序不同仍回放；数组顺序敏感，同 key 数组逆序→409 REVISION_CONFLICT。属冻结口径固有结果，登记为观察项与客户端 key 轮换风险，不判缺陷。；冻结契约未落地项以「规格观察」分区记录（默认不阻断，WIZ_QA_STRICT=1 时按失败计），避免把未接线记为通过。
-- 验证：python3 tests/test_publish_guards_adversarial.py → 通过135项/不符0，退出码0，约8s；A1并发复跑3轮稳定（[200,200,200,200]，version/revision集合唯一）。；python3 tests/test_catalog_independent.py → 硬断言47项通过/不符0/规格观察6项，退出码0；WIZ_QA_STRICT=1 退出码1（规格观察按失败计）。；python3 tests/run.py --test <两文件> 均通过；两测试均断言 DATA_ROOT 与 engine.resolve_url() 落在各自临时根内，可并行；未访问真实 ontology/18765/MySQL/Redis/外网。
-- 下一步：建议将 test_publish_guards_adversarial.py 归入 HTTP 组登记，但其动态端口与独立临时根可与 L 的 18841 并行，不需要串行。；P0 待修：损坏目录未阻断校验/发布（errors=[] 且实际发布出 v1）——需 B 落地 degraded_catalogs 参数并移除 project_routes 的 except TypeError 回退。；P0 待修：storage 级目录读取失败时 POST /api/project-validate 正确 503，但 GET /api/project-state 返回 500 INTERNAL_ERROR（server.do_GET 未登记 CatalogCacheUnreadable）。；P1 建议：编排 unreadable 的校验文案与 missing 区分；数组顺序敏感的 key 轮换约定补入接口文档。；未覆盖：多进程/多实例目录落库窗口竞争、浏览器点击级闭环、真实 MySQL/Redis 探测。
-- 依据/文档：tests/test_publish_guards_adversarial.py（新增，135项断言）；tests/test_catalog_independent.py（新增，硬断言47项+规格观察6项）；workbench/project_routes.py:169-190（degraded_catalogs 的 except TypeError 回退）；workbench/server.py:331-334 与 do_GET 异常分支（GET 未映射 CatalogCacheUnreadable→503）；文档/接口文档/03-项目区接口.md:189-190、219-228（冻结契约）；开发计划.md §11.2（G1）
-
-### 从物料自动构建本体需求与原型v1 · codex · 需求已交付
-
-时间：2026-09-20T07:04:55.447768+00:00；记录：`.collaboration/entries/000115-bbd9b7893015.json`
-
-交付工作台内从物料生成新本体的需求说明与交互原型v1，供用户评审；无正式代码或真实数据修改。
-
-- 决定：本轮严格只交付需求说明.md和交互原型_v1.html；开发计划、执行指令等用户确认后再生成。；沿用已确认范围：混合前后端/DDL/Word/PDF/Excel/MD，多轮澄清，证据充分默认拟纳入、弱证据暂缓，仅生成新本体。；新提议交互覆盖任务、物料、范围、生成、证据评审、新建保存；技术栈/OCR/规模上限等明确待评审。；适配当前本体自有协议及最新规则动作字段精简方向，不恢复动作参数、项目映射或MCP口径生成。
-- 验证：原型JS语法通过；Node VM最小DOM的19项交互检查通过，涵盖失效、依赖、冲突与失败保留。；相对链接、两文件交付、HTML解析及无网络调用检查通过。未做浏览器视觉验收，未运行正式应用构建或业务测试。
-- 下一步：用户评审原型和需求范围，确认后再生成开发计划与执行指令。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/需求说明.md；文档/需求/20260920_从物料自动构建本体/交互原型_v1.html
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 角色A W3：本体保护三项最小修复（B1 applicable_objects 一致 / B2 domain-range 前缀容错 / B3 槽位序号回退误报） · zcode · 已实施，待验收
-
-时间：2026-09-20T07:02:30.679046+00:00；记录：`.collaboration/entries/000114-7ec34699bb8d.json`
-
-按开发计划 §11.2 三项低危缺陷最小修复并实测。B1：editorModel.graphReferenceEntries 同步 applicable_objects，对象删除检查与图谱保留命令现预告阻断，与后端 new_broken_references 同口径（dependencyModel/legacyBridge 生产码经核查无需改）。B2：references.py 新增 _canon_graph_ref，domain/range 接受 mg: 前缀与裸名（裸名按 mg: 核对，节点 id 为裸名的历史数据精确命中不误报，xsd:/http: 行为不变）。B3：无稳定 id 的签名槽位与 mg:constraint.fields 无名称槽位改用「同槽位内同一目标引用的出现序号」做身份——删除前置槽位不再误报历史悬空，新增同目标槽位/删除目标仍阻断。仅改自己独占文件：editorModel.ts、references.py、test_references.py、dependency_guard.test.mjs、legacy_graph_bridge.test.mjs。未 git add/commit，未改接口文档。
-
-- 决定：B1 选「前端同步」而非登记差异：后端 applicable_objects 拦截源于编辑器统一删除判定，非有意更严；前端补判后删除即预告阻断。；B2 与前端 matches 同口径：精确命中优先、其次补 mg:；裸名仍不命中时按 mg: 身份核对，不放松也不臆造其他前缀身份。；B3 槽位身份 = 引用类别+目标 id+同目标出现序号（有稳定 id 仍优先用 id）；比较键仍只由稳定 ID 组成，新增悬空必产生新键，保护不放松。；生产改动限定 2 个文件、共十余行；未新增样式/布局/菜单/弹窗/抽屉；未触碰他人 owner 文件、金样、真实数据。
-- 验证：python3 tests/run.py --test test_references.py → 全部 21 步通过（原 18 步 + 单元⑩B2/⑪B1/⑫B3；HTTP①～⑧ 原样通过）。；node --import ./tests/ts_hooks.mjs tests/dependency_guard.test.mjs → 22/22 项通过（新增 B1 前端预告阻断断言）。；node --import ./tests/ts_hooks.mjs tests/legacy_graph_bridge.test.mjs → 全部通过（新增 B1 图谱 domainDeleteNode 阻断+状态不变）；object_workspace 7/7；ont_list_unified 4/4。；python3 tests/run.py --test test_validation_split.py → 金样 97 样例 / 507 项断言全部通过，errors/warnings/items 逐字节等价（未改金样）。；cd frontend && npm run typecheck → exit=0（按要求未跑 npm run build）。
-- 下一步：建议协调者（接口文档 owner）在 02 §2.2 补登记 B2 裸名/mg: 容错与 B3 槽位身份口径两句。；浏览器点击级复验、HTTP 组、build、提交按指令留给协调者。
-- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2（B1/B2/B3）；文档/接口文档/02-本体区接口.md §2.2；workbench/references.py / frontend/src/ontology/editorModel.ts
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 角色F 复核记录更正（断言计数） · zcode · 已验证
-
-时间：2026-09-20T07:00:14.126561+00:00；记录：`.collaboration/entries/000113-86ba9c34bbe2.json`
-
-更正上一条交接（记录 000112）中的断言计数：tests/ui_protection_independent.test.mjs 实际为 60 项 check、全部通过（原文写 58，系笔误）；运行命令与结论不变，exit=0。其余结论（P03/P04/P05 行为、两项缺陷、E 既有测试回归）不受影响。
-
-- 验证：grep -c '^通过：' 输出 60；node --import ./tests/ts_hooks.mjs tests/ui_protection_independent.test.mjs → exit=0
-
-### 角色F：E/C/L 前端产物独立复核（P03/P04/P05） · zcode · 已验证
-
-时间：2026-09-20T06:59:31.974362+00:00；记录：`.collaboration/entries/000112-4073fea0c300.json`
-
-新增 tests/ui_protection_independent.test.mjs（真实 SFC 编译 + 真实模板 SSR + 受控 stub，58 项断言全过）：P03 换连接/换表保存后除身份三键外项目绑定逐字段不变（sources[].matchLeft/matchRight/table、属性、relations、说明、未知字段、未知 kind 来源对象）；未知 kind 只保留「移除」、无「修改」入口；P05 编排详情复核必重新取数（r-1→r-2 界面不再使用旧声明）、500→failed（「编排待读取」，引用保留、文案不含「不存在」）、404→missing、重试成功后恢复；refreshCatalogOf stale 返回 ok:false 且不写 catalogs；ConnectionManager 删除连接在 ok:false/reject/进行中都不提示成功且行保留。E 既有测试 object_sources/source_config_retention 全过（未修改）。仅新增本测试文件，未改生产代码，未跑 build、未访问真实数据/18765/外网。
-
-- 验证：node --import ./tests/ts_hooks.mjs tests/ui_protection_independent.test.mjs → 全部通过（58 项）；node --import ./tests/ts_hooks.mjs tests/object_sources.test.mjs → 通过；source_config_retention.test.mjs → 全部通过；node --import ./tests/ts_hooks.mjs tests/connection_manager.test.mjs → 通过（C 自测，仅运行未修改）；隔离根临时目录 + WIZ_WORKBENCH_PORT=18997；未访问真实数据/18765/外网
-- 下一步：缺陷①（低危·UI 提示）：ConnectionManager.referencesOf 未识别 inlineSql 属性来源连接（只查 kind=database/redis 与实现 connection），UI 判无引用并提示「已删除连接」，而服务端 projects.referenced_connection_ids 覆盖 inlineSql，project-save 会 422 REFERENCE_IN_USE 拒绝（数据仍受保护，但用户看到的是保存失败）。；缺陷②（中低·过严）：PropertySources.saveDraft 在编排读取失败时经 issuesOf 直接阻止保存，包括只改项目说明未改结构的情形；G1 只要求读取失败 fail-closed 阻断发布，未要求阻断草稿保存。；两项均未改生产代码，交 L 决定是否最小修复并补用例；最终验收仍归 Codex。
-- 依据/文档：tests/ui_protection_independent.test.mjs；frontend/src/project/{ObjectSources,PropertySources,ConnectionManager}.vue；bindingModel.ts；workbench/projects.py:54 referenced_connection_ids / :157 save_boundary_issues；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §11.2 G1
-
-### 本体自动化构建管线范围确认 · codex · 已确认决定
-
-时间：2026-09-20T06:40:44.084764+00:00；记录：`.collaboration/entries/000111-5e9d66e9fbf8.json`
-
-用户进一步确定通过LLM多轮交互澄清生成范围，第一版仅支持生成新本体；仍为产品讨论，未授权实施。
-
-- 决定：延续仅生成本体、集成工作台、多种混合业务物料和弱证据候选清单的既定边界。；范围不限制为一句话输入，采用LLM多轮对话逐步澄清。；第一版仅生成新本体，不追加或覆盖已有本体。
-- 下一步：讨论物料辅助澄清、范围确认摘要及生成后人工裁剪的具体交互。
-
-### 规则动作字段精简与Excel模板同步 · codex · 需求已交付
-
-时间：2026-09-20T06:39:26.873462+00:00；记录：`.collaboration/entries/000110-0ca4a15cc80d.json`
-
-交付需求说明、开发计划、执行指令及简洁表头新版空Excel模板；未修改正式业务代码和下载入口。
-
-- 决定：规则名称/业务定义必填，规则内容选填；动作名称/业务定义必填，预期效果选填且沿用effect键。；不新增范围/例外/边界字段；旧规则output保留且只读展示，旧Excel业务效果别名兼容，双列冲突阻断。；本轮按用户指定交付三份文档和模板，无额外原型；新下载模板需与解析器同步上线，不恢复v2延期UI改造。
-- 验证：四页模板逐页渲染检查通过；XLSX表头、空白区、冻结首行、隐藏列、数据验证与条件格式保留检查通过。；文档链接检查通过；未验证Excel原生下拉或正式工作台导入，未改业务代码。
-- 下一步：其他harness按执行指令实施前后端校验、页面、导入兼容和模板入口，完成R01-R11验收。
-- 依据/文档：文档/需求/20260920_规则动作字段精简与Excel模板同步/需求说明.md；文档/需求/20260920_规则动作字段精简与Excel模板同步/开发计划.md；文档/需求/20260920_规则动作字段精简与Excel模板同步/执行指令.md；文档/需求/20260920_规则动作字段精简与Excel模板同步/本体模型填写模板_规则动作精简.xlsx
-
-### 角色A 本体保护验收（只读审计）：O01/O02 行为矩阵 + S1-S4 复验 · zcode · 已验证
-
-时间：2026-09-20T06:16:09.594589+00:00；记录：`.collaboration/entries/000107-131f6db44a41.json`
-
-只读审计：复验 S1-S4 通过（test_references 18 步、dependency_guard 21/21、legacy_graph_bridge 全过、object_workspace 7/7、ont_list_unified 4/4）；O01/O02 行为矩阵逐项取证，多数已满足。发现两处前后端一致性偏差（均低危 fail-closed、无真实数据写入）：① applicable_objects 后端拦、前端不预告；② 无 mg: 前缀的 domain/range 前端拦、后端放行。未改任何代码/测试，未做浏览器点击闭环。最终验收仍归 Codex。
-
-- 验证：范围：只读；改动文件 0（git status 仅他人未跟踪报告文件）；未跑 http 组、未访问真实数据/外网。；S1 三类全量遍历基本成立（functions/actions/interfaces、签名槽位、properties/implementations、steps/property_bindings/历史 inputs）；S2 稳定键成立（改名放行、改目标阻断）；S3 旧 rules id 集成立；S4 returnTo 链路成立（App 分发 + 目标页返回入口 + openUsages 抽屉恢复）。；矩阵要点：确认指纹=编辑内容+原定义+引用集合（dependencyModel.ts:241-261）、取消零写（PropertyManager.vue:130）、409/失败后旧确认失效（:211-216）；转私有保留对象属性 ID 与内容（propertyModel.ts:39 实跑 @id 不变）；规则/动作移除关联不删定义；五类删除均阻断式无强制删除；图谱批量预检+快照回滚（legacyBridge.js:515-556）；后端 POST /api/save 只拦新引入悬空引用（model_routes.py:575-594）。；两项偏差复现：① applicable_objects 引用对象时前端 graphReferenceEntries=[]、objectDeleteCheck.blocked=false，后端 new_broken_references 阻断；② rdfs:domain 省前缀 o1 时前端命中引用，后端 ([] , True) 放行。
-- 下一步：建议最小改动（未实施）：① editorModel.ts:44 或 dependencyModel 同步 applicable_objects（或明确后端更严为有意设计并登记接口文档）；② references.py 的 domain/range 判定加 mg: 前缀容错。；浏览器点击级闭环（确认弹窗取消/失效、批量删除、图谱删除）本轮未做，需隔离实例复核。；HEAD 已推进到 a72f4c3（仅新增 docs 一文件），代码与基线 82923e3 相同。
-- 依据/文档：workbench/references.py:110-311；workbench/model_routes.py:575-594；frontend/src/ontology/dependencyModel.ts:100-261；editorModel.ts:22-91；frontend/src/ontology/PropertyManager.vue:89-218；frontend/src/ontology/legacyGraph/legacyBridge.js:317-600；tests/test_references.py；tests/dependency_guard.test.mjs
