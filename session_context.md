@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`e7c92ac153d5f257`
+上下文版本：`50cebdcbaeafbba8`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### meeting-46 终版纪要评审并归档 md 文档（本体自动化构建） · zcode · 已实施，待验收
+
+时间：2026-09-21T05:54:41.750460+00:00；记录：`.collaboration/entries/000155-d2467d29cdbc.json`
+
+评审 meeting-46-export (3).md（13:50 终版：对话与 13:34 版逐字一致、无新讨论，增量仅为 orchestrator 纪要整理完成/会议结束/进入 awaiting_confirmation），交付 文档/自动化构建续会5终版纪要评审_20260921.md（88 行，commit c2c98f2）。落表复验：R04、范围差异、R06/R09/R10、哈希机制均已进待确认表；但上轮三件事均未修复——R10 断言仍缺且纪要把发言2/11的断言承诺证据静默删除（矛盾被抹平而非暴露）、业务方确认机制圈定连续两轮零回应、哈希口径与确认失效绑定语义仍未明确。结构化区与附录矛盾（待确认建议/行动项区写'无'而附录有7项/多项认领）第三次复现，认定为导出工具系统性缺陷。核心新增发现：修正清单与已合并实现 ab27442 脱节——源码核实 parsers 已含 code/ddl/docx/md/pdf/xlsx 全物料线、CANDIDATE_TYPES 五类含 action、llm.py 已实现、候选 id 与同名保留策略已在，而会议仍按'代码物料/动作/LLM 留二期'口径收尾；建议收尾前必须做差异核对并把修正条目归三类：已实现文档化（R06/R09/R10/R02）/试点范围收窄表述（三项'留二期'）/纯增量需求（哈希口径、确认失效、业务方留痕等，走需求迭代+worktree）。另提示三份待确认表（meeting-45 八行、本次七行、评审补充）须汇总后再拍板。纯文档评审，未改代码/ontology/worktree。
+
+- 验证：源码核实已合并实现范围：workbench/ontology_build/parsers/（code.py 等8个解析器）、protocol.py:69 五类候选含 action、llm.py、review.py 候选id、alignment.py:131 同名保留待确认策略、delivery.py:319 内容哈希派生正式id；对话一致性：13:50 版发言1-36 与上轮13:34版逐字核对一致（上轮grep证据在案），材料版本同为 dcc52eb24f0e；旧导出文件已被清理，依据上轮评审时读取的原文核对；git show c2c98f2 确认仅含该评审文档 1 文件 88 行
+- 下一步：用户拍板前建议：先做修正清单 vs ab27442 差异核对（三类归类）、汇总三份待确认表、处理 R10 断言与确认机制圈定两件遗留；增量需求（哈希口径机制/确认失效/业务方留痕）如获采纳须按 AGENTS 流程走需求迭代与 worktree 开发，会议认领不构成实施授权
+- 依据/文档：文档/自动化构建续会5终版纪要评审_20260921.md；commit c2c98f2；main ab27442（已合并第一版实现）
 
 ### 从物料自动构建本体 · 合并main与清理完成 · codex · 已验证
 
@@ -139,16 +149,4 @@ b75f69e整改复验通过；已在临时worktree组合main513d8c2为50596b9，�
 - 验证：V4：解析矩阵 17/17 符合（中文分隔符／，、a // b 不合并、=／＝kv 不当常量、片段含空白、my_model SOC 不拆分、暂不确定禁选）；反例：/ SOC 全 DOM 检索「固定值 SOC」仅出现在 attr_name 卡 1 次；V5：/ SOC 采纳变化恰为 bind.attr_name/bindv.attr_name（SAVED 零 diff、含迟到写复核）；my_model / 在预置 attr=const/SOC 后不覆盖；已有属性绑定卡原值「属性 簇编号」删除线+默认不勾；相同常量转 note「已按你提供的常量配置（SOC）：无需变更。」零卡；枚举 21 个面板控件 pending 四字段恒空；V6/V7：采纳只写 BUFFERS；取消编辑回落 SAVED（提示原文逐字命中）；演示保存被必填拦（请填写函数编排。）→选编排后保存 SAVED 恰 3 字段、行状态已配置、reload 复位；未勾字段零改动；kv 引导文案正确；「标注归属」文件与页面 0 命中；禁选与文案一致；V8：F05 无 conn 保存成功且行状态已配置、生成中关面板/切目标作废提示原文命中、手改后撤销禁用、类型联动清 obsType 并恢复、D4 Redis 建议「实例主键（pk）」、R01 旧值「固定值 storage_cluster」两变体（未答/已答 consts）通过；V9：XSS A–E（img/svg/script/属性闭合/重渲染）零注入、__x* 全 undefined、纯文本渲染；弹窗正式计数 0；非 file:// 请求 0；console error/warning/未捕获 0（各组探针自证采集有效）。证据：/tmp/kg_f01f02_accept_20260921/{va,vb,vc,vd,ve}/
 - 下一步：整体验收判定交用户：V1–V3 Codex 独立通过 + V4–V9 本轮补验通过、无复现缺陷、未修改原型；如需 Codex 环境亲测签名可在其浏览器限制解除后复跑 V4–V9；本轮未合并、未推送、未重启主工作台；正式实现范围与既有 P2 清单待用户决定
 - 依据/文档：被验提交 4c2dd9e；原型 2078 行/4fd7539fd00fcf3984bd1bd07b9b8bbb2288fd39e97f13a792ebaf962eafb735（开工/收尾一致，工作树 clean）；/tmp/kg_f01f02_accept_20260921/（va–ve 五组证据 JSON、截图、驱动脚本）；.collaboration/entries/000145-2c5f0904a2e6.json（Codex V1–V3 独立验收：部分覆盖）；文档/需求/20260920_本体与项目辅助填写/独立验收执行指令_20260921_F01F02.md（V1–V9 冻结判定依据）
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### test分支 产品缺陷A01修复：规则content与动作v2 effect选填字段类型校验 · zcode · 已实施，待验收
-
-时间：2026-09-21T04:35:06.100771+00:00；记录：`.collaboration/entries/000148-c99d83032871.json`
-
-worktree/test 分支按验收记录§4 A01 完成修复（未提交，等协调者统一处理其余文件后一起走提交流程）。workflow.py：_business_rule_errors 增 content 类型校验（L74-81）、definition_errors 动作 v2 分支增 effect 类型校验（L181-187）；缺键/null/空串/空白串放行（O3-03 选填语义不变），数字/布尔/数组/对象报单条错误（含名称/标识/字段名/当前类型/修复建议），不经 str() 隐式转换；v1 动作 effect 必填与规则 output 只保留不校验口径不动。validate/save(200+errors)/publish(422) 经 model_routes.validate 共用同一 definition_errors。
-
-- 决定：错误文案单条含字段定位与文本类型原因：规则 「{label}」({id})：content 提供时必须为文本（当前类型 dict），请改为文本或删除该字段；动作侧同构；导入路径核对：本体 Excel 导入（OntologyImport.vue）经 form-save→saveCoordinator→/api/save 走同一校验，无独立写路径；config_packages.import_transaction 为配置迁移快照直写属既有迁移设施，不在 A01 范围
-- 验证：.runtime/venv/bin/python tests/test_business_rules.py → 46 项断言全部通过，退出码 0（原基线 40 项 + 新增 6 项）；.runtime/venv/bin/python tests/test_action_library.py → 61 项断言全部通过，退出码 0（原基线 55 项 + 新增 6 项）；新建 tests/test_rule_action_field_types.py → 54 项断言全部通过，退出码 0；直接函数调用演示：content={'x':1}/effect=['a'] 各返回恰好一条含「必须为文本」错误；content=None/''/缺键 → 零错误；旁证回归：test_property_sources、test_value_shape、test_time_series_type、business_rule_model.test.mjs、action_model.test.mjs 全部通过
-- 下一步：验收记录中 57/77 项断言数与本 worktree 基线（d6c73c2 与 HEAD 字节一致的 40/55）不符，已在交付报告说明，请验收方按实际输出判定；接口文档 README 变更记录行由协调者统一登记（README.md 本轮禁改）；deep_reverify_scenarios.py 的 A01 场景为缺陷复现分类器，修复后该场景应从 KNOWN_DEFECT 翻转为 PASS，由验收方独立复跑
-- 依据/文档：workbench/workflow.py；tests/test_rule_action_field_types.py；tests/test_business_rules.py；tests/test_action_library.py；文档/接口文档/02-本体区接口.md §4.9/§4.10
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
