@@ -340,12 +340,24 @@ export interface UploadProgress {
   chunkCount: number
 }
 
+/** V2-5（G17）断点续传状态：服务端上传会话与已确认分片数（下一片序号）。 */
+export interface UploadResume {
+  uploadId: string
+  /** 已确认分片数 = 下一个要发送的分片序号（服务端同 index 同 hash 幂等，重发安全） */
+  nextIndex: number
+  chunkBytes: number
+}
+
 export interface UploadFileOptions {
   /** 显式相对路径；缺省取 file.webkitRelativePath（目录选择）或 file.name */
   relPath?: string
   onProgress?: (p: UploadProgress) => void
   /** 拿到 uploadId 即回调：页面据此支持上传中取消（abortUpload(uploadId)） */
   onUploadId?: (uploadId: string) => void
+  /** V2-5：会话进度回调——init 后/每片确认后更新；成功完成后回调 null（清除续传状态） */
+  onSession?: (session: UploadResume | null) => void
+  /** V2-5：从既有会话续传（缺省新开上传会话、从第 0 片开始） */
+  resume?: UploadResume | null
   /** 取消信号：中断后本次上传作废（服务端临时内容由 abortUpload 清理） */
   signal?: AbortSignal | null
 }
@@ -374,12 +386,22 @@ function toBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
+/** V2-5：服务端判定上传会话过期/丢失（409 UPLOAD_EXPIRED）→ 需要重建会话从头再传。 */
+function isUploadExpired(e: unknown): boolean {
+  return e instanceof SaveRequestError && e.status === 409
+    && (e.data as { code?: string } | null)?.code === 'UPLOAD_EXPIRED'
+}
+
 /**
- * 上传一个文件：init → 顺序上传分片 → complete。
+ * 上传一个文件：init → 顺序上传分片 → complete（V2-5 支持断点续传）。
  * - 分片用 File.slice 按服务端 chunkBytes 切；分片 hash 与整文件 hash 均为 SHA-256 hex；
  * - 分片内容 base64（请求体 2MB 上限内，chunkBytes 由服务端给定）；
- * - 全部从 index 0 顺序发送：服务端对同 index 同 hash 幂等，重试/续传不会产生重复内容；
- * - 失败即 dispose：调用 abortUpload 清理服务端临时内容后把原始错误抛给调用方（页面决定重试/取消）。
+ * - 断点续传：传入 opts.resume 时跳过已确认分片，从 nextIndex 继续发送（服务端对
+ *   同 index 同 hash 幂等，重发安全）；每片确认后经 onSession 回报进度；
+ * - 失败处理：失败时**保留**服务端会话与 onSession 状态供「重试」续传（G17：不必从
+ *   第 0 片重发）；仅用户取消（signal aborted）才 abortUpload 清理临时内容；
+ *   会话过期（409 UPLOAD_EXPIRED）自动重建会话从 0 重发一次；
+ * - complete 失败（如整体摘要不符）同样保留会话，重试直接重发 complete。
  */
 export async function uploadFile(
   taskId: string, file: File, opts: UploadFileOptions = {},
@@ -390,31 +412,65 @@ export async function uploadFile(
     opts.onProgress?.({ phase, relPath, sentBytes, totalBytes, chunkIndex, chunkCount })
   }
   report('hashing', 0, 0, 0)
-  const init = await initUpload(taskId, relPath, totalBytes)
-  opts.onUploadId?.(init.uploadId)
-  const chunkBytes = init.chunkBytes > 0 ? init.chunkBytes : Math.max(1, totalBytes)
+
+  let uploadId = ''
+  let chunkBytes = 0
+  let startIndex = 0
+  if (opts.resume?.uploadId) {
+    uploadId = opts.resume.uploadId
+    chunkBytes = opts.resume.chunkBytes > 0 ? opts.resume.chunkBytes : totalBytes
+    const chunkCount = Math.max(1, Math.ceil(totalBytes / chunkBytes))
+    startIndex = Math.min(Math.max(0, opts.resume.nextIndex), chunkCount)
+    opts.onUploadId?.(uploadId)
+  } else {
+    const init = await initUpload(taskId, relPath, totalBytes)
+    uploadId = init.uploadId
+    chunkBytes = init.chunkBytes > 0 ? init.chunkBytes : Math.max(1, totalBytes)
+    opts.onUploadId?.(uploadId)
+    opts.onSession?.({ uploadId, nextIndex: 0, chunkBytes })
+  }
   const chunkCount = Math.max(1, Math.ceil(totalBytes / chunkBytes))
+  let reinitTried = false
+  let sent = Math.min(startIndex * chunkBytes, totalBytes)
   try {
-    let sent = 0
-    for (let index = 0; index < chunkCount; index += 1) {
+    for (let index = startIndex; index < chunkCount; index += 1) {
       if (opts.signal?.aborted) throw new SaveRequestError('上传已取消', 0, null, null, 'aborted')
       const blob = file.slice(index * chunkBytes, Math.min((index + 1) * chunkBytes, totalBytes))
       const buffer = await blob.arrayBuffer()
       const hash = await sha256Hex(buffer)
       report('uploading', sent, index, chunkCount)
-      await putChunk(init.uploadId, index, hash, toBase64(buffer), { signal: opts.signal })
+      try {
+        await putChunk(uploadId, index, hash, toBase64(buffer), { signal: opts.signal })
+      } catch (e) {
+        // 会话过期/被有界清理：重建会话从 0 重发一次（材料尚未登记，重新上传是安全的）
+        if (!reinitTried && !opts.signal?.aborted && isUploadExpired(e)) {
+          reinitTried = true
+          opts.onSession?.(null)
+          const init = await initUpload(taskId, relPath, totalBytes)
+          uploadId = init.uploadId
+          chunkBytes = init.chunkBytes > 0 ? init.chunkBytes : Math.max(1, totalBytes)
+          opts.onUploadId?.(uploadId)
+          opts.onSession?.({ uploadId, nextIndex: 0, chunkBytes })
+          return await uploadFile(taskId, file, { ...opts, resume: { uploadId, nextIndex: 0, chunkBytes } })
+        }
+        throw e
+      }
       sent += blob.size
+      opts.onSession?.({ uploadId, nextIndex: index + 1, chunkBytes })
       report('uploading', sent, index + 1, chunkCount)
     }
     report('completing', totalBytes, chunkCount, chunkCount)
     const finalHash = await sha256Hex(await file.arrayBuffer())
-    const done = await completeUpload(init.uploadId, finalHash)
+    const done = await completeUpload(uploadId, finalHash)
+    opts.onSession?.(null)   // 上传完成：续传状态清除
     report('completing', totalBytes, chunkCount, chunkCount)
     return done
   } catch (e) {
-    // 失败/取消：清理服务端临时内容；清理本身失败不覆盖原始错误（页面看到的是真正原因）
-    if (!opts.signal?.aborted) {
-      try { await abortUpload(init.uploadId) } catch { /* 临时内容由服务端有界清理兜底 */ }
+    // 取消：清理服务端临时内容；普通失败：**保留会话**（onSession 状态供重试续传），
+    // 清理本身失败不覆盖原始错误（页面看到的是真正原因）
+    if (opts.signal?.aborted) {
+      try { await abortUpload(uploadId) } catch { /* 临时内容由服务端有界清理兜底 */ }
+      opts.onSession?.(null)
     }
     throw e
   }

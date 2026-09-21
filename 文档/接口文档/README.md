@@ -18,6 +18,7 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-21 | **08 分册 V2-5/V2-6（G17/G21）**：新增 §12.5 上传断点续传（浏览器记录已确认分片，失败重试从下一未确认分片继续；`UPLOAD_EXPIRED` 自动重建会话；页面刷新丢失 uploadId 按新上传处理）与 §12.6 大文件夹软引导（后缀过滤后计数 >20 建议压缩 zip，不硬阻断）。均为前端行为，无新端点、无后端改动 | 无接口变化 | zcode |
 | 2026-09-21 | **08 分册 V2-8 生成断点续跑与状态回退（G23）**：Run 新增 `checkpoint` 摘要（批次 done/failed + 计划持久化标记）；`build-run-resume` 新增可选 `resumeMode`（auto=只重跑失败批次/abstract=重跑全部抽象批次，均复用持久化的筛选/对齐产物）；冻结基线约束（范围/材料修改后的旧运行重试在执行侧明确失败）与任务状态回退（generate 运行 failed/取消/中断时 generating→scope，回退后重试成功且基线未变恢复 review）。详见 08 §1.5/§5/§12.3 | `/api/build-run-resume`、`/api/build-run`、任务状态回退语义 | zcode |
 | 2026-09-21 | **08 分册 V2-3 解析三级分派与 LLM 兜底（G19）**：扫描对无专用解析器但可读出文本的文件走 LLM 兜底（module=llm-fallback、quality=low、证据状态一律 inferred、issue 码 LLM_FALLBACK_EVIDENCE，默认暂缓）；限额 200 文件/50MB（每轮扫描）、切片 ≤6000 字符×16 片；超限/失败/provider 缺失回退文本线索降级并逐文件注明；capabilities 新增 `llmFallback`。详见 08 §4.3 | `/api/build-scan`、`/api/build-material-retry`、`/api/build-capabilities` | zcode |
 | 2026-09-21 | **08 分册 V2-2 图片/OCR（G18）**：Material `kind` 新增 `image`（位图 OCR + SVG 文本提取）；`build-capabilities` 的 `ocr` 字段改为动态探测（未配置 reason 含 `ocr_unconfigured`）；扫描版 PDF 文本缺失页走 OCR 并逐页报告；新增 §2.2 OCR 与解析三级分派口径；requirements.txt 登记可选依赖 Pillow/pytesseract（缺失不 crash、按 ocr_unconfigured 逐文件报告，绝不自动安装）。详见 08 §1.2/§1.3/§2.1/§2.2 | `/api/build-capabilities`、`/api/build-materials`、`/api/build-material-retry` | zcode |

@@ -11,12 +11,13 @@ import {
   fetchMaterialsPage, fetchRun, materialRevisionToken, retryMaterial, scanMaterials,
   setMaterialExcluded, uploadFile,
 } from './api'
+import type { UploadResume } from './api'
 import {
   KIND_LOCATOR_LABELS, PARSE_STATE_TONE, RUN_STATE_LABELS, RUN_STATE_TONE, STAGE_LABELS, coverageOf,
   formatBytes, labelOf, materialKindLabel, parseStateLabel, runErrorText, toneOf,
   type BuildRun, type FilterReport, type Material, type MaterialGroup, type RunStage, type RunState,
 } from './types'
-import { filterByExtensions, parseExtensionFilter } from './uploadFilter'
+import { filterByExtensions, parseExtensionFilter, shouldGuideLargeFolder } from './uploadFilter'
 
 const props = defineProps<{ taskId: string }>()
 const emit = defineEmits<{ (e: 'continue'): void; (e: 'back'): void }>()
@@ -157,7 +158,7 @@ function closeDetail() { detailFolder.value = null; detailItems.value = []; deta
 async function setFlatPage(offset: number) { flatOffset.value = Math.max(0, offset); await loadFlatPage() }
 async function setDetailPage(offset: number) { detailOffset.value = Math.max(0, offset); await loadDetailPage() }
 
-// ─── 上传队列（逐文件进度 + 取消 + 重试） ─────────────────────────────────
+// ─── 上传队列（逐文件进度 + 取消 + 重试 + 断点续传） ─────────────────────
 type UploadRowState = 'queued' | 'uploading' | 'done' | 'failed' | 'cancelled'
 interface UploadRow {
   key: string
@@ -171,12 +172,18 @@ interface UploadRow {
   chunkCount: number
   error: string
   uploadId: string
+  /** V2-5（G17）：断点续传状态——已确认分片（同 index 同 hash 服务端幂等）。
+   *  失败保留供「重试」从下一未确认分片继续；取消后清除（会话已被 abort）。 */
+  resume: UploadResume | null
   controller: AbortController
 }
 const uploads = ref<UploadRow[]>([])
 const busy = ref(false)
 const dragging = ref(false)
 let uploadSeq = 0
+// V2-6（G21）软引导层：待用户选择的待上传行（null=无引导）；不硬阻断，可选「仍要直接上传」
+const pendingGuide = ref<UploadRow[] | null>(null)
+const guideCount = ref(0)
 
 const queue = computed(() => {
   const list = uploads.value
@@ -203,7 +210,11 @@ function addFiles(files: File[]) {
     incoming = filtered.keep
     skippedByFilter = filtered.skipped
   }
-  const seen = new Set<string>([...uploads.value.map(u => u.relPath)])
+  // V2-6：软引导中的待上传行不占用 uploads 表，但参与路径去重（重复选择同一目录不重复计数）
+  const seen = new Set<string>([
+    ...uploads.value.map(u => u.relPath),
+    ...(pendingGuide.value ?? []).map(u => u.relPath),
+  ])
   const added: UploadRow[] = []
   let empty = 0, dup = 0
   for (const file of incoming) {
@@ -215,15 +226,40 @@ function addFiles(files: File[]) {
     uploadSeq += 1
     added.push({
       key: 'u' + uploadSeq, file, relPath, size: file.size, state: 'queued', sentBytes: 0,
-      phase: 'hashing', chunkIndex: 0, chunkCount: 0, error: '', uploadId: '', controller: new AbortController(),
+      phase: 'hashing', chunkIndex: 0, chunkCount: 0, error: '', uploadId: '', resume: null,
+      controller: new AbortController(),
     })
   }
-  if (added.length) uploads.value = [...uploads.value, ...added]
   const skipped = [empty ? empty + ' 个空文件' : '', dup ? dup + ' 个重复路径' : '',
     skippedByFilter ? skippedByFilter + ' 个后缀不符' : ''].filter(Boolean).join('，')
   notice.value = '选中 ' + picked + ' · 过滤后上传 ' + added.length + ' · 跳过 ' + (empty + dup + skippedByFilter)
     + (skipped ? '（' + skipped + '）' : '')
-  if (added.length) void startQueue()
+  if (!added.length) return
+  // V2-6（G21）大文件夹软引导：按「后缀过滤后计数」判断（已命中过滤规则的不计入），
+  // 超过阈值弹软引导层（压缩为 zip 上传（推荐）/ 仍要直接上传），不硬阻断。
+  if (shouldGuideLargeFolder(added.length)) {
+    pendingGuide.value = [...(pendingGuide.value ?? []), ...added]
+    guideCount.value = (pendingGuide.value ?? []).length
+    return
+  }
+  uploads.value = [...uploads.value, ...added]
+  void startQueue()
+}
+
+function confirmDirectUpload() {
+  const rows = pendingGuide.value
+  pendingGuide.value = null
+  guideCount.value = 0
+  if (rows?.length) {
+    uploads.value = [...uploads.value, ...rows]
+    void startQueue()
+  }
+}
+
+function dismissGuideForZip() {
+  pendingGuide.value = null
+  guideCount.value = 0
+  notice.value = '已取消本次直接上传：建议把文件夹压缩为 zip 后重新选择上传（推荐；服务端会安全展开并保留逐文件解析报告）。'
 }
 
 async function syncMaterialsAfterUpload() {
@@ -231,13 +267,16 @@ async function syncMaterialsAfterUpload() {
 }
 
 async function runRow(row: UploadRow) {
-  row.state = 'uploading'; row.error = ''; row.sentBytes = 0
+  row.state = 'uploading'; row.error = ''
+  // V2-5（G17）：保留上一会话的续传状态（sentBytes 由 onProgress 按实际续传位置刷新）
   row.controller = new AbortController()
   try {
     await uploadFile(props.taskId, row.file, {
       relPath: row.relPath,
       signal: row.controller.signal,
+      resume: row.resume,
       onUploadId: (id) => { row.uploadId = id },
+      onSession: (session) => { row.resume = session },
       onProgress: (p) => {
         row.phase = p.phase
         row.sentBytes = p.sentBytes
@@ -245,12 +284,16 @@ async function runRow(row: UploadRow) {
         row.chunkCount = p.chunkCount
       },
     })
-    row.state = 'done'; row.sentBytes = row.size
+    row.state = 'done'; row.sentBytes = row.size; row.resume = null
     await syncMaterialsAfterUpload()
   } catch (e) {
     row.state = row.controller.signal.aborted ? 'cancelled' : 'failed'
     row.error = errorMessage(e)
-    if (row.state === 'cancelled') row.error = '已取消上传，请在材料清单中确认没有残留的半份材料。'
+    if (row.state === 'cancelled') {
+      row.error = '已取消上传，请在材料清单中确认没有残留的半份材料。'
+      row.resume = null   // 取消已 abort 服务端会话：不可续传，重试将重新开始
+    }
+    // 失败（非取消）：row.resume 保留——重试从下一个未确认分片继续，不要求重新选文件
   }
 }
 
@@ -270,7 +313,9 @@ async function startQueue() {
 
 async function retryUpload(row: UploadRow) {
   if (busy.value || row.state === 'uploading') return
-  row.state = 'queued'; row.error = ''; row.sentBytes = 0
+  // V2-5（G17）：保留 row.resume（已确认分片），重试从下一未确认分片继续；
+  // 取消过的行 resume 已被清除，重试等价新上传。
+  row.state = 'queued'; row.error = ''
   await startQueue()
 }
 
@@ -281,6 +326,7 @@ async function cancelUpload(row: UploadRow) {
   if (id) {
     try { await abortUpload(id) } catch { /* 服务端临时内容有界清理；上传已本地取消 */ }
   }
+  row.resume = null
 }
 
 function clearFinished() { uploads.value = uploads.value.filter(r => r.state === 'uploading' || r.state === 'queued') }
@@ -307,7 +353,11 @@ let dragDepth = 0
 function onDragEnter() { dragDepth += 1; dragging.value = true }
 function onDragLeave() { dragDepth = Math.max(0, dragDepth - 1); if (dragDepth === 0) dragging.value = false }
 const phaseText = (row: UploadRow): string => {
-  if (row.state === 'queued') return '排队中'
+  if (row.state === 'queued') {
+    // V2-5：失败/中断后重试的行保留已确认分片——显示将续传的位置
+    if (row.resume && row.resume.nextIndex > 0) return '待续传（自第 ' + (row.resume.nextIndex + 1) + ' 片）'
+    return '排队中'
+  }
   if (row.state === 'done') return '已上传'
   if (row.state === 'failed') return '上传失败'
   if (row.state === 'cancelled') return '已取消'
@@ -429,6 +479,7 @@ watch(() => props.taskId, () => {
   groups.value = []; groupsTotal.value = 0; flatItems.value = []; flatTotal.value = 0; flatOffset.value = 0
   detailFolder.value = null; detailItems.value = []; detailTotal.value = 0
   filterReport.value = null; filterOpen.value = false
+  pendingGuide.value = null; guideCount.value = 0
   uploads.value = []
   void init()   // 上传循环（若有）结束后会从新队列继续，无需重置 busy
 })
@@ -490,6 +541,20 @@ const blockedReason = computed(() => {
     </div>
     <input ref="fileInput" class="bt-hidden-input" type="file" multiple accept=".zip,.sql,.docx,.pdf,.xlsx,.md,.java,.py,.ts,.tsx,.js,.jsx,.vue,.json,.xml,.yaml,.yml,.txt,.csv" @change="onPick">
     <input ref="dirInput" class="bt-hidden-input" type="file" multiple @change="onPick">
+
+    <!-- V2-6（G21）大文件夹软引导层：不硬阻断，「仍要直接上传」原样入队 -->
+    <div v-if="pendingGuide" class="modal-backdrop" @click.self="confirmDirectUpload">
+      <section class="modal-card bt-guide" role="dialog" aria-modal="true" aria-label="大文件夹上传建议">
+        <h2>检测到 {{ guideCount }} 个待上传文件 <span class="muted">（按后缀过滤后计数）</span></h2>
+        <p class="bt-sub">数量较多，建议压缩为单个 zip 后上传：一次上传更稳定；服务端安全展开后，
+          逐文件解析报告、过滤规则与直接上传完全一致。</p>
+        <p class="bt-sub">你也可以仍然直接上传：分片逐个传输，耗时较长；中断可从已确认分片续传。</p>
+        <div class="dialogtools">
+          <button type="button" class="primary" @click="dismissGuideForZip">压缩为 zip 上传（推荐）</button>
+          <button type="button" @click="confirmDirectUpload">仍要直接上传（{{ guideCount }} 个文件）</button>
+        </div>
+      </section>
+    </div>
 
     <template v-if="queue.count">
       <div class="bt-qhead">
@@ -804,6 +869,10 @@ const blockedReason = computed(() => {
 .bt-filterreport{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
 .bt-filterreport .row-link{font-size:13px}
 .bt-filterreport table{min-width:640px}
+.bt-guide{width:min(520px,92vw)}
+.bt-guide h2{margin:0 0 8px}
+.bt-guide .bt-sub{margin:0 0 8px}
+.bt-guide .dialogtools{display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
 .bt-pager{display:flex;align-items:center;gap:12px;justify-content:flex-end;margin:10px 0}
 .bt-detail{width:min(1080px, 94vw);max-height:86vh;display:flex;flex-direction:column}
 .bt-detail .bt-tablewrap{flex:1;overflow:auto}

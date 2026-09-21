@@ -1,7 +1,7 @@
 // 上传后缀过滤纯函数回归（08 §12.1 第三条）。
 // 运行：node --import ./tests/ts_hooks.mjs tests/ontology_build_upload_filter.test.mjs
 import assert from 'node:assert'
-import { parseExtensionFilter, filterByExtensions } from '../frontend/src/ontology/build/uploadFilter.ts'
+import { parseExtensionFilter, filterByExtensions, LARGE_FOLDER_THRESHOLD, shouldGuideLargeFolder } from '../frontend/src/ontology/build/uploadFilter.ts'
 
 const results = []
 function check(name, fn) {
@@ -51,3 +51,13 @@ for (const [status, name] of results) {
 }
 console.log(`汇总：通过 ${results.length - failed} / ${results.length}`)
 if (failed) process.exit(1)
+
+// ── V2-6（G21）大文件夹软引导：阈值常量与触发判断 ──────────────────────────
+check('阈值为 20（需求 §5.3 默认值）', () => {
+  assert.equal(LARGE_FOLDER_THRESHOLD, 20)
+})
+check('严格大于阈值才引导（等于不引导，不硬阻断）', () => {
+  assert.equal(shouldGuideLargeFolder(20), false)
+  assert.equal(shouldGuideLargeFolder(21), true)
+  assert.equal(shouldGuideLargeFolder(0), false)
+})

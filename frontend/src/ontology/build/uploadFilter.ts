@@ -35,3 +35,12 @@ export function filterByExtensions<T extends NamedFile>(files: T[], exts: string
   }
   return { keep, skipped }
 }
+
+// ── V2-6（G21）大文件夹软引导：按「后缀过滤后计数」判断，超过阈值建议压缩 zip，不硬阻断 ──
+/** 阈值常量（需求 §5.3 默认 20，可配：改这里即可；页面与引导层共用单一来源）。 */
+export const LARGE_FOLDER_THRESHOLD = 20
+
+/** 后缀过滤后计数是否触发软引导（严格大于阈值；等于阈值不引导）。 */
+export function shouldGuideLargeFolder(filteredCount: number): boolean {
+  return filteredCount > LARGE_FOLDER_THRESHOLD
+}
