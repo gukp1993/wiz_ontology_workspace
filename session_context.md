@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`2875ba8e4dd41ab3`
+上下文版本：`eeef47bb9b9fef50`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,15 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 按用户指令删除 resources/ 与 backup-20260918-202932/ · zcode · 已验证
+
+时间：2026-09-21T06:10:12.011779+00:00；记录：`.collaboration/entries/000157-92ec1f37afb5.json`
+
+删前已核实：resources/ 仅含已入 git 的 source.jsonId（2026-09-18 存储迁移已导入 SQLite 为 source-reference 附件，运行时读库内副本，仅 transfer.py:575 迁移 CLI 引用且有 is_dir 守卫；tests/deep_perf.py 与 OntologyDiscover.vue 的 resources 字样为同名无关概念）；backup 目录为 9-18 迁移日 SQLite 快照+根密钥副本，密钥与 keys/wb-root.key 逐字节相同，git 忽略未入库、无代码引用。执行：git rm resources、rm -rf backup 目录、同步更新 AGENTS.md 两处与 README.md 目录表对 resources 的描述。主服务 18765 删后 HTTP 200 不受影响，未重启未构建。
+
+- 验证：删除后 ls 确认两目录不存在；curl 18765 HTTP 200；grep 复核代码无 resources/ 目录依赖
+- 下一步：若将来对新空库重跑 transfer import 需要来源参考材料，从 git 历史找回 resources/imports/storage_20260814/source.jsonId；backup 快照已不可恢复（git 忽略），如需 9-18 数据时点回退已无来源
 
 ### 深度测试任务 codex/test 分支集成合并 main 并清理工作树 · zcode · 已验证
 
@@ -138,15 +147,3 @@ b75f69e整改复验通过；已在临时worktree组合main513d8c2为50596b9，�
 - 验证：2078行/4fd7539fd00fcf3984bd1bd07b9b8bbb2288fd39e97f13a792ebaf962eafb735；他方VB脚本错误有后续重跑记录；不是原型异常；VA/VC Log采集能力未知不记全局0
 - 下一步：如要求独立真实点击签名，由获允许的独立验收环境补齐V4-V9；无新增代码整改项。
 - 依据/文档：文档/需求/20260920_本体与项目辅助填写/复验报告_20260921_F01F02.md
-
-### R02-项目发布检查被引用编排配置有效性(worktree/test) · zcode · 已实施，待验收
-
-时间：2026-09-21T04:41:28.234505+00:00；记录：`.collaboration/entries/000149-e9a2fe678d09.json`
-
-修复 R02：project_validation._check_flow_binding 在既有结构核对后对被项目引用的编排调用 flows.check_flow 纯配置检查（不传 project_connections/llm_meta/credential_ids，不执行 SQL/Python、不探测连接）；errors 逐条转项目阻断项，单条消息含属性定位（属性来源 ot.prop：前缀）+编排标识（名称(flowId)）+具体原因；warnings 不阻断；check_flow 结果按引用编排 id 在一次 validate 内缓存（400 属性引用同一编排仅调用 1 次）；未引用编排不检查。引用不存在编排的文案保留「不存在或已删除」并补（flowId）。发布路径经 projects.validate_project 同一函数自动生效。
-
-- 决定：金样沿用既有机制增量：make_validation_golden 播种固定 flowId 编排（gldbadflow00001/gldokflow000001，幂等 seed_golden_flows），test_validation_split import 同模块并再调 seed_golden_flows() 保证回放侧同构；新增 57_flow_binding_output_unbound（阻断）与 58_flow_binding_config_valid（放行）两样例；不存在编排文案采用后缀「（flowId）」而非插入 id，保持既有子串「引用的函数编排不存在或已删除」可匹配（旧测试 test_project_flow_source 38 步全过）
-- 验证：tests/test_validation_split.py → 金样 99 样例 517 断言全部通过 exit 0；金样重生成 diff：对备份仅 1 处纯插入（47301a47302,47749），0 行删除，旧 97 样例逐字节不变；新增 tests/test_project_flow_binding_check.py 14 步全过 exit 0（反例阻断/对照放行/只查一次/未引用不阻断/仅警告不阻断/发布同函数断言）；回归全过 exit 0：test_project_flow_source 38 步、test_action_http 74、test_action_library 61、test_registered_validation、test_identity_required、test_property_sources、test_inline_sql、test_query_rules、test_catalog_independent；性能演示：400 属性引用同一编排 check_flow 仅 1 次调用，validate 63ms
-- 下一步：交 Codex 独立验收（deep_reverify_r02_a01 场景应转为阻断）；README 变更记录行与 workflow.py 侧改动由协调者统一处理；未执行 git 写命令
-- 依据/文档：workbench/project_validation.py 与 tests/test_project_flow_binding_check.py；tests/make_validation_golden.py + tests/test_validation_split.py；tests/fixtures/validation_golden.json；文档/接口文档/03-项目区接口.md §2.2
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
