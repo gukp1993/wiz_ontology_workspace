@@ -200,6 +200,7 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
   <p>从一个业务对象开始，例如储能簇、储能设备；也可以通过 Excel 批量导入已有内容。</p>
   <div class="start-actions">
     <button class="primary" @click="emit('navigate','objects',{create:true})">＋ 创建第一个对象</button>
+    <button @click="emit('navigate','build')">从物料生成</button>
     <button @click="importOpen=true">从 Excel 导入</button>
     <button class="text" @click="downloadTemplate">下载 Excel 模板</button>
   </div>
@@ -224,6 +225,7 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
     <div class="tools home-actions">
       <button @click="importOpen=true">导入 Excel</button>
       <button @click="emit('navigate','settings-transfer',{preselect:{ontologyId:ontologyId}})">导出配置</button>
+      <button @click="emit('navigate','build')">从物料生成</button>
       <button v-if="objects.length" class="primary" @click="emit('navigate','objects')">继续建模</button>
       <button v-else class="primary" @click="emit('navigate','objects',{create:true})">创建第一个对象</button>
     </div>

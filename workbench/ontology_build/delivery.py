@@ -1,0 +1,350 @@
+"""交付域：预检（结构性校验 + 依赖阻断）与原子创建新本体草稿。
+
+原子性契约（开发计划 §4.4 / 接口文档 08 §8）：
+同一写事务内完成「确认 owner 与未交付 → 幂等回执检查 → 重验基线与选定集合 →
+名称查重 → 分配本体与定义 ID → 写完整新草稿 → 记录候选 ID 映射与任务来源 →
+写回执 + 任务已交付」。任一步失败全部回滚：绝不出现空本体、也不出现
+「任务已交付但没有草稿」。
+不调用会自行提交的 workspaces.create；这里直接走 storage.ontology_build 的
+事务内建资产函数（create_ontology_asset）。
+"""
+from workbench import auth, storage
+from workbench.ontology_build import ontology_adapter as adapter
+from workbench.ontology_build import protocol
+from workbench.ontology_build import tasks as task_domain
+from workbench.storage import engine as sto
+from workbench.storage import ontology_build as store
+
+
+class DeliveryBlocked(ValueError):
+    """交付被确定性校验阻断（HTTP 422，带 issues；INVALID_STATE 口径见契约 08 §8）。"""
+
+    code = 'INVALID_STATE'
+
+    def __init__(self, issues, message='交付前检查未通过'):
+        self.issues = issues
+        super().__init__(message)
+
+
+class AlreadyDelivered(ValueError):
+    """任务已交付后再次创建（D10，契约 08 §8）：HTTP 409 ALREADY_DELIVERED。
+
+    刻意**不携带 issues**——server 的映射规则是先 issues 后 status；这里要的是
+    状态码语义（409 冲突）而不是 422 校验清单。预检（precheck）仍返回
+    DeliveryBlocked（422 + issues），因为预检是检查端点，问题清单更有用。
+    """
+
+    code = 'ALREADY_DELIVERED'
+    status = 409
+
+
+class DuplicateOntologyName(ValueError):
+    """新本体名称与当前账号已有资产重名（HTTP 409，不覆盖）。"""
+
+
+def owner():
+    return auth.require_user_id()
+
+
+def _selected_candidates(conn, task_id, owner_id, batch_id):
+    """选定集合：decision='include' 且未被合并掉的候选（跨账号/他任务不可见）。"""
+    items = store.all_candidates(conn, task_id, owner_id, batch_id=batch_id)
+    selected = [c for c in items if c['decision'] == 'include']
+    return items, selected
+
+
+def _merge_aliases(conn, task_id, owner_id, batch_id):
+    """合并别名表（R3-03）：被合并候选的 key 与 ID → 最终保留项候选 ID。
+
+    合并后候选被移出交付选定集合，但其它候选的 ownerKey/sourceRef/targetRef 仍按
+    旧 key/ID 引用它（评审侧沿 origin.mergedInto 解析，交付侧没有别名表就会阻断
+    或静默丢关联）。这里按**本批次全部候选**（含已合并）构造别名，并把合并链
+    （A→B→C）传递解析到最终保留项。
+
+    环保护：链上出现环或断链（mergedInto 指向的候选已不在本批次）时按**原样保留**
+    ——别名指回该候选自身；它不在选定集合里，因此后续解析按「无法解析」报错
+    （AdapterError / 可定位 issue），既不静默改指别人、也不会死循环。
+    """
+    pool = store.all_candidates(conn, task_id, owner_id, batch_id=batch_id, include_merged=True)
+    by_id = {node['id']: node for node in pool}
+    aliases = {}
+
+    def final_primary(node):
+        """沿 mergedInto 走到最终保留项；环/断链返回 None（调用方原样保留）。"""
+        seen = {node['id']}
+        current = node
+        while True:
+            target = str((current.get('origin') or {}).get('mergedInto') or '')
+            if not target:
+                return current
+            if target in seen:
+                return None
+            following = by_id.get(target)
+            if following is None:
+                return None
+            seen.add(target)
+            current = following
+
+    for node in pool:
+        if not str((node.get('origin') or {}).get('mergedInto') or ''):
+            continue
+        primary = final_primary(node)
+        target_id = primary['id'] if primary is not None else node['id']
+        key = str(node.get('key') or '').strip()
+        if key:
+            aliases.setdefault(key, target_id)
+        aliases.setdefault(node['id'], target_id)
+    return aliases
+
+
+def _blocking_issues(conn, task_id, owner_id, batch_id):
+    """依赖与结构阻断（与评审页 deliver_blockers 同口径，交付时服务端重验）。"""
+    from workbench.ontology_build import review
+    blockers = review.deliver_blockers(conn, task_id, batch_id)
+    issues = list(blockers.get('issues') or [])
+    items, selected = _selected_candidates(conn, task_id, owner_id, batch_id)
+    ids = {c['id'] for c in items}
+    for candidate in selected:
+        for issue in review.validate_candidate(conn, task_id, candidate):
+            # D09：过滤码必须与 review.validate_candidate 实际产出的码名一致，
+            # 否则结构性缺陷会被静默放过（预检 ok 但交付 400/422 的分裂即源于此）。
+            if issue['code'] in ('NAME_REQUIRED', 'DEFINITION_REQUIRED', 'DATA_TYPE_INVALID',
+                                 'CARDINALITY_INVALID', 'LINK_ENDPOINT_UNRESOLVED',
+                                 'PROPERTY_OWNER_UNRESOLVED', 'OBSERVATION_VALUE_TYPE_MISSING',
+                                 'OBSERVATION_VALUE_TYPE_INVALID'):
+                issues.append({'code': issue['code'], 'candidateId': candidate['id'],
+                               'message': '%s：%s' % (candidate['name'], issue['message'])})
+    # 端点引用必须指向本批候选（合并后可能只剩主候选，端点使用已合并键也算合法：
+    # 别名表能解析到**本次选定集合**里的保留项即通过；别名指向已合并/未选定候选
+    # 时按无法解析报告——与装配侧口径一致，避免「预检通过、交付 422」的分裂）。
+    keys = {str(c['key'] or '') for c in items if str(c['key'] or '')}
+    aliases = _merge_aliases(conn, task_id, owner_id, batch_id)
+    selected_ids = {c['id'] for c in selected}
+    for candidate in selected:
+        if candidate['type'] != 'link':
+            continue
+        fields = candidate.get('fields') or {}
+        for endpoint in ('sourceRef', 'targetRef'):
+            token = str(fields.get(endpoint) or '')
+            if not token or token in ids or token in keys:
+                continue
+            if aliases.get(token) in selected_ids:
+                continue
+            issues.append({'code': 'LINK_ENDPOINT_UNRESOLVED', 'candidateId': candidate['id'],
+                           'message': '链接「%s」的%s无法解析到本批候选' % (candidate['name'], endpoint)})
+    return issues
+
+
+def precheck(conn, task_id, batch_id=None):
+    """交付前检查：计数、阻断项、未纳入项、覆盖缺口与 checkToken。"""
+    owner_id = owner()
+    row = store.require_task(conn, task_id, owner_id)
+    if row is None:
+        raise sto.NotFound('生成任务不存在')
+    delivery = store.get_delivery(conn, task_id, owner_id)
+    if delivery:
+        raise DeliveryBlocked([{'code': 'ALREADY_DELIVERED',
+                                'message': '该任务已交付本体（%s），一个任务只能创建一次' % delivery['ontologyId']}],
+                              '该任务已交付')
+    batch = store.get_batch(conn, batch_id, owner_id) if batch_id else store.latest_batch(conn, task_id, owner_id)
+    if batch is None:
+        raise DeliveryBlocked([{'code': 'NO_BATCH', 'message': '尚未生成候选，请先确认范围并生成'}], '尚未生成候选')
+    if batch['stale']:
+        raise DeliveryBlocked([{'code': 'STALE_RESULT',
+                                'message': '材料或范围已变化，当前结果已过期；请重新确认范围并生成后再创建'}],
+                              '结果已过期')
+    batch_id = batch['batch_id']
+    items, selected = _selected_candidates(conn, task_id, owner_id, batch_id)
+    counts = {}
+    for candidate in selected:
+        counts[candidate['type']] = counts.get(candidate['type'], 0) + 1
+    issues = _blocking_issues(conn, task_id, owner_id, batch_id)
+    deferred = [c for c in items if c['decision'] == 'defer']
+    excluded = [c for c in items if c['decision'] == 'exclude']
+    scope = store.get_scope(conn, task_id, owner_id)
+    coverage = {'materials': len([m for m in store.list_materials(conn, task_id, owner_id)
+                                  if not m['excluded']]),
+                'failedSegments': sum(len((m['coverage'] or {}).get('failedSegments') or [])
+                                      for m in store.list_materials(conn, task_id, owner_id)),
+                'notes': [n for m in store.list_materials(conn, task_id, owner_id)
+                          for n in ((m['coverage'] or {}).get('notes') or [])][:20]}
+    token = adapter.make_check_token(batch_id, [c['id'] for c in selected], scope['revision'],
+                                     store.require_task(conn, task_id, owner_id)['material_revision'])
+    return {
+        'ok': not issues and bool(selected),
+        'counts': counts,
+        'issues': issues,
+        'excluded': len(excluded),
+        'deferred': len(deferred),
+        'coverage': coverage,
+        'checkToken': token,
+        'batchId': batch_id,
+        'notIncluded': [{'id': c['id'], 'name': c['name'], 'type': c['type'],
+                         'decision': c['decision']} for c in items if c['decision'] != 'include'],
+        'selectedIds': [c['id'] for c in selected],
+    }
+
+
+def prepare_payload(conn, task_id, batch_id=None):
+    """构造编辑器态 ontology（JSON-LD @graph）、workflow 装配与 ID 映射（事务内纯计算；不写库）。
+
+    D10：交付在域内**重验基线**——stale 批次（材料/范围已变化）绝不允许组装交付，
+    路由层的 checkToken 校验只是第一道；这里即使绕过 token 检查也拦得住。
+    D06：规则/动作不进本体图，由 assemble 装配为 workflow.businessRules/actions 与关联集合，
+    随返回值一并交给 build_state 写入草稿的 workflow 组件。
+    """
+    owner_id = owner()
+    batch = store.get_batch(conn, batch_id, owner_id) if batch_id else store.latest_batch(conn, task_id, owner_id)
+    if batch is None:
+        raise DeliveryBlocked([{'code': 'NO_BATCH', 'message': '尚未生成候选'}], '尚未生成候选')
+    if batch['stale']:
+        raise DeliveryBlocked([{'code': 'STALE_RESULT',
+                                'message': '材料或范围已变化，当前结果已过期；请重新确认范围并生成后再创建'}],
+                              '结果已过期')
+    items, selected = _selected_candidates(conn, task_id, owner_id, batch['batch_id'])
+    try:
+        # R3-03：装配前先按本批次全部候选（含已合并）构造合并别名表，把其它候选
+        # 指向被合并候选 key/ID 的引用规范化到最终保留项，绝不静默丢关联。
+        ontology, workflow, id_map, warnings = adapter.assemble(
+            selected, _merge_aliases(conn, task_id, owner_id, batch['batch_id']))
+    except adapter.AdapterError as exc:
+        # 装配异常同样按 422 阻断清单上报（D09：绝不以裸 ValueError 形态漏成 400）
+        raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': str(exc)}])
+    issues = adapter.verify_structure(ontology, workflow)
+    if issues:
+        raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': text} for text in issues])
+    return ontology, workflow, id_map, warnings, batch['batch_id']
+
+
+def _check_name(conn, owner_id, name):
+    """同名保护：当前账号下已有本体（草稿或发布）即拒绝，绝不覆盖/合并（沿用 name_key 口径）。"""
+    from workbench.storage import assets as asset_store
+    if asset_store.name_taken(conn, 'model', name, owner_user_id=owner_id):
+        raise DuplicateOntologyName('已存在同名本体「%s」，请修改名称后重试（不会覆盖已有本体）' % name)
+
+
+def _new_ontology_id():
+    """新本体 ID：必须是与现有本体同形态的规范 UUID（workspaces.clean_id 校验）。"""
+    import uuid
+    return str(uuid.uuid4())
+
+
+def deliver(conn, task_id, name, check_token, request_id):
+    """在调用方事务内原子创建新本体草稿 + 回执。
+
+    幂等与冲突（D10，契约 08 §8）：
+    * 同 requestId 且**请求内容指纹一致**（本体名 + 选定集合内容）→ 返回原结果
+      （网络重试安全；回执检查先于其余状态校验，避免重试被 stale/token 变化误拦）；
+    * 同 requestId 不同 payload（名称或选定内容变了）→ 409 REVISION_CONFLICT；
+    * 任务已交付且 requestId 不同 → 409 ALREADY_DELIVERED（一个任务只交付一次，
+      见 AlreadyDelivered：不带 issues，走状态码映射而不是 422 清单）。
+    """
+    owner_id = owner()
+    display = str(name or '').strip()
+    if not display:
+        raise ValueError('本体名称不能为空')
+    if len(display) > 160:
+        raise ValueError('本体名称过长')
+    request_id = str(request_id or '').strip()
+    if not request_id or len(request_id) > 80:
+        raise ValueError('缺少有效的 requestId')
+
+    row = store.require_task(conn, task_id, owner_id)
+    if row is None:
+        raise sto.NotFound('生成任务不存在')
+
+    batch = store.latest_batch(conn, task_id, owner_id)
+    # 幂等回执：先按 requestId 识别成功回执（网络重试安全），不能因 revision/ID 变化误报失败。
+    # 指纹必须包含**请求 payload 内容**（D10）：只按 requestId 命中会把换名重放当重试。
+    digest = _payload_digest(conn, display, task_id, owner_id, batch)
+    record = store.get_delivery_by_request(conn, owner_id, request_id)
+    if record:
+        if record['taskId'] != task_id or record.get('payloadDigest') != digest:
+            raise sto.RevisionConflict(message='同一 requestId 提交了不同内容，请刷新后重试')
+        return {'ontologyId': record['ontologyId'], 'taskId': record['taskId'],
+                'deliveredAt': record['createdAt'], 'replayed': True}
+    if batch is None:
+        raise DeliveryBlocked([{'code': 'NO_BATCH', 'message': '尚未生成候选，请先确认范围并生成'}],
+                              '尚未生成候选')
+    # D09：确定性的结构/依赖阻断先算先报（与预检完全同口径）——绝不允许装配异常
+    # 抢跑成 400 模糊错误，出现「预检列了问题、交付却说参数不对」的分裂。
+    issues = _blocking_issues(conn, task_id, owner_id, batch['batch_id'])
+    if issues:
+        raise DeliveryBlocked(issues)
+
+    # 域内重验基线与结构（stale 批次在此拦截，不依赖路由层 token 校验）
+    ontology, workflow, id_map, warnings, batch_id = prepare_payload(conn, task_id)
+    if check_token and str(check_token) != _expected_token(conn, task_id, owner_id, batch_id):
+        raise DeliveryBlocked([{'code': 'CHECK_TOKEN_STALE',
+                                'message': '选定集合或材料/范围已变化，请重新运行交付前检查'}],
+                              '交付前检查已失效')
+
+    existing = store.get_delivery(conn, task_id, owner_id)
+    if existing:
+        raise AlreadyDelivered('该任务已交付本体（%s），不能重复创建；如需再建请复制为新任务'
+                               % existing['ontologyId'])
+
+    from workbench.storage import assets as asset_store
+    asset_store.bump_guard(conn, 'asset-name:model')
+    _check_name(conn, owner_id, display)
+    ontology_id = _new_ontology_id()
+    from workbench.storage import assets as asset_store
+    from workbench import workspaces
+    state = adapter.build_state(ontology, display, workflow)
+    state['workspaceId'] = ontology_id
+    created = store.create_ontology_asset(conn, owner_id, ontology_id, display,
+                                         workspaces._payload_of(state),
+                                         asset_store.PAYLOAD_FORMAT_ONTOLOGY,
+                                         summary={'source': 'ontology-build', 'taskId': task_id,
+                                                  'batchId': batch_id, 'candidateMap': id_map,
+                                                  'warnings': warnings,
+                                                  'definitionCount': len(ontology.get('@graph') or [])
+                                                  + len(workflow.get('businessRules') or [])
+                                                  + len(workflow.get('actions') or [])})
+    store.insert_delivery(conn, task_id, owner_id, request_id, digest, ontology_id)
+    store.touch_task(conn, task_id, owner_id, status='delivered',
+                     stage_label=protocol.TASK_STAGE_LABELS['delivered'],
+                     delivery_ontology_id=ontology_id)
+    return {'ontologyId': ontology_id, 'taskId': task_id, 'deliveredAt': sto.utcnow(),
+            'revision': created['revision'], 'warnings': warnings, 'replayed': False}
+
+
+def _payload_digest(conn, display, task_id, owner_id, batch):
+    """**请求内容**指纹（D10）：请求体（本体名 + 任务）叠加选定集合内容指纹。
+
+    只取选定集合时，同 requestId 换个本体名重放会被误判为「同一 payload 的重试」；
+    定义 ID 由服务端每次装配随机分配，绝不能入指纹（否则真实重试永不命中）。
+    """
+    selection = _selection_digest(conn, task_id, owner_id, batch['batch_id']) if batch else ''
+    return sto.content_hash(sto.json_dumps({'name': display, 'taskId': task_id,
+                                           'selection': selection}).encode('utf-8'))
+
+
+def _selection_digest(conn, task_id, owner_id, batch_id):
+    """选定集合的**内容**指纹（不含服务端分配的 ID 与时间）：同一评审状态下稳定，
+    因此能作为 requestId 幂等比对基准，同时集合/字段变化会使其失效。"""
+    items, selected = _selected_candidates(conn, task_id, owner_id, batch_id)
+    material = sorted(
+        sto.json_dumps({
+            'id': c['id'], 'type': c['type'], 'key': c['key'], 'name': c['name'],
+            'definition': c['definition'], 'fields': c['fields'],
+            'ownerKey': c['ownerKey'], 'decision': c['decision'],
+        }) for c in selected)
+    return sto.content_hash(sto.json_dumps(material).encode('utf-8'))
+
+
+def _expected_token(conn, task_id, owner_id, batch_id):
+    """按当前选定集合重算 checkToken（用于与客户端令牌比对）。"""
+    items, selected = _selected_candidates(conn, task_id, owner_id, batch_id)
+    scope = store.get_scope(conn, task_id, owner_id)
+    row = store.require_task(conn, task_id, owner_id)
+    return adapter.make_check_token(batch_id, [c['id'] for c in selected], scope['revision'],
+                                    row['material_revision'])
+
+
+def delivery_view(conn, task_id):
+    owner_id = owner()
+    record = store.get_delivery(conn, task_id, owner_id)
+    if record is None:
+        return {'delivery': None}
+    return {'delivery': record}

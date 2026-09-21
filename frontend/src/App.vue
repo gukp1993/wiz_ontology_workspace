@@ -10,6 +10,12 @@ import ObjectWorkspace from './ontology/ObjectWorkspace.vue'
 import SharedLibrary from './ontology/SharedLibrary.vue'
 import BusinessRuleLibrary from './ontology/BusinessRuleLibrary.vue'
 import OntologyRelease from './ontology/OntologyRelease.vue'
+import BuildTasksPage from './ontology/build/BuildTasksPage.vue'
+import BuildMaterialsPage from './ontology/build/BuildMaterialsPage.vue'
+import BuildScopePage from './ontology/build/BuildScopePage.vue'
+import BuildProgressPage from './ontology/build/BuildProgressPage.vue'
+import BuildReviewPage from './ontology/build/BuildReviewPage.vue'
+import BuildSavePage from './ontology/build/BuildSavePage.vue'
 import ToolsPage from './tools/ToolsPage.vue'
 import OntologyDiscover from './tools/OntologyDiscover.vue'
 import KnowledgeExplorer from './tools/KnowledgeExplorer.vue'
@@ -485,6 +491,80 @@ async function navigate(v: string, focus?: { type?: string; property?: string; i
 }
 function hashChanged() { navigate(window.location.hash.slice(1)) }
 watch(view, () => closeUserMenu(false))
+
+// --- 从物料生成本体（20260920，本体区子入口 view=build）：A01〜A06 六页装配 ---
+// 生成任务（ontology/build/）是账号级资源，不隶属当前选中本体，也不改写本体草稿：
+// 本视图独立于本体草稿加载态渲染，未选本体也能进入（需求 G01）。页面契约（只读）：
+// A01 无 props、emit open-task(taskId)/enter-ontology(ontologyId?)；A02〜A06 传 taskId，A04 另传可选 runId。
+type BuildStage = 'tasks' | 'materials' | 'scope' | 'progress' | 'review' | 'save'
+/** 步骤条（原型 shell 的 .steps）：A05 评审页没有向前 emit，故由 App 提供 评审初稿↔保存新本体 入口。 */
+const BUILD_STEPS: { stage: BuildStage; label: string }[] = [
+  { stage: 'materials', label: '物料' }, { stage: 'scope', label: '确定范围' },
+  { stage: 'progress', label: '生成' }, { stage: 'review', label: '评审初稿' }, { stage: 'save', label: '保存新本体' },
+]
+const buildStage = ref<BuildStage>('tasks')
+/** 当前生成任务 id（可为空：任务列表态）；任务页一律由 taskId 驱动，App 不缓存任务内容。 */
+const buildTaskId = ref('')
+/** 最近一次生成的 runId：传给 A04 进度页；为空时该页自行取任务的最新 run。 */
+const buildRunId = ref('')
+// 交付来源回链（G13）：本体 id → 生成任务 id。交付后按现有切本体机制整页重载，
+// 内存状态会丢，故按账号存浏览器偏好，重载后对象建模页仍能给出「查看生成来源任务」。
+const BUILD_SOURCE_KEY = 'wiz-build-source'
+const buildSources = ref<Record<string, string>>((() => {
+  try { const raw = prefGet(BUILD_SOURCE_KEY); const v = raw ? JSON.parse(raw) : null
+    return v && typeof v === 'object' ? v as Record<string, string> : {} } catch { return {} }
+})())
+/** 当前本体的来源生成任务；空串表示这份本体不是由生成任务创建的（不显示回链入口）。 */
+const buildSourceTaskId = computed(() => buildSources.value[ontologyId] || '')
+function rememberBuildSource(ontology: string, task: string) {
+  if (!ontology || !task) return
+  const next = { ...buildSources.value, [ontology]: task }
+  buildSources.value = next
+  prefSet(BUILD_SOURCE_KEY, JSON.stringify(next)) // 未登录/存储不可用时静默降级，仅本次会话有效
+}
+function openBuildTask(taskId: string) { buildTaskId.value = taskId; buildRunId.value = ''; buildStage.value = 'materials' }
+/**
+ * A01 进入对象建模。三种入口（B.4 回链修复）：
+ *  · 不带本体 id（页头「进入对象建模」、空态「先看看现有对象建模」）：原行为，直接进当前本体的对象建模页；
+ *  · 带 id 且就是当前本体：同样直接进对象建模，不做无谓重载；
+ *  · 带 id 且与当前不同（任务行的「查看已创建本体」）：复用 switchOntology——它已包含
+ *    requestLeave/guardUnsaved 未保存守卫，成功后整页载入目标本体的 #objects（含本体内存状态清空），
+ *    因此这里不再额外 navigate；被取消/正忙时不切换，自然停在生成视图。
+ *  · 该带 id 却拿到空值（数据缺 deliveryOntologyId 的异常情况）：退回原行为并给出可读提示。
+ */
+async function enterBuildOntology(targetOntologyId?: string) {
+  if (targetOntologyId === undefined) { void navigate('objects'); return }
+  const target = String(targetOntologyId).trim()
+  if (!target) {
+    // 提示在导航之后给出：navigate 会清空上一条提示（换页即清），先提示会被自己清掉。
+    await navigate('objects')
+    notify('该任务没有可用的已创建本体 id，已进入当前本体的对象建模页；请从侧栏选择目标本体。')
+    return
+  }
+  if (target === ontologyId) { await navigate('objects'); return }
+  await switchOntology(target)
+}
+function onBuildGenerated(runId: string) { buildRunId.value = runId || ''; buildStage.value = 'progress' }
+/** A05 的 saved 按需求前进入 A06（该页只声明未触发；一旦触发说明已创建，A06 会只读展示交付结果）。 */
+function onBuildReviewSaved() { buildStage.value = 'save' }
+/** A06 的 back 可带候选定位，但 A05 当前只接收 taskId（无定位 prop），故仅回到评审页。 */
+function onBuildSaveBack() { buildStage.value = 'review' }
+function backToBuildTasks() { buildTaskId.value = ''; buildRunId.value = ''; buildStage.value = 'tasks' }
+function goBuildStage(stage: BuildStage) { if (stage === 'tasks' || buildTaskId.value) buildStage.value = stage }
+/** 交付成功（A06 saved）：记住来源任务后按现有机制切到该本体对象建模；同 id 时不重载。 */
+async function onBuildDelivered(delivered: string) {
+  const task = buildTaskId.value
+  if (delivered && task) rememberBuildSource(delivered, task)
+  if (!delivered || delivered === ontologyId) { buildStage.value = 'save'; await navigate('objects'); return }
+  await switchOntology(delivered)
+}
+/** 对象建模页「查看生成来源任务」：回填来源任务并进生成视图的任务页。 */
+function openBuildSourceTask() {
+  const task = buildSourceTaskId.value
+  if (task) { buildTaskId.value = task; buildRunId.value = ''; buildStage.value = 'materials' }
+  void navigate('build')
+}
+
 // scope 生命周期（需求 §4.2）：实际成功离开编辑页 / 切换本体 / 切换编排 / 重载 → 清空该范围历史。
 // watch(view) 只在实际切换成功后触发（导航取消不会改 view），符合「实际离开时结束会话」。
 watch([view, historyScopeKey], ([nv], [ov]) => {
@@ -1048,6 +1128,19 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
                        @open-ontology="openFromTransfer('ontology', $event)"
                        @open-project="openFromTransfer('project', $event)"/>
 </main>
+<!-- 从物料生成本体（A01〜A06，20260920）：任务为账号级资源、独立于当前本体草稿，故不进本体草稿加载态
+     分支（未选本体也能进入，G01）；步骤流转由子页面 emit 驱动，A05↔A06 由步骤条补前进入口。 -->
+<main v-else-if="view==='build'">
+<div v-if="buildTaskId" class="build-steps" role="group" aria-label="生成流程步骤">
+  <button v-for="(s,i) in BUILD_STEPS" :key="s.stage" type="button" :class="{on:buildStage===s.stage}" :aria-current="buildStage===s.stage?'step':undefined" @click="goBuildStage(s.stage)"><i>{{i+1}}</i>{{s.label}}</button>
+</div>
+<BuildTasksPage v-if="buildStage==='tasks'||!buildTaskId" @open-task="openBuildTask" @enter-ontology="enterBuildOntology"/>
+<BuildMaterialsPage v-else-if="buildStage==='materials'" :task-id="buildTaskId" @continue="goBuildStage('scope')" @back="backToBuildTasks"/>
+<BuildScopePage v-else-if="buildStage==='scope'" :task-id="buildTaskId" @back="goBuildStage('materials')" @generated="onBuildGenerated"/>
+<BuildProgressPage v-else-if="buildStage==='progress'" :task-id="buildTaskId" :run-id="buildRunId" @review="goBuildStage('review')" @back="goBuildStage('scope')"/>
+<BuildReviewPage v-else-if="buildStage==='review'" :task-id="buildTaskId" @back="goBuildStage('progress')" @saved="onBuildReviewSaved"/>
+<BuildSavePage v-else-if="buildStage==='save'" :task-id="buildTaskId" @back="onBuildSaveBack" @saved="onBuildDelivered"/>
+</main>
 <main v-else-if="booting||ontologyLoad==='loading'"><section class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:92%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:96%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:78%"></div></section><p v-if="ontologySlow" class="muted" role="status">仍在加载，请稍候…（超过 {{ Math.round(READ_TIMEOUT_MS/1000) }} 秒仍未返回会给出重试入口）</p></main>
 <!-- G1/G2：本体必要读取失败——给出状态与恢复入口，不能渲染成「没有本体」 -->
 <main v-else-if="!state">
@@ -1059,8 +1152,11 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <!-- 项目区加载中/失败（R2）：与「还没有项目」区分，等待或失败时都可返回本体 -->
 <section v-if="projectAreaWaiting" class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:88%"></div></section>
 <AppError v-else-if="projectAreaFailed" :title="projectFailureTitle" :reason="projectListError||projectLoadError" :hint="projectOriginBlocked?'':'项目数据加载失败，本体建模可继续使用。修正后重试，或先回到本体区继续工作。'" :fix-href="projectOriginBlocked?localAccess:''" retry-label="重试" secondary-label="返回本体" @retry="retryProjectContext" @secondary="switchSpace('ontology')"/>
-<section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div><button type="button" class="dl-template" @click="downloadTemplate">下载 Excel 模板</button></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
+<section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div><button type="button" class="dl-template" @click="downloadTemplate">下载 Excel 模板</button></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button><button type="button" :disabled="busy" @click="navigate('build')">从物料生成</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>
+<!-- 生成来源回链（G13）：这份本体由生成任务创建时，在对象建模页给出返回该任务的入口；
+     只做导航，不写入本体草稿，也不改变现有页面行为。 -->
+<div v-if="view==='objects'&&buildSourceTaskId" class="build-source"><button type="button" class="text" @click="openBuildSourceTask">← 查看生成来源任务</button><span class="muted">这份本体由生成任务创建；返回任务可查看物料、范围与依据。</span></div>
 <OntologyHome v-if="view==='o-home'" :state="state" @navigate="navigate" @open-project="openProjectFromOverview"/>
 <ObjectWorkspace v-if="view==='objects'" :state="state" :focus-type="propertyFocusType" :focus-property="propertyFocusId" :initial-tab="objectDetailTab" :focus-definition="definitionFocusId" :focus-create="objectCreateFocus" :graph-return="objectGraphReturn" :graph-focus="objectGraphFocus" :canvas-return="canvasReturn?.nodeId || ''" :save-state="saveState" :latest-release="latestVersion" :edit-focus="editFocusFlag" :return-to="definitionReturn" @before-change="pushUndo" @changed="changed" @navigate="navigate" @switch-ontology="id => switchOntology(id)" @create-ontology="name => createOntologyNamed(name)"/>
 <FunctionManager v-if="view==='contracts'" :state="state" :focus-id="contractFocusId" :return-to="definitionReturn" @properties="openProperties" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
@@ -1108,4 +1204,12 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 .rail.mini nav p{display:none}
 .shell.mini{margin-left:64px}
 .topbar.mini{left:64px}
+/* 从物料生成（view=build）：流程步骤条与来源回链；只复用现有令牌与 .card/.muted 等通用类 */
+.build-steps{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.build-steps button{display:inline-flex;align-items:center;gap:7px;width:auto;background:var(--paper);border:1px solid var(--line);color:var(--muted);border-radius:var(--r-pill);padding:5px 13px;font-size:13px;font-weight:500;margin:0}
+.build-steps button:hover:not(:disabled){border-color:var(--blue-line);background:var(--blue-soft);color:var(--blue-ink)}
+.build-steps button.on{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
+.build-steps button i{font-style:normal;font-size:11px;opacity:.75}
+.build-steps button:disabled{opacity:.5;cursor:not-allowed}
+.build-source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:12px}
 </style>

@@ -246,10 +246,208 @@ wb_user_settings = sa.Table('wb_user_settings', METADATA,
     sa.Column('updated_at', sa.String(32), nullable=False, default=''),
     )
 
+# --- 从物料自动构建本体（2026-09-20）--------------------------------------------
+# 任务族数据独立于本体资产：候选/证据/批次都是任务侧数据，绝不写本体快照。
+# 所有表带 owner_user_id 并以 task_id 级联（跨账号按不存在处理）。
+# 大文件实体不进库：wb_build_blobs 登记受管理 blob 目录中的附件归属与哈希。
+wb_build_tasks = sa.Table('wb_build_tasks', METADATA,
+    sa.Column('task_id', BinV(36), primary_key=True),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('name', sa.String(160), nullable=False, default=''),
+    sa.Column('name_key', sa.String(160), nullable=False, default=''),
+    sa.Column('status', sa.String(20), nullable=False, default='draft'),
+    sa.Column('stage_label', sa.String(60), nullable=False, default=''),
+    sa.Column('revision', BinV(80), nullable=False),
+    sa.Column('material_revision', sa.Integer(), nullable=False, default=0),
+    sa.Column('scope_revision', sa.Integer(), nullable=False, default=0),
+    sa.Column('current_batch', BinV(36), nullable=False, default=''),
+    sa.Column('delivery_ontology_id', BinV(80), nullable=False, default=''),
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Column('updated_at', sa.String(32), nullable=False, default=''),
+    sa.Column('deleted_at', sa.String(32), nullable=True),
+    sa.Index('ix_build_tasks_owner', 'owner_user_id', 'deleted_at'),
+    )
+
+wb_build_blobs = sa.Table('wb_build_blobs', METADATA,
+    sa.Column('blob_id', BinV(36), primary_key=True),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('task_id', BinV(36), nullable=False, default=''),
+    sa.Column('rel_path', sa.String(512), nullable=False, default=''),      # 展示用相对路径
+    sa.Column('size', sa.Integer(), nullable=False, default=0),
+    sa.Column('content_hash', BinV(64), nullable=False, default=''),
+    sa.Column('blob_path', sa.String(255), nullable=False, default=''),     # 相对 DATA_ROOT/data 的路径
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Index('ix_build_blobs_owner', 'owner_user_id', 'task_id'),
+    sa.Index('ix_build_blobs_hash', 'task_id', 'content_hash'),
+    )
+
+wb_build_uploads = sa.Table('wb_build_uploads', METADATA,
+    sa.Column('upload_id', BinV(36), primary_key=True),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('task_id', BinV(36), nullable=False, default=''),
+    sa.Column('rel_path', sa.String(512), nullable=False, default=''),
+    sa.Column('size', sa.Integer(), nullable=False, default=0),
+    sa.Column('chunk_bytes', sa.Integer(), nullable=False, default=0),
+    sa.Column('chunks_json', LongText(), nullable=False, default='{}'),   # index → 分片 hash（校验幂等/冲突）
+    sa.Column('received', sa.Integer(), nullable=False, default=0),
+    sa.Column('state', sa.String(16), nullable=False, default='open'),    # open / complete / aborted
+    sa.Column('temp_path', sa.String(255), nullable=False, default=''),
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Column('updated_at', sa.String(32), nullable=False, default=''),
+    sa.Index('ix_build_uploads_owner', 'owner_user_id', 'task_id'),
+    )
+
+wb_build_materials = sa.Table('wb_build_materials', METADATA,
+    sa.Column('material_id', BinV(36), primary_key=True),
+    sa.Column('task_id', BinV(36), nullable=False),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('blob_id', BinV(36), nullable=False, default=''),
+    sa.Column('rel_path', sa.String(512), nullable=False, default=''),
+    sa.Column('kind', sa.String(16), nullable=False, default='other'),
+    sa.Column('size', sa.Integer(), nullable=False, default=0),
+    sa.Column('content_hash', BinV(64), nullable=False, default=''),
+    sa.Column('parse_state', sa.String(16), nullable=False, default='pending'),
+    sa.Column('coverage_json', LongText(), nullable=False, default='{}'),
+    sa.Column('source_group', BinV(64), nullable=False, default=''),
+    sa.Column('excluded', sa.Integer(), nullable=False, default=0),
+    sa.Column('error', LongText(), nullable=False, default=''),
+    sa.Column('revision', BinV(80), nullable=False, default=''),
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Column('updated_at', sa.String(32), nullable=False, default=''),
+    sa.Index('ix_build_materials_task', 'task_id', 'owner_user_id'),
+    )
+
+wb_build_facts = sa.Table('wb_build_facts', METADATA,
+    sa.Column('fact_id', BinV(36), primary_key=True),
+    sa.Column('task_id', BinV(36), nullable=False),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('material_id', BinV(36), nullable=False),
+    sa.Column('module', sa.String(80), nullable=False, default=''),       # 结构分块标识
+    sa.Column('locator_json', LongText(), nullable=False, default='{}'),
+    sa.Column('snippet', LongText(), nullable=False, default=''),
+    sa.Column('kind', sa.String(32), nullable=False, default=''),         # code/table/class/api/field/doc…
+    sa.Column('data_json', LongText(), nullable=False, default='{}'),
+    sa.Column('quality', sa.String(12), nullable=False, default='high'),  # high / medium / low
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Index('ix_build_facts_task', 'task_id', 'owner_user_id'),
+    sa.Index('ix_build_facts_material', 'material_id'),
+    )
+
+wb_build_messages = sa.Table('wb_build_messages', METADATA,
+    sa.Column('message_id', BinV(36), primary_key=True),
+    sa.Column('task_id', BinV(36), nullable=False),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('seq', sa.Integer(), nullable=False, default=0),
+    sa.Column('role', sa.String(12), nullable=False, default='user'),     # user / assistant
+    sa.Column('content', LongText(), nullable=False, default=''),
+    sa.Column('patch_json', LongText(), nullable=False, default='{}'),    # 助手给出的范围补丁建议
+    sa.Column('error', sa.String(255), nullable=False, default=''),
+    sa.Column('scope_revision', sa.Integer(), nullable=False, default=0), # 生成时的范围基线
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Index('ix_build_messages_task', 'task_id', 'owner_user_id', 'seq'),
+    )
+
+wb_build_scopes = sa.Table('wb_build_scopes', METADATA,
+    sa.Column('task_id', BinV(36), primary_key=True),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('payload_json', LongText(), nullable=False, default='{}'),
+    sa.Column('revision', sa.Integer(), nullable=False, default=0),
+    sa.Column('confirmed_at', sa.String(32), nullable=False, default=''),
+    sa.Column('provider_fingerprint', LongText(), nullable=False, default='{}'),
+    sa.Column('updated_at', sa.String(32), nullable=False, default=''),
+    )
+
+wb_build_runs = sa.Table('wb_build_runs', METADATA,
+    sa.Column('run_id', BinV(36), primary_key=True),
+    sa.Column('task_id', BinV(36), nullable=False),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('kind', sa.String(12), nullable=False, default='generate'),  # scan / dialog / generate
+    sa.Column('state', sa.String(16), nullable=False, default='queued'),
+    sa.Column('stage', sa.String(24), nullable=False, default=''),
+    sa.Column('stage_label', sa.String(60), nullable=False, default=''),
+    sa.Column('progress_json', LongText(), nullable=False, default='{}'),
+    sa.Column('baseline_json', LongText(), nullable=False, default='{}'),
+    sa.Column('attempt', sa.Integer(), nullable=False, default=1),
+    sa.Column('error', LongText(), nullable=False, default=''),
+    sa.Column('retryable', sa.Integer(), nullable=False, default=0),
+    sa.Column('usage_json', LongText(), nullable=False, default='{}'),
+    sa.Column('batch_id', BinV(36), nullable=False, default=''),
+    sa.Column('lease_token', BinV(36), nullable=False, default=''),       # fencing：晚结果禁止写入
+    sa.Column('cancel_requested', sa.Integer(), nullable=False, default=0),
+    sa.Column('checkpoint_json', LongText(), nullable=False, default='{}'),
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Column('updated_at', sa.String(32), nullable=False, default=''),
+    sa.Index('ix_build_runs_task', 'task_id', 'owner_user_id', 'created_at'),
+    )
+
+wb_build_batches = sa.Table('wb_build_batches', METADATA,
+    sa.Column('batch_id', BinV(36), primary_key=True),
+    sa.Column('task_id', BinV(36), nullable=False),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('run_id', BinV(36), nullable=False, default=''),
+    sa.Column('baseline_json', LongText(), nullable=False, default='{}'),
+    sa.Column('stale', sa.Integer(), nullable=False, default=0),
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Index('ix_build_batches_task', 'task_id', 'owner_user_id', 'created_at'),
+    )
+
+wb_build_candidates = sa.Table('wb_build_candidates', METADATA,
+    sa.Column('candidate_id', BinV(36), primary_key=True),
+    sa.Column('task_id', BinV(36), nullable=False),
+    sa.Column('batch_id', BinV(36), nullable=False, default=''),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('ctype', sa.String(12), nullable=False, default='object'),   # object/property/link/rule/action
+    sa.Column('ckey', sa.String(120), nullable=False, default=''),         # 模型临时键（仅批内）
+    sa.Column('name', sa.String(200), nullable=False, default=''),
+    sa.Column('definition', LongText(), nullable=False, default=''),
+    sa.Column('fields_json', LongText(), nullable=False, default='{}'),
+    sa.Column('owner_key', sa.String(120), nullable=False, default=''),
+    sa.Column('evidence_json', LongText(), nullable=False, default='{}'),
+    sa.Column('evidence_status', sa.String(16), nullable=False, default='inferred'),
+    sa.Column('conflicts_json', LongText(), nullable=False, default='[]'),
+    sa.Column('decision', sa.String(12), nullable=False, default='defer'),
+    sa.Column('reviewed', sa.Integer(), nullable=False, default=0),
+    sa.Column('reason', LongText(), nullable=False, default=''),
+    sa.Column('issues_json', LongText(), nullable=False, default='[]'),
+    sa.Column('origin_json', LongText(), nullable=False, default='{}'),
+    sa.Column('aligned_key', sa.String(160), nullable=False, default=''),  # 跨批次对齐键（去重/再生成比较）
+    sa.Column('revision', BinV(80), nullable=False, default=''),
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Column('updated_at', sa.String(32), nullable=False, default=''),
+    sa.Index('ix_build_candidates_task', 'task_id', 'owner_user_id', 'batch_id'),
+    sa.Index('ix_build_candidates_aligned', 'task_id', 'aligned_key'),
+    )
+
+wb_build_review_ops = sa.Table('wb_build_review_ops', METADATA,
+    sa.Column('op_id', BinV(36), primary_key=True),
+    sa.Column('task_id', BinV(36), nullable=False),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('kind', sa.String(16), nullable=False, default='merge'),     # merge / edit
+    sa.Column('payload_json', LongText(), nullable=False, default='{}'),
+    sa.Column('reverted', sa.Integer(), nullable=False, default=0),
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.Index('ix_build_review_ops_task', 'task_id', 'owner_user_id', 'created_at'),
+    )
+
+wb_build_deliveries = sa.Table('wb_build_deliveries', METADATA,
+    sa.Column('delivery_id', BinV(36), primary_key=True),
+    sa.Column('task_id', BinV(36), nullable=False),
+    sa.Column('owner_user_id', BinV(36), nullable=False, default=''),
+    sa.Column('request_id', BinV(80), nullable=False, default=''),
+    sa.Column('payload_digest', BinV(64), nullable=False, default=''),
+    sa.Column('ontology_id', BinV(80), nullable=False, default=''),
+    sa.Column('created_at', sa.String(32), nullable=False, default=''),
+    sa.UniqueConstraint('task_id', name='uq_build_delivery_task'),
+    sa.UniqueConstraint('owner_user_id', 'request_id', name='uq_build_delivery_request'),
+    )
+
 # 预建 guard 行（迁移/初始化时插入，INSERT OR IGNORE 语义由调用方处理）
 GUARD_KEYS = ('asset-name:model', 'asset-name:project', 'asset-name:flow', 'model-default')
 
 ALL_TABLES = (wb_assets, wb_snapshots, wb_asset_heads, wb_releases, wb_project_refs,
               wb_definition_index, wb_reference_index, wb_catalog_cache, wb_model_configs,
               wb_credentials, wb_settings, wb_artifacts, wb_import_items, wb_requests,
-              wb_write_guards, wb_users, wb_sessions, wb_user_settings)
+              wb_write_guards, wb_users, wb_sessions, wb_user_settings,
+              wb_build_tasks, wb_build_blobs, wb_build_uploads, wb_build_materials,
+              wb_build_facts, wb_build_messages, wb_build_scopes, wb_build_runs,
+              wb_build_batches, wb_build_candidates, wb_build_review_ops, wb_build_deliveries)

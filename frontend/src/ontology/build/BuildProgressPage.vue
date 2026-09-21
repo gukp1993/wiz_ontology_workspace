@@ -1,0 +1,427 @@
+<!-- ─── A04 生成进度（从物料自动构建本体；契约：接口文档 08 §5 运行）───
+     布局基准：需求原型 交互原型_v1.html 的 generatePage()（第 52 行）——
+     左侧五阶段列表与运行操作，右侧「本次生成依据」（确认范围时冻结的基线，不含密钥）。
+     行为要点：
+     · fetchRun 每 1.5 秒轮询；只展示服务端给出的真实阶段与 progress.done/total，
+       不做假倒计时与百分比动画；到达终态（已完成/失败/已取消/已中断）停止轮询，卸载清定时器。
+     · state=interrupted 必须写明「服务重启导致中断，可重试」，绝不显示为运行中。
+     · 失败保留已完成阶段并展示 run.error 原文；取消/重试分别走 build-run-cancel / build-run-resume。
+     · 取消提示：取消不保证立即终止已发出的模型请求，但晚到的结果不会写入当前批次。
+     · 用量（calls/promptBytes/completionBytes/durationMs）作为次要信息，没有就不显示。
+     请求一律经 ./api（内部走 app/http.ts），错误如实展示、不吞。 -->
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import AppError from '../../shared/AppError.vue'
+import { cancelRun, errorMessage, fetchRun, resumeRun } from './api'
+import {
+  RUN_STATE_LABELS, STAGE_LABELS, formatBytes, labelOf, runErrorRetryable, runErrorText,
+} from './types'
+import type { BuildRun, RunStage } from './types'
+
+const props = defineProps<{ taskId: string; runId?: string }>()
+const emit = defineEmits<{ review: []; back: [] }>()
+
+// 五阶段顺序（08 §1.5：generate 用 retrieve/align/abstract/verify/adapt），文案取 types.ts 的 STAGE_LABELS。
+const STAGE_ORDER: RunStage[] = ['retrieve', 'align', 'abstract', 'verify', 'adapt']
+
+const run = ref<BuildRun | null>(null)
+const taskStatus = ref('')
+const activeRunId = ref(props.runId || '')
+const loading = ref(true)
+const loadError = ref('')
+const notFound = ref(false)
+const refreshing = ref(false)
+const cancelling = ref(false), resuming = ref(false)
+const actionError = ref(''), actionNote = ref('')
+
+const POLL_INTERVAL_MS = 1500
+const TERMINAL_STATES: BuildRun['state'][] = ['succeeded', 'failed', 'cancelled', 'interrupted']
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+let disposed = false
+let inFlight = false
+
+const isTerminal = (state: string): boolean => TERMINAL_STATES.some(s => s === state)
+
+const badgeTone = computed(() => {
+  const state = run.value?.state
+  if (state === 'succeeded') return 'pill-ok'
+  if (state === 'failed') return 'pill-error'
+  if (state === 'cancelled' || state === 'interrupted') return 'pill-warn'
+  return ''
+})
+/** 页面状态徽标（需求 §6 / 原型 generatePage 的措辞；未知状态原样回显，不伪装成运行中）。 */
+const STATE_BADGE_LABELS: Record<string, string> = {
+  queued: '排队中', running: '生成中', succeeded: '已完成', failed: '阶段失败', cancelled: '已取消', interrupted: '已中断',
+}
+const stateLabel = computed(() => {
+  const state = run.value?.state
+  if (!state) return '未开始'
+  return STATE_BADGE_LABELS[state] || `未知状态（${labelOf(RUN_STATE_LABELS, state, state)}）`
+})
+
+const stateNote = computed(() => {
+  const state = run.value?.state
+  if (state === 'interrupted') return '服务重启导致中断，可重试：已完成阶段的结果保留，重试从匹配到的检查点继续。'
+  if (state === 'cancelled') return '生成已取消，未创建任何本体；可重试继续剩余阶段。'
+  if (state === 'failed') return '生成在某个阶段失败，未创建正式本体；已完成阶段的结果保留，可重试当前阶段。'
+  if (state === 'queued') return '运行已排队，尚未开始处理。'
+  if (state === 'succeeded') return '初稿已就绪，请人工评审候选定义与证据。'
+  return ''
+})
+
+const running = computed(() => run.value?.state === 'running' || run.value?.state === 'queued')
+const currentStageIndex = computed(() => {
+  const value = run.value
+  if (!value || !value.stage) return -1
+  return STAGE_ORDER.indexOf(value.stage)
+})
+type StageStatus = 'done' | 'current' | 'failed' | 'todo'
+const STAGE_STATUS_TEXT: Record<StageStatus, string> = { done: '已完成', current: '处理中', failed: '失败', todo: '待处理' }
+
+function stageStatus(index: number): StageStatus {
+  const value = run.value
+  if (!value) return 'todo'
+  if (value.state === 'succeeded') return 'done'
+  const current = currentStageIndex.value
+  if (current < 0) return 'todo'
+  if (index < current) return 'done'
+  if (index > current) return 'todo'
+  if (value.state === 'failed') return 'failed'
+  if (value.state === 'running' || value.state === 'queued') return 'current'
+  return 'todo'
+}
+
+const currentStageLabel = computed(() => {
+  const value = run.value
+  if (!value) return ''
+  return value.stageLabel || (value.stage ? labelOf(STAGE_LABELS, value.stage, '') : '')
+})
+/** 真实进度文案：只回报服务端给出的阶段名与 done/total，不推算百分比、不做倒计时。 */
+const progressText = computed(() => {
+  const value = run.value
+  if (!value) return ''
+  const stage = currentStageLabel.value || '阶段处理中'
+  const done = value.progress?.done, total = value.progress?.total
+  if (typeof done !== 'number' || typeof total !== 'number') return `${stage}（服务端尚未给出计数）`
+  return `${stage} ${done} / ${total}`
+})
+const progressPercent = computed(() => {
+  // 仅用于进度条宽度，仍来自真实 done/total；无计数时不画。
+  const value = run.value
+  if (!value) return null
+  const done = value.progress?.done, total = value.progress?.total
+  if (typeof done !== 'number' || typeof total !== 'number' || total <= 0) return null
+  return Math.min(100, Math.max(0, Math.round((done / total) * 100)))
+})
+
+const baselineRows = computed(() => {
+  const value = run.value
+  if (!value) return [] as { label: string; value: string }[]
+  const base = value.baseline
+  const hashes = Array.isArray(base?.materialHashes) ? base.materialHashes : []
+  return [
+    { label: '材料数', value: `${hashes.length} 份` },
+    { label: '材料修订', value: String(base?.materialRevision ?? '—') },
+    { label: '范围修订', value: String(base?.scopeRevision ?? '—') },
+    { label: '解析器版本', value: base?.parserVersion || '—' },
+    { label: '提示词版本', value: base?.promptVersion || '—' },
+    { label: '模型指纹', value: base?.providerFingerprint || '—' },
+  ]
+})
+const usageRows = computed(() => {
+  const usage = run.value?.usage
+  if (!usage) return [] as { label: string; value: string }[]
+  const rows: { label: string; value: string }[] = []
+  if (typeof usage.calls === 'number' && usage.calls > 0) rows.push({ label: '模型调用', value: `${usage.calls} 次` })
+  if (typeof usage.durationMs === 'number' && usage.durationMs > 0) rows.push({ label: '累计耗时', value: formatDuration(usage.durationMs) })
+  if (typeof usage.promptBytes === 'number' && usage.promptBytes > 0) rows.push({ label: '输入字节', value: formatBytes(usage.promptBytes) })
+  if (typeof usage.completionBytes === 'number' && usage.completionBytes > 0) rows.push({ label: '输出字节', value: formatBytes(usage.completionBytes) })
+  return rows
+})
+function formatDuration(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000))
+  if (seconds < 60) return `${seconds} 秒`
+  const minutes = Math.floor(seconds / 60), rest = seconds % 60
+  return rest === 0 ? `${minutes} 分` : `${minutes} 分 ${rest} 秒`
+}
+
+function isNotFound(error: unknown): boolean {
+  return error !== null && typeof error === 'object' && (error as { status?: number }).status === 404
+}
+
+// ── 轮询（1.5 秒；终态停止；卸载清理） ──────────────────────────────────────
+function stopPolling() {
+  if (pollTimer !== null) { clearTimeout(pollTimer); pollTimer = null }
+}
+function schedulePoll() {
+  if (disposed) return
+  pollTimer = setTimeout(() => { pollTimer = null; void poll() }, POLL_INTERVAL_MS)
+}
+async function poll() {
+  if (disposed || inFlight) return
+  if (props.taskId === '') { loading.value = false; loadError.value = '缺少任务标识，无法读取生成进度。'; return }
+  inFlight = true
+  try {
+    const envelope = await fetchRun(props.taskId, activeRunId.value || undefined)
+    run.value = envelope.run
+    taskStatus.value = envelope.taskStatus || ''
+    if (!activeRunId.value && envelope.run?.id) activeRunId.value = envelope.run.id
+    notFound.value = false
+    loadError.value = ''
+    loading.value = false
+    if (envelope.run && isTerminal(envelope.run.state)) { stopPolling(); return }
+  } catch (error) {
+    loading.value = false
+    if (isNotFound(error)) { notFound.value = true; loadError.value = '' }
+    else loadError.value = errorMessage(error)
+    if (run.value && isTerminal(run.value.state)) { stopPolling(); return }
+  } finally {
+    inFlight = false
+  }
+  schedulePoll()
+}
+async function refreshNow() {
+  refreshing.value = true
+  await poll()
+  refreshing.value = false
+}
+
+// ── 操作 ──────────────────────────────────────────────────────────────────
+async function onCancel() {
+  if (cancelling.value || !run.value) return
+  const id = run.value.id || activeRunId.value
+  if (!id) { actionError.value = '未取得运行标识，无法取消；请刷新后重试。'; return }
+  cancelling.value = true
+  actionError.value = ''
+  actionNote.value = ''
+  try {
+    const result = await cancelRun(props.taskId, id)
+    run.value = result.run
+    if (!activeRunId.value && result.run?.id) activeRunId.value = result.run.id
+    actionNote.value = '已请求取消。取消不保证立即终止已发出的模型请求，但晚到的结果不会写入当前批次。'
+    stopPolling()
+    if (!isTerminal(run.value.state)) schedulePoll()
+  } catch (error) {
+    actionError.value = errorMessage(error)
+  } finally {
+    cancelling.value = false
+  }
+}
+
+async function onResume() {
+  if (resuming.value || !run.value) return
+  const id = run.value.id || activeRunId.value
+  if (!id) { actionError.value = '未取得运行标识，无法重试；请返回范围页重新确认后生成。'; return }
+  resuming.value = true
+  actionError.value = ''
+  actionNote.value = ''
+  try {
+    const result = await resumeRun(props.taskId, id)
+    if (result.runId) activeRunId.value = result.runId
+    // 重试是服务端行为：本地只回到「排队中」，attempt、阶段与错误都以轮询返回的服务端值为准。
+    run.value = { ...run.value, state: 'queued', error: null }
+    actionNote.value = '已提交重试：已完成阶段的结果保留，运行从匹配到的检查点继续。'
+    stopPolling()
+    schedulePoll()
+  } catch (error) {
+    actionError.value = errorMessage(error)
+  } finally {
+    resuming.value = false
+  }
+}
+
+watch(() => props.runId, next => {
+  const value = next || ''
+  if (value === activeRunId.value) return
+  activeRunId.value = value
+  run.value = null
+  loading.value = true
+  stopPolling()
+  void poll()
+})
+watch(() => props.taskId, () => {
+  run.value = null
+  taskStatus.value = ''
+  activeRunId.value = props.runId || ''
+  loading.value = true
+  notFound.value = false
+  loadError.value = ''
+  stopPolling()
+  void poll()
+})
+
+onMounted(() => { void poll() })
+onUnmounted(() => {
+  disposed = true
+  stopPolling()
+})
+</script>
+
+<template>
+<div class="bp-progress">
+  <header class="bp-head">
+    <div>
+      <h1>构建本体初稿</h1>
+      <p class="muted">按确认范围分析证据。此阶段不会创建正式本体。</p>
+    </div>
+    <div class="bp-head-actions">
+      <span class="status-pill" :class="badgeTone">{{ stateLabel }}</span>
+      <button type="button" :disabled="refreshing" @click="refreshNow()">{{ refreshing ? '刷新中…' : '刷新状态' }}</button>
+      <button type="button" @click="emit('back')">← 返回范围</button>
+    </div>
+  </header>
+
+  <p
+    v-if="stateNote !== ''"
+    class="bp-state-note"
+    :class="{ 'bp-state-bad': run?.state === 'failed' || run?.state === 'interrupted' }"
+  >{{ stateNote }}</p>
+
+  <AppError
+    v-if="notFound"
+    title="未找到该生成批次"
+    reason="任务或运行可能已被删除、不属于当前账号，或还没有启动过生成。"
+    hint="请返回上一步确认范围后重新启动生成；已有材料与范围不会丢失。"
+    retry-label="重新加载"
+    secondary-label="返回范围"
+    @retry="refreshNow()"
+    @secondary="emit('back')"
+  />
+  <AppError
+    v-else-if="loadError !== ''"
+    title="读取生成进度失败"
+    :reason="loadError"
+    hint="任务在服务端后台继续执行，离开页面不会中断；恢复读取后再评估结果。"
+    retry-label="重新加载"
+    @retry="refreshNow()"
+  />
+
+  <div class="bp-grid">
+    <!-- 左：处理阶段与操作 -->
+    <section class="card bp-stages-card">
+      <h2>处理阶段</h2>
+      <p v-if="loading && !run" class="muted">正在读取运行状态…</p>
+      <template v-else-if="run">
+        <p class="bp-progress-line">
+          <strong>{{ progressText }}</strong>
+          <span v-if="run.attempt > 1" class="muted"> · 第 {{ run.attempt }} 次尝试</span>
+          <span v-if="taskStatus" class="muted"> · 任务阶段：{{ taskStatus }}</span>
+        </p>
+        <div v-if="progressPercent !== null" class="bp-bar" role="progressbar" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100">
+          <span :style="{ width: progressPercent + '%' }"></span>
+        </div>
+      </template>
+
+      <ol class="bp-stages">
+        <li v-for="(stage, i) in STAGE_ORDER" :key="stage" class="bp-stage" :class="'bp-' + stageStatus(i)">
+          <span class="bp-circle">{{ stageStatus(i) === 'done' ? '✓' : i + 1 }}</span>
+          <div class="bp-stage-body">
+            <strong>{{ labelOf(STAGE_LABELS, stage, stage) }}</strong>
+            <p class="muted">
+              {{ stageStatus(i) === 'failed' ? '在此阶段失败，已完成阶段的结果保留'
+                : stageStatus(i) === 'current' ? '当前处理中'
+                : stageStatus(i) === 'done' ? '已完成' : '待处理' }}
+            </p>
+          </div>
+          <span class="status-pill bp-stage-badge" :class="stageStatus(i) === 'failed' ? 'pill-error' : stageStatus(i) === 'done' ? 'pill-ok' : ''">
+            {{ STAGE_STATUS_TEXT[stageStatus(i)] }}
+          </span>
+        </li>
+      </ol>
+
+      <div v-if="run && runErrorText(run) !== ''" class="bp-error-text">
+        <span class="eyebrow">失败原因原文</span>
+        {{ runErrorText(run) }}
+        <span v-if="!runErrorRetryable(run)" class="muted">
+          （服务端标记为不可重试的结构性失败：请先修正范围或材料，再重新确认生成）
+        </span>
+      </div>
+
+      <div class="bp-actions">
+        <button v-if="running" type="button" class="danger-ghost" :disabled="cancelling" @click="onCancel()">
+          {{ cancelling ? '正在取消…' : '取消生成' }}
+        </button>
+        <button
+          v-if="run && isTerminal(run.state) && run.state !== 'succeeded'"
+          type="button" class="primary" :disabled="resuming" @click="onResume()"
+        >
+          {{ resuming ? '正在提交重试…' : '重试 / 继续生成' }}
+        </button>
+        <button v-if="run && run.state === 'succeeded'" type="button" class="primary" @click="emit('review')">评审初稿 →</button>
+      </div>
+      <p v-if="running" class="muted bp-hint">取消不保证立即终止已发出的模型请求，但晚到的结果不会写入当前批次。</p>
+      <p v-if="actionNote !== ''" class="inline-success">{{ actionNote }}</p>
+      <p v-if="actionError !== ''" class="inline-error">{{ actionError }}</p>
+    </section>
+
+    <!-- 右：本次生成依据 -->
+    <section class="card bp-baseline">
+      <h2>本次生成依据</h2>
+      <p class="muted">确认范围时冻结的输入基线（不含任何密钥）：</p>
+      <dl class="bp-rows">
+        <template v-for="row in baselineRows" :key="row.label">
+          <dt>{{ row.label }}</dt>
+          <dd>{{ row.value }}</dd>
+        </template>
+        <template v-if="run && run.batchId">
+          <dt>批次</dt>
+          <dd>{{ run.batchId }}</dd>
+        </template>
+      </dl>
+      <p class="muted bp-note">此阶段不会创建正式本体：生成结果只是任务内的候选初稿，需人工评审后才可保存为新本体。</p>
+      <details class="bp-details">
+        <summary>运行与重试边界</summary>
+        <p class="muted">任务在服务端后台执行，离开页面不会中断；服务重启后运行会标记为中断并允许重试，不会伪装成运行中。</p>
+        <p class="muted">重试复用已匹配的检查点，不重复已完成的阶段；已发出的模型请求无法撤回，但晚到的结果不会写入当前批次。</p>
+      </details>
+      <div v-if="usageRows.length > 0" class="bp-usage">
+        <p class="eyebrow">任务用量（次要信息）</p>
+        <ul class="bp-usage-list">
+          <li v-for="row in usageRows" :key="row.label">{{ row.label }}：{{ row.value }}</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+</div>
+</template>
+
+<style scoped>
+.bp-progress{display:flex;flex-direction:column;gap:14px}
+.bp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.bp-head h1{font-size:21px;margin:0 0 6px;display:flex;align-items:center;gap:8px}
+.bp-head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bp-state-note{border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-md);padding:10px 14px;font-size:13px;margin:0}
+.bp-state-bad{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
+.bp-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(330px,.85fr);gap:16px;align-items:start}
+.bp-stages-card,.bp-baseline{margin-bottom:0}
+.bp-progress-line{margin:0 0 8px;font-size:14px}
+.bp-bar{height:6px;border-radius:var(--r-pill);background:var(--paper-3);overflow:hidden;margin:0 0 12px}
+.bp-bar span{display:block;height:100%;background:var(--blue)}
+.bp-stages{list-style:none;margin:0;padding:0}
+.bp-stage{display:flex;gap:14px;align-items:flex-start;padding:15px 0;border-bottom:1px solid var(--line)}
+.bp-stage:last-child{border-bottom:0}
+.bp-circle{width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--paper-3);color:var(--muted);font-size:13px}
+.bp-done .bp-circle{background:var(--ok-soft);color:var(--ok)}
+.bp-current .bp-circle{background:var(--blue);color:var(--paper)}
+.bp-failed .bp-circle{background:var(--danger-soft);color:var(--danger)}
+.bp-stage-body{flex:1;min-width:0}
+.bp-stage-body strong{display:block;font-size:14px}
+.bp-stage-body p{margin:2px 0 0;font-size:13px}
+.bp-stage-badge{margin-left:auto}
+.bp-error-text{margin:14px 0 0;padding:10px 12px;border:1px solid var(--danger-line);background:var(--danger-soft);color:var(--danger);border-radius:var(--r-sm);font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+.bp-error-text .eyebrow{display:block;color:var(--danger);margin-bottom:4px}
+.bp-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}
+.bp-hint{margin:10px 0 0}
+.danger-ghost{color:var(--danger);border-color:var(--danger-line)}
+.danger-ghost:hover{background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)}
+.bp-rows{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;margin:12px 0}
+.bp-rows dt{font-size:12px;color:var(--muted)}
+.bp-rows dd{margin:0;font-size:13px;overflow-wrap:anywhere}
+.bp-note{margin-top:6px}
+.bp-details{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.bp-details p{margin:0 0 8px}
+.bp-usage{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.bp-usage-list{margin:6px 0 0;padding-left:20px;font-size:12px;color:var(--muted);line-height:1.8}
+.pill-warn{background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)}
+@media (max-width:1100px){.bp-grid{grid-template-columns:1fr}}
+</style>

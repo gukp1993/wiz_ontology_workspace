@@ -9,3 +9,9 @@ SQLAlchemy>=2.0,<2.1
 alembic>=1.13,<2
 # 凭据 AES-GCM 认证加密（SecretStore 根密钥在库外）
 cryptography>=42,<46
+# 「从物料自动构建本体」文本型 PDF 解析（验收缺陷 D15，2026-09-21）：
+# workbench/ontology_build/parsers/pdf_parser.py 优先 import pypdf（其次 PyPDF2），
+# 两者都缺失时按降级路径显式失败，绝不自动 pip install。
+# 版本在本任务 worktree 的 .venv（Python 3.9.6 / macOS）实测可用：pypdf 6.19.0，
+# 其传递依赖 typing_extensions 由 pip 自动安装。
+pypdf>=6.1,<7

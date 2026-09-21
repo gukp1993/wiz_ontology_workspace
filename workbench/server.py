@@ -31,6 +31,7 @@ from urllib.parse import urlsplit, parse_qs
 from workbench import auth, auth_routes
 from workbench import model_routes, project_routes, projects, versions, workspaces
 from workbench import config_package_routes, flow_routes, storage
+from workbench import ontology_build_routes as build_routes
 from workbench.config_packages import ImportConflict, TokenError
 from workbench.config_package_format import PackageFormatError
 from workbench.storage.configuration import CatalogCacheUnreadable as _catalog_unreadable
@@ -60,6 +61,17 @@ GET_ROUTES = {
     '/api/llm-providers': flow_routes.get_llm_providers,
     '/api/storage-status': model_routes.get_storage_status,
     '/api/model-definitions': model_routes.get_model_definitions,
+    # 从物料自动构建本体（08 分册）
+    '/api/build-capabilities': build_routes.get_capabilities,
+    '/api/build-tasks': build_routes.get_tasks,
+    '/api/build-task': build_routes.get_task,
+    '/api/build-materials': build_routes.get_materials,
+    '/api/build-run': build_routes.get_run,
+    '/api/build-messages': build_routes.get_messages,
+    '/api/build-candidates': build_routes.get_candidates,
+    '/api/build-candidate': build_routes.get_candidate,
+    '/api/build-diff': build_routes.get_diff,
+    '/api/build-delivery': build_routes.get_delivery,
 }
 
 # 已注册但响应体不是 JSON 的端点（ZIP 等二进制）。
@@ -109,6 +121,30 @@ POST_ROUTES = {
     '/api/llm-provider-delete': flow_routes.post_llm_provider_delete,
     '/api/llm-provider-default': flow_routes.post_llm_provider_default,
     '/api/llm-provider-test': flow_routes.post_llm_provider_test,
+    # 从物料自动构建本体（08 分册）：长任务一律返回 runId，后台执行不持锁
+    '/api/build-task-create': build_routes.post_task_create,
+    '/api/build-task-rename': build_routes.post_task_rename,
+    '/api/build-task-delete': build_routes.post_task_delete,
+    '/api/build-upload-init': build_routes.post_upload_init,
+    '/api/build-upload-chunk': build_routes.post_upload_chunk,
+    '/api/build-upload-complete': build_routes.post_upload_complete,
+    '/api/build-upload-abort': build_routes.post_upload_abort,
+    '/api/build-material-exclude': build_routes.post_material_exclude,
+    '/api/build-material-retry': build_routes.post_material_retry,
+    '/api/build-scan': build_routes.post_scan,
+    '/api/build-run-cancel': build_routes.post_run_cancel,
+    '/api/build-run-resume': build_routes.post_run_resume,
+    '/api/build-message': build_routes.post_message,
+    '/api/build-scope-save': build_routes.post_scope_save,
+    '/api/build-scope-confirm': build_routes.post_scope_confirm,
+    '/api/build-candidate-update': build_routes.post_candidate_update,
+    '/api/build-candidate-decide': build_routes.post_candidate_decide,
+    '/api/build-candidates-merge': build_routes.post_candidates_merge,
+    '/api/build-review-undo': build_routes.post_review_undo,
+    '/api/build-regenerate': build_routes.post_regenerate,
+    '/api/build-diff-resolve': build_routes.post_diff_resolve,
+    '/api/build-deliver-precheck': build_routes.post_deliver_precheck,
+    '/api/build-deliver': build_routes.post_deliver,
     '/api/config-package-export-preview': config_package_routes.post_export_preview,
     '/api/config-package-stage': config_package_routes.post_stage,
     '/api/config-package-import-preview': config_package_routes.post_import_preview,
@@ -235,6 +271,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._error(404, 'NOT_FOUND', str(exc))
         except workspaces.WorkspaceNotFound as exc:
             return self._error(404, 'NOT_FOUND', str(exc))
+        except storage.NotFound as exc:
+            # 存储层「不存在」（含跨账号按不存在处理）：GET 必须 404，不能落 500
+            return self._error(404, 'NOT_FOUND', str(exc))
         except storage.StorageUnavailable as exc:
             # 库不可用/锁超时/schema 缺失：明确可重试的基础设施错误，绝不回退文件
             return self._error(503, 'STORAGE_UNAVAILABLE', str(exc), close=True)
@@ -316,6 +355,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._error(409, 'DUPLICATE_NAME', str(exc))
         except workspaces.WorkspaceNotFound as exc:
             return self._error(404, 'NOT_FOUND', str(exc))
+        except storage.NotFound as exc:
+            # 存储层「不存在」（含跨账号按不存在处理）：POST 同样 404
+            return self._error(404, 'NOT_FOUND', str(exc))
         except TokenError as exc:
             return self._error(*(lambda r: (r[1], r[0]['code'], r[0]['error']))(config_package_routes._token_response(exc)))
         except PackageFormatError as exc:
@@ -337,7 +379,15 @@ class Handler(SimpleHTTPRequestHandler):
             # 路由层正常已按连接 id 处理损坏条目；到达此处按存储不可用 fail-closed。
             return self._error(503, 'STORAGE_UNAVAILABLE', str(exc), close=True)
         except ValueError as exc:
-            # 业务层显式输入校验（既有约定：raise ValueError(<中文消息>) = 客户端错误）
+            # 域层用 issues 表达「结构/依赖阻断」（08 §8），用 code 表达细分错误码。
+            # 携带 issues 的异常是 422（可定位到具体候选/定义），不是 400 形态错误。
+            issues = getattr(exc, 'issues', None)
+            code = getattr(exc, 'code', None) or 'INVALID_ARGUMENT'
+            if issues:
+                return self._error(422, code, str(exc), extra={'issues': issues})
+            status = getattr(exc, 'status', None)
+            if status:
+                return self._error(status, code, str(exc))
             return self._error(400, 'INVALID_ARGUMENT', str(exc))
         except (KeyError, TypeError) as exc:
             # 请求形态不符（如缺 state 字段）：消息泛化，细节进日志，不回传异常文本
@@ -363,6 +413,17 @@ if __name__ == '__main__':
     port = int(os.environ.get('WIZ_WORKBENCH_PORT') or 18765)
     if port == 8765:
         raise SystemExit('端口 8765 已保留给其他服务；本工作台固定 18765（可用 WIZ_WORKBENCH_PORT 覆盖为其他端口）')
+    # 后台任务：上次进程遗留的 queued/running 一律标 interrupted（绝不显示假运行中），
+    # 并把超时未完成的上传临时内容做有界清理（解析/上传都不持有全局锁）。
+    try:
+        from workbench.ontology_build import runner as build_runner
+        from workbench.ontology_build import materials as build_materials
+        from workbench.storage.engine import write_tx as _write_tx
+        build_runner.interrupt_stale_runs()
+        with _write_tx() as _tx:
+            _tx.run(lambda conn: build_materials.cleanup_expired(conn))
+    except Exception:
+        pass
     # 过期会话清理（维护型，失败不影响启动：下次请求仍会按过期判定拒绝）
     try:
         auth.purge_expired()

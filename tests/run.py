@@ -31,6 +31,7 @@ TESTS = REPO / 'tests'
 # 其余 python 测试（纯逻辑 / 直调存储层）：按目录实际存在且不在 HTTP/QUICK 组的
 # test_*.py 运行时推导，防止清单与目录漂移导致漏跑或跑到不存在的文件。
 HTTP_TESTS = [
+    'test_ontology_build.py',           # 20260920：从物料生成本体端到端（合成物料+本地假 LLM，动态端口/临时根）
     'test_references.py',               # 20260920：草稿悬空引用检查与保存边界
     'test_publish_guards.py',           # 20260920 v2：发布幂等/依赖重验/保存边界/升级基线（端口 18841）
     'test_mapping_descriptions.py',     # 20260919：说明块保存/校验（端口 18801，固定端口须串行）
@@ -113,6 +114,8 @@ def main(argv):
             print('用法：python3 tests/run.py --test <文件名>')
             return 2
         explicit_test = argv[idx + 1]
+        # 只取文件名：同时兼容 `--test test_x.py` 与 `--test tests/test_x.py` 两种写法
+        explicit_test = Path(explicit_test).name
         target = [explicit_test]
         group_name = '--test'
     else:
