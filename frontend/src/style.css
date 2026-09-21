@@ -16,8 +16,10 @@
   --dur:.12s;--ease:cubic-bezier(.2,.6,.3,1)
 }
 /* 基元 hover 必须写成 :where(:not(:disabled))，不能写成 :not(:disabled)：后者多给一级类特异性 (0,2,1)，
-   会反吃 nav button:hover(0,1,2)、.row-link.danger:hover(0,3,0) 等所有类级 hover 覆盖，
-   侧栏按钮与行内删除链接的配色会被基元整体抢走。:where() 特异性为 0，既屏蔽禁用态又不抬高权重。 */
+   会反吃所有 (0,1,1)~(0,2,0) 的按钮级 hover 覆盖——实测受害者是 nav button:hover(0,1,2)、
+   .primary:where(:not(:disabled)):hover(0,2,0)、.danger-btn:where(:not(:disabled)):hover(0,2,0)，
+   侧栏按钮与主/危险按钮的配色会被基元整体抢走。(0,3,0) 及以上（如 .row-link.danger:hover）不受影响，
+   不要拿它当例子。:where() 特异性为 0，既屏蔽禁用态又不抬高权重。 */
 *{box-sizing:border-box}body{margin:0;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;color:var(--ink);background:var(--bg)}button,input,select,textarea{font:inherit}button{cursor:pointer;border:1px solid var(--line);background:var(--paper);border-radius:var(--r-sm);padding:6px 13px;color:var(--ink)}button:where(:not(:disabled)):hover{border-color:var(--blue);color:var(--blue)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.primary{background:var(--blue);color:var(--paper);border-color:var(--blue)}.primary:where(:not(:disabled)):hover{background:var(--blue-deep);color:var(--paper)}
 /* 破坏性动作用 filled-danger 变体：全局 .danger 是文字色工具类（带 margin/font-size），不能当按钮用 */
 .danger-btn{background:var(--paper);color:var(--danger);border-color:var(--danger-line)}.danger-btn:where(:not(:disabled)):hover{background:var(--danger-soft);color:var(--danger);border-color:var(--danger)}
