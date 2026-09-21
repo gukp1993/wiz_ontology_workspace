@@ -20,6 +20,8 @@ import { effectiveConfig } from '../ontology/formattingOptions'
 export type PropertyAssistTargetKind = 'property' | 'sharedProperty'
 
 export interface PropertyAssistOptions {
+  /** 本体区必填：当前本体工作区 id */
+  ontologyId?: string
   /** 组件本地草稿节点 getter（reactive draft；返回空值时快照为空对象、apply/restore 无操作） */
   draft: () => any
   targetKind: PropertyAssistTargetKind
@@ -41,6 +43,7 @@ const rangeIdOf = (d: any): string => d?.['rdfs:range']?.['@id'] || 'xsd:string'
 export function propertyAssistBinding(opts: PropertyAssistOptions): AssistHostBinding {
   return {
     space: 'ontology',
+    ontologyId: opts.ontologyId || '',
     targetKind: opts.targetKind,
     targetId: opts.targetId,
     contextTitle: opts.targetKind === 'sharedProperty' ? '共享属性定义' : '属性定义',

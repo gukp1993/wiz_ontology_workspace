@@ -233,13 +233,16 @@ function goExternal(dep: any) {
 // 关闭编辑器（含 rows 变化退回列表）面板一并收起。
 const assistApi = inject<AssistApi>('assist-api') // 测试注入桩；缺省 null → 面板内部用 defaultAssistApi()
 const assistOpen = ref(false)
+const ontologyId = inject<string>('ontology-id', 'storage')
 const assistPanelRef = ref<{ notifyDraftChanged(): void } | null>(null)
 const assistTouchTick = ref(0) // 手改字段次数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
 const assistBinding = computed(() => {
   if (mode.value !== 'edit' || !draft.value) return null
   const record = actionById(editId.value)
   return actionAssistBinding(draft.value, {
-    targetId: editId.value, // openNew 已预生成；异常为空时由工厂兜底 ''
+    // 新建（未保存）动作传空 targetId：后端按「新建动作定义」出上下文；已存在的才发真实 id（DEF-02）
+    targetId: editingExisting.value ? editId.value : '',
+    ontologyId: ontologyId,
     contextTitle: record ? '维护「' + (record.name || '未命名动作') + '」的动作定义' : '新建动作定义',
   })
 })

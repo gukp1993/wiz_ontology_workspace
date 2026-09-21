@@ -46,6 +46,7 @@ const isNew = computed(() => !props.propertyId)
 const readonly = computed(() => props.kind === 'property' && !!sharedRefId.value && !editingShared.value)
 
 // ── 本地草稿：编辑对象节点的深拷贝（PropertyFormatting 在草稿上原位改动），保存时按受控键合入真实节点 ──
+const assistOntologyId = inject<string>('ontology-id', 'storage')
 const draft = ref<any>(null)
 let original = ''
 // 表单受控键：合入时“草稿有则覆盖、无则删除”，其余未知字段/稳定 ID 原样保留。
@@ -185,6 +186,7 @@ const assistTargetId = computed(() => editingShared.value ? sharedRefId.value : 
 function buildAssistBinding(): AssistHostBinding {
   const inner = propertyAssistBinding({
     draft: () => draft.value,
+    ontologyId: assistOntologyId,
     targetKind: assistTargetKind.value,
     targetId: assistTargetId.value,
     isTimeSeries: () => selectedType.value === 'timeSeries',

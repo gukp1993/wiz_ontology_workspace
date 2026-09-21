@@ -14,6 +14,8 @@ export type RuleAssistDraft = { name: string; description: string; content: stri
 export type ActionAssistDraft = { name: string; description: string; effect: string }
 
 export interface WorkflowAssistOptions {
+  /** 本体区必填：当前本体工作区 id */
+  ontologyId?: string
   /** 编辑目标稳定 id（规则/动作 id）；新建尚未入库时传 ''（动作新建已预生成 id 则直接用之） */
   targetId?: string
   /** 未取到上下文时的兜底标题（取到后面板改用 context.title） */
@@ -43,6 +45,7 @@ function replaceInPlace(draft: Record<string, unknown>, snap: unknown): void {
 export function ruleAssistBinding(editorDraft: RuleAssistDraft | null | undefined, options: WorkflowAssistOptions = {}): AssistHostBinding {
   return {
     space: 'ontology',
+    ontologyId: options.ontologyId || '',
     targetKind: 'rule',
     targetId: options.targetId || '',
     contextTitle: options.contextTitle || '业务规则辅助填写',
@@ -57,6 +60,7 @@ export function ruleAssistBinding(editorDraft: RuleAssistDraft | null | undefine
 export function actionAssistBinding(editorDraft: ActionAssistDraft | null | undefined, options: WorkflowAssistOptions = {}): AssistHostBinding {
   return {
     space: 'ontology',
+    ontologyId: options.ontologyId || '',
     targetKind: 'action',
     targetId: options.targetId || '',
     contextTitle: options.contextTitle || '动作定义辅助填写',

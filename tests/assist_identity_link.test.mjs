@@ -7,6 +7,8 @@
 // apply 忽略连接/表/主键、mode 守卫、快照就地恢复且不触达 instances）；② P1 入口与面板、上下文
 // 请求体、采纳只改本地草稿（form-save 零调用）、手改过期、registered 采纳拦截、说明随保存落盘；
 // ③ P5 入口与面板、采纳四字段+说明、撤销、手改过期；④ 切换编辑目标以新 binding 重开；⑤ 关闭编辑器收起。
+// 2026-09-22 适配默认勾选门控（useAssistPanel，需求 §3.5）：ready 且宿主草稿旧值为空才默认勾选，
+// 替换非空旧值的建议默认不勾——替换类用例改为显式 setChecked 后采纳，并新增门控断言。
 // 已知边界：SSR 渲染不执行 onMounted（面板自动取上下文）与模板 ref 填充（notify 通道），
 // 由「驱动面板暴露的状态机 + 手改计数 + typecheck」覆盖，浏览器实链路留给独立验收。
 import assert from 'node:assert/strict'
@@ -297,6 +299,12 @@ try {
       await ctx.panel.generate()
       assert.equal(ctx.assist.calls.generate.length, 1)
       assert.equal(ctx.assist.calls.generate[0].contextToken, 'tok-1')
+      // 默认勾选门控（需求 §3.5）：connection/primaryKey/note 旧值非空 → ready 建议默认不勾；替换已有值须显式勾选
+      assert.equal(ctx.panel.checked.value['s1'], false, 'connection/primaryKey 旧值非空 → s1 默认 checked=false')
+      assert.equal(ctx.panel.checked.value['s2'], false, 'note 旧值非空 → s2 默认 checked=false')
+      assert.equal(ctx.panel.selectedCount.value, 0, '建议全部替换非空旧值时默认选中数为 0')
+      ctx.panel.setChecked('s1', true) // 替换已有值：经勾选路径后再采纳
+      ctx.panel.setChecked('s2', true)
       assert.equal(ctx.panel.adopt(), true)
       assert.equal(ctx.api.identityDraft.value.connection, 'db2')
       assert.equal(ctx.api.identityDraft.value.primary_key, 'sn', 'primaryKey 采纳写回 primary_key')
@@ -339,6 +347,8 @@ try {
         { id: 'r1', label: '登记模式下的连接建议', fieldKeys: ['connection'], proposed: { connection: 'dbX', note: '登记实例的业务含义说明。' }, state: 'ready' },
       ] })
       await ctx.panel.generate()
+      // 默认勾选门控（需求 §3.5）正向：registered 快照无 connection 键（视为空）→ ready 建议默认勾选
+      assert.equal(ctx.panel.checked.value['r1'], true, 'registered 草稿无 connection 键（旧值为空）→ r1 默认勾选')
       assert.equal(ctx.panel.adopt(), true)
       assert.equal(ctx.api.identityDraft.value.connection, 'db2', 'registered 模式采纳忽略连接键')
       assert.equal(ctx.api.noteDraft.value, '登记实例的业务含义说明。')

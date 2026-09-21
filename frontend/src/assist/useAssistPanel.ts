@@ -30,6 +30,8 @@ import type {
 export interface AssistHostBinding {
   space: AssistSpace
   projectId?: string
+  /** 本体区必填：当前编辑的本体工作区 id（后端按它构建上下文与指纹；缺省回落默认工作区） */
+  ontologyId?: string
   targetKind: AssistTargetKind
   targetId: string
   /** 未取到上下文时的兜底标题（取到后用 context.title） */
@@ -49,6 +51,7 @@ export interface AssistApi {
   context(body: {
     space: AssistSpace
     projectId?: string
+    ontologyId?: string
     targetKind: AssistTargetKind
     targetId: string
     purpose: AssistMode
@@ -246,6 +249,7 @@ export function useAssistPanel(api: AssistApi = defaultAssistApi()): AssistPanel
       const resp = await api.context({
         space: host.space,
         projectId: host.projectId,
+        ontologyId: host.ontologyId,
         targetKind: host.targetKind,
         targetId: host.targetId,
         purpose: tab.value,
@@ -312,7 +316,16 @@ export function useAssistPanel(api: AssistApi = defaultAssistApi()): AssistPanel
       if (my !== req) return // 迟到响应：按代际丢弃
       result.value = resp
       checked.value = {}
-      for (const s of resp.suggestions) checked.value[s.id] = s.state === 'ready' // 默认 ready 全勾选
+      // 默认勾选门控（需求 §3.5）：仅原值为空/占位的 ready 建议默认勾选；替换真实旧值默认不勾
+      const curDraft = host ? host.draft() : {}
+      const isEmptyVal = (v: unknown): boolean =>
+        v === undefined || v === null || v === '' ||
+        (Array.isArray(v) && v.length === 0) ||
+        (v !== null && typeof v === 'object' && Object.keys(v as object).length === 0)
+      for (const s of resp.suggestions) {
+        const replaces = s.fieldKeys.some(k => !isEmptyVal(curDraft ? (curDraft as Record<string, unknown>)[k] : undefined))
+        checked.value[s.id] = s.state === 'ready' && !replaces
+      }
       justAdopted.value = false
       // 结果对应「发出时刻」的草稿；期间草稿若又变了按指纹置过期
       stale.value = host ? JSON.stringify(host.draft()) !== contextDraftJson : stale.value

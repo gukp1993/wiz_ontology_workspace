@@ -645,14 +645,14 @@ def build_context(space, project_id, target_kind, target_id, purpose, draft,
                      'fp': fingerprint,
                      'dh': assist_fields.canonical_hash(cleaned),
                      'exp': time.time() + assist_fields.TOKEN_TTL,
-                     'purpose': purpose}
+                     'purpose': purpose, 'ontologyId': str(ontology_id or 'storage')}
     return {'contextToken': sign_token(token_payload),
             'contextFingerprint': fingerprint,
             'context': context}, token_payload
 
 
 def check_generate(token_payload, space, project_id, target_kind, target_id, draft,
-                   expected_fingerprint_fn):
+                   expected_fingerprint_fn, ontology_id='storage'):
     """assist-generate 前置校验（§5.2）：uid/目标/draft 摘要/权威指纹，任一不符 ContextStale。
 
     `expected_fingerprint_fn`：注入的当前权威指纹重算函数（测试可替换；生产传
@@ -667,7 +667,8 @@ def check_generate(token_payload, space, project_id, target_kind, target_id, dra
     if (str(token_payload.get('space') or '') != space
             or str(token_payload.get('projectId') or '') != str(project_id or '')
             or str(token_payload.get('targetKind') or '') != target_kind
-            or str(token_payload.get('targetId') or '') != str(target_id or '').strip()):
+            or str(token_payload.get('targetId') or '') != str(target_id or '').strip()
+            or str(token_payload.get('ontologyId') or 'storage') != str(ontology_id or 'storage')):
         raise ContextStale('编辑目标已变化，请重新获取上下文')
     cleaned, _draft_kind = assist_fields.normalize_draft(target_kind, draft)
     if assist_fields.canonical_hash(cleaned) != str(token_payload.get('dh') or ''):

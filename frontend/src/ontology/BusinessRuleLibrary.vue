@@ -27,6 +27,7 @@ import { useOntTable } from './ontList'
 import { objectsOfRule, RULE_FIELDS, RULE_LEGACY_FIELDS, rulesOf, ruleFieldErrors } from './businessRuleModel'
 import { externalDependencies, externalDependencyTarget, ruleDeleteCheck } from './dependencyModel'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
+const assistOntologyId = inject<string>('ontology-id', 'storage')
 
 // canvasReturn（20260919 图谱优化）：非空表示从本体图谱「打开定义」跳转而来，页头显示「返回图谱」（前端可选上下文）。
 // returnTo（S4，20260920 验收）：从资产库外部依赖「去处理」跳转而来时的来源定义上下文（App 分发）。
@@ -217,6 +218,7 @@ const assistBinding = computed(() => {
   if (mode.value !== 'edit' || !draft.value) return null
   const record = isNewRule.value ? null : rows.value.find((r: any) => r.id === editId.value)
   return ruleAssistBinding(draft.value, {
+    ontologyId: assistOntologyId,
     targetId: isNewRule.value ? '' : editId.value,
     contextTitle: isNewRule.value ? '新建业务规则' : '维护「' + (record?.name || '未命名规则') + '」的业务规则',
   })

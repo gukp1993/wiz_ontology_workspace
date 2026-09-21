@@ -93,8 +93,11 @@ def handle_context(payload):
         draft = {}
     if not isinstance(draft, dict):
         raise ValueError('draft 必须是 JSON 对象')
+    # 本体工作区 id 可选：省略/空 = 默认工作区 storage（接口文档 04 §5.1）
+    ontology_id = (_require_str(payload, 'ontologyId', required=False, max_len=120,
+                                label='ontologyId') or 'storage') if space == 'ontology' else 'storage'
     result, _token_payload = assist_context.build_context(
-        space, project_id, target_kind, target_id, purpose, draft)
+        space, project_id, target_kind, target_id, purpose, draft, ontology_id=ontology_id)
     return result
 
 
@@ -128,13 +131,15 @@ def handle_generate(payload):
     project_id = str(token_payload.get('projectId') or '')
     target_kind = str(token_payload.get('targetKind') or '')
 
+    ontology_id = str(token_payload.get('ontologyId') or 'storage')
     context_payload, _tp = assist_context.build_context(
         space, project_id, target_kind, str(token_payload.get('targetId') or ''),
-        mode, draft)
+        mode, draft, ontology_id=ontology_id)
     normalized = assist_context.check_generate(
         token_payload, space, project_id, target_kind,
         str(token_payload.get('targetId') or ''), draft,
-        expected_fingerprint_fn=lambda: str(context_payload.get('contextFingerprint') or ''))
+        expected_fingerprint_fn=lambda: str(context_payload.get('contextFingerprint') or ''),
+        ontology_id=ontology_id)
     context = context_payload['context']
     if not context.get('modelReady'):
         raise AssistServiceError(422, 'MODEL_NOT_CONFIGURED',

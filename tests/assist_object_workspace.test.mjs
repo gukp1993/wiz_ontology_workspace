@@ -5,6 +5,8 @@
 // 覆盖：① binding 工厂白名单/合并/快照恢复；② 辅助入口与面板出现、目标标题、上下文请求体；
 // ③ 采纳只改本地草稿且绝不触发表单保存、出现「尚未保存」提示；④ 手改后采纳被草稿指纹拦下、
 // 撤销失效、手改通知已发出；⑤ 切换编辑目标以新 binding 重开；⑥ 链接编辑器同链路；⑦ 关闭编辑器面板收起。
+// 2026-09-22 适配默认勾选门控（useAssistPanel，需求 §3.5）：ready 且宿主草稿旧值为空才默认勾选，
+// 替换非空旧值的建议默认不勾——替换类用例改为显式 setChecked 后采纳，并新增门控断言。
 // 已知边界：SSR 渲染不执行 onMounted（面板自动取上下文）与模板 ref 填充（notify 通道），
 // 这两处由「驱动面板暴露的状态机 + 手改计数 + typecheck」覆盖，浏览器实链路留给独立验收。
 import assert from 'node:assert/strict'
@@ -206,6 +208,12 @@ try {
       assert.equal(ctx.assist.calls.generate.length, 1)
       assert.equal(ctx.assist.calls.generate[0].contextToken, 'tok-1')
       assert.deepEqual(ctx.assist.calls.generate[0].draft, { label: '储能簇', comment: '一组电池簇' }, 'generate 携带当前草稿')
+      // 默认勾选门控（需求 §3.5）：label/comment 旧值非空 → ready 建议默认不勾；替换已有值须显式勾选
+      assert.equal(ctx.panel.checked.value['s1'], false, 'label 旧值非空 → s1 默认 checked=false')
+      assert.equal(ctx.panel.checked.value['s2'], false, 'comment 旧值非空 → s2 默认 checked=false')
+      assert.equal(ctx.panel.selectedCount.value, 0, '建议全部替换非空旧值时默认选中数为 0')
+      ctx.panel.setChecked('s1', true) // 替换已有值：经勾选路径后再采纳
+      ctx.panel.setChecked('s2', true)
       assert.equal(ctx.panel.adopt(), true)
       assert.equal(ctx.api.objectDraft.value.label, '储能单元')
       assert.equal(ctx.api.objectDraft.value.comment, '由电池簇、汇流与监测组件构成的储能单元。')
@@ -274,6 +282,11 @@ try {
         { id: 'l3', label: '越权改起点', fieldKeys: ['from'], proposed: { from: 'mg:site' }, state: 'ready' },
       ] })
       await ctx.panel.generate()
+      // 默认勾选门控（需求 §3.5）：reverseLabel 旧值为空 → 默认勾选；cardinality/from 旧值非空 → 默认不勾
+      assert.equal(ctx.panel.checked.value['l1'], false, 'cardinality 旧值非空 → l1 默认 checked=false')
+      assert.equal(ctx.panel.checked.value['l2'], true, 'reverseLabel 旧值为空 → l2（ready）默认勾选')
+      assert.equal(ctx.panel.checked.value['l3'], false, 'from 旧值非空 → l3 默认 checked=false')
+      ctx.panel.setChecked('l1', true) // 替换已有值：经勾选路径后再采纳
       ctx.panel.setChecked('l3', false) // 只采纳部分建议
       assert.equal(ctx.panel.selectedCount.value, 2)
       assert.equal(ctx.panel.adopt(), true)

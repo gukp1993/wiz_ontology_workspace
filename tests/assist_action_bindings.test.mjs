@@ -11,6 +11,8 @@
 // targetId/draft 白名单）、采纳只改本地草稿（form-save/commit-now 间谍零调用）、「尚未保存」提示、
 // 撤销恢复（含 auth 与参数行 id）、手改后面板过期与撤销保护解除；④ 关闭弹窗收起面板（closeNow 与
 // closeEditor 两条路径）；⑤ 切换动作目标重开（未保存新建 targetId 空、只读 flow 无入口、已配置目标重取上下文）。
+// 2026-09-22 适配默认勾选门控（useAssistPanel，需求 §3.5）：ready 且宿主草稿旧值为空才默认勾选，
+// 替换非空旧值的建议默认不勾——替换类用例改为显式 setChecked 后采纳，并新增门控断言。
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
@@ -261,6 +263,10 @@ try {
     ] })
     await panel.generate()
     n('③a generate 携带白名单快照与 contextToken', ctx.stub.calls.generate.length === 1 && ctx.stub.calls.generate[0].contextToken === 'tok-1' && !JSON.stringify(ctx.stub.calls.generate[0].draft).includes('auth'))
+    // 默认勾选门控（需求 §3.5）：草稿对应字段旧值均非空（path/method/parameters/note/auth+description）→ ready 建议默认不勾
+    n('③a2 默认勾选门控：替换非空旧值的 ready 建议默认 checked=false', panel.checked.value.s1 === false && panel.checked.value.s2 === false
+      && panel.checked.value.s3 === false && panel.checked.value.s4 === false && panel.selectedCount.value === 0, JSON.stringify(panel.checked.value))
+    panel.setChecked('s1', true); panel.setChecked('s2', true); panel.setChecked('s3', true); panel.setChecked('s4', true) // 替换已有值：经勾选路径后再采纳
     const authBeforeAdopt = clone(ctx.api.draft.value.auth) // 弹窗草稿里的认证（draftFrom 视图形态）
     const adopted = panel.adopt()
     n('③b 采纳成功', adopted === true)
@@ -290,6 +296,9 @@ try {
       { id: 's5', label: '接口说明二稿', fieldKeys: ['description'], proposed: { description: '第二次建议的说明' }, state: 'ready' },
     ] })
     await panel.generate()
+    // 默认勾选门控（需求 §3.5）：description 已被上一轮采纳为非空 → s5 默认不勾；显式勾选后采纳
+    n('④-0a 默认勾选门控：description 旧值非空 → s5 默认 checked=false', panel.checked.value.s5 === false, JSON.stringify(panel.checked.value))
+    panel.setChecked('s5', true)
     n('④-0 再次采纳可用且提示在位', panel.adopt() === true && ctx.api.draft.value.description === '第二次建议的说明' && panel.justAdopted.value === true && panel.canUndo.value === true)
 
     ctx.api.draft.value.path = 'https://hand.example.com/api/stop' // 等价表单手改（同一草稿对象）
@@ -325,6 +334,15 @@ try {
     await panelNew.open(bindingNew)
     const bodyNew = ctx.stub.calls.context[0]
     n('⑥d 新建目标上下文：targetId 空、草稿为空配置的白名单形态', bodyNew.targetId === '' && JSON.stringify(bodyNew.draft) === JSON.stringify({ method: 'POST', path: '', bodyFormat: 'json', description: '', parameters: [], note: '' }), JSON.stringify(bodyNew.draft))
+
+    // 默认勾选门控（需求 §3.5）正向：新建配置草稿对应字段为空 → ready 建议默认勾选；method 有默认值 POST → 默认不勾
+    ctx.stub.genQueue.push({ suggestions: [
+      { id: 'n1', label: '接口地址', fieldKeys: ['path'], proposed: { path: 'https://new.example.com/stop' }, state: 'ready' },
+      { id: 'n2', label: '请求方式', fieldKeys: ['method'], proposed: { method: 'PUT' }, state: 'ready' },
+      { id: 'n3', label: '接口说明', fieldKeys: ['description'], proposed: { description: '新建说明' }, state: 'ready' },
+    ] })
+    await panelNew.generate()
+    n('⑥d2 默认勾选门控：旧值为空的 ready 建议默认勾选，非空旧值（method 默认 POST）默认不勾', panelNew.checked.value.n1 === true && panelNew.checked.value.n2 === false && panelNew.checked.value.n3 === true, JSON.stringify(panelNew.checked.value))
 
     await ctx.api.closeEditor() // 干净关闭（无脏表单，不触发确认）：面板随弹窗收起
     n('⑥e closeEditor 关闭弹窗收起面板', ctx.api.assistVisible.value === false && ctx.api.assistBinding.value === null && ctx.api.meta.value === null)

@@ -180,7 +180,7 @@ def t1_normal_build_ontology():
     assert ctx['catalog'] == [] and ctx['flows'] == []
     assert '储能单元' in ctx['title'], ctx['title']
     # 字段载荷契约（T0 冻结键）
-    assert set(tp) == {'uid', 'space', 'projectId', 'targetKind', 'targetId', 'fp', 'dh', 'exp', 'purpose'}
+    assert set(tp) == {'uid', 'space', 'projectId', 'ontologyId', 'targetKind', 'targetId', 'fp', 'dh', 'exp', 'purpose'}
     assert tp['uid'] == UID and tp['space'] == 'ontology' and tp['projectId'] == ''
     assert tp['targetKind'] == 'object' and tp['targetId'] == 'mg:Station' and tp['purpose'] == 'fill'
     assert tp['exp'] > time.time()

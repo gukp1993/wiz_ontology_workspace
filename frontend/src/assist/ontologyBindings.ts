@@ -14,6 +14,8 @@ export type ObjectAssistDraft = { label: string; comment: string }
 export type LinkAssistDraft = { label: string; from: string; to: string; cardinality: string; reverseLabel: string; comment: string }
 
 export interface OntologyAssistOptions {
+  /** 本体区必填：当前本体工作区 id */
+  ontologyId?: string
   /** 编辑目标稳定 id（对象/链接 @id）；新建尚未保存时传 '' */
   targetId?: string
   /** 未取到上下文时的兜底标题（取到后面板改用 context.title） */
@@ -43,6 +45,7 @@ function replaceInPlace(draft: Record<string, unknown>, snap: unknown): void {
 export function objectAssistBinding(editorDraft: ObjectAssistDraft | null | undefined, options: OntologyAssistOptions = {}): AssistHostBinding {
   return {
     space: 'ontology',
+    ontologyId: options.ontologyId || '',
     targetKind: 'object',
     targetId: options.targetId || '',
     contextTitle: options.contextTitle || '对象定义辅助填写',
@@ -57,6 +60,7 @@ export function objectAssistBinding(editorDraft: ObjectAssistDraft | null | unde
 export function linkAssistBinding(linkDraft: LinkAssistDraft | null | undefined, options: OntologyAssistOptions = {}): AssistHostBinding {
   return {
     space: 'ontology',
+    ontologyId: options.ontologyId || '',
     targetKind: 'link',
     targetId: options.targetId || '',
     contextTitle: options.contextTitle || '业务链接辅助填写',

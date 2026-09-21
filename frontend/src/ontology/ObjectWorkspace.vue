@@ -256,13 +256,14 @@ async function saveLink() {
 // 变化由面板 watch 重开为新目标（重新取上下文）。
 const assistApi = inject<AssistApi>('assist-api') // 测试注入桩；缺省 null → 面板内部用 defaultAssistApi()
 const assistOpen = ref(false)
+const assistOntologyId = inject<string>('ontology-id', 'storage')
 const assistPanelRef = ref<{ notifyDraftChanged(): void } | null>(null)
 const assistTouchTick = ref(0) // 手改字段次数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
 const assistBinding = computed(() => {
   const e = editor.value
   if (!e) return null
-  if (e.kind === 'object') return objectAssistBinding(e.draft, { targetId: e.isNew ? '' : e.id, contextTitle: e.isNew ? '新建对象类型' : '维护「' + typeName(e.id) + '」的对象定义' })
-  if (e.kind === 'link') return linkAssistBinding(e.draft, { targetId: e.isNew ? '' : e.id, contextTitle: e.isNew ? '定义业务链接' : '维护链接「' + (e.draft.label || '未命名链接') + '」' })
+  if (e.kind === 'object') return objectAssistBinding(e.draft, { ontologyId: assistOntologyId, targetId: e.isNew ? '' : e.id, contextTitle: e.isNew ? '新建对象类型' : '维护「' + typeName(e.id) + '」的对象定义' })
+  if (e.kind === 'link') return linkAssistBinding(e.draft, { ontologyId: assistOntologyId, targetId: e.isNew ? '' : e.id, contextTitle: e.isNew ? '定义业务链接' : '维护链接「' + (e.draft.label || '未命名链接') + '」' })
   return null // 属性表单由 PropertyManager 自行接入（T6），不在本页挂面板
 })
 watch(assistBinding, b => { if (!b) assistOpen.value = false })

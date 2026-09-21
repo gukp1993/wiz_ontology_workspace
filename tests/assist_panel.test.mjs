@@ -136,7 +136,7 @@ async function openedPanel({ host, contextOver } = {}) {
 
 // ④ 采纳：只合并勾选且 ready 的建议；pending/blocked 拒绝勾选；同字段后者覆盖；先 snapshot 后 apply
 {
-  const { host, calls } = makeHost()
+  const { host, calls } = makeHost({ comment: '', name: 'soc' }) // 旧值为空 → ready 默认勾选
   const a = makeApi()
   a.plan.context.push(a.okContext())
   const panel = useAssistPanel(a.api)
@@ -175,6 +175,8 @@ async function openedPanel({ host, contextOver } = {}) {
   await panel.open(host)
   a.plan.generate.push(a.okGenerate({ body: { suggestions: [sug('s1', '业务定义', { comment: '新定义' })] } }))
   await panel.generate()
+  assert('⑤0 替换真实旧值的建议默认不勾选（需求 §3.5）', panel.checked.value.s1 === false, JSON.stringify(panel.checked.value))
+  panel.setChecked('s1', true) // 用户显式勾选才替换
   panel.adopt()
   assert('⑤a 采纳后宿主草稿已更新', host.draft().comment === '新定义')
   const okUndo = panel.undo()
@@ -184,6 +186,7 @@ async function openedPanel({ host, contextOver } = {}) {
   // 再采纳一次，然后宿主手改 → 撤销保护失效 + 结果过期
   a.plan.generate.push(a.okGenerate({ body: { suggestions: [sug('s2', '业务定义2', { comment: '再定义' })] } }))
   await panel.generate()
+  panel.setChecked('s2', true)
   panel.adopt()
   assert('⑤d 二次采纳成功', host.draft().comment === '再定义' && panel.canUndo.value === true)
   host.apply({ comment: '我手改的' })   // 模拟宿主表单手改（不经面板）
@@ -198,7 +201,9 @@ async function openedPanel({ host, contextOver } = {}) {
   await panel.refreshContext() // 重取上下文：令牌绑定手改后的草稿
   a.plan.generate.push(a.okGenerate({ body: { suggestions: [sug('s3', '过期后再来', { comment: '又定义' })] } }))
   await panel.generate()
-  assert('⑤i 重取上下文并重新生成后可再次采纳', panel.stale.value === false && panel.adopt() === true && host.draft().comment === '又定义')
+  panel.setChecked('s3', true)
+  const ok5i = panel.adopt()
+  assert('⑤i 重取上下文并重新生成后可再次采纳', panel.stale.value === false && ok5i === true && host.draft().comment === '又定义', JSON.stringify({ stale: panel.stale.value, ok: ok5i, checked: panel.checked.value, comment: host.draft().comment }))
 }
 
 // ⑥ 等值建议：宿主草稿已含相同值 → 等值剔除后 adopted 集为空 → adopt 无操作（不快照、不 apply、不产生撤销）
