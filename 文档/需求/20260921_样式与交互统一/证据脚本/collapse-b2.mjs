@@ -58,7 +58,7 @@ out += `\n#### B-2b 声明换挂到别的选择器、解析值本身仍在全仓
 out += '| 文件 | 基线选择器 | 迁移的属性 | 改挂目标（示例，≤2） |\n|---|---|---|---|\n';
 const dest = (r) => r.moved.replace(/ …（全仓共 \d+ 处同值）/, '');
 const filesInMove = new Set(moves.map((r) => r.f));
-out += `> 口径：判定"改挂"只看**该解析值在 HEAD 全仓（排除 \`legacyGraph/**\`）是否仍有同属性声明**，不要求视觉位置一致；因此本表只说明"值没丢"，不承诺"渲染位置没变"。位置/取舍变化一律落在 B-2a 与 B-1。\n\n`;
+out += `> 口径：判定"改挂"只看**该解析值在 HEAD 全仓（排除 \`legacyGraph/**\`）是否仍有同属性声明**，不要求视觉位置一致；因此本表只说明"值没丢"，不承诺"渲染位置没变"。**本条原先还写"位置/取舍变化一律落在 B-2a 与 B-1"，这句是错的，此处更正**：B-2a/B-1 同样按**选择器**配对，因此"基线某条 scoped 规则被整条删掉、元素落到另一条同名全局规则上"这类变化两边都看不见——第四轮实测到 4 例被 B-2b 错标成"值没丢=无视觉影响"（\`flow/FlowEditor.vue\` \`.field-help\` 的 \`margin:0 0 8px\`⇒\`6px 0\`、\`tools/InstanceTable.vue\` \`.instance-table button:hover\` 的悬浮底色被删、\`tools/InstanceGraph.vue\` 工具栏按钮的 \`color\`/\`border\`/\`background\` 一整套落到全局、\`.graph-hint\`→\`.canvas-hint\` 新增描边），全部移入 **§9.5 附表 C-4** 逐值列出。**改挂判定永远只回答"这个值还在不在全仓"，不回答"这个元素还渲染成不成这样"**。\n\n`;
 for (const [k, rows] of groups) {
   const [f, sel] = k.split('\u0000');
   const props = rows.map((r) => `\`${r.p}\``).join(' ');
