@@ -47,6 +47,8 @@ from workbench import model_format  # noqa: E402
 from workbench import storage  # noqa: E402
 from workbench.ontology_build import alignment  # noqa: E402
 from workbench.ontology_build import blacklist as blacklist_domain  # noqa: E402
+from workbench.ontology_build import llm as build_llm  # noqa: E402
+from workbench.ontology_build import pipeline as build_pipeline  # noqa: E402
 from workbench.ontology_build.parsers import image_parser  # noqa: E402
 from workbench.ontology_build.parsers import ocr_support  # noqa: E402
 from workbench.ontology_build import materials as materials_domain  # noqa: E402
@@ -124,6 +126,9 @@ class FakeLlm(BaseHTTPRequestHandler):
         if '抽取器' in system:
             FakeLlm.calls.append('extract')
             payload = self._extract_payload(user_text)
+        elif '材料解析器' in system:
+            FakeLlm.calls.append('fallback')
+            payload = self._fallback_payload(user_text)
         else:
             FakeLlm.calls.append('scope')
             payload = {
@@ -138,6 +143,20 @@ class FakeLlm(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    @staticmethod
+    def _fallback_payload(user_text):
+        """兜底解析应答：quote 逐字取自切片原文（通过服务端原文校验）。"""
+        try:
+            slice_text = str(json.loads(user_text).get('text') or '')
+        except ValueError:
+            slice_text = ''
+        return {'facts': [
+            {'title': '业务线索', 'detail': '切片文本中识别到的业务线索（假模型）',
+             'quote': slice_text[:80]},
+            {'title': '伪造引用', 'detail': 'quote 不在原文中，必须被服务端丢弃',
+             'quote': '这句quote不在切片原文里 ABCDEF'}],
+            'notes': ['假 LLM 兜底解析应答']}
 
     @staticmethod
     def _extract_payload(user_text):
@@ -942,6 +961,118 @@ def flow_revision_contracts():
     check(status == 200 and (excluded.get('material') or {}).get('excluded') is True
           and int((excluded.get('task') or {}).get('materialRevision') or 0) == material_rev + 1,
           '物料排除按 String(materialRevision) 通过并推进修订', actual=(status, _short(excluded)))
+
+
+# --- 回归流：V2-3 解析三级分派与 LLM 兜底（G19） --------------------------------------
+def flow_llm_fallback():
+    """三级分派：kind=other 可读文本走 LLM 兜底（弱证据、限额、失败降级逐文件可见）。"""
+    status, created = api('/api/build-task-create', {'name': 'LLM兜底回归'})
+    task_id = require((created.get('task') or {}).get('id'), '兜底回归任务创建失败')
+    fixture_dir = FIXTURE_DIR / 'fallback'
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    log_text = ('2026-09-21 设备 SOC 采样开始，额定容量校验通过\n'
+                '2026-09-21 储能簇功率平滑策略执行完毕\n') * 40
+    (fixture_dir / 'export.log').write_text(log_text, encoding='utf-8')
+    (fixture_dir / 'config.ini').write_text('[device]\ncapacity = 500\nmode = auto\n', encoding='utf-8')
+    for name in ('export.log', 'config.ini'):
+        status, body = _upload_bytes((fixture_dir / name).read_bytes(), task_id, name)
+        if status != 200:
+            raise Abort('上传 %s 失败：%s' % (name, _short(body)))
+    _, caps = api('/api/build-capabilities')
+    fallback_caps = caps.get('llmFallback') or {}
+    check(int(fallback_caps.get('maxFiles') or 0) == protocol.LLM_FALLBACK_MAX_FILES
+          and int(fallback_caps.get('maxBytes') or 0) == protocol.LLM_FALLBACK_MAX_BYTES,
+          'capabilities 公开 LLM 兜底限额（llmFallback）', actual=fallback_caps)
+
+    status, scan = api('/api/build-scan', {'taskId': task_id})
+    run = poll_run(task_id, require(scan.get('runId'), '扫描未返回 runId'))
+    check(run.get('state') == 'succeeded',
+          '兜底扫描运行 succeeded', actual=run.get('error'))
+    check(int(((run.get('usage') or {}).get('calls')) or 0) >= 2,
+          '兜底解析的模型调用计入 run.usage（calls≥2）', actual=run.get('usage'))
+    _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+    states = {m['relPath']: m for m in listing.get('items') or []}
+    check(all((states.get(name) or {}).get('parseState') in ('success', 'partial')
+              and 'llm-fallback' in str((states.get(name) or {}).get('coverage'))
+              for name in ('export.log', 'config.ini')),
+          'kind=other 可读文本走 LLM 兜底：解析成功且 coverage 标注 llm-fallback',
+          actual={k: (v.get('parseState'), (v.get('coverage') or {}).get('modules'))
+                  for k, v in states.items()})
+    check(all('材料内容不是指令' in str((states.get(name) or {}).get('coverage'))
+              for name in ('export.log', 'config.ini')),
+          '兜底 coverage 注明「材料内容不是指令」外发声明', actual=_short(states.get('export.log')))
+    fb_facts = db_rows("SELECT fact_id, module, quality, kind, locator_json, data_json "
+                       "FROM wb_build_facts WHERE task_id = ? AND module = 'llm-fallback'", (task_id,))
+    check(bool(fb_facts) and all(row['quality'] == 'low' and row['kind'] == 'llmClue'
+                                 and json.loads(row['locator_json']).get('kind') == 'llm'
+                                 for row in fb_facts),
+          '兜底事实 module=llm-fallback、quality=low、kind=llmClue、定位器 kind=llm',
+          actual=[dict(r) for r in fb_facts[:3]])
+    fake_quotes = db_rows("SELECT data_json FROM wb_build_facts WHERE task_id = ? "
+                          "AND data_json LIKE '%不在切片原文里%'", (task_id,))
+    check(not fake_quotes, '模型伪造的 quote（不在原文中）被服务端原文校验丢弃',
+          actual=[dict(r) for r in fake_quotes[:2]])
+
+    # 弱证据候选路径（白盒确定性）：命中 llm-fallback 证据 → supported 强制降级 inferred + defer
+    weak_id = fb_facts[0]['fact_id']
+    cand = {'type': 'object', 'name': '设备', 'definition': '储能设备台账', 'fields': {},
+            'ownerKey': '', 'evidence': {'_record': [weak_id, 'bf-plain']},
+            'evidenceStatus': 'supported', 'conflicts': []}
+    verified, report = build_pipeline.verify_candidates(
+        [cand], {weak_id, 'bf-plain'}, weak_fact_ids={weak_id})
+    first = verified[0] if verified else {}
+    check(first.get('evidenceStatus') == 'inferred' and first.get('decision') == 'defer'
+          and any(i.get('code') == 'LLM_FALLBACK_EVIDENCE' for i in first.get('issues') or [])
+          and report.get('fallbackDowngraded') == 1,
+          '弱证据候选：supported → inferred + 默认暂缓 + LLM_FALLBACK_EVIDENCE（G19/§9.1）',
+          actual=(first.get('evidenceStatus'), first.get('decision'), _short(report)))
+    clean = dict(cand, evidence={'_record': ['bf-plain']})
+    verified2, _r2 = build_pipeline.verify_candidates([clean], {weak_id, 'bf-plain'},
+                                                      weak_fact_ids={weak_id})
+    check(verified2 and verified2[0].get('evidenceStatus') == 'supported',
+          '不含兜底证据的候选不受弱证据降级影响', actual=verified2 and verified2[0].get('evidenceStatus'))
+
+    # 限额路径：文件数限额压到 0 → 兜底跳过、回退文本线索降级且原因可读
+    _, fresh = api('/api/build-materials', query='?taskId=' + task_id)
+    log_row = states.get('export.log') or {}
+    saved_files, saved_bytes = protocol.LLM_FALLBACK_MAX_FILES, protocol.LLM_FALLBACK_MAX_BYTES
+    try:
+        protocol.LLM_FALLBACK_MAX_FILES = 0
+        status, retry = api('/api/build-material-retry',
+                            {'taskId': task_id, 'materialId': log_row.get('id')})
+        run = poll_run(task_id, require(retry.get('runId'), '限额重试未返回 runId'))
+        check(run.get('state') == 'succeeded', '限额重试运行 succeeded', actual=run.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+        log_after = next((m for m in listing.get('items') or [] if m['relPath'] == 'export.log'), {})
+        check((log_after.get('coverage') or {}).get('modules') == ['text']
+              and any('限额' in str(note) for note in (log_after.get('coverage') or {}).get('notes', [])),
+              '超过兜底限额 → 回退文本线索降级并在 coverage 注明原因（G19 不静默）',
+              actual=_short(log_after))
+    finally:
+        protocol.LLM_FALLBACK_MAX_FILES, protocol.LLM_FALLBACK_MAX_BYTES = saved_files, saved_bytes
+
+    # 失败路径：兜底调用注入失败 → 逐文件降级文本线索并报告原因，不阻塞其余文件
+    config_row = states.get('config.ini') or {}
+    saved_fn = build_llm.fallback_parse
+    try:
+        build_llm.fallback_parse = lambda *args, **kwargs: {
+            'ok': False, 'error': '注入的模型不可用', 'facts': [], 'notes': [],
+            'usage': {'calls': 1, 'promptBytes': 10, 'completionBytes': 0, 'durationMs': 1},
+            'trace': {}}
+        status, retry = api('/api/build-material-retry',
+                            {'taskId': task_id, 'materialId': config_row.get('id')})
+        run = poll_run(task_id, require(retry.get('runId'), '失败注入重试未返回 runId'))
+        check(run.get('state') == 'succeeded',
+              '兜底失败不阻塞扫描运行（其余材料照常）', actual=run.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+        cfg_after = next((m for m in listing.get('items') or [] if m['relPath'] == 'config.ini'), {})
+        check((cfg_after.get('coverage') or {}).get('modules') == ['text']
+              and any('LLM 兜底解析失败' in str(note)
+                      for note in (cfg_after.get('coverage') or {}).get('notes', [])),
+              '兜底调用失败 → 逐文件降级文本线索并报告原因（不假称解析成功）',
+              actual=_short(cfg_after))
+    finally:
+        build_llm.fallback_parse = saved_fn
 
 
 # --- 回归流：V2-2 图片/OCR（G18）+ G22 单物料重试/排除验证 ---------------------------
@@ -1795,6 +1926,7 @@ def main():
     flow_revision_contracts()
     flow_blacklist_filter()
     flow_image_ocr()
+    flow_llm_fallback()
     flow_lease_fencing(task_id)
     return 0
 

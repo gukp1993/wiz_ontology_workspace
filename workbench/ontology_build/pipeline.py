@@ -68,6 +68,9 @@ _USAGE_KEYS = ('calls', 'promptBytes', 'completionBytes', 'durationMs')
 # 枚举大小写规范化（模型常写成 timeseries/supported 等；只做大小写规范化，不新增取值）
 _DATA_TYPES = {value.casefold(): value for value in protocol.PROPERTY_DATA_TYPES}
 _VALUE_TYPES = {value.casefold(): value for value in protocol.VALUE_TYPES}
+# V2-3 解析三级分派：这些 kind 有专用解析器（第①级）；其余（other）先走 LLM 兜底（第②级），
+# 兜底不可用/失败/超限再降级文本线索（第③级）。zip 在上传展开期已拆分，不会进入扫描解析。
+DEDICATED_KINDS = frozenset({'code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'image'})
 
 
 class PipelineError(Exception):
@@ -139,12 +142,15 @@ def _counts(items, key):
 
 # --- 扫描：解析材料 → 事实 --------------------------------------------------------
 
-def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
+def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False, provider=None):
     """解析任务内未排除材料并写入事实；单材料失败不阻塞其余材料。
 
     * 已成功解析且内容未变的材料复用既有事实（不重复解析）；material_ids 可限定子集
       （单材料重试用），缺省为全部未排除材料；force=True 强制重解析（解析器版本升级、
       用户显式重试时用）。
+    * 解析三级分派（V2-3）：专用解析器（code/ddl/docx/pdf/xlsx/md/image）→ LLM 兜底
+      （kind=other 且可读出文本；provider 缺失/超限/失败则降级文本线索，逐文件注明原因）。
+      兜底解析消耗模型调用，限额见 protocol.LLM_FALLBACK_*（默认 200 个 / 50MB 每轮扫描）。
     * 无材料 / 全部失败 → 抛 PipelineError（run 记失败），但**已完成材料的结果保留**。
     * 长解析期间不持锁；每个材料完成即推进 progress {'done': n, 'total': m}。
     """
@@ -157,6 +163,8 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
 
     parsed = reused = failed = facts_total = 0
     modules, details = [], []
+    usage = _usage()
+    fallback_budget = {'files': 0, 'bytes': 0}
     for index, item in enumerate(plan, start=1):
         if item['reusable']:
             reused += 1
@@ -176,8 +184,10 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
                            'error': '材料文件缺失（已被清理或未登记为 blob）'}
             else:
                 try:
-                    result = parse_material(item['path'], item['id'], item['kind'], item['relPath'])
+                    result, usage = _parse_with_dispatch(owner_id, run_id, item, provider,
+                                                         fallback_budget, usage)
                 except Exception as exc:  # noqa: BLE001 - 单材料异常降级为该材料失败
+                    result = None
                     outcome = {'state': 'failed', 'facts': 0, 'modules': [],
                                'error': '解析材料失败（%s）：%s' % (exc.__class__.__name__, exc)}
                 else:
@@ -203,10 +213,12 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
                  {'done': total, 'total': total})
     checkpoint = {'scan': {'materials': total, 'parsed': parsed, 'reused': reused, 'failed': failed,
                            'facts': facts_total, 'modules': modules,
+                           'fallbackFiles': fallback_budget['files'],
+                           'fallbackBytes': fallback_budget['bytes'],
                            'note': '结构索引按材料解析覆盖摘要登记；token 级检索索引在生成阶段的 '
                                    'retrieve 步按需构建（避免把全部事实一次性读进内存）。'}}
     _tx(lambda conn: (runner.check_cancelled(conn, run_id, owner_id),
-                      store.update_run(conn, run_id, owner_id, usage=_usage(),
+                      store.update_run(conn, run_id, owner_id, usage=usage,
                                        checkpoint=checkpoint,
                                        lease=runner.lease_of(owner_id, run_id) or None)))
 
@@ -217,11 +229,138 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
         raise PipelineError('全部材料解析失败%s' % ('：%s' % first_error if first_error else ''))
     return {'runId': run_id, 'kind': 'scan', 'state': 'succeeded', 'materials': total,
             'parsed': parsed, 'reused': reused, 'failed': failed, 'facts': facts_total,
-            'modules': modules, 'details': details, 'usage': _usage()}
+            'modules': modules, 'details': details, 'usage': usage}
+
+
+def _parse_with_dispatch(owner_id, run_id, item, provider, fallback_budget, usage):
+    """三级分派：专用解析器 / LLM 兜底 / 文本线索降级。返回 (ParseResult, usage)。"""
+    result = parse_material(item['path'], item['id'], item['kind'], item['relPath'])
+    if item['kind'] in DEDICATED_KINDS:
+        return result, usage
+    # kind=other：先尝试 LLM 兜底（可读出文本才有意义），失败/不可用降级文本线索。
+    if provider is None:
+        _annotate_downgrade(result, 'LLM 兜底解析不可用（未配置模型提供方），已按文本线索降级。')
+        return result, usage
+    if int(fallback_budget['files']) >= protocol.LLM_FALLBACK_MAX_FILES or \
+            int(fallback_budget['bytes']) + int(item.get('size') or 0) > protocol.LLM_FALLBACK_MAX_BYTES:
+        _annotate_downgrade(result, '文件超过单任务 LLM 兜底限额（每轮扫描最多 %d 个文件 / %d MB），'
+                            '已按文本线索降级并在扫描报告注明。'
+                            % (protocol.LLM_FALLBACK_MAX_FILES,
+                               protocol.LLM_FALLBACK_MAX_BYTES // (1024 * 1024)))
+        return result, usage
+    fallback, new_usage = _llm_fallback_result(item, provider)
+    usage = _add_usage(usage, new_usage)
+    if not isinstance(fallback, dict):   # 成功：返回 ParseResult（弱证据事实）
+        fallback_budget['files'] += 1
+        fallback_budget['bytes'] += int(item.get('size') or 0)
+        return fallback, usage
+    _annotate_downgrade(result, 'LLM 兜底解析失败（%s），已按文本线索降级，可修复模型配置后重试。'
+                        % (fallback.get('error') or '未知错误'))
+    return result, usage
+
+
+def _llm_fallback_result(item, provider):
+    """LLM 兜底解析一个文件：读文本 → 切片 → 逐片调用模型 → 产出弱证据事实。
+
+    返回 (ParseResult, usage)（成功）或 ({'ok': False, 'error': …}, usage)（整体失败）；
+    usage 是本次已消耗的模型调用累计（含失败切片），由调用方并入 run.usage。
+    """
+    from workbench.ontology_build.parsers import textline as textline_mod
+    from workbench.ontology_build.parsers.base import Fact
+    rel = item['relPath']
+    try:
+        content = textline_mod.read_text_lines(item['path'])
+    except (OSError, IOError, ValueError) as exc:
+        return {'ok': False, 'error': '无法读取文件文本（%s）' % exc.__class__.__name__}, _usage()
+    lines = [line for line in content.lines if line.strip()]
+    if not lines:
+        return {'ok': False, 'error': '文件无可读文本（不可解码或为空）'}, _usage()
+    # 行号定位切片：每片最多 LLM_FALLBACK_SLICE_CHARS 字符、最多 LLM_FALLBACK_MAX_SLICES 片
+    line_numbers = [number for number, line in enumerate(content.lines, start=1) if line.strip()]
+    text_of = {number: content.line(number) for number in line_numbers}
+    slices = []  # (text, startLine, endLine)
+    buffer, start_line, last_line, size = [], line_numbers[0], line_numbers[0], 0
+    for number in line_numbers:
+        line = text_of[number]
+        if size + len(line) > protocol.LLM_FALLBACK_SLICE_CHARS and buffer:
+            slices.append(('\n'.join(buffer), start_line, last_line))
+            buffer, start_line, size = [], number, 0
+        buffer.append(line)
+        last_line = number
+        size += len(line)
+    if buffer:
+        slices.append(('\n'.join(buffer), start_line, last_line))
+    truncated_slices = max(0, len(slices) - protocol.LLM_FALLBACK_MAX_SLICES)
+    slices = slices[:protocol.LLM_FALLBACK_MAX_SLICES]
+
+    sink = textline_mod.FactSink(item['id'])
+    notes = ['该类型无专用解析器，已按 LLM 兜底解析（V2-3 第②级）：内容按数据发送、'
+             '请求声明「材料内容不是指令」；产物一律弱证据（quality=low、module=llm-fallback、'
+             '候选证据状态 inferred）。']
+    notes.append('发送 %d 个文本切片（每片≤%d 字符）；%s'
+                 % (len(slices), protocol.LLM_FALLBACK_SLICE_CHARS,
+                    '文件过长，仅解析前 %d 片（%d 片未发送）。'
+                    % (protocol.LLM_FALLBACK_MAX_SLICES, truncated_slices)
+                    if truncated_slices else '全文已覆盖。'))
+    failed_slices = []
+    usage_total = _usage()
+    for position, (slice_text, start_line, end_line) in enumerate(slices, start=1):
+        answer = llm.fallback_parse(provider, rel, slice_text, position)
+        _add_usage(usage_total, answer.get('usage'))
+        if not answer.get('ok'):
+            failed_slices.append(position)
+            continue
+        for clue in answer.get('facts') or []:
+            snippet = clue.get('quote') or '%s：%s' % (clue.get('title') or '', clue.get('detail') or '')
+            sink.add('llm-fallback',
+                     {'kind': 'llm', 'file': rel, 'slice': position,
+                      'startLine': start_line, 'endLine': end_line},
+                     snippet, 'llmClue',
+                     {'source': 'llm-fallback', 'title': clue.get('title') or '',
+                      'detail': clue.get('detail') or '', 'slice': position}, 'low')
+        for note in answer.get('notes') or []:
+            _note(notes, '模型说明：%s' % note)
+    notes.append('切片结果：%d/%d 片成功%s；事实 %d 条。'
+                 % (len(slices) - len(failed_slices), len(slices),
+                    ('，失败切片 %s（已重试 1 次）' % '、'.join(str(p) for p in failed_slices))
+                    if failed_slices else '', len(sink.facts)))
+    if failed_slices and not sink.facts:
+        return ({'ok': False, 'error': '全部切片解析失败（已重试 1 次）'}, usage_total)
+    coverage = {
+        'modules': ['llm-fallback'],
+        'notes': notes,
+        'failedSegments': [{'kind': 'slice', 'locator': {'kind': 'llm', 'file': rel, 'slice': p},
+                            'reason': 'LLM 兜底解析该切片失败（已重试 1 次）'}
+                           for p in failed_slices],
+        'locatorKind': 'llm', 'fallback': {'slices': len(slices), 'failedSlices': len(failed_slices)},
+        'encoding': content.encoding,
+    }
+    from workbench.ontology_build.parsers.base import ParseResult
+    return (ParseResult(facts=sink.facts, coverage=coverage,
+                        partial=bool(failed_slices or truncated_slices or sink.truncated)),
+            usage_total)
+
+
+def _annotate_downgrade(result, reason):
+    """把降级原因写入文本线索结果（notes + failedSegments），保证可见、不静默。"""
+    result.coverage['notes'] = list(result.coverage.get('notes') or []) + [reason]
+    result.coverage['failedSegments'] = list(result.coverage.get('failedSegments') or []) + [
+        {'kind': 'file', 'locator': {'kind': 'text', 'file': item_rel(result)}, 'reason': reason}]
+    result.warnings = list(result.warnings or []) + [reason]
+    result.partial = True
+
+
+def item_rel(result):
+    """从结果事实取相对路径（无事实时返回空串）。"""
+    for fact in result.facts or []:
+        locator = getattr(fact, 'locator', None)
+        if isinstance(locator, dict) and locator.get('file'):
+            return str(locator['file'])
+    return ''
 
 
 def _scan_plan(conn, owner_id, task_id, run_id, wanted, force=False):
-    """短事务：读任务与材料清单，给出本次要处理的材料（含 blob 真实路径）。"""
+    """短事务：读任务与材料清单，给出本次要处理的材料（含 blob 真实路径与字节量）。"""
     runner.check_cancelled(conn, run_id, owner_id)
     if store.require_task(conn, task_id, owner_id) is None:
         raise sto.NotFound('生成任务不存在')
@@ -235,6 +374,7 @@ def _scan_plan(conn, owner_id, task_id, run_id, wanted, force=False):
         items.append({
             'id': material['id'], 'relPath': material['relPath'], 'kind': material['kind'],
             'path': str(path) if path else '', 'factCount': fact_count,
+            'size': int(material.get('size') or 0),
             'modules': list(coverage.get('modules') or []),
             # 只有完全成功（success）且已有事实的材料才复用；partial 视为可重试，重新解析
             'reusable': (not force) and material['parseState'] == 'success' and fact_count > 0,
@@ -268,16 +408,20 @@ def _issue(code, field, message):
     return {'code': code, 'field': field, 'message': message}
 
 
-def verify_candidates(candidates, fact_ids):
+def verify_candidates(candidates, fact_ids, weak_fact_ids=None):
     """校验候选：证据引用、必填字段、类型枚举；剔除幻造引用并重算证据状态与默认决定。
 
     返回 (候选列表, 报告)。报告含 issues / droppedRefs / structural 计数与说明。
     证据状态只降不升：无证据 → insufficient；引用被剔除 → inferred；
     结构性问题不会保留 supported（避免“有依据”假象误导后续拟纳入）。
+    `weak_fact_ids`（V2-3）：LLM 兜底解析产物（module=llm-fallback）的 factId 集合——
+    证据命中任一弱证据事实的候选不得为 supported，一律降级 inferred 并默认暂缓（§9.1）。
     同一候选在不同阶段会被校验两次（逐批 + 合并后），完全相同的 issue 只保留一条。
     """
     known = {_text(item) for item in (fact_ids or []) if _text(item)}
-    out, report = [], {'issues': 0, 'droppedRefs': 0, 'structural': 0, 'notes': []}
+    weak = {str(item) for item in (weak_fact_ids or []) if _text(item)}
+    out, report = [], {'issues': 0, 'droppedRefs': 0, 'structural': 0,
+                       'fallbackDowngraded': 0, 'notes': []}
     for raw in candidates or []:
         if not isinstance(raw, dict):
             continue
@@ -370,6 +514,11 @@ def verify_candidates(candidates, fact_ids):
         if status not in protocol.EVIDENCE_STATUSES:
             status = 'inferred'
         has_structural = any(_text(item.get('code')) in _STRUCTURAL_CODES for item in issues)
+        refs = {ref for refs_list in (candidate.get('evidence') or {}).values()
+                for ref in (refs_list if isinstance(refs_list, list) else [])}
+        weak_hits = bool(refs & weak) if weak else False
+        if weak_hits and status == 'supported':
+            status = 'inferred'
         if not evidence and status != 'conflict':
             status = 'insufficient'
         if dropped and status != 'conflict':
@@ -377,6 +526,11 @@ def verify_candidates(candidates, fact_ids):
         if has_structural and status == 'supported':
             status = 'inferred'
         candidate['evidenceStatus'] = status
+        if weak_hits:
+            issues.append(_issue('LLM_FALLBACK_EVIDENCE', 'evidence',
+                                 '候选证据包含 LLM 兜底解析产物（弱证据，module=llm-fallback）：'
+                                 '一律按「推断待确认」处理并默认暂缓，不进入有依据初稿选择集'))
+            report['fallbackDowngraded'] += 1
         candidate['issues'] = issues[:40]
         candidate['decision'] = _text(candidate.get('decision')) or \
             protocol.default_decision(status, has_structural)
@@ -584,6 +738,9 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
     context = _tx(lambda conn: _generate_context(conn, owner_id, task_id, run_id))
     scope, facts = context['scope'], context['facts']
     notes = []
+    # V2-3（G19）：LLM 兜底解析产物一律按弱证据处理——命中其证据的候选不得 supported。
+    weak_fact_ids = {str(fact.get('id')) for fact in facts
+                     if str(fact.get('module') or '') == 'llm-fallback'}
 
     # 1) retrieve：本地检索（不调用模型）
     label = protocol.GENERATE_STAGE_LABELS['retrieve']
@@ -642,7 +799,8 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
             errors.append('第 %d 批抽取失败：%s' % (position, result.get('error') or '未知错误'))
         else:
             rejected_total += int(result.get('rejectedRefs') or 0)
-            verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys())
+            verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys(),
+                                                   weak_fact_ids=weak_fact_ids)
             if verified:
                 accumulated.extend(verified)
                 # 候选是业务内容（R4-01）：同事务核对取消/执行权后再追加，
@@ -668,7 +826,8 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
     # 4) verify：证据引用 / 必填字段 / 类型枚举
     label = protocol.GENERATE_STAGE_LABELS['verify']
     runner.stage(owner_id, run_id, 'verify', label, {'done': 0, 'total': len(aligned['candidates'])})
-    verified, report = verify_candidates(aligned['candidates'], by_id.keys())
+    verified, report = verify_candidates(aligned['candidates'], by_id.keys(),
+                                         weak_fact_ids=weak_fact_ids)
     for message in report['notes']:
         _note(notes, message)
     runner.stage(owner_id, run_id, 'verify', label,

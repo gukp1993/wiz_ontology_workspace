@@ -133,6 +133,13 @@ def get_capabilities(query):
                      'note': '安全边界，不可配置；任何白名单不能越过'},
             'softDefaults': blacklist_domain.effective_soft_exts(None),
         },
+        # V2-3（G19）：LLM 兜底解析限额与可用性（enabled=当前有默认提供方）
+        'llmFallback': {
+            'maxFiles': protocol.LLM_FALLBACK_MAX_FILES,
+            'maxBytes': protocol.LLM_FALLBACK_MAX_BYTES,
+            'sliceChars': protocol.LLM_FALLBACK_SLICE_CHARS,
+            'enabled': bool(ref),
+        },
         'provider': ref,
         'parserVersion': protocol.PARSER_VERSION,
         'promptVersion': protocol.PROMPT_VERSION,
@@ -453,6 +460,8 @@ def post_scan(payload):
 def _start_scan(task_id, material_ids=None):
     owner_id = _owner()
     from workbench.ontology_build import pipeline
+    # V2-3：扫描可带 LLM 兜底解析——provider 缺失不阻断扫描（本地解析照常），仅跳过兜底。
+    provider = _current_provider()
     with sto.write_tx() as tx:
         def body(conn):
             row = store.require_task(conn, task_id, owner_id)
@@ -472,7 +481,8 @@ def _start_scan(task_id, material_ids=None):
                              stage_label='解析材料')
             return run_id, [m['id'] for m in materials]
         run_id, ids = tx.run(body)
-    _run_task(owner_id, run_id, lambda user, run: pipeline.run_scan(user, task_id, run))
+    _run_task(owner_id, run_id,
+              lambda user, run: pipeline.run_scan(user, task_id, run, provider=provider))
     return {'runId': run_id}, 200
 
 
@@ -522,9 +532,13 @@ def post_run_resume(payload):
     kind = result['kind']
     if kind == 'generate':
         return _resume_generate(owner_id, task_id, run_id, result['batchId']), 200
-    job = (lambda user, run: pipeline.run_scan(user, task_id, run)) if kind == 'scan' \
-        else (lambda user, run: pipeline.run_dialog(user, task_id, run, _provider_or_raise()))
-    _run_task(owner_id, run_id, job)
+    if kind == 'scan':
+        scan_provider = _current_provider()
+        _run_task(owner_id, run_id,
+                  lambda user, run: pipeline.run_scan(user, task_id, run, provider=scan_provider))
+    else:
+        _run_task(owner_id, run_id,
+                  lambda user, run: pipeline.run_dialog(user, task_id, run, _provider_or_raise()))
     return {'runId': run_id}, 200
 
 

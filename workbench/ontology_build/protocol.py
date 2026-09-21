@@ -25,6 +25,13 @@ RUN_WORKERS = 2
 SNIPPET_LIMIT = 500
 PROMPT_VERSION = 'v1'
 PARSER_VERSION = 'v1'
+# V2-3（G19）LLM 兜底解析限额：单任务兜底文件数 / 字节数（超限回退文本线索降级并在
+# 扫描报告注明）；切片按字符计（独立于上传 chunkBytes：512KiB 文本会超出模型上下文，
+# 6000 字符约为可安全发送的输入规模）；单文件最多切片数限制调用成本。
+LLM_FALLBACK_MAX_FILES = 200
+LLM_FALLBACK_MAX_BYTES = 50 * 1024 * 1024
+LLM_FALLBACK_SLICE_CHARS = 6000
+LLM_FALLBACK_MAX_SLICES = 16
 
 LIMITS = {
     'chunkBytes': CHUNK_BYTES,
