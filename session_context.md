@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`4e28945940345bd7`
+上下文版本：`eabb41bd51771e2e`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 本体与项目辅助填写 F01F02 补验材料复核与MD交付 · codex · 受阻
+
+时间：2026-09-21T04:41:44.612449+00:00；记录：`.collaboration/entries/000149-86a9403a109d.json`
+
+独立复跑V1-V3通过（21例）；五份他方测试副本与当前4c2dd9e原型哈希一致，抽核原始字段diff与反例记录未发现新产品缺陷。浏览器策略仍阻塞，V4-V9未亲测，独立结论仍部分覆盖。已输出MD，不建议无依据继续改代码。
+
+- 验证：2078行/4fd7539fd00fcf3984bd1bd07b9b8bbb2288fd39e97f13a792ebaf962eafb735；他方VB脚本错误有后续重跑记录；不是原型异常；VA/VC Log采集能力未知不记全局0
+- 下一步：如要求独立真实点击签名，由获允许的独立验收环境补齐V4-V9；无新增代码整改项。
+- 依据/文档：文档/需求/20260920_本体与项目辅助填写/复验报告_20260921_F01F02.md
 
 ### 本体与项目辅助填写 F01/F02 剩余验收补验（V4–V9 浏览器取证） · zcode · 已验证
 
@@ -139,13 +149,3 @@
 - 验证：反例先复现（隔离根，验收方脚本）：provider 空白两态 errors=[] 且 200 新增 v1；credential 空白读取失败态同型 200 v1——与验收报告 C01 四组表一致。；反例有效性：git archive 9d0fa6f 解到 /tmp 跑新断言 → 67 通过 / 25 失败；修复后同文件 92/92 全绿。；新增覆盖：空白矩阵（空格/Tab/换行/混合 × provider/credential × 空集合/读取失败 16 项）、非空集合对照 2 项、真正未填写三态 6 项、正常 ID 三态对照 2 项、动作绑定路径 1 项、发布路由四组 20 项（422/零版本/revision 不推进/重复请求/不回显注入原文）、改正 ID 后可恢复发布 2 项。；串行回归（本树 venv，清继承 WIZ_*）：test_flow_dependency_context 92/92、test_project_flow_source 44 步、test_publish_guards 16 步、test_publish_guards_adversarial 135/135、test_validation_split 98 样例/515 断言、test_business_rules 57、test_action_library 77、test_catalog_independent 51 硬断言；原五项独立脚本 codex_reacceptance_backend_20260920 43/43；tests/run.py all 40/40。
 - 下一步：Codex/独立 harness 验收本提交，重点复跑四组空白 ID 反例（修复前 200、修复后 422 零写入）与空白矩阵边界。；验收通过后停在「待用户授权集成」；本轮无合并授权，不得自行合并 main 或清理 worktree。；未测：浏览器（前端零改动，18921 未重启仍跑上一被验代码）、真实 MySQL/Redis、真实项目故障注入；mapping_forms 既有失败与辅助填写原型属范围外。
 - 依据/文档：/tmp/B01B02_独立验收_20260921/修复指令.md 与 验收报告.md（C01 / P2）；文档/需求/20260920_本体与项目统一维护体验改版/开发计划.md §14.5（本轮实施与复验记录）；文档/接口文档/03-项目区接口.md §2.2、04-编排与LLM接口.md §2.2、README.md 变更记录（C01 行）；workbench/project_validation.py（_raw_id_present/_flow_declares_provider/_flow_references_credential）；tests/test_flow_dependency_context.py、tests/test_validation_split.py、tests/golden_c01_flow.py、tests/fixtures/validation_golden.json
-
-### acceptance-fixes：B01/B02 外部harness验收指令交付 · codex · 需求已交付
-
-时间：2026-09-21T01:16:51.169803+00:00；记录：`.collaboration/entries/000136-bb724d0bb774.json`
-
-应用户要求交付可直接复制给其他 harness 的 B01/B02 独立验收执行指令（纯文档，无业务改动）：文档/需求/20260920_本体与项目统一维护体验改版/独立验收执行指令_20260921_B01B02.md。内容自包含：被验树/分支/SHA（业务9d0fa6f，文档HEAD 6516f51）、只读边界与禁止项（不改文件/不合并/不触碰18921/端口≥18931自起自关/临时产物进/tmp）、三态判定标准、8步必做验证（含git archive反例有效性与已知命令）、第一轮验收P3四项要求抽查、交付格式与不写context record的约定；明确14:00另一ticket与mapping_forms既有失败为范围外。
-
-- 验证：指令文件内路径、命令与SHA均按当前被验树实况核对（HEAD 6516f51、9d0fa6f..HEAD 业务diff为空已实测）。
-- 下一步：用户可将该文件全文交给其他 harness 做第二轮独立验收；结果按同格式返回后由协调者核对迭代。；仍停在待用户授权集成；未合并main、未重启18765、未改真实数据。
-- 依据/文档：文档/需求/20260920_本体与项目统一维护体验改版/独立验收执行指令_20260921_B01B02.md
