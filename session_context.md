@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`e42d24b437e5f8a4`
+上下文版本：`d165781fdbfe665f`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### system-deep-test：产品缺陷修复 A01/R02/D-Q02-01（按 G 轮验收记录§4，三 agent 并行） · zcode · 已实施，待验收
+
+时间：2026-09-21T04:52:42.844785+00:00；记录：`.collaboration/entries/000150-f539ea230651.json`
+
+按 G轮整改独立复验记录与修复建议_20260921.md §4，用户指示继续修复后以三个并行 agent 完成三项产品缺陷修复（均在 codex/test 分支，待独立验收），业务基线之前的测试交付与统计不受影响。A01（提交 30bd715）：workbench/workflow.py 定义校验对规则 content 与动作 v2 effect 增加类型检查——None/缺键/空串/空白串按未填放行（选填语义不变，未改回必填），对象/数组/数值/布尔报单条错误（含定义名称、字段名、「必须为文本」与当前类型，不经 str() 隐式转换）；validate/save(200+errors)/publish(422 版本零新增) 共用同一检查，Excel/导入经 save 同受兜底；02 §4.9/§4.10 文档先行；测试 +6/+6/新建 54 项。R02（提交 ba0db4d）：project_validation._check_flow_binding 在结构核对后对被引用编排调用 flows.check_flow 纯配置检查（每编排一次缓存，不含连接/LLM/凭据维度），阻断错误逐条转为含对象/属性定位、编排标识与原因的单条阻断项，warnings 不阻断，未引用编排不受影响，不存在编排保留「不存在」语义并补定位；发布路径复用同一校验并受既有依赖快照重验约束；金样新增 2 样例（57/58）旧 97 样例逐字节不变；03 §2.2 文档先行；新增 test_project_flow_binding_check 14 步；并修正 test_publish_guards_adversarial 的编排夹具（补输出技术名与来源绑定，恢复其「可发布」夹具意图，135/135）。D-Q02-01（提交 3279bcd）：按验收记录「不撤销延期、不授权实施」
+
+- 决定：三项修复落在 codex/test 分支（用户指示继续修复的已登记工作树），未新建 worktree；如需独立分支可按提交拣选。；A01 类型检查放进共享定义校验而非各入口分别实现：save 保持「草稿允许不完整」（200+errors），publish 以同一检查 422 拒绝且版本零新增；不改回必填、null/空串按未填与 O3-03 既定语义一致。；R02 只做纯配置检查且按被引用编排缓存：不传 connections/llm_meta/credential_ids，与既有依赖三态协议（B01/B02/C01 系）划清边界；发布一致性依赖既有 baseline.flows 快照重验，不另造机制。；D-Q02-01 只做页面口径修正：延期决定未被撤销，记录明确不授权实施恢复改版；页面不再承诺「每次发布都会留快照」，断链本身保持复现并在缺陷清单注明待用户决定。；修复后 deep 判定脚本为两态兼容（未修记 known_defect_reproduced、已修记 product_pass），历史统计与结果索引不因修复改写。
+- 验证：单测：test_rule_action_field_types 54 项、test_project_flow_binding_check 14 步、test_business_rules 46、test_action_library 61、test_validation_split 99 样例 517 断言（金样 97→99 旧样例逐字节不变）、test_publish_guards_adversarial 135/135（夹具修正后）、deep_verdicts_test 107/107、deep_results_index_test 51/51，均退出 0。；全量回归 tests/run.py all 41/41（其中 test_publish_guards_adversarial 首跑失败系夹具用了损坏编排，R02 修复后被正确拦截，按测试自身「夹具应可发布」断言修正夹具后通过）。；真实 HTTP（18971 全新隔离实例 .runtime/prodfix-data，事后删除）：deep_reverify_r02_a01 15 条=product_pass14/info1（V-A01 与 V-R02-5/6 均翻转为通过，发布 422 版本零新增）；deep_ontology_o3o4o5 22 条=18 pass/1 new(D-Q02-01 仍复现)/1 static/1 blocked/1 not_tested，O3-03 无回归；deep_project_chain 54 条=53 pass/1 info，P8 发布版本数 1→1。；前端：vue-tsc 0 错误、npm build 成功；hooks 套件 save_queue 22/22、business_rule_model、action_model 通过。；范围与清理：git diff d6c73c2..HEAD -- tests/fixtures/validation_golden.json 仅增量（旧样例逐字节不变）；workbench 外无业务越界（frontend 仅文案）；工作树干净；18971 按 PID+cwd 确认后停止、数据根已删除；18931/18765/前轮证据未触碰。
+- 下一步：三项修复交 Codex 独立验收：A01 按 02 §4.9/§4.10 与 record §4 验收清单（各类型 × validate/save/publish/导入）、R02 按 03 §2.2 与验收清单（阻断/放行/负对照/未引用不阻断/发布一致性）、D-Q02-01 核对页面文案与恢复行为不变。；D-Q02-01 是否实施「按发布版本恢复到草稿」由用户决定（验收记录 §4 有方案）；实施后补跑 O4-07a 并移除 COVERAGE_UNCONFIRMED 登记。；其余产品缺陷（D1/D2/D3/R01/Q04-01/mapping_forms 等）按原缺陷清单另行安排；验收通过后停在待用户授权集成。
+- 依据/文档：文档/需求/20260921_系统全方位深度测试/G轮整改独立复验记录与修复建议_20260921.md（§4 修复方案与验收标准）；提交 30bd715（A01）、ba0db4d（R02）、3279bcd（D-Q02-01 口径）、e2a7419（缺陷清单状态）、3141ea5（README 变更记录）；文档/接口文档/02-本体区接口.md §4.9/§4.10；03-项目区接口.md §2.2；README 变更记录；tests/test_rule_action_field_types.py、tests/test_project_flow_binding_check.py、tests/fixtures/validation_golden.json（+2 样例）
 
 ### R02-项目发布检查被引用编排配置有效性(worktree/test) · zcode · 已实施，待验收
 
@@ -141,14 +152,3 @@ worktree/test 分支按验收记录§4 A01 完成修复（未提交，等协调�
 - 验证：覆盖核对检查器反例自测 3/3：含未覆盖场景正确报错、crash 行正确放行、O4-07 拆分编号别名正确放行。；结果索引可复现：连续两次 --write-doc 除生成时间外逐字节一致；数字不变（14 有效批次、被替代 94 行、187 条记录、根因 9）。；指令内引用的文件与符号均已核对存在：验收记录/报告/清单/计划/结果索引/继续验证指令；scenario_a01、scenario_r02、三处 validate_*、O4-06b。；范围核对：git diff d6c73c2..HEAD -- workbench frontend 为空；本轮提交仅 tests/deep_* 与本需求文档；git status 干净、diff --check 通过。
 - 下一步：用户将 独立复验指令_20260921_S1S3.md 全文交 Codex 执行；Codex 按 M01-M10 复验并输出逐项结论与不通过判据。；复验通过后停在「待用户授权集成」；集成合并需用户明确授权，由 Codex 串行组合重验。；业务缺陷（D-Q02-01/A01/R02/D1/R01/D2 等）的修复另行安排，本轮不修。
 - 依据/文档：文档/需求/20260921_系统全方位深度测试/独立复验指令_20260921_S1S3.md；提交 1157e87（复验指令）、10d565b（覆盖核对）、6b4665e（S1-S3 修订主体）；被验业务 SHA d6c73c2；文档/需求/20260921_系统全方位深度测试/结果索引.md；测试报告.md；缺陷清单.md；测试计划.md；tests/deep_verdicts.py；tests/deep_verdicts_test.py；tests/deep_results_index.py；tests/deep_reverify_scenarios.py；tests/deep_reverify_r02_a01.py
-
-### system-deep-test 继续验证（S1-S3 修订与针对性复验） · zcode · 已实施，待验收
-
-时间：2026-09-21T01:56:39.517979+00:00；记录：`.collaboration/entries/000138-d7240eb67808.json`
-
-按《继续验证指令》在 worktree/test 完成 S1-S3 修订与必要复验，业务代码零修改（基线 d6c73c2），提交 6b4665e。新增 tests/deep_verdicts.py 统一判定（八类结果，5xx/无关4xx/网络失败/空响应/前置失败一律不记通过）与 23 项判定自测（全通过）；P8/O3-04/O4-06 改为共用 tests/deep_reverify_scenarios.py；新增 tests/deep_results_index.py 与 结果索引.md（14 个有效批次、行区间、替代原因、逐行分类、根因合并，引用按 文件#行(用例) 机器核对）。有效批次 187 条：pass 178、known 3、new 2、static 1、blocked 1、info 2；被替代 94 行保留不计；根因 9 条。定向复跑 reverify-20260921T0958Z（18951 新隔离实例）A01/R02 判已知缺陷复现、负对照被拦截；回归 T1005Z(22)/T1008Z(54)。未全面重测、未恢复压测、未合并 main。
-
-- 决定：统计单位固定三种且不相加：断言/场景记录、唯一场景、缺陷根因；info 与缺陷复现不计入产品通过。；R02 的 validate 未拦截与 publish 仍成功是同一根因两条观察，合并计 1 条；保持 P1（无产品口径允许发布不可用取值配置，已写明降级条件）。；D-Q02-01 收窄为「新发布本体无法通过现有历史快照入口恢复」：发布/版本列表/版本内容读取正常、旧迁移 ZIP 仍可能恢复，不称发布整体失效或数据丢失。；O4-06 拆为静态核对通过（static_check_pass）与不可变性破坏路径未测（not_tested），二者不可互相替代。；判定修订只改 tests/deep_* 与文档、不降既有断言；工具构造错误的运行登记为 superseded/discarded，不隐藏不计入结论。
-- 验证：tests/deep_verdicts_test.py 23/23 通过（正确阻断/实际缺陷/500/无关4xx/前置失败/空响应/网络失败各有反例），退出码 0。；tests/deep_results_index.py 只读原始日志重算：14 有效批次、被替代 94 行、断言 187、唯一场景 187、根因 9；替代关系与根因引用逐条机器核对（曾捕获 3 处人工行号偏差并修正）。；reverify-20260921T0958Z（18951）：15 条 pass 11/known 3/info 1；A01 前置合法→追加非法→发布快照保留原值；R02 前置全成功、validate 未拦截、publish 200 版本 0→1，负对照 422 被拦截。；regress-20260921T1005Z(22 条)与 T1008Z(54 条)：修订后 deep_ontology_o3o4o5/deep_project_chain 全链路可运行。；隔离与清理：env -u WIZ_DATABASE_URL、库落 .runtime/reverify-data（已删）；18951 按 PID+cwd 停止并释放端口，保留 .runtime/reverify-evidence；18931 未触碰仍未停止。
-- 下一步：Codex 独立复验：核对 deep_verdicts.py/deep_results_index.py 可重算，reverify-20260921T0958Z 的 A01/R02 分类与负对照，三份文档与 结果索引.md 数字一致。；复验重跑须另起新合成数据根与空闲端口（勿用 18765/8765），脚本支持 Q02_BASE/Q03_BASE 覆盖，勿指向 18931 与真实根。；验收通过后停在「待用户授权集成」；集成合并需用户明确授权由 Codex 串行组合重验，产品缺陷修复另行安排。
-- 依据/文档：提交 6b4665ec603166b728558d0c6caa1f5cbfbe11c3（codex/test）；被验业务 SHA d6c73c2；文档/需求/20260921_系统全方位深度测试/结果索引.md；文档/需求/20260921_系统全方位深度测试/测试报告.md；缺陷清单.md；测试计划.md（继续验证区）；tests/deep_verdicts.py；deep_verdicts_test.py；deep_reverify_scenarios.py；deep_reverify_r02_a01.py；deep_results_index.py
