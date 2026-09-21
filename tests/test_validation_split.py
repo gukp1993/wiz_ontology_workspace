@@ -30,6 +30,13 @@ _sys.path.insert(0, str(_P(__file__).resolve().parent))
 import auth_client as _auth_client
 _auth_client.bind_fixture_user()
 
+# R02 金样（2026-09-21）：57/58 两个 flow 绑定样例引用固定 flowId 的编排。回放侧必须
+# 播种与生成侧同构的编排（同一 seed_golden_flows，幂等），依赖三态才能稳定返回 found，
+# 否则回放按「不存在或已删除」处理、与金样不一致。import make_validation_golden 即执行
+# 其模块级播种逻辑，再显式调用一次以表明回放依赖。
+import make_validation_golden as _golden_seeds  # noqa: E402  （tests 目录已在 sys.path）
+_golden_seeds.seed_golden_flows()
+
 FIXTURE = Path(__file__).resolve().parent / 'fixtures' / 'validation_golden.json'
 FAILURES = []
 

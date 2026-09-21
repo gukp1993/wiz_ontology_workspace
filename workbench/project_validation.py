@@ -509,13 +509,19 @@ def _flow_constant_ok(flow_type, value):
     return True
 
 
-def _check_flow_binding(value, flow_state, b, ot, prop, graph, node, shape, dep_edges):
-    """kind='flow' 函数编排取值校验：编排存在、输出存在且类型相容、输入绑定齐全合法。只读。
+def _check_flow_binding(value, flow_state, b, ot, prop, graph, node, shape, dep_edges, check_cache=None):
+    """kind='flow' 函数编排取值校验：编排存在、输出存在且类型相容、输入绑定齐全合法，
+    以及被引用编排自身的配置有效性（flows.check_flow，R02 2026-09-21）。只读。
 
-    flow_state 为 None 表示编排不存在或已删除（由调用方读取并缓存）。"""
+    flow_state 为 None 表示编排不存在或已删除（由调用方读取并缓存）。
+    check_cache：{编排引用 id → check_flow 结果}，由调用方在一次 validate 内共享，
+    同一编排被多个属性引用时只检查一次；None 时退化为逐调用检查（结果一致，仅无缓存）。"""
     blocking = []
     if flow_state is None:
-        return ['引用的函数编排不存在或已删除']
+        flow_ref = str(value.get('flow', '') or '').strip()
+        # 既有文案保留「不存在」语义并补上编排定位（属性定位由调用方「属性来源 ot.prop：」前缀给出）。
+        return ([f'引用的函数编排不存在或已删除（{flow_ref}）'] if flow_ref
+                else ['引用的函数编排不存在或已删除'])
     declared_outs = [o for o in flow_state.get('outputs', []) if isinstance(o, dict)]
     selected = next((o for o in declared_outs if str(o.get('id', '')) == str(value.get('output', '') or '')), None)
     if not str(value.get('output', '') or ''):
@@ -608,6 +614,22 @@ def _check_flow_binding(value, flow_state, b, ot, prop, graph, node, shape, dep_
     for input_id in entries:
         if input_id not in declared:
             blocking.append(f'编排不存在输入 {input_id}，请重新绑定（编排签名可能已修改）')
+    # R02（2026-09-21）：被引用编排自身的配置有效性。check_flow 是纯配置检查——不传
+    # project_connections / llm_meta / credential_ids，不执行 SQL/Python、不探测连接
+    # （依赖读取边界仍由调用方的 dependency_state 三态协议负责）。errors（阻断级）逐条
+    # 转成项目阻断项：单条消息同时携带属性定位（调用方「属性来源 ot.prop：」前缀）、
+    # 编排标识与具体原因；warnings 不阻断。同一编排在一次校验内只检查一次（按引用编排
+    # id 缓存检查结果，多个属性引用同一编排不重复计算）。
+    flow_ref = str(value.get('flow', '') or '').strip()
+    if check_cache is None:
+        check_cache = {}
+    flow_check = check_cache.get(flow_ref)
+    if flow_check is None:
+        flow_check = flows.check_flow(flow_state)
+        check_cache[flow_ref] = flow_check
+    flow_name = str(flow_state.get('name') or '').strip() or flow_ref
+    for text in flow_check.get('errors') or []:
+        blocking.append(f'引用的编排 {flow_name}({flow_ref}) 配置无效：{text}')
     return blocking
 
 
@@ -625,6 +647,8 @@ def _check_property_sources(ctx, errors, warnings, items):
     dep_edges = {}
     # flowId → flows.dependency_state 三态结果（found/missing/unreadable），同一编排多属性引用共享缓存
     flow_deps = {}
+    # 编排引用 id → flows.check_flow 结果（R02 配置有效性）：同一编排在一次校验内只检查一次
+    flow_checks = {}
     for b in object_bindings:
         dep_ot = b.get('object_type', '')
         dep_props = b.get('properties') or {}
@@ -1015,7 +1039,8 @@ def _check_property_sources(ctx, errors, warnings, items):
                                         f'暂不能校验；请稍后重试')
                     else:
                         blocking.extend(_check_flow_binding(value, flow_state, b, ot, prop,
-                                                            graph, node, shape, dep_edges))
+                                                            graph, node, shape, dep_edges,
+                                                            check_cache=flow_checks))
             elif kind in ('field', 'related'):
                 source_id = str(value.get('source', '') or '')
                 source = sources.get(source_id) if source_id else None

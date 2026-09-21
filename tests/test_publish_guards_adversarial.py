@@ -299,7 +299,17 @@ def main():
     from workbench import flows
     flow_id = flows.create('对抗性守卫编排')['id']
     flow_state = flows.read_draft(flow_id)
-    flow_state['outputs'] = [{'id': 'out1', 'label': '结果', 'type': {'type': 'number'}}]
+    # R02 修复后 project-validate 会检查被引用编排的配置有效性（flows.check_flow），
+    # 夹具必须是合法可发布编排：输出含技术名 name，且绑定到一个 calc 节点的输出
+    # （deep_flow_chain.happy_state 的最小合法形态）。
+    flow_state['nodes'] = [{
+        'id': 'nd-a', 'kind': 'calc', 'name': '常量',
+        'inputs': [{'id': 'in-a1', 'name': 'x', 'label': 'x', 'type': {'type': 'number'},
+                    'source': {'kind': 'fixed', 'valueType': 'number', 'value': 1}}],
+        'outputs': [{'id': 'nout', 'name': 'val', 'label': '值', 'type': {'type': 'number'}}],
+        'implementation': {'mode': 'formula', 'formulas': {'val': '{x}'}}}]
+    flow_state['outputs'] = [{'id': 'out1', 'name': 'out1', 'label': '结果', 'type': {'type': 'number'},
+                              'binding': {'kind': 'node', 'nodeId': 'nd-a', 'outputId': 'nout'}}]
     flows.save_draft(flow_state, expected_token=flows.current_token(flow_id))
 
     MYSQL_CONN = {'id': 'adv-conn-01', 'name': '对抗业务库', 'engine': 'mysql',
