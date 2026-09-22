@@ -22,6 +22,7 @@ try{
     'const appConfirm=async()=>globalThis.__connTest.confirm')
   code=code.replace(/import AppSelect from ['"].*?['"]/,'const AppSelect = {}')
   code=code.replace(/import RowMenu from ['"].*?['"]/,'const RowMenu = {}')
+  code=code.replace(/import\s*\{([^}]*)\}\s*from\s*['"]\.\.\/shared\/format['"]/,'const {$1} = { formatDateTimeSec: (v:any)=>String(v??\'\') }')
   code=code.replace(/import\s*\{[^}]*\}\s*from\s*['"]\.\/api['"]/,
     'const connectionTest=async p=>{globalThis.__connTest.calls.test.push(p);return globalThis.__connTest.testResult}\n'+
     'const connectionSecret=async p=>{globalThis.__connTest.calls.secret.push(p);return globalThis.__connTest.secretResult}\n'+
