@@ -634,14 +634,21 @@ def final_state_check(plan_doc):
 #   claim_job(task_key, job_id, run_attempt) ->
 #       {'ok': bool, 'attemptId': str, 'requestedMaxTokens': int}
 #       ①先持久化 started attempt + job running（含执行权核验）再返回，失败必须抛出。
-#   commit_success(task_key, job_id, attempt_id, candidates, usage, result_digest) -> bool
+#   commit_success(task_key, job_id, attempt_id, candidates, usage, result_digest,
+#                  attempt_meta=None) -> bool
 #       ②同事务：候选（幂等：job+局部键）+ attempt succeeded/usage + job succeeded + 摘要。
+#       attempt_meta 可选 {'finishReason','bytes','durationMs'}（截断/耗时通道，缺省 None）。
+#       返回 bool 语义（冻结）：True=本次新提交；False=幂等跳过（job 已终态的重复回调）。
 #       候选 origin 带 planEpoch/jobId。事务内先核验执行权/取消（content_tx 语义）。
-#   commit_split(task_key, parent_job_id, child_jobs, event_usage) -> bool
+#   commit_split(task_key, parent_job_id, child_jobs, usage, finish_reason=None) -> bool
 #       ③同事务：父 split + 全部子 job queued + attempt 记账；先持久化再派发子 job。
+#       父作业的全部 started 尝试以同一份 usage 收口入总账（当前状态机每 job 至多一个
+#       started 尝试，语义无损；finish_reason 记 'length' 通道）。
 #   commit_failure(task_key, job_id, attempt_id, error_code, message, usage) -> bool
 #   mark_interrupted_unknown(task_key, attempt_ids) -> int
 #       崩溃恢复：started → interrupted_unknown（真实计费可能发生，显示未知，不计 0）。
+#       **不带 lease 条件**（冻结口径）：崩溃后旧 lease 必然失配，带条件反而无法恢复；
+#       归属核验（owner/run）仍然必须。
 #   iterate_candidates(task_key, page_size=200) -> iterator[list[candidate dict]]
 #       内部分页迭代（不复用 all_candidates(limit=500) 当全量）；复验/终态检查必须走这里。
 # 两实现（storage/ontology_build.py 扩展 + experiments/.../state.py）通过同一组恢复契约
