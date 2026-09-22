@@ -8,11 +8,14 @@ trace 留痕（provider/model/耗时/请求与响应摘要，供节点日志核�
 """
 import json
 import re
+import socket
 import time
 from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
+
+from workbench.ontology_build import batch_contracts
 
 _MAX_RESPONSE = 1_000_000
 _MAX_TRACE = 800
@@ -173,3 +176,105 @@ def test_connect(provider):
         return {'ok': False, 'message': str(exc), 'latencyMs': int((time.monotonic() - started) * 1000)}
     return {'ok': True, 'message': '连通正常（模型已响应）',
             'latencyMs': int((time.monotonic() - started) * 1000)}
+
+
+# --- 单次调用安全结果（D05；契约冻结于 batch_contracts「单次调用结果」节，提交 87d1473）----
+
+_TIMEOUT_ERRORS = (TimeoutError, socket.timeout)   # py3.9 两类不同；3.10+ 同一类型
+
+
+def chat_once_result(provider, messages, max_tokens=4000, timeout=None):
+    """单次对话调用 → 冻结 CallResult dict。绝不抛异常；旧 chat() 不受影响。
+
+    行为契约（batch_contracts「单次调用结果」节，冻结）：
+    * ok=True 当且仅当 HTTP 2xx 且响应可解析为 chat/completions 结构，与 finishReason 无关：
+      length 也 ok=True，content 为已返回部分（仅诊断，decode 层拒收）。
+    * HTTP 成功先提取 usage 再判 finish_reason——截断不丢用量；
+      usage 经 batch_contracts.normalize_usage 规范化（单一口径，绝不双加 reasoning）。
+    * 错误分类（errorCode → retryable）：429→RATE_LIMITED→True；超时→TIMEOUT→True；
+      连接失败/URLError/OSError→NETWORK_RETRYABLE→True；502/503/504→PROVIDER_ERROR→True；
+      其他 HTTP 码→HTTP_UNKNOWN→False（未知错误不猜类别）；响应超 1MB 上限→
+      RESPONSE_TOO_LARGE→False；非 JSON/结构不符→RESPONSE_MALFORMED→False；
+      配置缺 endpoint/model→CONFIG_INVALID→False。
+    * requestBytes=序列化请求体字节数；responseBytes=实际读取字节数（超限读满上限+1 判定，
+      不撑内存）；durationMs=单调时钟差。
+    * 安全边界：返回值绝不含请求/响应正文预览、密钥与 trace（调用方拿不到原文）。
+    """
+    started = time.monotonic()
+    usage = batch_contracts.empty_usage()
+    request_bytes = 0
+    response_bytes = 0
+
+    def _result(ok, content, finish_reason, error_code, retryable):
+        return {'ok': bool(ok), 'content': content, 'finishReason': finish_reason,
+                'errorCode': error_code, 'retryable': bool(retryable), 'usage': usage,
+                'requestBytes': int(request_bytes), 'responseBytes': int(response_bytes),
+                'durationMs': int((time.monotonic() - started) * 1000)}
+
+    try:
+        provider = provider if isinstance(provider, dict) else {}
+        endpoint = str(provider.get('endpoint') or '')
+        model = str(provider.get('model') or '')
+        if not endpoint or not model:
+            return _result(False, None, None, 'CONFIG_INVALID', False)
+        try:
+            temperature = float(provider.get('temperature')
+                                if provider.get('temperature') is not None else 0)
+        except (TypeError, ValueError):
+            temperature = 0
+        try:
+            call_timeout = timeout or int(provider.get('timeout') or 60)
+        except (TypeError, ValueError):
+            call_timeout = 60
+        body = {'model': model, 'temperature': temperature, 'max_tokens': max_tokens,
+                'messages': messages}
+        if urlsplit(endpoint).hostname in ('api.minimaxi.com', 'api.minimax.cn', 'api.minimax.io'):
+            body.update(temperature=max(temperature, 0.1), reasoning_split=True)
+        headers = {'Content-Type': 'application/json'}
+        key = str(provider.get('api_key') or '')
+        if key:
+            headers['Authorization'] = 'Bearer ' + key
+        raw_body = json.dumps(body).encode()
+        request_bytes = len(raw_body)
+        request = Request(endpoint, data=raw_body, headers=headers)
+        try:
+            with urlopen(request, timeout=call_timeout) as response:
+                raw = response.read(_MAX_RESPONSE + 1)
+        except HTTPError as exc:
+            code = int(exc.code)
+            if code == 429:
+                return _result(False, None, None, 'RATE_LIMITED', True)
+            if code in (502, 503, 504):
+                return _result(False, None, None, 'PROVIDER_ERROR', True)
+            return _result(False, None, None, 'HTTP_UNKNOWN', False)
+        except (TimeoutError, socket.timeout):
+            return _result(False, None, None, 'TIMEOUT', True)
+        except (URLError, OSError, HTTPException) as exc:
+            if isinstance(getattr(exc, 'reason', None), _TIMEOUT_ERRORS):
+                return _result(False, None, None, 'TIMEOUT', True)
+            return _result(False, None, None, 'NETWORK_RETRYABLE', True)
+        response_bytes = len(raw)
+        if response_bytes > _MAX_RESPONSE:
+            return _result(False, None, None, 'RESPONSE_TOO_LARGE', False)
+        try:
+            data = json.loads(raw)
+        except (ValueError, json.JSONDecodeError):
+            return _result(False, None, None, 'RESPONSE_MALFORMED', False)
+        if not isinstance(data, dict):
+            return _result(False, None, None, 'RESPONSE_MALFORMED', False)
+        # 先提取 usage（能取得的都记账），再判结构/finish_reason——截断不丢用量
+        usage = batch_contracts.normalize_usage(data.get('usage'))
+        choices = data.get('choices')
+        choice = choices[0] if isinstance(choices, list) and choices else None
+        message = choice.get('message') if isinstance(choice, dict) else None
+        content = message.get('content') if isinstance(message, dict) else None
+        if not isinstance(content, str):
+            return _result(False, None, None, 'RESPONSE_MALFORMED', False)
+        finish_reason = choice.get('finish_reason')
+        return _result(True, content, str(finish_reason) if finish_reason is not None else None,
+                       None, False)
+    except Exception:   # 兜底：任何未预期异常也不上抛；不猜类别 → HTTP_UNKNOWN，不可重试
+        return {'ok': False, 'content': None, 'finishReason': None, 'errorCode': 'HTTP_UNKNOWN',
+                'retryable': False, 'usage': usage, 'requestBytes': int(request_bytes),
+                'responseBytes': int(response_bytes),
+                'durationMs': int((time.monotonic() - started) * 1000)}
