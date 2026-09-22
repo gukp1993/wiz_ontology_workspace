@@ -1,0 +1,161 @@
+{
+  "_comment": "T9（整表自动填写对抗集成）合成种子：非储能命名（订单/供应商）本体、项目绑定与目录缓存、各表单草稿样本、模型桩输出。全部为合成数据；连接密码不写入本文件，由测试进程在执行时注入。",
+  "ontology": {
+    "objectTypes": [
+      {"id": "mg:Order", "displayName": "订单"},
+      {"id": "mg:Supplier", "displayName": "供应商"}
+    ],
+    "properties": [
+      {"id": "mg:order_amount", "displayName": "订单金额",
+       "objectTypeId": "mg:Order", "dataType": {"type": "double"}}
+    ],
+    "linkTypes": [
+      {"id": "mg:order_supplier", "displayName": "由供应商供货",
+       "sourceObjectTypeId": "mg:Order", "targetObjectTypeId": "mg:Supplier",
+       "cardinality": "many-to-one", "reverseDisplayName": "供应"}
+    ],
+    "definitionOrder": ["mg:Order", "mg:Supplier", "mg:order_amount", "mg:order_supplier"],
+    "businessRules": [
+      {"id": "rule_quota", "name": "供应商额度上限",
+       "description": "单笔订单金额不得超过供应商额度", "content": ""}
+    ],
+    "actions": [
+      {"id": "act_notify", "name": "通知供应商", "definitionVersion": 2,
+       "status": "experimental", "description": "向供应商发送订单变更通知",
+       "effect": "供应商收到通知"}
+    ]
+  },
+  "project": {
+    "connection": {
+      "id": "conn-orders", "name": "订单库", "engine": "mysql",
+      "host": "127.0.0.1", "port": 3306, "database": "orders"
+    },
+    "object_bindings": [
+      {"object_type": "Order", "connection": "conn-orders", "table": "t_order",
+       "primary_key": "id", "title_key": "",
+       "properties": {"order_amount": {"kind": "field", "field": "amount"}},
+       "relations": [{"relation": "order_supplier", "target_type": "Supplier",
+                      "sourceId": "src_sup", "field": "supplier_code",
+                      "targetSourceId": "", "targetField": ""}],
+       "sources": [{"id": "src_sup", "name": "供应商台账",
+                    "kind": "db", "connection": "conn-orders", "table": "t_supplier",
+                    "matchLeft": "supplier_code", "matchRight": "code",
+                    "cardinality": "one"}]},
+      {"object_type": "Supplier", "connection": "conn-orders", "table": "t_supplier",
+       "primary_key": "code", "title_key": "", "properties": {}, "relations": []}
+    ],
+    "actionBindings": [
+      {"objectTypeId": "Order", "actionId": "act_notify",
+       "implementation": {"kind": "api", "schemaVersion": 2, "method": "POST",
+                          "path": "https://api.example.com/notify", "bodyFormat": "json",
+                          "auth": {"type": "apiKey", "credentialId": "cred_1"},
+                          "parameters": []}}
+    ],
+    "catalog": {
+      "database": "orders",
+      "tables": [
+        {"name": "t_order", "fields": [
+          {"name": "id", "dataType": "bigint", "comment": "主键"},
+          {"name": "amount", "dataType": "double", "comment": "金额"},
+          {"name": "supplier_code", "dataType": "varchar", "comment": "供应商编码"}]},
+        {"name": "t_supplier", "fields": [
+          {"name": "code", "dataType": "varchar", "comment": "编码"}]}
+      ]
+    }
+  },
+  "drafts": {
+    "object": {"label": "订单", "comment": "客户下达的采购需求"},
+    "rule": {"name": "供应商额度上限", "description": "单笔订单金额不得超过供应商额度",
+             "content": "旧内容"},
+    "action": {"name": "通知供应商", "description": "向供应商发送订单变更通知",
+               "effect": "供应商收到通知"},
+    "link": {"label": "由供应商供货", "from": "mg:Order", "to": "mg:Supplier",
+             "cardinality": "many-to-one", "reverseLabel": "供应",
+             "comment": "订单由供应商供货"},
+    "identity_database": {"mode": "database", "connection": "conn-orders",
+                          "table": "t_order", "primaryKey": "",
+                          "note": "订单实例按订单表登记。"},
+    "property_source_field": {"kind": "field"},
+    "property_source_database": {"kind": "database"}
+  },
+  "intents": {
+    "order_object": "对象叫采购订单，是客户下达的采购需求",
+    "order_property": "订单金额改成时间序列",
+    "rule_rename": "改名称",
+    "rule_clear": "清空规则内容",
+    "link_refs": "起点用订单，终点指向不存在的对象",
+    "identity_key": "登记主键 id，写清说明",
+    "property_source_field": "取 amount 金额字段，写清说明",
+    "property_source_database": "订单库的订单表 amount 字段，按 id 匹配实例，写清说明",
+    "link_mapping": "两端来源用供应商台账，字段按编码匹配",
+    "action_binding": "接口用 POST，参数 orderId 取当前实例"
+  },
+  "fill_outputs": {
+    "object_rename_and_comment": [
+      {"op": "set", "field": "label", "value": "采购订单",
+       "basis": {"kind": "intent", "quote": "对象叫采购订单"}},
+      {"op": "set", "field": "comment", "value": "客户下达的采购需求单据。",
+       "basis": {"kind": "intent", "quote": "是客户下达的采购需求"}}
+    ],
+    "property_time_series_group": [
+      {"op": "set", "field": "dataType", "value": "timeSeries",
+       "basis": {"kind": "intent", "quote": "改成时间序列"}},
+      {"op": "set", "field": "obsType", "value": "double",
+       "basis": {"kind": "intent", "quote": "改成时间序列"}}
+    ],
+    "property_source_field": [
+      {"op": "set", "field": "field", "value": "amount",
+       "basis": {"kind": "intent", "quote": "金额字段"}},
+      {"op": "set", "field": "note", "value": "订单金额取自订单表 amount 字段。",
+       "basis": {"kind": "intent", "quote": "写清说明"}}
+    ],
+    "property_source_database": [
+      {"op": "set", "field": "connection", "value": "conn-orders",
+       "basis": {"kind": "intent", "quote": "订单库"}},
+      {"op": "set", "field": "table", "value": "t_order",
+       "basis": {"kind": "intent", "quote": "订单表"}},
+      {"op": "set", "field": "result.valueField", "value": "amount",
+       "basis": {"kind": "intent", "quote": "金额字段"}},
+      {"op": "row.append", "field": "lookupMatch",
+       "row": {"localId": "r1", "fields": {"field": "id", "operator": "eq",
+                                           "value.kind": "identityKey"}}},
+      {"op": "set", "field": "note", "value": "订单金额取自订单表 amount 字段。",
+       "basis": {"kind": "intent", "quote": "写清说明"}}
+    ],
+    "identity_primary_key": [
+      {"op": "set", "field": "primaryKey", "value": "id",
+       "basis": {"kind": "intent", "quote": "主键 id"}},
+      {"op": "set", "field": "note", "value": "订单实例按订单表 id 登记。",
+       "basis": {"kind": "intent", "quote": "写清说明"}}
+    ],
+    "link_mapping": [
+      {"op": "set", "field": "sourceId", "value": "src_sup",
+       "basis": {"kind": "intent", "quote": "两端来源"}},
+      {"op": "set", "field": "field", "value": "supplier_code",
+       "basis": {"kind": "intent", "quote": "两端来源"}},
+      {"op": "set", "field": "targetSourceId", "value": "src_sup",
+       "basis": {"kind": "intent", "quote": "两端来源"}},
+      {"op": "set", "field": "targetField", "value": "code",
+       "basis": {"kind": "intent", "quote": "两端来源"}}
+    ],
+    "action_binding": [
+      {"op": "set", "field": "method", "value": "POST",
+       "basis": {"kind": "intent", "quote": "接口用 POST"}},
+      {"op": "set", "field": "path", "value": "https://api.example.com/notify",
+       "basis": {"kind": "intent", "quote": "接口用 POST"}},
+      {"op": "row.append", "field": "actionParams",
+       "row": {"localId": "p1", "fields": {"name": "orderId", "in": "body",
+                                          "value.from": "instanceId"}}}
+    ]
+  },
+  "targets": {
+    "order_object": "mg:Order",
+    "order_property": "mg:order_amount",
+    "order_link": "mg:order_supplier",
+    "rule": "rule_quota",
+    "action": "act_notify",
+    "link_mapping": "Order.order_supplier",
+    "action_binding": "Order:act_notify",
+    "property_source": "Order.order_amount"
+  }
+}

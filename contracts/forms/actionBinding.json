@@ -1,0 +1,132 @@
+{
+  "formId": "actionBinding",
+  "schemaVersion": 1,
+  "title": "动作接口映射",
+  "space": "project",
+  "fields": [
+    {
+      "id": "method",
+      "label": "请求方式",
+      "type": "enum",
+      "required": true,
+      "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "path",
+      "label": "接口地址",
+      "type": "text",
+      "required": true,
+      "maxLength": 500,
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "bodyFormat",
+      "label": "请求体格式",
+      "type": "enum",
+      "enum": ["json", "form"],
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "description",
+      "label": "接口说明",
+      "type": "textarea",
+      "maxLength": 2000,
+      "nullable": true,
+      "ai": {"fillable": true, "clearable": true, "sensitive": false}
+    },
+    {
+      "id": "parameters",
+      "label": "请求参数",
+      "type": "list",
+      "list": "actionParams",
+      "codec": "actionParamRows",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "note",
+      "label": "说明",
+      "type": "textarea",
+      "maxLength": 2000,
+      "nullable": true,
+      "ai": {"fillable": true, "clearable": true, "sensitive": false}
+    }
+  ],
+  "lists": [
+    {
+      "id": "actionParams",
+      "rowIdScope": "local",
+      "item": {"id": "row", "type": "group", "fields": [
+        {
+          "id": "name",
+          "label": "参数名",
+          "type": "text",
+          "required": true,
+          "maxLength": 200,
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "in",
+          "label": "参数位置",
+          "type": "enum",
+          "required": true,
+          "enum": ["path", "query", "header", "body"],
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "value",
+          "label": "取值",
+          "type": "group",
+          "required": true,
+          "fields": [
+            {
+              "id": "from",
+              "label": "取值来源",
+              "type": "enum",
+              "required": true,
+              "enum": ["actionInput", "instanceId", "property", "constant"],
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "inputId",
+              "label": "动作输入",
+              "type": "ref",
+              "refProvider": "actionInput",
+              "visibleWhen": {"field": "value.from", "op": "eq", "value": "actionInput"},
+              "requires": "value.from",
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "property",
+              "label": "引用属性",
+              "type": "ref",
+              "refProvider": "property",
+              "visibleWhen": {"field": "value.from", "op": "eq", "value": "property"},
+              "requires": "value.from",
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "valueType",
+              "label": "固定值类型",
+              "type": "enum",
+              "enum": ["string", "number", "boolean"],
+              "visibleWhen": {"field": "value.from", "op": "eq", "value": "constant"},
+              "requires": "value.from",
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "value",
+              "label": "固定值",
+              "type": "text",
+              "visibleWhen": {"field": "value.from", "op": "eq", "value": "constant"},
+              "requires": "value.from",
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            }
+          ]
+        }
+      ]}
+    }
+  ],
+  "codecs": ["actionParamRows"],
+  "refProviders": {"property": "ontologyProperties", "actionInput": "actionInputs"}
+}

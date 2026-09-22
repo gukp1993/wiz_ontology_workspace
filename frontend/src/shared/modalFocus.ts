@@ -99,6 +99,8 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 export function installModalA11y(): void {
+  // SSR/无 DOM 环境（测试 harness）直接跳过；浏览器行为不变
+  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return
   new MutationObserver(onMutation).observe(document.body, { childList: true, subtree: true })
   document.addEventListener('keydown', onKeydown, true)
   eachModal(document.body, onModalAdded)

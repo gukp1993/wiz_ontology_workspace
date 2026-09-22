@@ -372,3 +372,292 @@ POST /api/llm-provider-default
 - **幂等**：目标已是默认时直接返回 200，不重复写入；
 - 与 `save`/`clear` 共用 `model-default` 护栏行串行化，保证任何时刻**默认项唯一**；
 - 只改设置表指针，不触碰 `wb_model_configs` 与密钥，`metadata_revision` 不变。
+
+## 5. 表单辅助填写（AI 结构化建议）
+
+> 2026-09-21 新增（本体与项目辅助填写正式实现）。两个只读语义接口：**不写任何本体/项目修订，
+> 不持全局写锁**；模型调用复用 §4 的提供方配置与 `workbench/llm_client.py` 公共 chat 层
+> （原始 trace 不返回前端、不持久化、不写日志，仅返回耗时等元数据）。
+> 字段白名单唯一来源：`workbench/assist_fields.py`（场景注册表）；前端协议镜像
+> `frontend/src/assist/types.ts`。模型输出一律按不可信数据处理。
+
+### 5.0 通用约定
+
+- **场景 targetKind**（10 类，覆盖 O1～O5、P1～P6）：
+  `object`／`property`／`sharedProperty`／`link`／`rule`／`action`（本体）；
+  `identity`／`propertySource`／`linkMapping`／`actionBinding`（项目）。
+  `propertySource` 按 `draft.kind` 分派子白名单：`field`／`database`／`redis`／`flow`。
+- **编辑快照（draft）**：客户端提交的**受限字段白名单快照**（仅本场景可辅助字段；白名单外键
+  一律 400）。原值展示由前端本地真实 draft 读取；模型返回内容不作为旧值来源。
+- **contextToken**：HMAC 签名短令牌（进程内密钥，**不落库**），绑定
+  用户＋space＋targetKind＋targetId＋权威状态指纹＋规范化 draft 摘要，TTL **600 秒**。
+  跨用户/跨目标/篡改候选/过期一律 409 `CONTEXT_STALE`（客户端重新获取上下文）。
+- **模式 mode**：`fill`（生成建议＋缺信息提问）｜`check`（检查当前内容，输出 issues）｜
+  `explain`（解释怎么填，输出帮助文本，**无可执行 patch**）。
+- **上限（冻结）**：`intent` ≤4000 字符；单问题回答 ≤2000 字符；questions ≤3；
+  suggestions ≤12；issues ≤30；规范化 draft 序列化 ≤200KB；模型 `max_tokens` 4000；
+  调用超时沿用提供方配置（1–300s）。超出即 400（draft/intent/answers）或按截断校验拒绝
+  （模型输出超限 502）。
+- **凭据红线**：认证头、API Key、连接密码、凭据明文永不进入 prompt/上下文/响应/日志；
+  `actionBinding` 的 `auth.*` 字段不在任何白名单；请求文本中检测到疑似认证信息时脱敏处理
+  （不保证识别所有用户主动提供的敏感文字，文档如实声明）。
+
+### 5.1 获取辅助上下文
+
+```http
+POST /api/assist-context
+```
+
+请求体：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `space` | string | 是 | `ontology` \| `project` |
+| `projectId` | string | space=project | 项目 id；项目区按当前账号可见范围校验 |
+| `ontologyId` | string | 否 | 本体工作区 id（space=ontology 有效）；省略/空 = 默认工作区 `storage`；目标不可见或属他人一律 404 `NOT_FOUND`；签入 contextToken 并参与一致性校验 |
+| `targetKind` | string | 是 | 见 §5.0 |
+| `targetId` | string | 否 | 编辑目标稳定 id；新建（尚未保存）时为空 |
+| `purpose` | string | 是 | `fill` \| `check` \| `explain` |
+| `draft` | object | 是 | 编辑快照（白名单裁剪前原样提交即可，服务端裁剪） |
+
+**响应** `200`
+
+```json
+{
+  "contextToken": "…",
+  "contextFingerprint": "sha256…",
+  "context": {
+    "targetKind": "propertySource",
+    "title": "属性「SOC采样值」的取值来源",
+    "editableFields": [ { "key": "flow", "label": "函数编排", "kind": "ref", "required": true,
+                          "options": null, "group": null, "help": "…" } ],
+    "definitions": [ { "kind": "flow", "id": "f_xxx", "label": "通用SOC采样查询", "hint": "输入…输出…" } ],
+    "catalog": [ { "connection": "c_xxx", "table": "s_attr_scada",
+                   "fields": [ { "name": "model_name", "comment": "模型名", "dataType": "varchar" } ] } ],
+    "flows": [ { "id": "f_xxx", "name": "…", "inputs": […], "outputs": [ { "id": "…", "label": "…", "kind": "scalar" } ] } ],
+    "modelReady": true
+  }
+}
+```
+
+- `definitions`/`catalog`/`flows` 按**当前账号可见范围**从权威存储重取并按场景裁剪
+  （本体：当前草稿的对象/属性/链接摘要；项目：固定引用版本的定义＋目录缓存元数据＋编排签名；
+  **只含元数据，绝不含业务记录、密码、认证头**）。目录缓存读取失败按既有 503
+  `STORAGE_UNAVAILABLE` 口径，不降级为空目录。
+- **候选截断显式标记**：候选按类裁剪（每类 ≤60 条、每表字段 ≤100 条），超出时响应携带
+  `definitionsTruncated`/`catalogTruncated`/`flowsTruncated`（context 层）与
+  `catalog[i].fieldsTruncated`、`flows[i].inputsTruncated/outputsTruncated/fieldsTruncated`
+  （条目层，布尔）。被截断的候选不参与 generate 的引用核验，前端应提示"候选已截断"。
+- `modelReady=false`：当前账号未配置默认模型——前端保留输入并提示前往模型设置；
+  此时仍可获取上下文，但 generate 会 422。
+- `targetId` 不可见/不存在（含跨账号）：404 `NOT_FOUND`。
+
+### 5.2 生成建议／检查／解释
+
+```http
+POST /api/assist-generate
+```
+
+请求体：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `requestId` | string | 是 | 客户端生成的请求标识（uuid；响应回传用于日志关联） |
+| `contextToken` | string | 是 | §5.1 返回的令牌 |
+| `mode` | string | 是 | `fill` \| `check` \| `explain` |
+| `draft` | object | 是 | **当前**编辑快照；规范化摘要须与令牌一致，否则 409 |
+| `intent` | string | 否 | 用户意图/资料文字（≤4000 字符） |
+| `answers` | object | 否 | 按 questionId 分别作答：`{"q1":{"value":"…"},"q2":{"unsure":true}}`；≤8 条，每条仅含 `value`（≤2000 字符）与 `unsure`（布尔） |
+
+**响应** `200`（有效请求但模型无建议时 `status:"empty"`，禁止错误 200 假成功）
+
+```json
+{
+  "requestId": "…",
+  "status": "ok",
+  "contextFingerprint": "…",
+  "questions": [ { "id": "q_key_1", "prompt": "…", "kind": "text|choice",
+                    "options": [ { "value": "…", "label": "…" } ], "allowUnsure": true } ],
+  "suggestions": [ { "id": "s_1", "label": "业务定义", "fieldKeys": ["comment"],
+                      "proposed": { "comment": "…" }, "state": "ready",
+                      "reason": "…", "evidenceRefs": ["def:…", "answer:q_1"] } ],
+  "issues": [ { "fieldKey": "path", "message": "…" } ],
+  "explanation": null,
+  "meta": { "durationMs": 1234, "provider": "本地模型", "model": "qwen" }
+}
+```
+
+- **建议状态**：`ready`（可采纳）｜`pending`（依赖未确认的问题/待补充，禁选）｜
+  `blocked`（引用不存在/类型不兼容/参数来源未确认等，禁选并给出原因）。
+  待补充/禁选/未知字段不能被采纳修改；采纳由前端在本地 draft 合并后走既有保存链路。
+- **建议结构约束（分层校验，2026-09-21 T4 冻结）**：
+  * **整体结构违规 → 502 `MODEL_BAD_RESPONSE`**：输出无 JSON、顶层非对象或含未知顶层键、
+    questions/suggestions/issues 形态非法、条数超限（>3/>12/>30）；
+  * **单条违规 → 丢弃该条（响应外不体现，不计入错误）或转为 blocked**：fieldKeys 白名单外、
+    proposed 键与 fieldKeys 不一致、值类型不符、未知枚举、超长、复合组形态非法 → 丢弃；
+    ref 值不在候选集、复合组行内引用越界、formatting 历史样式 → blocked（原因可见）；
+  * 全部建议被丢弃且无其他内容时按 `status:"empty"` 返回，不抛错；
+  `fieldKeys` ⊆ 场景白名单；`proposed` 键 = fieldKeys 且值类型与字段种类一致；
+  复合组（`params`/`inputs`/`lookup.match`/`parameters`/`formatting`）按各组 schema 整体校验；
+  `ref` 类值必须存在于本次上下文候选集（幻觉 ID 拒绝）；`evidenceRefs` 只能引用实际发送给
+  模型的候选（`def:<id>`/`catalog:<conn>:<table>`/`flow:<id>`/`answer:<qid>`）或问题 id，
+  后端核验存在性与类型。`state` 由后端按业务规则裁定（模型声明的状态不采信）。
+- **数据类型原子组**：属性 `dataType`+`obsType` 为一组（改为时间序列必须配套法观测类型，
+  离开时间序列必须同步清空观测类型）；来源绑定相互依赖字段（如 flow 的 `output`+`inputs`）
+  按组校验，禁止半组落入非法结构。
+- **等值处理**：建议值与当前 draft 等值时不生成建议（或标 `ready` 但前端展示「无需变更」，
+  以 §5.1 editableFields 的组语义为准）——旧值是否为空按类型/值判断，不用中文前缀。
+
+**错误码（沿用既有错误信封 `{error, code}`）**
+
+| 状态码 | code | 场景 |
+| --- | --- | --- |
+| 400 | `INVALID_ARGUMENT` | 请求形态非法／draft 白名单外字段／intent·answers 超限／未知枚举 |
+| 401 | `UNAUTHENTICATED` | 未登录（既有门禁） |
+| 404 | `NOT_FOUND` | 项目/目标不可见或不存在（含跨账号按不存在） |
+| 409 | `CONTEXT_STALE` | 令牌过期/无效、目标或权威状态已变、draft 摘要不匹配（客户端重取 §5.1） |
+| 422 | `MODEL_NOT_CONFIGURED` | 当前账号未配置可用模型提供方（前端引导前往模型设置） |
+| 422 | `ASSIST_INVALID_STATE` | 目标状态不满足（如 propertySource 缺 kind） |
+| 502 | `MODEL_BAD_RESPONSE` | 模型输出无 JSON/结构非法/全部建议越界/输出超限 |
+| 504 | `MODEL_TIMEOUT` | 模型调用超时 |
+
+- 生成接口**不持有全局写锁**，不写任何修订；返回前后 revision 与数据库内容不变。
+- 无建议但请求有效 → 200 + `status:"empty"`（`questions`/`suggestions`/`issues` 均可非空为空数组）。
+- 日志只留脱敏错误码、时长、requestId；不落 prompt、模型原文与 trace。
+
+## 6. 整表自动填写（autofill/1，2026-09-22 改版冻结）
+
+> T0 协议冻结（需求《20260922_整表自动填写交互》）。`mode=fill` 从"建议卡＋逐项勾选"
+> 升级为**受限字段操作协议**：模型输出 operations，后端按契约白名单验证，前端核对指纹后
+> 一次原子回填当前草稿。**旧 suggestions 勾选交互随之移除**；`check`／`explain` 响应结构
+> 不变（§5.2），降为面板次要帮助入口。本节与代码不一致时按文档 bug 处理（§红线 5）。
+
+### 6.0 端点与兼容
+
+| 项 | 冻结值 |
+|---|---|
+| 端点 | 沿用 `POST /api/assist-context`、`POST /api/assist-generate`（无新增白名单） |
+| fill 请求 | **必须**携带 `"protocol": 2`；缺失或非 2 → 400 `INVALID_ARGUMENT`（不静默按旧协议处理） |
+| fill 响应 | `protocol: "autofill/1"`；`check`/`explain` 响应仍为 §5.2 suggestions 结构 |
+| formId | 与 §5.0 targetKind 一一对应（10 个）；`propertySource` 按 draft.kind 分派子契约 |
+
+### 6.1 表单契约（单一来源，T1 落地）
+
+- 目录 `contracts/forms/<formId>.json`，开发期唯一字段定义来源；后端装载
+  （`workbench/assist_forms.py`），前端元数据由生成命令产出
+  （`python3 -m workbench.assist_forms_gen` → `frontend/src/assist/formContracts.gen.ts`，
+  生成物入库、禁止手改）。运行时**不接受客户端提交 schema**。
+- 文件语法（冻结）：
+
+```json
+{
+  "formId": "ontology.property",
+  "schemaVersion": 1,
+  "title": "属性定义",
+  "fields": [
+    {"id": "label", "label": "属性名称", "type": "text", "required": true, "maxLength": 120,
+     "ai": {"fillable": true, "clearable": false}},
+    {"id": "dataType", "type": "group", "atomicGroup": "typeCore", "fields": [
+      {"id": "type", "type": "enum", "enum": ["string", "double", "timeSeries"]},
+      {"id": "valueType", "type": "enum", "enum": ["double"],
+       "visibleWhen": {"field": "dataType.type", "op": "eq", "value": "timeSeries"},
+       "requires": "dataType.type"}]}
+  ],
+  "lists": [
+    {"id": "lookupMatch", "rowIdScope": "local", "item": {"id": "left", "type": "text"}}
+  ],
+  "codecs": ["dataTypeTransform", "formattingCodec"],
+  "refProviders": {"table": "catalogTables", "field": "catalogFields"}
+}
+```
+
+- 字段 `type` 冻结枚举：`text`｜`textarea`｜`enum`｜`boolean`｜`ref`｜`group`（嵌套固定结构）｜
+  `list`（顶层 lists 声明，行有本地稳定 rowId）。
+- 约束键：`required`／`maxLength`／`enum`／`nullable`（**仅显式 true 时 clear 合法**）；
+  `visibleWhen`/`editableWhen` 受限表达 `{field, op: eq|ne|in|notEmpty, value}`，**不是 eval**；
+  `atomicGroup` 同名者必须整组生效；`requires` 声明依赖字段（如 valueType 依赖 type）。
+- `ai` 键：`fillable`（默认 true；false = 系统派生/只读，模型不可写）、`clearable`、
+  `sensitive`（true = 不进 prompt、不可写）。`codec` 引用已注册业务 setter 标识
+  （JSON-LD 类型转换、Redis 编码、参数行等），**不携带可执行代码**。
+- `schemaDigest`：对文件做 canonical JSON（键排序、去 digest 字段）后 SHA-256，由 loader
+  重算并填入；响应回传 `schemaVersion`+`schemaDigest`，前端与本地生成物比对，不一致即
+  CONTEXT_STALE 语义（重新取上下文）。
+- 契约演进：布局/文案改动不改 `schemaVersion`；字段增删、类型、枚举、权限、依赖变化必须
+  `schemaVersion+1` 并使全部在途会话失效（digest 变 → 409 CONTEXT_STALE）。
+- 契约一致性守护：`tests/test_autofill_contracts.py`（T1）——契约↔`assist_fields` 注册表
+  ↔前端生成物三方对齐；新增普通字段未入契约时构建期报错。
+
+### 6.2 fill 请求（assist-generate，mode=fill）
+
+在 §5.2 请求基础上新增（全部必填除非注明）：
+
+| 字段 | 说明 |
+|---|---|
+| `protocol` | 常量 `2` |
+| `sessionId` | 首轮不传（服务端签发）；续轮必带回传 |
+| `answers` | `[{"questionId", "value", "unsure"}]`（value ≤2000 字符，沿用 §5 上限）；questionId 必须属于本会话未答复问题 |
+| `draft` | **应用前序操作后的当前草稿**（续轮必为最新；首轮为打开面板时的草稿） |
+
+续轮握手（冻结）：应用操作→draft 变化→**必须重新 `assist-context` 取新 contextToken**→
+携带新 token＋`sessionId`＋`answers` 再 `assist-generate`。旧 token 提交新 draft → 409
+`CONTEXT_STALE`（既有语义）。
+
+### 6.3 fill 响应（200）
+
+```json
+{"protocol": "autofill/1", "status": "ok",
+ "requestId": "…", "formId": "propertySource", "schemaVersion": 1, "schemaDigest": "…",
+ "target": {"space": "project", "targetKind": "propertySource", "targetId": "…"},
+ "draftFingerprint": "…", "contextFingerprint": "…",
+ "sessionId": "s_…", "roundId": "r_…",
+ "operations": [
+   {"op": "set", "field": "connection", "value": "conn-01",
+    "basis": {"kind": "intent", "quote": "用创智园业务库"}},
+   {"op": "row.append", "field": "lookupMatch", "row": {"localId": "r1", "fields": {"left": "id"}}},
+   {"op": "row.update", "field": "params", "rowId": "p_3", "fields": {"from": "identityField"}},
+   {"op": "clear", "field": "note", "basis": {"kind": "question", "questionId": "q_ab"}}],
+ "questions": [{"id": "q_ab", "text": "取值字段用 capacity 还是 rated_power？",
+                "fields": ["result.valueField"], "options": ["capacity", "rated_power"],
+                "allowUnsure": true}],
+ "unresolved": [{"field": "table", "reason": "候选目录中没有该表；请刷新目录或人工选择"}],
+ "summary": "已生成 4 项变更，1 项待补充"}
+```
+
+- **operations 语义**：`set`（field+value）、`clear`（仅 nullable+ai.clearable 字段，用户明确
+  要求才允许）、`row.append`（row.localId 客户端本地生成、服务端按内容去重）、
+  `row.update`／`row.remove`（rowId 必须命中草稿现有行；无法定位 → 模型应改为补问，
+  猜测行号一律拒）。`field` 是**契约内的点路径**（如 `result.valueField`），不提供任意
+  JSON 路径、脚本或持久 ID。
+- **basis（依据）**：`{"kind": "intent", "quote": "原话片段"}` 或
+  `{"kind": "question", "questionId"}`；后端程序校验 quote 确实出现在本次 intent（或本会话
+  已答内容）中、questionId 属于本会话——**防模型自报授权**。校验失败该操作转 unresolved。
+- **冲突拒绝**：同字段多条写操作 → 全部转 unresolved（不后项覆盖）；原子组不完整 → 组内
+  全部转 unresolved；引用不存在（对象/连接/表/字段/编排/输出）→ 该操作转 unresolved。
+- **分层不变**：响应整体结构违规仍 502 `MODEL_BAD_RESPONSE`；单操作违规转 `unresolved`
+  （前端展示原因），独立合法组照常返回；全部无效且无问题 → `status:"empty"`。
+
+### 6.4 会话与问题归属
+
+- 会话**内存态**（不落库）：TTL 30 分钟，LRU ≤200/进程；绑定 user＋space＋target＋formId
+  ＋schemaDigest。目标/契约变化即失效。
+- `questionId` 服务端生成、归属 session+round；已答问题不可重复作答；**旧 round 的
+  questionId 在新 round 提交 → 400 `INVALID_ARGUMENT`（问题已过期，请重新发起）**。
+- `unsure: true` 的答案按"暂不确定"处理：关联字段转 unresolved，不生成默认口径。
+
+### 6.5 限额（冻结，超出 400 或 502 按既有分层）
+
+intent ≤4000；answers ≤8 条/轮且单条 ≤2000；questions ≤3；**operations ≤12**；
+**unresolved ≤12**；draft ≤200KB；模型 `max_tokens` 4000；会话 TTL 30min／LRU 200；
+超时沿用提供方配置（1–300s）。模型输出超限按 §5.2 截断校验拒绝（502）。
+
+### 6.6 前端行为契约（T3 实现基准）
+
+- 默认不渲染任何 AI 区域；页头次要按钮「✦ 自动填写」开 420px 右侧抽屉（窄屏带遮罩）。
+- 生成成功且无待补：一次回填→抽屉收起→表单上方状态条「已填写 N 项，尚未保存」＋
+  「撤销本次填写」＋「查看修改」（逐字段 旧值→新值）；N＝实际改变的顶层字段/复合组数。
+- 回填**只改本地 draft**：不触发 touch/changed 自动保存、不调 form-save/commit-now；
+  等待超过自动保存窗口（900ms×N）数据库与 revision 不变。
+- 撤销单元＝一次会话（首轮＋全部续轮）：期间无手改可整轮恢复；有手改禁用整轮撤销并说明。
+  「取消修改」仍按原页面语义恢复已保存内容。
+- 生成中手改/切目标/关抽屉/契约变化 → 作废在途请求，迟到响应零写入（请求代际计数）。
+- check/explain 为抽屉内次要入口，只读展示（issues/explanation），不提供任何写入。

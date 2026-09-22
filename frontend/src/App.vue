@@ -117,6 +117,7 @@ function notify(text: string, bad = false) { message.value = bad ? friendlyIssue
 
 // --- 本体区 Saver：load GET /api/state（decodeState），submit POST /api/save（requestBody 自动 encodeState，附 projectState 沿用旧格式） ---
 const ontologyId = new URLSearchParams(location.search).get('ontology') || 'storage'
+provide('ontology-id', ontologyId) // 辅助填写：本体区宿主经 inject 取当前工作区 id（DEF-01）
 const _ontologyQuery = '?ontology=' + encodeURIComponent(ontologyId)
 const ontologyName = ref(''), ontologyList = ref<{ id: string; name: string }[]>([]), newOntologyName = ref(''), _creatingOntology = ref(false), latestVersion = ref('')
 const versionList = ref<any[]>([]), releases = ref<any[]>([]), preview = ref<any>(null), validationReport = ref<any>(null)

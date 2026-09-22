@@ -1,0 +1,36 @@
+{
+  "formId": "assistops.fixture",
+  "schemaVersion": 1,
+  "title": "assist_ops 操作校验用合成契约",
+  "_comment": "T2 测试夹具（非业务表单，供 tests/test_autofill_patch.py 与 T3 mock 使用）。本文件同时是 workbench/assist_ops.py 模块 docstring 所冻结 FormContract loader 接口（T1 workbench/assist_forms.py）的兼容样例：loader 按同一语法装载后，field_def/atomic_groups/list_def 必须对本案字段给出一致的规范化定义。下划线前缀键是说明性元数据，loader 应忽略。",
+  "fields": [
+    {"id": "name", "label": "名称", "type": "text", "required": true, "maxLength": 120,
+     "ai": {"fillable": true, "clearable": false}},
+    {"id": "note", "label": "备注", "type": "text", "nullable": true, "maxLength": 500,
+     "ai": {"fillable": true, "clearable": true}},
+    {"id": "owner", "label": "负责人", "type": "text", "nullable": true,
+     "ai": {"fillable": true}},
+    {"id": "summary", "label": "摘要", "type": "textarea", "maxLength": 2000},
+    {"id": "enabled", "label": "启用", "type": "boolean"},
+    {"id": "unit", "label": "单位", "type": "enum", "enum": ["kW", "MWh"]},
+    {"id": "connection", "label": "数据连接", "type": "ref", "ref": "connection", "required": true},
+    {"id": "derivedCode", "label": "系统派生编码", "type": "text", "maxLength": 64,
+     "ai": {"fillable": false}},
+    {"id": "secretToken", "label": "访问密钥", "type": "text", "maxLength": 64,
+     "ai": {"fillable": false, "sensitive": true}},
+    {"id": "dataType", "label": "数据类型", "type": "group", "atomicGroup": "typeCore", "fields": [
+      {"id": "type", "label": "类型", "type": "enum", "enum": ["string", "double", "timeSeries"]},
+      {"id": "valueType", "label": "值类型", "type": "enum", "enum": ["double"],
+       "visibleWhen": {"field": "dataType.type", "op": "eq", "value": "timeSeries"},
+       "requires": "dataType.type"}
+    ]}
+  ],
+  "lists": [
+    {"id": "lookupMatch", "rowIdScope": "local",
+     "item": {"id": "left", "type": "text", "maxLength": 64}},
+    {"id": "tags", "rowIdScope": "local",
+     "item": {"id": "value", "type": "text", "maxLength": 64}}
+  ],
+  "codecs": [],
+  "refProviders": {"connection": "catalogConnections"}
+}

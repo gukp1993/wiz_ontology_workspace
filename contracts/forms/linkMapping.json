@@ -1,0 +1,53 @@
+{
+  "formId": "linkMapping",
+  "schemaVersion": 1,
+  "title": "链接映射",
+  "space": "project",
+  "fields": [
+    {
+      "id": "sourceId",
+      "label": "起点来源",
+      "type": "ref",
+      "required": true,
+      "refProvider": "source",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "field",
+      "label": "起点关联字段",
+      "type": "ref",
+      "required": true,
+      "refProvider": "field",
+      "requires": "sourceId",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "targetSourceId",
+      "label": "终点来源",
+      "type": "ref",
+      "required": true,
+      "refProvider": "source",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "targetField",
+      "label": "终点匹配字段",
+      "type": "ref",
+      "required": true,
+      "refProvider": "field",
+      "requires": "targetSourceId",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "note",
+      "label": "说明",
+      "type": "textarea",
+      "maxLength": 2000,
+      "nullable": true,
+      "ai": {"fillable": true, "clearable": true, "sensitive": false}
+    }
+  ],
+  "lists": [],
+  "codecs": [],
+  "refProviders": {"source": "instanceSources", "field": "catalogFields"}
+}

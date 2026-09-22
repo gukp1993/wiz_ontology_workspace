@@ -1,0 +1,34 @@
+{
+  "ticket": "1384d62763254dd3bc79ea9259ecf6d5",
+  "task": "assist-fill-production T7 业务规则与动作定义接入辅助填写（O4/O5）",
+  "status": "implemented",
+  "summary": "在已登记 worktree（codex/assist-fill-production）交付 T7 四文件：新建 frontend/src/assist/workflowBindings.ts（ruleAssistBinding/actionAssistBinding 工厂：白名单快照 rule={name,description,content}、action={name,description,effect}，与 workbench/assist_fields.py 一致；undefined 不覆盖、白名单外忽略、JSON 克隆快照、restore 就地恢复），修改 BusinessRuleLibrary.vue 与 ActionLibrary.vue（编辑表单 EditorHead 下加「✦ 辅助填写」入口行、AssistPanel 挂表单尾部、字段改动经 onField/setField→assistTouched→模板 ref notifyDraftChanged、assistBinding computed 按 mode/draft/editId 构造、closeEditor 收起+watch 兜底、新增 lib-assist-row/lib-assist-panel 局部样式），新建 tests/assist_workflow.test.mjs（SFC 编译模式，11 项全过）。目标 id 口径：规则新建 targetId=''（未入库）、编辑用规则 id；动作 openNew 预生成 id 直接作 targetId。采纳只改本地草稿（formSave/changed emit 间谍零调用断言），规则历史 output 只读区不在白名单、辅助不触及。",
+  "decisions": [
+    "规则新建 targetId 传空串（O4 要求），与组件内已预生成 editId 无关；动作按 O5 要求用 openNew 预生成 id 作 targetId",
+    "contextTitle 取自 rows 中既有记录名（新建用固定标题），不依赖 draft.name，避免每次击键重建 binding 触发面板重开",
+    "AssistPanel 挂编辑表单尾部（message 之前），入口行贴 EditorHead，与 T5 ObjectWorkspace 同构；样式类 lib-assist-row/lib-assist-panel 两组件各自 scoped"
+  ],
+  "verification": [
+    "node --import ./tests/ts_hooks.mjs tests/assist_workflow.test.mjs → 11/11 通过，退出 0",
+    "cd frontend && npm run typecheck → 退出 0",
+    "回归冒烟：assist_object_workspace 9/9、assist_property_manager 54/54、assist_panel 51/51、dependency_guard 22/22、ont_list_unified 4/4、editor_head_consistency 19 项全过",
+    "未 git 提交（按任务边界），改动仅限 4 个授权文件；SSR 不覆盖 onMounted 与模板 ref 实链路"
+  ],
+  "next": [
+    "待 Codex 独立验收；浏览器验收时确认面板生成/采纳/手改过期交互",
+    "与 T8+（项目区各表单）无文件交集；集成时与 T5/T6 同分支组合验证"
+  ],
+  "references": [
+    "frontend/src/assist/workflowBindings.ts",
+    "frontend/src/ontology/BusinessRuleLibrary.vue",
+    "frontend/src/ontology/ActionLibrary.vue",
+    "tests/assist_workflow.test.mjs",
+    "workbench/assist_fields.py"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T08:11:20.173636+00:00",
+  "sequence": 162,
+  "filename": "000162-348c9a308b36.json",
+  "record_hash": "d5b22f54274ee3ecdbf459bab7b7e2e19aeff56ad471a451470b89d93a1c802b",
+  "context_advanced": false
+}

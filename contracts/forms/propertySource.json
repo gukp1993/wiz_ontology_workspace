@@ -1,0 +1,380 @@
+{
+  "formId": "propertySource",
+  "schemaVersion": 1,
+  "title": "属性取值来源",
+  "space": "project",
+  "variants": {
+    "field": {
+      "fields": [
+        {
+          "id": "field",
+          "label": "取值字段",
+          "type": "ref",
+          "required": true,
+          "refProvider": "field",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "note",
+          "label": "说明",
+          "type": "textarea",
+          "maxLength": 2000,
+          "nullable": true,
+          "ai": {"fillable": true, "clearable": true, "sensitive": false}
+        }
+      ],
+      "lists": []
+    },
+    "database": {
+      "fields": [
+        {
+          "id": "connection",
+          "label": "数据连接",
+          "type": "ref",
+          "required": true,
+          "refProvider": "connection:any",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "table",
+          "label": "表／视图",
+          "type": "ref",
+          "required": true,
+          "refProvider": "table",
+          "requires": "connection",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "result.valueField",
+          "label": "取值字段",
+          "type": "ref",
+          "required": true,
+          "refProvider": "field",
+          "requires": "table",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "result.timestampField",
+          "label": "时间字段",
+          "type": "ref",
+          "refProvider": "field",
+          "requires": "result.valueField",
+          "nullable": true,
+          "ai": {"fillable": true, "clearable": true, "sensitive": false}
+        },
+        {
+          "id": "lookup.match",
+          "label": "匹配条件",
+          "type": "list",
+          "list": "lookupMatch",
+          "codec": "lookupMatchRows",
+          "requires": "table",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "note",
+          "label": "说明",
+          "type": "textarea",
+          "maxLength": 2000,
+          "nullable": true,
+          "ai": {"fillable": true, "clearable": true, "sensitive": false}
+        }
+      ],
+      "lists": [
+        {
+          "id": "lookupMatch",
+          "rowIdScope": "local",
+          "item": {"id": "row", "type": "group", "fields": [
+            {
+              "id": "field",
+              "label": "匹配字段",
+              "type": "ref",
+              "required": true,
+              "refProvider": "field",
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "operator",
+              "label": "操作符",
+              "type": "enum",
+              "required": true,
+              "enum": ["eq"],
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "value",
+              "label": "比较值",
+              "type": "group",
+              "required": true,
+              "fields": [
+                {
+                  "id": "kind",
+                  "label": "取值方式",
+                  "type": "enum",
+                  "required": true,
+                  "enum": ["identityKey", "identityField", "property", "constant", "parameter"],
+                  "ai": {"fillable": true, "clearable": false, "sensitive": false}
+                },
+                {
+                  "id": "field",
+                  "label": "身份表字段",
+                  "type": "ref",
+                  "refProvider": "identityField",
+                  "visibleWhen": {"field": "value.kind", "op": "eq", "value": "identityField"},
+                  "requires": "value.kind",
+                  "ai": {"fillable": true, "clearable": false, "sensitive": false}
+                },
+                {
+                  "id": "property",
+                  "label": "引用属性",
+                  "type": "ref",
+                  "refProvider": "property",
+                  "visibleWhen": {"field": "value.kind", "op": "eq", "value": "property"},
+                  "requires": "value.kind",
+                  "ai": {"fillable": true, "clearable": false, "sensitive": false}
+                },
+                {
+                  "id": "value",
+                  "label": "常量值",
+                  "type": "text",
+                  "visibleWhen": {"field": "value.kind", "op": "eq", "value": "constant"},
+                  "requires": "value.kind",
+                  "ai": {"fillable": true, "clearable": false, "sensitive": false}
+                },
+                {
+                  "id": "parameter",
+                  "label": "项目参数",
+                  "type": "ref",
+                  "refProvider": "parameter",
+                  "visibleWhen": {"field": "value.kind", "op": "eq", "value": "parameter"},
+                  "requires": "value.kind",
+                  "ai": {"fillable": true, "clearable": false, "sensitive": false}
+                }
+              ]
+            }
+          ]}
+        }
+      ]
+    },
+    "redis": {
+      "fields": [
+        {
+          "id": "connection",
+          "label": "数据连接",
+          "type": "ref",
+          "required": true,
+          "refProvider": "connection:any",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "command",
+          "label": "读取方式",
+          "type": "enum",
+          "required": true,
+          "enum": ["GET", "HGET"],
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "key",
+          "label": "Key 模板",
+          "type": "text",
+          "required": true,
+          "maxLength": 200,
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "hashField",
+          "label": "Hash 字段",
+          "type": "text",
+          "maxLength": 100,
+          "visibleWhen": {"field": "command", "op": "eq", "value": "HGET"},
+          "requires": "command",
+          "nullable": true,
+          "ai": {"fillable": true, "clearable": true, "sensitive": false}
+        },
+        {
+          "id": "params",
+          "label": "Key 参数绑定",
+          "type": "list",
+          "list": "keyParams",
+          "codec": "redisKeyParams",
+          "requires": "key",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "conversion",
+          "label": "结果转换",
+          "type": "enum",
+          "enum": ["number", "integer", "text"],
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "missing",
+          "label": "未找到策略",
+          "type": "enum",
+          "enum": ["null", "error"],
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "note",
+          "label": "说明",
+          "type": "textarea",
+          "maxLength": 2000,
+          "nullable": true,
+          "ai": {"fillable": true, "clearable": true, "sensitive": false}
+        }
+      ],
+      "lists": [
+        {
+          "id": "keyParams",
+          "rowIdScope": "local",
+          "item": {"id": "row", "type": "group", "fields": [
+            {
+              "id": "token",
+              "label": "Key 占位符",
+              "type": "text",
+              "required": true,
+              "maxLength": 100,
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "from",
+              "label": "绑定来源",
+              "type": "enum",
+              "required": true,
+              "enum": ["primary", "property", "identityField"],
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "field",
+              "label": "身份表字段",
+              "type": "ref",
+              "refProvider": "identityField",
+              "visibleWhen": {"field": "from", "op": "eq", "value": "identityField"},
+              "requires": "from",
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "property",
+              "label": "引用属性",
+              "type": "ref",
+              "refProvider": "property",
+              "visibleWhen": {"field": "from", "op": "eq", "value": "property"},
+              "requires": "from",
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            }
+          ]}
+        }
+      ]
+    },
+    "flow": {
+      "fields": [
+        {
+          "id": "flow",
+          "label": "函数编排",
+          "type": "ref",
+          "required": true,
+          "refProvider": "flow",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "output",
+          "label": "取值输出",
+          "type": "ref",
+          "required": true,
+          "refProvider": "flow_output",
+          "requires": "flow",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "inputs",
+          "label": "输入参数绑定",
+          "type": "list",
+          "list": "flowInputs",
+          "codec": "flowInputBindings",
+          "requires": "flow",
+          "ai": {"fillable": true, "clearable": false, "sensitive": false}
+        },
+        {
+          "id": "result.valueField",
+          "label": "取值字段",
+          "type": "ref",
+          "refProvider": "flow_field",
+          "requires": "output",
+          "nullable": true,
+          "ai": {"fillable": true, "clearable": true, "sensitive": false}
+        },
+        {
+          "id": "result.timestampField",
+          "label": "时间字段",
+          "type": "ref",
+          "refProvider": "flow_field",
+          "requires": "result.valueField",
+          "nullable": true,
+          "ai": {"fillable": true, "clearable": true, "sensitive": false}
+        },
+        {
+          "id": "note",
+          "label": "说明",
+          "type": "textarea",
+          "maxLength": 2000,
+          "nullable": true,
+          "ai": {"fillable": true, "clearable": true, "sensitive": false}
+        }
+      ],
+      "lists": [
+        {
+          "id": "flowInputs",
+          "rowIdScope": "local",
+          "item": {"id": "row", "type": "group", "fields": [
+            {
+              "id": "inputId",
+              "label": "编排输入",
+              "type": "text",
+              "required": true,
+              "maxLength": 200,
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "from",
+              "label": "绑定来源",
+              "type": "enum",
+              "required": true,
+              "enum": ["property", "constant", "instanceId"],
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "property",
+              "label": "引用属性",
+              "type": "ref",
+              "refProvider": "property",
+              "visibleWhen": {"field": "from", "op": "eq", "value": "property"},
+              "requires": "from",
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            },
+            {
+              "id": "value",
+              "label": "常量取值",
+              "type": "text",
+              "visibleWhen": {"field": "from", "op": "eq", "value": "constant"},
+              "requires": "from",
+              "ai": {"fillable": true, "clearable": false, "sensitive": false}
+            }
+          ]}
+        }
+      ]
+    }
+  },
+  "codecs": ["lookupMatchRows", "redisKeyParams", "flowInputBindings"],
+  "refProviders": {
+    "field": "catalogFields",
+    "connection:any": "connectionsAndSources",
+    "table": "catalogTables",
+    "identityField": "identityTableFields",
+    "property": "ontologyProperties",
+    "parameter": "projectParameters",
+    "flow": "flows",
+    "flow_output": "flowOutputs",
+    "flow_field": "flowFields"
+  }
+}

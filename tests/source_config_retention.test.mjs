@@ -31,6 +31,7 @@ function compileComponent(relPath,replacements){
   const {descriptor}=parse(readFileSync(filename,'utf8'),{filename})
   let code=compileScript(descriptor,{id:'retention-'+relPath.replace(/\W+/g,'-')}).content
   code=code.replace(/import type \{[^}]*\} from ['"][^'"]+['"]\s*;?/g,'')
+code=code.replace(/import AssistPanel from ['"][^'"]+['"]/,'const AssistPanel = {props:[\'binding\',\'api\',\'locate\'],render:() => null}')
   for(const [re,rep] of replacements)code=code.replace(re,rep)
   code=code.replace(/from (['"])([^'"]+)\1/g,(_,quote,spec)=>{
     const target=spec==='vue'?require.resolve('vue'):resolve(dirname(filename),spec+'.ts')

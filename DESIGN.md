@@ -277,6 +277,7 @@ components:
 | `.canvas-hint` | `style.css` | 画布左下提示 chip 的唯一实现 | 本轮把 `.kc-hint`(`#ffffffed`/5px/5px 8px)、`.graph-hint`(`#ffffffdd`/11px/`--faint`)、`.canvas-note`(无描边/`#ffffffeb`) 三套副本并到这一条（`--paper-float`/`--r-sm`/`5px 12px`/`--muted` + 1px `--line` 描边）。迁移后的悬挂引用实测：`.kc-hint`、`.graph-hint` 全仓 0 命中（元素改挂 `.canvas-hint`）；**`.canvas-note` 仍在** `flow/FlowEditor.vue:539` 使用并保留 scoped 规则，只是把色值/圆角/描边并到同一配方，位置仍是自己的 `bottom:14px;left:16px`。`tools/InstanceGraph.vue` 则新增 scoped `.canvas-hint{bottom:10px;left:12px;font-size:11px}` 以保住它原来的贴边距离。三处并档的改前/改后决议值见开发计划 §9.4 附表 B-2a（决议值在全仓不再出现的那一类，逐条注明替代声明）。 |
 | `.axis` / `.series-line` / `.series-dot`（`tools/InstanceCharts.vue`）、`.plot-area` / `.grid-line` / `.point`（`tools/InstanceMap.vue`） | 各组件 scoped | SVG 图形元素的语义色 | 这些元素在 main 用 `fill="#346fe1"` / `stroke="#a2b4c8"` 等**呈现属性**写死，本轮改为挂类并读令牌（见规则 1 与例外 12）。呈现属性优先级低于任何 CSS 声明，因此改挂类必然改变渲染值，属有意的色值收敛 |
 | `.row-menu-list button.danger:not(:first-child)` | `style.css` | 行菜单内破坏性项的分隔线 | 首项不加 `border-top/padding-top/下半圆角`（main 无条件加，首项恰好是删除项时会顶出一段无意义分隔）；同时 `margin-top:0` 压住全局 `.danger` 的 12px |
+| `.assist-actions button.assist-primary`（+ `:hover:not(:disabled)`） | `assist/AssistPanel.vue` scoped | 自动填写抽屉的主按钮：`--blue-ink` 实底 / `#fff` 字 | **违背本条会白字白底**：`.assist-actions button`(0,1,1) 只覆盖 background/border 声明，而裸 `.assist-primary`(0,1,0) 的 `color:#fff` 仍生效 → 按钮渲染成空框（2026-09-22 浏览器验收实测）。主操作变体**必须挂到父级后代选择器上抬特异性**，不能只写单类；hover 同理须 `.assist-actions button.assist-primary:hover:not(:disabled)`(0,4,1) 压过 `.assist-actions button:hover:not(:disabled)`(0,3,1) |
 
 交互态硬性要求：
 
