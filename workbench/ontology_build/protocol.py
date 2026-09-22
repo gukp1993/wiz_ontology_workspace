@@ -194,6 +194,25 @@ _DOC_EXT = {
 _IMAGE_EXT = {'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'webp', 'svg'}
 
 
+def upload_accept_exts():
+    """可上传文件后缀的单一来源（有序、含点小写）：前端文件选择器 accept 与一致性测试共用。
+
+    口径 = 后端"会尝试解析"的后缀全集：结构化专用解析（json/jsonld/jsonid/jsonl/ndjson/
+    yaml/properties/csv/tsv/ini/toml）＋ 文档（docx/pdf/xlsx/md/txt 与转换提示 doc/xls）
+    ＋ 代码（含 sql/脚本）＋ 图片（OCR/SVG）＋ zip 容器。软/硬黑名单后缀（音视频、归档、
+    数据库等）不在此列——它们本就不该出现在选择器里。
+
+    前端 `BuildMaterialsPage.vue` 的 input accept 必须与本函数结果一致；漂移由
+    `tests/test_upload_accept_parity.py` 守护（读 vue 文件比对）。**改本表必须同步前端。**
+    """
+    exts = set()
+    for table in (_STRUCTURED_KIND_EXT, _DOC_EXT, _CODE_EXT):
+        exts.update(table)
+    exts.update(_IMAGE_EXT)
+    exts.add('zip')
+    return ['.' + name for name in sorted(exts)]
+
+
 def detect_kind(rel_path, head=b''):
     """按后缀 + 头部魔数判定材料类型，返回 MATERIAL_KINDS 之一。
 
