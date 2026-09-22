@@ -1,0 +1,32 @@
+{
+  "ticket": "911a7ae096474f4ea2bf2a96c2cf60a1",
+  "task": "auto_build-R4R5批次记账修复（codex/auto_build worktree）",
+  "status": "implemented",
+  "summary": "修复R5/R4两条管线正确性缺陷并全绿：R5（pipeline._run_batches_adaptive）废弃连续前缀刷写游标，改为每批完成即独立 on_result 落库（候选表/definitionOrder 按类型+对齐键排序，不依赖落库顺序）；删除死代码 _batch_wait_timeout 与 _BATCH_WAIT_SLACK_SECONDS。R4（pipeline._extract_batch_with_split）拆批返回三态（全成功/全失败/部分成功）：部分成功 ok=False 父批不进 done（重试整批重跑），成功半候选保留，error 注明「拆批后部分失败：已保留 X 条候选…可重试」，failedFactIds 随 error 上抛（嵌套精确到失败子批）。调用方 run_generate._flush_batch：部分成功候选校验+namespace 后同事务落库；content_tx 失败不静默（回滚内存 done、该批计 failed 错误注明「落库失败」、accumulated 只在事务成功后并入）；_flush_tx 写入前按同批已存在 alignedKey/原始 key 去重（部分失败整批重跑幂等）；调度器返回后兜底核对 done∪failed 覆盖 pending，遗漏显式计 failed 并落检查点。",
+  "decisions": [
+    "落库顺序不再强求等于串行版：候选展示与 definitionOrder 预检按类型+对齐键排序，与落库先后无关",
+    "部分成功批的候选也走 namespace_batch 与成功批同一键空间",
+    "/tmp 复现脚本修正判定逻辑以表达修复后的不变量（R5 判定改为 pending 全覆盖检查；R4 补丁目标从 _extract_batch_with_split 改为 llm.extract_candidates 才能真正执行拆批分支）"
+  ],
+  "verification": [
+    "WIZ_WORKBENCH_ROOT 隔离下 /tmp/repro_r5_final.py 与 /tmp/repro_r4.py 均输出 ✅（修复前均复现缺陷）",
+    "新增 tests/test_ontology_build_batch_accounting.py：7 场景 36 断言全过（非连续续跑空洞、完成序乱序、落库写事务失败计 failed、调度漏报收尾兜底、拆批左成右败/右成左败/全失败/嵌套/全成功、部分失败整批重试批内去重幂等、429 单次调用不重试），tests/run.py --test 子进程亦过",
+    "python3 tests/test_ontology_build.py 250/250 全过（无既有断言改动）",
+    "python3 tests/run.py all 全绿（60 套件，含并行线新增套件，exit 0）",
+    "ruff check workbench/ontology_build/pipeline.py tests/test_ontology_build_batch_accounting.py 全过"
+  ],
+  "next": [
+    "待 Codex 独立验收（SHA 以协调者统一提交为准）；未 git commit（协调者统一提交）",
+    "与并行线 R1（namespace_batch existing=参数）/R2（AUTO_INCLUDE_REVOKED）/R3（全池 duplicateOf）改动已同文件合流，验收时一并核对"
+  ],
+  "references": [
+    "workbench/ontology_build/pipeline.py",
+    "tests/test_ontology_build_batch_accounting.py"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T07:31:09.401557+00:00",
+  "sequence": 191,
+  "filename": "000191-a8f61c516ffc.json",
+  "record_hash": "fe49138029a6c6cecded55f4e917e3b2f5777863837edbdc5af8821559fb2090",
+  "context_advanced": false
+}

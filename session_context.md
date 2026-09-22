@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`f840770e5240eb19`
+上下文版本：`75296000eb23c647`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -34,6 +34,40 @@
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/控输出与质量对比试点_v2.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
+### auto_build-R4R5批次记账修复（codex/auto_build worktree） · zcode · 已实施，待验收
+
+时间：2026-09-22T07:31:09.401557+00:00；记录：`.collaboration/entries/000191-a8f61c516ffc.json`
+
+修复R5/R4两条管线正确性缺陷并全绿：R5（pipeline._run_batches_adaptive）废弃连续前缀刷写游标，改为每批完成即独立 on_result 落库（候选表/definitionOrder 按类型+对齐键排序，不依赖落库顺序）；删除死代码 _batch_wait_timeout 与 _BATCH_WAIT_SLACK_SECONDS。R4（pipeline._extract_batch_with_split）拆批返回三态（全成功/全失败/部分成功）：部分成功 ok=False 父批不进 done（重试整批重跑），成功半候选保留，error 注明「拆批后部分失败：已保留 X 条候选…可重试」，failedFactIds 随 error 上抛（嵌套精确到失败子批）。调用方 run_generate._flush_batch：部分成功候选校验+namespace 后同事务落库；content_tx 失败不静默（回滚内存 done、该批计 failed 错误注明「落库失败」、accumulated 只在事务成功后并入）；_flush_tx 写入前按同批已存在 alignedKey/原始 key 去重（部分失败整批重跑幂等）；调度器返回后兜底核对 done∪failed 覆盖 pending，遗漏显式计 failed 并落检查点。
+
+- 决定：落库顺序不再强求等于串行版：候选展示与 definitionOrder 预检按类型+对齐键排序，与落库先后无关；部分成功批的候选也走 namespace_batch 与成功批同一键空间；/tmp 复现脚本修正判定逻辑以表达修复后的不变量（R5 判定改为 pending 全覆盖检查；R4 补丁目标从 _extract_batch_with_split 改为 llm.extract_candidates 才能真正执行拆批分支）
+- 验证：WIZ_WORKBENCH_ROOT 隔离下 /tmp/repro_r5_final.py 与 /tmp/repro_r4.py 均输出 ✅（修复前均复现缺陷）；新增 tests/test_ontology_build_batch_accounting.py：7 场景 36 断言全过（非连续续跑空洞、完成序乱序、落库写事务失败计 failed、调度漏报收尾兜底、拆批左成右败/右成左败/全失败/嵌套/全成功、部分失败整批重试批内去重幂等、429 单次调用不重试），tests/run.py --test 子进程亦过；python3 tests/test_ontology_build.py 250/250 全过（无既有断言改动）；python3 tests/run.py all 全绿（60 套件，含并行线新增套件，exit 0）；ruff check workbench/ontology_build/pipeline.py tests/test_ontology_build_batch_accounting.py 全过
+- 下一步：待 Codex 独立验收（SHA 以协调者统一提交为准）；未 git commit（协调者统一提交）；与并行线 R1（namespace_batch existing=参数）/R2（AUTO_INCLUDE_REVOKED）/R3（全池 duplicateOf）改动已同文件合流，验收时一并核对
+- 依据/文档：workbench/ontology_build/pipeline.py；tests/test_ontology_build_batch_accounting.py
+
+### auto_build-R1跨批临时键冲突（codex/auto_build worktree） · zcode · 已实施，待验收
+
+时间：2026-09-22T07:29:43.493040+00:00；记录：`.collaboration/entries/000190-4413a2704276.json`
+
+修复R1：跨批同名临时键（obj/p）导致属性宿主解析错误、同名同dataType属性被误并。①alignment 新增 namespace_batch(candidates, position, existing=None)：与累积集合实际冲突的键加 b{position}: 前缀并按「先建映射再替换」重写批内 ownerKey/链接 sourceRef/targetRef；无冲突键保留原键（入库行为与历史一致，existing=None 为全量前缀纯批模式）；目标键被占用追加下划线兜底，跨批键绝不冲突。②alignment._ref_index 保留同名键全部命中（按出现顺序），_owner_name_for/_resolve_owner 对多命中按「属性之前最近宿主」消歧——旧存量无前缀候选行与直调 align 场景的兜底，键唯一时行为与原实现一致。③pipeline 批内 verify 后、入 accumulated 与同事务落库前调用 namespace_batch(verified, position, existing=accumulated)（成功分支与拆批部分成功分支两处，均为本任务指定改动点）。④llm.SYSTEM_EXTRACT 规则7要求对象限定见名知义 key（battery_rated_power 而非 p）；_sanitize_candidates 新增 _normalize_key_ref 对 key/ownerKey/sourceRef/targetRef 用同一函数规范化（去空白/内部空白折叠下划线/小写/截断60），修复大小写不一致断链。新增 tests/test_ontology_build_key_namespace.py 30 项断言（纯函数 8 组 + 管线端到端）。
+
+- 决定：命名空间化采用冲突条件模式而非无条件全批前缀：无条件前缀会使库内候选键全部变为 b1:* 形态，test_ontology_build.py flow_bad_candidates 按原始 ckey 直接 UPDATE/查找候选的 4 处断言失配（实测 108/110）；冲突条件模式保持「跨批键绝不冲突」不变量同时非冲突批入库键与历史完全一致，既有测试无需修改；决策继承按 alignedKey（名称型）不受键命名空间化影响，未改 inherit_manual_exclusions
+- 验证：WIZ_WORKBENCH_ROOT=/tmp/r1probe python3 /tmp/repro_r1.py：修复前 ❌（属性 2→1、alignedKey 错记 @电池）；修复后 ✅（2 条属性，宿主分别为电池/逆变器）；python3 tests/test_ontology_build_key_namespace.py：30/30（含管线端到端：批1无冲突保留原始键、批2冲突键 b2:obj/b2:p，两条额定功率宿主正确）；python3 tests/test_ontology_build.py：250/250；tests/test_ontology_build_merge_refs.py：42/42；tests/test_ontology_build_exclusion_inheritance.py：17/17；python3 tests/run.py all：60/60 全绿（其中 test_ontology_build_batch_accounting.py 首轮失败系并行 R4/R5 重构中间态，复跑通过）；ruff check alignment.py llm.py pipeline.py 新测试：All checks passed
+- 下一步：未修相邻问题1：拆批两个子批之间的同名 key 冲突仍在——子批边界信息在 _extract_batch_with_split（调度器区，本轮禁改区），namespace_batch 收到的是合并后候选无法区分子批；子批冲突键会命中冲突条件被前缀化，但两个子批各自冲突键共享同一 position 前缀时仍同名（回落 _dedupe_keys 首个保留，后续引用悬空为既有行为）；未修相邻问题2：_ref_index 邻近消歧是位置启发式（属性先于宿主对象输出且宿主在同批更早位置时选最近 precedent），仅兜底旧数据；主路径已由命名空间化保证；llm key 统一小写化理论上可能把批内大小写不同的两个键折叠为同名（模型违约场景），由 _dedupe_keys 首个保留兜住，属既有失效等级
+- 依据/文档：workbench/ontology_build/alignment.py；workbench/ontology_build/pipeline.py；workbench/ontology_build/llm.py；tests/test_ontology_build_key_namespace.py；/tmp/repro_r1.py
+
+### auto_build-R2冲突候选交付门禁（codex/auto_build worktree） · zcode · 已实施，待验收
+
+时间：2026-09-22T07:22:19.071773+00:00；记录：`.collaboration/entries/000189-595b708843ed.json`
+
+修复R2：跨批发现冲突后候选仍被默认纳入交付。①pipeline.verify_candidates 决定赋值区：带 alignedKey 且状态降级（conflict/inferred/insufficient）、decision=include 且 reviewed 非真的候选重置为 defer，附 AUTO_INCLUDE_REVOKED issue 与报告 note；逐批首次赋值与 reviewed=true/exclude 不变。②delivery 新增 _delivery_allowed 硬门禁：选定集合=include ∧（reviewed=true ∨（无 conflicts ∧ supported））；precheck 新增 conflictExcluded/conflictExcludedItems/notes 排除报告。③protocol.default_decision 文档字符串补充重算时机。新增 tests/test_ontology_build_conflict_gate.py（29 断言，5 场景）全过；repro /tmp/repro_r2.py 转绿；exclusion_inheritance 17/17、finish_guard 27/27、merge_refs 42/42；ruff 全过；tests/run.py all 58/59。
+
+- 决定：撤销与门禁按「准确说」口径实现：无 conflicts 但 evidenceStatus 非 supported 且未确认的 include 候选同样不进交付选定集合（比「仅冲突」口径更严，语义不弱化）；重算逻辑以 alignedKey 为合并标记放在 verify_candidates 决定赋值区（首次赋值时逐批候选尚无 alignedKey，天然不影响），未改动 1373-1380 调用点；被门禁拦截的候选不删行、进 precheck.conflictExcludedItems 显式列出，不静默消失
+- 验证：WIZ_WORKBENCH_ROOT=/tmp/r2probe python3 /tmp/repro_r2.py：修复前 ❌ 复现（conflict+include+未确认），修复后 ✅（decision=defer）；python3 tests/test_ontology_build_conflict_gate.py：29/29（含真实临时库播种 delivery.precheck 计数断言）；python3 tests/test_ontology_build_exclusion_inheritance.py 17/17；tests/test_ontology_build_finish_guard.py 27/27；tests/test_ontology_build_merge_refs.py 42/42；ruff check（pipeline/delivery/protocol/新测试）：All checks passed；tests/run.py all：58/59，唯一失败 test_ontology_build.py 经对照实验（禁用本次两处修复后失败完全相同：108/110+同一中断）归因为并行 R1 命名空间改动（候选 key 变 b1:obj-device）与该测试裸 key 播种/断言的冲突，非本修复引起；unit 组 48/49，另一失败 batch_accounting.py 为并行 agent 15:21 新增的调度器 WIP 自测（乱序回调/拆批部分失败），同样与本修复无关
+- 下一步：接口文档 08 分册需协调者统一登记：§1.6 issues 新增码 AUTO_INCLUDE_REVOKED（field=decision）与默认决定重算时机；§8.1 预检响应新增 conflictExcluded/conflictExcludedItems/notes，且 selectedIds/counts/checkToken 口径收窄为「门禁后选定集合」；test_ontology_build.py 的 R1 冲突（mutate/查找按裸 key）与 batch_accounting.py WIP 失败由对应并行 agent/协调者处理；未 git commit（按指令由协调者统一提交）；未改动接口文档、alignment/llm/retrieval/runner/storage/frontend
+- 依据/文档：workbench/ontology_build/pipeline.py:929-951；workbench/ontology_build/delivery.py:48-73,175-181,196-206；workbench/ontology_build/protocol.py:257-266；tests/test_ontology_build_conflict_gate.py；文档/需求/20260920_从物料自动构建本体/
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
 ### auto_build-output-budget-v1 方案交付 · codex · 需求已交付
 
 时间：2026-09-22T07:18:24.312855+00:00；记录：`.collaboration/entries/000188-daf784c7d17e.json`
@@ -65,6 +99,17 @@
 - 验证：代码805e1d9：llm_client未设置reasoning_effort且未返回provider usage；llm usage仅bytes。；JSON通用数组只留结构摘要；模型响应已有标准化边界，内部压缩不必变更前后端候选协议。；2026-09-22查Z.ai官方：GLM5.3Flash不支持禁用思考，effort支持low/high/max，默认max；实际endpoint未读取、参数未实测。
 - 下一步：实验建议尚未执行；先固定质量与用量基线，单因素比较推理档、协议、输入表示，再调批次。
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/输出Token膨胀_专项分析意见_Codex_20260922.md；https://docs.z.ai/guides/capabilities/thinking
+
+### Codex 五阶段方案审核意见分析（R1-R5 逐条独立复现） · zcode · 已确认决定
+
+时间：2026-09-22T06:27:02.893418+00:00；记录：`.collaboration/entries/000185-f5adf7220be7.json`
+
+对 Codex 审核意见（五阶段方案审核意见_Codex_20260922.md）逐条独立复现。**5 条 P1 全部复现成功**：R1 跨批临时键冲突致属性宿主错误（电池/逆变器各带同 key 属性，对齐后 2 条并为 1 条，alignedKey 错记为 @电池）；R4 拆批半失败被判父批成功（左成右败仍返回 ok=True，调用方据 ok 记 done → 该半批永久缺失）；R5 非连续失败批续跑漏落库（done={2}/pending=[1,3] 时仅批1回调落库、批3 静默丢弃；终局验证 accumulated 非空且 failed_batches 为空 → 运行继续并报成功 = 静默数据丢失且重试不补）；R2 冲突项默认纳入（跨批降级 conflict 但 decision 保持 include、reviewed/reason 空，交付端仅按 include 选取）；R3 去重误剔（battery.voltage=220 与 motor.power=220 因 snippet 哈希相同被剔 1 条，对外 reporting duplicates=0）。另核实第4节批评：429「降挡重排」表述与代码不符（只减并发+冷却，未放回 queued）；JSON 修复确会追加第2次调用故 390 秒非全局上限。
+
+- 决定：R1-R5 均为代码级正确性缺陷且已独立复现，应作为修复生成可靠性前的阻断项，优先级高于进度展示与 429 体验类问题。；R5 性质最严重：静默数据丢失且谎报成功（缺整批候选但运行 succeeded），重试不会补。；审核意见第4.1条质疑成立：原瓶颈论证是同一数据回算且未计 reasoning；后续实测已发现 reasoning_content 占输出约 50%（8676 vs 3007 字符），该发现尚未写入方案文档（reasoning 命中 0 次），需补充。
+- 验证：R1 /tmp/repro_r1.py：4 候选→对齐后 3，属性 2→1，alignedKey=property:额定功率#number@电池。；R4 /tmp/repro_r4.py：调用序列 [全批,左半,右半,右半重试]，返回 ok=True、split={'from':4,'halves':[2,2]}。；R5 /tmp/repro_r5.py 与 repro_r5_final.py：flush=[1]、残留 results=[3]；终局 done=[1,2]、failed=[] → 报成功。；R2 /tmp/repro_r2.py：二次 verify 后 evidenceStatus=conflict、decision=include、reviewed=None、reason=None。；代码与第三例：pipeline.py:1191-1197/236-249/157-176/906-907/1314；retrieval.py:344-346；delivery.py:48-52（R3 复现见 /tmp/repro_r3.py，哈希同为 f37062d9a65543a4…，duplicates=0）。
+- 下一步：待用户裁决是否按 R1-R5 出整改需求；本轮仅分析，未改任何业务代码。；方案文档待补：reasoning_content 占输出 50% 的实测、第4.1条论证修正、429/390秒口径修正。；复现脚本在 /tmp，未入库；如需留证应移入 tests/ 或证据目录。
+- 依据/文档：审核意见：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md；被审文档：同目录 生成五阶段完整方案_20260922.md（869 行）；代码基线：codex/auto_build @ 578acd7
 
 ### auto_build-五阶段方案审核 · codex · 已确认决定
 
@@ -108,45 +153,3 @@ retrieve 优化 O0/O2/O3 实现完成（协调者并行拆分后我的范围）�
 - 验证：cd frontend && npx vue-tsc --noEmit -p tsconfig.json → 0 错误；cd frontend && npm run build → 成功（19.1s，仅既有 chunk 警告）；node --import ./tests/ts_hooks.mjs tests/ontology_build_frontend.test.mjs → 通过 exit 0；node --import ./tests/ts_hooks.mjs tests/ontology_build_review_edit.test.mjs → 19/19 通过 exit 0
 - 下一步：等后端 checkpoint.generate.log/notes 接线后浏览器联调真实数据；Codex 独立验收
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/需求说明_生成进度实时可观测_v1.md（主仓库未入本分支）
-
-### build-governance V2-10 解析并发（G25）测试agent复测 第二轮 · zcode · 已验证
-
-时间：2026-09-22T02:06:43.784899+00:00；记录：`.collaboration/entries/000180-7984298bd4b5.json`
-
-V2-10 整改复测通过：三项整改全部闭合，无新问题。方式=/tmp 新导出树（3dc51dc），未触碰工作区他人改动。D：3dc51dc 恰 3 文件无夹带、README 仅 +1 行；修复=future.result() except 链补 except Exception → _scan_write_pool_failure 与超时同口径；注释已如实化。R1 独立复测 13/13：路径A RuntimeError、路径B base.parse 层返回 None 触发 AttributeError、路径C 我新增超长消息边界——均 run succeeded、崩溃文件 failed+原因、事实清空、其余 success。R2 白盒 12/12（上轮唯一失败的异常隔离已 PASS；G25b 峰值4/6.23→2.42s、env 7 形态；G25c 迟到时序 timeout@1.01 worker_done@3.01 后 facts 不变；G25d cancelled 保留+重扫 reused=2；G25e write_tx 全来自 build-run-*、解析线程 0 写）；G25a 补测内容+rowid 物理序一致。R3 回归：test_ontology_build 前两次 47/48 遇偶发 RST、后两次 250/250；parsers 95/95、purge 17/17、storage 60/60、runner 34/34、finish_guard 27/27、vue-tsc 0。R5 支持预存定性：双树同率探针（1200 请求×2）旧 21.5% vs 新 20.2%；机制=未登录 POST 401 早返回 57.3% RST vs 已登录 POST 0% vs 未登录 GET 0%。报告 /tmp/v2_test_report_v2_10.md 第二轮章节。
-
-- 验证：R1 独立复测 13/13：路径A RuntimeError / 路径B base.parse 返回 None 触发 AttributeError / 路径C 超长消息(800字含换行) —— run 均 succeeded、崩溃文件 failed+原因含类名、factCount=0、其余 success；R2 白盒 12/12：G25b 峰值并发4 且 6.23→2.42s、env 7 形态；G25c 超时+迟到丢弃时序证据；G25d 取消保留+重扫 reused=2；G25e write_tx 25 次全来自 build-run-*、build-parse-* 0 次；G25a 补测：并发 1 vs 4，17 条事实内容 + rowid 物理插入序逐元素一致；回归：test_ontology_build 250/250（第3、4次；前两次遇偶发 RST 47/48）、parsers 95/95、purge 17/17、storage_contract 60/60、runner_isolation 34/34、finish_guard 27/27、vue-tsc exit 0；R5 双树探针（1200 请求×2 树）：旧树 RST 21.5% vs 新树 20.2%；机制：未登录 POST 401 早返回 57.3% RST、已登录 POST 0%、未登录 GET 0%
-- 下一步：测试通过，待用户明确授权后由集成负责人集成合并 main（本轮验收基线 3dc51dc；区间含另一任务线 c55d94a/361df10 的已提交内容，集成时按其独立验收结论处理）；遗留建议（不阻塞、非 V2-10 范围）：未登录 POST 早返回分支的 ConnectionResetError（server.py do_POST 401 先于读 body），建议单独排期修复——早返回分支可 close=True 或先丢弃 body
-- 依据/文档：/tmp/v2_test_report_v2_10.md（第二轮章节）；worktree build-governance@3dc51dc（pipeline.py +51/−4、tests +73、README +1）；workbench/ontology_build/pipeline.py:499-505（except Exception 隔离）、:521-547（_scan_write_pool_failure/_pool_failure_message）；workbench/server.py do_POST 鉴权段（RST 机制证据）
-
-### 方法论 v1.1 修订：并入 Palantir 指导 + §7 重写为代码事实对照 · zcode · 已实施，待验收
-
-时间：2026-09-21T14:38:00.560904+00:00；记录：`.collaboration/entries/000179-0003a988dab9.json`
-
-按用户「更新方法论融合palantir可用内容」指令修订 自动化构建本体方法论_20260921.md 至 v1.1：①头部补 Palantir 输入源与修订记录；②§0 立场表加 Palantir 行（建模真实世界/设计判据/任务化验收）；③S8 增任务化验收裁定（unseen 业务问题测可答性、答不了记为缺口产出、人与AI分开测）；④新增 Palantir 采纳清单表（四优先级原则/身份与观测分离/precedence 权威源/反模式/Validation/分支治理，各标注落点与不采纳理由）；⑤§6 拆 6.1 工程事故类 + 6.2 Palantir 四条可确定性化反模式检查（System Silos/Kitchen Sink/God Object/Misnomer，各拟确定性检查与落点；Golden Hammer/Time Machine/Action Sprawl 说明不采纳理由）；⑥§7 整体重写：基线改为 main 已合并实现代码事实（protocol/llm/alignment/retrieval/delivery 只读核对），9 行逐阶段对照表（6段✅对齐、S4/S6/S7+执行模型🟡四缺口①接地②分批③频率门④批次降级），候选增量按真实差距重排 8 项（P0=接地/逐类分批/批次降级，P1=诱导层/反模式警示/相似建议+缓存，P2=任务化验收/覆盖率报告），7.3 限制令边界保留；⑦附录补官方四页链接与 9-15 能力级对照表。纯文档交付未改代码。
-
-- 验证：grep 校验文档标题结构完整（0-7章+附录，无断节）；4.7 编号瑕疵已修正；§7.1 九行对照全部依据上轮已核实代码事实（含 llm.py:43-45/414-423、alignment.py:12-13 行号）；候选增量均标待拍板；7.3 边界声明与限制令核对一致，未新增白名单议题
-- 下一步：候选增量八项待用户逐项拍板后才进需求线排期；P0 三项与生成实测失败根因直接相关，拍板后可与三项管理增量同分支排期
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/自动化构建本体方法论_20260921.md；https://www.palantir.com/docs/foundry/ontology/ontology-best-practices/
-
-### ontology-build-v2-10-r2（V2-10 测试第一轮整改，worktree/build-governance） · zcode · 已实施，待验收
-
-时间：2026-09-22T01:58:40.631818+00:00；记录：`.collaboration/entries/000179-c93d4abcce14.json`
-
-测试第一轮 3 项（1 严重+2 一般）全部修复，单一提交 3dc51dc：严重#1 _collect_pool_result.future.result() 超时分支之外补 except Exception（不含 BaseException）——worker 内异常（注入失败、适配器契约外返回值在后处理段触发的 AttributeError）转该文件 failed+异常摘要+清空事实（与超时同口径），继续收集下一文件、不再杀死整个 run（新增 _scan_write_pool_failure/_pool_failure_message）；同提交把「0.5s 短片边界取消即时生效」注释改为如实描述（0.5s 轮询只保证主线程及时回到取消检查点，实际取消生效时间由当前文件解析速度决定，最坏 ≤120s）。一般#2 README 变更记录补 V2-10 一行（git diff --cached 复核仅 1 行新增）。测试新增 6 项断言覆盖两条复现路径（RuntimeError 注入 + 猴补 REGISTRY 适配器返回 None 触发 parse_material 后处理 AttributeError，未改 parsers 源文件），均断言 run succeeded、崩溃文件 failed 且原因含异常类名、事实清空、其余文件 success。
-
-- 决定：异常隔离在 pipeline 侧实现（parsers/__init__.py 属另一任务线，未触碰）；落库口径与超时路径一致（failed + 清空既有事实 + failedSegments 记异常类名）；未夹带其他改动：偶发 ECONNRESET 属基线既有缺陷（探针量化见 verification），本轮仅报告不修改以守「不夹带」纪律
-- 验证：tests/test_ontology_build.py 250/250（连续 2 次全绿 v210_r1/r2 + cr_2/cr_3 共 4 次；本轮共 7 次运行）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；偶发失败定性（预存缺陷，非本轮引入）：约 1/3 运行在「未登录 POST」分支（main() 第 2262 行）报 ConnectionResetError。机制：server.py:313 鉴权门在未登录时不读取请求体即返回 401 并关连接，客户端读响应体时撞 OS 级 RST。定向探针（200 轮未登录 POST，两树同机对比）：当前树 60/200 ECONNRESET、基线树 c482547 66/200（同为 ~30%）——同量级；另有 V2-10 之前 R6 轮日志 /tmp/obt.log 同址复现佐证；vue-tsc 0 错误、npm run build 通过（本轮前端零改动）；ruff 改动文件全过
-- 下一步：待测试 agent 第二轮复验（G25c 两条复现路径 + README 行）；建请协调者裁定：偶发 ECONNRESET 是否安排单独修复（建议方案：测试客户端对「未登录 401」响应体读取失败容忍为重试一次，或服务端在 401 前 drain 请求体——影响面小但均属本轮范围外，未擅自实施）
-- 依据/文档：worktree/build-governance 分支 codex/build-governance：3dc51dc（本轮单一提交）；workbench/ontology_build/pipeline.py _collect_pool_result/_scan_write_pool_failure；探针脚本 /tmp/rst_probe.py（临时，未入库）
-
-### 创建 ui_fix 开发 worktree 并登记隔离环境 · codex · 已确认决定
-
-时间：2026-09-21T13:42:31.672975+00:00；记录：`.collaboration/entries/000178-614ba95041a5.json`
-
-按用户明确创建指令，从已提交 main（4714e8a）派生 codex/ui_fix 分支与 worktree/ui_fix 独立工作树，按 2026-09-21 规范把数据根放在工作树内并完成 main 库快照+根密钥+物料blob 随迁，端口登记 18882。本轮只建环境与登记，未安装依赖、未启动服务、未写业务代码、未改 main。
-
-- 决定：目录名沿用用户给定标识 ui_fix，分支按约定命名 codex/ui_fix；从本地已提交 main 4714e8a 创建，仓库无 remote 故不执行 pull。；数据根=工作树根（WIZ_WORKBENCH_ROOT=worktree/ui_fix），库用 transfer backup --output 生成 WAL 一致快照落 data/workbench.sqlite3，禁复制正在写入的库文件；随迁 keys/wb-root.key（否则副本内加密凭据全不可解）与 data/ontology-build-blobs 57 个物料 blob（1.6MB），使副本自含。；端口实测 18882/18892/18902 空闲、18912 被占，登记 18882；未触碰 18765(main)、18881(build-governance) 等他人实例，未启动任何进程。；登记写入公共目录 .git/workbench-tasks/ui_fix.json（fcntl 串行锁），标注 status=worktree_ready_not_started 与『含真实数据与根密钥副本，不可自动丢弃，删除须用户确认』；账号口令与 main 相同未重置。；依赖与构建按创建模板默认不做：worktree 无 node_modules 与 frontend/dist，后续启动前需 npm ci && npm run build（或由后端托管自己构建的 dist）；npm run dev 的 /api 代理默认 18765，验收本分支前必须核对为 18882。
-- 验证：git worktree list 确认 worktree/ui_fix @ codex/ui_fix @ 4714e8a；git -C worktree/ui_fix status 干净；主仓库 git status 无 worktree 泄漏（.gitignore 第24行 /worktree/ 生效）；快照只读校验：alembic_version=20260920_0003，pragma integrity_check=ok，30 张 wb_ 表有数据（wb_users 2、wb_build_materials 58、wb_build_facts 4024、wb_snapshots 365）；落位文件权限：data/ keys/ 0700，workbench.sqlite3 与 wb-root.key 0600，.runtime/task.env 0600；本轮未运行 npm build、未跑测试、未启动服务（仅环境创建与登记）；context.py record 需 read 返回的 ticket 且各列表字段≤5 项、单条≤400 字，超限报『交接列表格式无效』
-- 下一步：等用户下达 ui_fix 的具体修复范围与任务；开发前在 worktree/ui_fix 内准备依赖并启动 18882 实例。；若修复涉及前端，需先 ./start.sh setup 或建分支 venv，并 npm ci && npm run build 后由分支后端托管自身 dist。；集成合并与清理仍需用户明确指令；本环境含真实数据副本，删除前必须经用户确认。
-- 依据/文档：/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/ui_fix；.git/workbench-tasks/ui_fix.json；worktree/ui_fix/.runtime/task.env
