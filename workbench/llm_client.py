@@ -31,6 +31,27 @@ def _preview(text, limit=_MAX_TRACE):
     return text if len(text) <= limit else text[:limit] + '…（截断）'
 
 
+def apply_provider_extras(body, provider, endpoint):
+    """按提供方家族微调请求体（chat / chat_once_result / test_connect 共用）。
+
+    * minimax 系（api.minimaxi.com/.cn/.io）：温度下限 0.1 + reasoning_split=True
+      （思考与正文分离，既有行为）。
+    * bigmodel.cn 系（GLM）且 thinking='off'：追加 thinking:{"type":"disabled"}
+      关闭思考——2026-09-22 实测 GLM-5.3-Flash 单批抽取 150–260s → 15.2s；
+      参数按端点域名收口，绝不确定地发给其他提供方。
+    就地修改并返回 body；未知家族不做任何追加。
+    """
+    hostname = urlsplit(str(endpoint or '')).hostname or ''
+    if hostname in ('api.minimaxi.com', 'api.minimax.cn', 'api.minimax.io'):
+        temperature = body.get('temperature')
+        body.update(temperature=max(float(temperature if temperature is not None else 0), 0.1),
+                    reasoning_split=True)
+    if hostname.endswith('bigmodel.cn') and str(
+            (provider or {}).get('thinking') or 'default').strip().lower() == 'off':
+        body['thinking'] = {'type': 'disabled'}
+    return body
+
+
 def chat(provider, messages, max_tokens=4000, timeout=None, probe=False):
     """单次对话调用。返回 (content, trace)；失败抛 LlmError（中文可读）。
     probe=True：连通性探测——HTTP 2xx 即视为连通，不校验截断与内容
@@ -44,8 +65,7 @@ def chat(provider, messages, max_tokens=4000, timeout=None, probe=False):
     except (TypeError, ValueError):
         temperature = 0
     body = {'model': model, 'temperature': temperature, 'max_tokens': max_tokens, 'messages': messages}
-    if urlsplit(endpoint).hostname in ('api.minimaxi.com', 'api.minimax.cn', 'api.minimax.io'):
-        body.update(temperature=max(temperature, 0.1), reasoning_split=True)
+    apply_provider_extras(body, provider, endpoint)
     headers = {'Content-Type': 'application/json'}
     key = str(provider.get('api_key') or '')
     if key:
@@ -228,8 +248,7 @@ def chat_once_result(provider, messages, max_tokens=4000, timeout=None):
             call_timeout = 60
         body = {'model': model, 'temperature': temperature, 'max_tokens': max_tokens,
                 'messages': messages}
-        if urlsplit(endpoint).hostname in ('api.minimaxi.com', 'api.minimax.cn', 'api.minimax.io'):
-            body.update(temperature=max(temperature, 0.1), reasoning_split=True)
+        apply_provider_extras(body, provider, endpoint)
         headers = {'Content-Type': 'application/json'}
         key = str(provider.get('api_key') or '')
         if key:

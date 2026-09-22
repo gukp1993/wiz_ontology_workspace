@@ -143,6 +143,8 @@ wb_model_configs = sa.Table('wb_model_configs', METADATA,
     sa.Column('model', sa.String(500), nullable=False, default=''),
     sa.Column('timeout_seconds', sa.Integer(), nullable=False, default=60),
     sa.Column('temperature', sa.Float(), nullable=False, default=0),
+    sa.Column('thinking', sa.String(16), nullable=False, default='default',
+              server_default='default'),                            # default|off（04 分册 §4.2；与迁移 0005 同 DDL）
     sa.Column('secret_id', BinV(36), nullable=True),
     sa.Column('metadata_revision', sa.Integer(), nullable=False, default=0),
     sa.Column('updated_at', sa.String(32), nullable=False, default=''),

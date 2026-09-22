@@ -260,10 +260,11 @@ GET /api/llm-providers
 
 ```json
 { "items": [ { "id": "llm-xxxxx", "name": "本地模型", "model": "qwen", "endpoint": "https://...",
-               "timeout": 60, "temperature": 0, "isDefault": true, "keyConfigured": true } ] }
+               "timeout": 60, "temperature": 0, "thinking": "default",
+               "isDefault": true, "keyConfigured": true } ] }
 ```
 
-> 默认项排最前，其余按名称排序；`api_key` **永不出现**。
+> 默认项排最前，其余按名称排序；`api_key` **永不出现**。`thinking` 语义见 §4.2。
 
 ### 4.2 保存提供方
 
@@ -282,18 +283,20 @@ POST /api/llm-provider-save
 | `apiKey` | string | 条件 | 首次配置必填；编辑时留空表示**沿用已保存密钥** |
 | `timeout` | number | 否 | 1–300 秒，默认 60 |
 | `temperature` | number | 否 | 0–2，默认 0 |
+| `thinking` | string | 否 | 思考强度：`default`（默认，跟随模型/账号默认，不追加参数）\| `off`（关闭思考，显著降低延迟）。仅对支持该参数的提供方生效——当前为 `bigmodel.cn` 端点（请求体追加 `thinking:{"type":"disabled"}`）；其他提供方存值但不追加参数。缺省 `default` |
 | `isDefault` | boolean | 否 | 设为默认；**首个提供方自动成为默认**。列表页的「设为默认」不经过本接口，走 `POST /api/llm-provider-default`（§4.5） |
 
 **响应** `200`
 
 ```json
 { "saved": true, "provider": { "id": "llm-xxxxx", "name": "本地模型", "model": "qwen",
+                               "thinking": "default",
                                "isDefault": true, "keyConfigured": true } }
 ```
 
 | 状态码 | 场景 |
 | --- | --- |
-| 400 | 参数校验失败（名称/地址/模型/超时/温度/密钥） |
+| 400 | 参数校验失败（名称/地址/模型/超时/温度/思考强度/密钥） |
 
 **说明**：元数据、密钥与默认项设置在同一事务完成（护栏串行化，防并发出现多个默认）；删除默认项后自动指派剩余第一个为默认。
 
@@ -324,7 +327,7 @@ POST /api/llm-provider-test
 | 形态 | 字段 |
 | --- | --- |
 | 按已存配置 | `{ "providerId": "llm-xxxxx" }` |
-| 按临时配置（不落盘） | `{ "name", "endpoint", "model", "apiKey", "timeout"(默认30), "temperature"(默认0) }` |
+| 按临时配置（不落盘） | `{ "name", "endpoint", "model", "apiKey", "timeout"(默认30), "temperature"(默认0), "thinking"(默认`default`) }` |
 
 **响应** `200`
 

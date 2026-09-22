@@ -42,9 +42,26 @@ def _clean(provider_id):
 def _rows(conn, owner_user_id):
     rows = conn.execute(
         sql_text('SELECT provider_id, name, endpoint, model, timeout_seconds, temperature, '
-                       'secret_id, metadata_revision, updated_at FROM wb_model_configs '
+                       'thinking, secret_id, metadata_revision, updated_at FROM wb_model_configs '
                        'WHERE owner_user_id = :o'), {'o': owner_user_id or ''}).mappings().all()
     return [dict(row) for row in rows]
+
+
+THINKING_VALUES = ('default', 'off')
+
+
+def _clean_thinking(thinking):
+    """思考强度规范化：缺省/空 → 'default'；仅接受冻结枚举（04 分册 §4.2）。"""
+    value = str(thinking or 'default').strip().lower()
+    if value not in THINKING_VALUES:
+        raise ValueError('思考强度仅支持 default 或 off')
+    return value
+
+
+def _thinking_of(value):
+    """读取侧宽容口径：库里异常值回落 'default'（写路径已严格校验，防手工改库炸读取）。"""
+    value = str(value or 'default').strip().lower()
+    return value if value in THINKING_VALUES else 'default'
 
 
 def _metadata_of(row):
@@ -59,6 +76,7 @@ def _metadata_of(row):
     return {'id': row['provider_id'], 'name': str(row.get('name') or row['provider_id']),
             'model': str(row.get('model') or ''), 'endpoint': str(row.get('endpoint') or ''),
             'timeout': timeout, 'temperature': temperature,
+            'thinking': str(row.get('thinking') or 'default'),
             'isDefault': False, 'keyConfigured': bool(row.get('secret_id'))}
 
 
@@ -99,6 +117,7 @@ def read(provider_id):
         secret = config_store.get_secret(conn, MODEL_NS, owner, provider_id)
     return {'id': provider_id, 'name': row['name'], 'endpoint': row['endpoint'], 'model': row['model'],
             'timeout': int(row['timeout_seconds'] or 60), 'temperature': float(row['temperature'] or 0),
+            'thinking': _thinking_of(row.get('thinking')),
             'api_key': secret or '', 'is_default': False}
 
 
@@ -115,6 +134,7 @@ def default_provider():
         secret = config_store.get_secret(conn, MODEL_NS, owner, row['provider_id'])
     return {'id': row['provider_id'], 'name': row['name'], 'endpoint': row['endpoint'], 'model': row['model'],
             'timeout': int(row['timeout_seconds'] or 60), 'temperature': float(row['temperature'] or 0),
+            'thinking': _thinking_of(row.get('thinking')),
             'api_key': secret or '', 'is_default': True}
 
 
@@ -169,14 +189,17 @@ def _validate(name, endpoint, model, timeout, temperature, api_key):
     return name, endpoint, model, timeout, temperature, api_key
 
 
-def save(name, endpoint, model, api_key='', timeout=60, temperature=0, is_default=False, provider_id=''):
+def save(name, endpoint, model, api_key='', timeout=60, temperature=0, is_default=False, provider_id='',
+         thinking='default'):
     """写入或覆盖当前账号的一条提供方配置，返回元数据（不含密钥）。api_key 留空 = 沿用已存密钥。
 
     元数据、密钥与默认项设置在同一事务内完成（model-default 护栏串行化默认切换）；
-    配置与模型密钥都按账号隔离。
+    配置与模型密钥都按账号隔离。thinking：'default'|'off'（04 分册 §4.2，off 时
+    llm_client 对 bigmodel.cn 端点追加 thinking:{"type":"disabled"}）。
     """
     name, endpoint, model, timeout, temperature, api_key = _validate(name, endpoint, model,
                                                                      timeout, temperature, api_key)
+    thinking = _clean_thinking(thinking)
     owner = _owner()
     storage.ensure_ready()
     if provider_id:
@@ -210,24 +233,25 @@ def save(name, endpoint, model, api_key='', timeout=60, temperature=0, is_defaul
         if row is not None:
             conn.execute(sql_text(
                 'UPDATE wb_model_configs SET name = :n, endpoint = :e, model = :m, '
-                'timeout_seconds = :t, temperature = :tp, secret_id = :s, '
+                'timeout_seconds = :t, temperature = :tp, thinking = :th, secret_id = :s, '
                 'metadata_revision = :r, updated_at = :now '
                 'WHERE provider_id = :p AND owner_user_id = :o'),
                 {'n': name, 'e': endpoint, 'm': model, 't': timeout, 'tp': temperature,
-                 's': secret_id, 'r': revision, 'now': utcnow(), 'p': provider_id, 'o': owner})
+                 'th': thinking, 's': secret_id, 'r': revision, 'now': utcnow(),
+                 'p': provider_id, 'o': owner})
         else:
             conn.execute(sql_text(
                 'INSERT INTO wb_model_configs (provider_id, owner_user_id, name, endpoint, model, '
-                'timeout_seconds, temperature, secret_id, metadata_revision, updated_at) '
-                'VALUES (:p, :o, :n, :e, :m, :t, :tp, :s, :r, :now)'),
+                'timeout_seconds, temperature, thinking, secret_id, metadata_revision, updated_at) '
+                'VALUES (:p, :o, :n, :e, :m, :t, :tp, :th, :s, :r, :now)'),
                 {'p': provider_id, 'o': owner, 'n': name, 'e': endpoint, 'm': model, 't': timeout,
-                 'tp': temperature, 's': secret_id, 'r': revision, 'now': utcnow()})
+                 'tp': temperature, 'th': thinking, 's': secret_id, 'r': revision, 'now': utcnow()})
         want_default = bool(is_default) or first
         current_default = config_store.get_user_setting(conn, owner, config_store.DEFAULT_PROVIDER_KEY, '')
         if want_default and current_default != provider_id:
             config_store.put_user_setting(conn, owner, config_store.DEFAULT_PROVIDER_KEY,
                                           provider_id, now=utcnow())
-        return {'id': provider_id, 'name': name, 'model': model,
+        return {'id': provider_id, 'name': name, 'model': model, 'thinking': thinking,
                 'isDefault': bool(want_default or current_default == provider_id),
                 'keyConfigured': True}
 

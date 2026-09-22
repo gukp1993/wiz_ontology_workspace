@@ -3,6 +3,8 @@
 import { getJson, postJson } from '../app/http'
 
 export const listProviders = () => getJson('/api/llm-providers')
+/** thinking：default=跟随模型默认；off=关闭思考（对 GLM/bigmodel 端点生效，显著降低延迟）。 */
+export type ThinkingMode = 'default' | 'off'
 export interface ProviderPayload {
   providerId?: string
   name: string
@@ -11,7 +13,13 @@ export interface ProviderPayload {
   apiKey?: string
   timeout?: number
   temperature?: number
+  thinking?: ThinkingMode
   isDefault?: boolean
+}
+export interface ProviderMeta extends ProviderPayload {
+  id: string
+  isDefault: boolean
+  keyConfigured: boolean
 }
 export const saveProvider = (payload: ProviderPayload) => postJson('/api/llm-provider-save', payload)
 export const deleteProvider = (providerId: string) => postJson('/api/llm-provider-delete', { providerId })

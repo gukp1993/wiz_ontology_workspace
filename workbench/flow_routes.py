@@ -225,7 +225,8 @@ def post_llm_provider_save(payload):
                                        timeout=payload.get('timeout') or 60,
                                        temperature=payload.get('temperature') if payload.get('temperature') is not None else 0,
                                        is_default=bool(payload.get('isDefault')),
-                                       provider_id=str(payload.get('providerId') or ''))
+                                       provider_id=str(payload.get('providerId') or ''),
+                                       thinking=payload.get('thinking') or 'default')
     except ValueError as exc:
         return {'error': str(exc)}, 400
     return {'saved': True, 'provider': saved}, 200
@@ -266,7 +267,8 @@ def post_llm_provider_test(payload):
             provider = {'name': payload.get('name'), 'endpoint': payload.get('endpoint'),
                         'model': payload.get('model'), 'api_key': payload.get('apiKey') or '',
                         'timeout': payload.get('timeout') or 30,
-                        'temperature': payload.get('temperature') if payload.get('temperature') is not None else 0}
+                        'temperature': payload.get('temperature') if payload.get('temperature') is not None else 0,
+                        'thinking': payload.get('thinking') or 'default'}
     except ValueError as exc:
         return {'error': str(exc)}, 400
     return llm_client.test_connect(provider), 200

@@ -187,5 +187,63 @@ check(llm_providers.default_provider()['id'] in {first['id'], a_id}
       and sum(1 for m in llm_providers.list_metadata() if m['isDefault']) == 1,
       '删除默认后自动回退剩余提供方（回归）')
 
+# 5) 思考强度（04 分册 §4.2）：枚举校验 / 存取回显 / 请求体按家族追加 --------------------
+glm = llm_providers.save(name='GLM', endpoint='https://open.bigmodel.cn/api/coding/paas/v4/chat/completions',
+                         model='glm-5.3-flash', api_key='sk-glm', thinking='off')
+check(glm.get('thinking') == 'off', '保存 thinking=off 回显', glm)
+meta = {m['id']: m for m in llm_providers.list_metadata()}
+check(meta[glm['id']]['thinking'] == 'off', '列表元数据回显 thinking=off', meta[glm['id']])
+check(llm_providers.read(glm['id'])['thinking'] == 'off', 'read() 回显 thinking=off')
+check(llm_providers.default_provider()['thinking'] in ('default', 'off'),
+      'default_provider 带 thinking 字段', llm_providers.default_provider())
+llm_providers.save(name='GLM', endpoint='https://open.bigmodel.cn/x', model='glm-5.3-flash',
+                   api_key='sk-glm', provider_id=glm['id'])   # 编辑缺省 thinking → 回落 default
+check(llm_providers.read(glm['id'])['thinking'] == 'default', '编辑缺省 thinking 回落 default')
+try:
+    llm_providers.save(name='X', endpoint='https://x/y', model='m', api_key='sk', thinking='high')
+    check(False, 'thinking 非法值应被校验拦截')
+except ValueError as exc:
+    check('思考强度' in str(exc), 'thinking 非法值校验拦截', str(exc))
+saved_route = flow_routes.post_llm_provider_save({'name': '路由thinking', 'endpoint': 'https://x/c',
+                                                  'model': 'm', 'apiKey': 'sk-r', 'thinking': 'off'})
+check(saved_route[1] == 200 and saved_route[0]['provider']['thinking'] == 'off',
+      '路由保存透传 thinking', saved_route[0])
+bad_route = flow_routes.post_llm_provider_save({'name': '路由bad', 'endpoint': 'https://x/c', 'model': 'm',
+                                                'apiKey': 'sk-r', 'thinking': 'fast'})
+check(bad_route[1] == 400 and '思考强度' in str(bad_route[0].get('error')),
+      '路由非法 thinking → 400 可读错误', bad_route)
+
+GLM_URL = 'https://open.bigmodel.cn/api/coding/paas/v4/chat/completions'
+body = llm_client.apply_provider_extras({'temperature': 0, 'max_tokens': 64}, {'thinking': 'off'}, GLM_URL)
+check(body.get('thinking') == {'type': 'disabled'}, 'GLM + off → 追加 thinking disabled', body)
+body = llm_client.apply_provider_extras({'temperature': 0, 'max_tokens': 64}, {'thinking': 'default'}, GLM_URL)
+check('thinking' not in body, 'GLM + default → 不追加参数', body)
+body = llm_client.apply_provider_extras({'temperature': 0, 'max_tokens': 64}, {'thinking': 'off'},
+                                        'https://api.minimax.cn/v1/chat/completions')
+check('thinking' not in body and body.get('reasoning_split') is True and body['temperature'] == 0.1,
+      'minimax 端点保留既有微调、不追加 GLM 参数', body)
+body = llm_client.apply_provider_extras({'temperature': 0, 'max_tokens': 64}, {'thinking': 'off'},
+                                        'https://api.deepseek.com/chat/completions')
+check('thinking' not in body and body == {'temperature': 0, 'max_tokens': 64}, '其他家族不追加任何参数', body)
+# chat() 全链路：GLM off 的请求体确实带 disabled（桩捕获请求体）
+_captured = []
+
+
+def _capture(request, timeout=None):
+    _captured.append(json.loads(request.data.decode()))
+    return _FakeResponse({'choices': [{'message': {'content': 'x'}, 'finish_reason': 'stop'}],
+                          'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2}})
+
+
+real_urlopen3 = llm_client.urlopen
+try:
+    llm_client.urlopen = _capture
+    llm_client.chat({'endpoint': GLM_URL, 'model': 'glm-5.3-flash', 'api_key': 'k',
+                     'thinking': 'off'}, [{'role': 'user', 'content': 'hi'}], max_tokens=8, probe=True)
+    check(_captured and _captured[0].get('thinking') == {'type': 'disabled'},
+          'chat() 请求体带 thinking disabled（GLM off）', _captured[0] if _captured else None)
+finally:
+    llm_client.urlopen = real_urlopen3
+
 print(f'\n全部通过：{len(PASSED)} 项')
 shutil.rmtree(TMP, ignore_errors=True)

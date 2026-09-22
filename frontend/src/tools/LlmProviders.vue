@@ -16,7 +16,8 @@ const DEFAULT_HINT = '未指定模型配置的节点将使用此默认配置；�
 
 const dialog = ref(false)
 const editingId = ref('')
-const form = ref({ name: '', endpoint: '', model: '', apiKey: '', timeout: 60, temperature: 0 })
+const form = ref({ name: '', endpoint: '', model: '', apiKey: '', timeout: 60, temperature: 0,
+                   thinking: 'default' as llm.ThinkingMode })
 // 连通性结果按结构化状态保存（不用文案前缀判断成功/失败，避免文案一改配色就错）
 const testingId = ref(''), testResults = ref<Record<string, { ok: boolean; text: string }>>({})
 const defaultingId = ref('')  // 「设为默认」请求进行中的行，防连点
@@ -29,14 +30,16 @@ onMounted(load)
 
 function openCreate() {
   editingId.value = ''
-  form.value = { name: '', endpoint: '', model: '', apiKey: '', timeout: 60, temperature: 0 }
+  form.value = { name: '', endpoint: '', model: '', apiKey: '', timeout: 60, temperature: 0,
+                 thinking: 'default' }
   formOriginal.value = JSON.stringify(form.value)
   dialog.value = true
 }
 function openEdit(item: any) {
   editingId.value = item.id
   form.value = { name: item.name, endpoint: item.endpoint || '', model: item.model, apiKey: '',
-                 timeout: item.timeout || 60, temperature: item.temperature ?? 0 }
+                 timeout: item.timeout || 60, temperature: item.temperature ?? 0,
+                 thinking: item.thinking === 'off' ? 'off' : 'default' }
   formOriginal.value = JSON.stringify(form.value)
   dialog.value = true
 }
@@ -52,7 +55,8 @@ async function save() {
   try {
     await llm.saveProvider({ providerId: editingId.value || undefined, name: form.value.name,
       endpoint: form.value.endpoint, model: form.value.model, apiKey: form.value.apiKey || undefined,
-      timeout: Number(form.value.timeout) || 60, temperature: Number(form.value.temperature) || 0 })
+      timeout: Number(form.value.timeout) || 60, temperature: Number(form.value.temperature) || 0,
+      thinking: form.value.thinking })
     testResults.value = {} // 配置已变化：旧连通性结果作废，待用户重新测试
     dialog.value = false
     warn('已保存模型配置。')
@@ -103,7 +107,7 @@ async function test(item: any) {
       <div class="grow">
         <strong>{{item.name}}</strong>
         <span v-if="item.isDefault" class="pill" :title="DEFAULT_HINT">默认</span>
-        <div class="muted small">模型：{{item.model}} · {{item.keyConfigured ? '密钥已配置' : '未配置密钥'}}</div>
+        <div class="muted small">模型：{{item.model}} · {{item.keyConfigured ? '密钥已配置' : '未配置密钥'}}{{item.thinking === 'off' ? ' · 思考已关闭' : ''}}</div>
       </div>
       <small v-if="testingId===item.id" class="muted">测试中…</small>
       <small v-else-if="testResults[item.id]" :class="testResults[item.id].ok?'inline-success':'inline-error'" role="status" :title="testResults[item.id].text">{{testResults[item.id].text}}</small>
@@ -127,7 +131,14 @@ async function test(item: any) {
         <div class="form-row">
           <label>超时（秒）<input v-model.number="form.timeout" type="number" min="1" max="300"/></label>
           <label>温度（求值建议 0）<input v-model.number="form.temperature" type="number" min="0" max="2" step="0.1"/></label>
+          <label>思考强度
+            <select v-model="form.thinking">
+              <option value="default">跟随模型默认</option>
+              <option value="off">关闭（大幅提速）</option>
+            </select>
+          </label>
         </div>
+        <p class="field-help">「关闭」对 GLM（bigmodel.cn）端点生效：请求时禁用思考，长任务延迟可从分钟级降到秒级；其他提供方保存该值但不生效。求值类任务建议保持默认。</p>
       </details>
       <div class="dialogtools">
         <button @click="closeDialog">取消</button>
