@@ -1,0 +1,26 @@
+{
+  "ticket": "4722961ee4f9490ba98453405f05df09",
+  "task": "assist-fill-production",
+  "status": "implemented",
+  "summary": "按用户指令把 main（578acd7，93 提交：本体构建 V2/解析并发/检索优化/依赖校验修复等）合并入 codex/assist-fill-production，merge commit 4c9e5fb。冲突 3 处：App.vue（保留 provide('ontology-id') + main 下划线改名）、接口文档 README 变更表（两侧 12 行按日期交错）、session_context.md（取我方后 render 重建）。自动合并文件复核：server.py 双侧白名单/401 排空并存，6 个表单组件辅助接线完好。mapping_forms.test.mjs 适配 main lint 改名（api._setRuleInput/_selectImplementation/_implInputRows，断言语义不变）。验证：vue-tsc 0 错、build 过、前端套件 45/47（flow_test_workspace/legacy_graph_bridge 两套件在 main 578acd7 上同样失败，属 main 既有债务未修）、后端 quick 3/3 + unit 48/48 + http 11/11 + assist 专项全过。补齐 worktree 缺失的 ontology/releases 种子（从 main 只读拷贝 156K，修 3 个缺种子用例）。18951 已用登记命令重启：页面 200、admin/admin 登录成功、未登录 401、build-capabilities 与 assist-context 均正常响应。合并内容尚未独立验收；集成合并 main 仍待用户明确授权。",
+  "decisions": [],
+  "verification": [
+    "merge commit 4c9e5fb（父：d690442 + 578acd7），工作树干净",
+    "cd frontend && npm run typecheck 0 错；npm run build 通过",
+    "前端 47 套件 45 过；2 失败在 main 同样失败（main 既有）",
+    "python3 tests/run.py quick=3/3 unit=48/48 http=11/11；test_assist_context/schema/api 全过",
+    "18951 重启后：登录页 200、admin/admin 成功、未登录 401、/api/build-capabilities 与 /api/assist-context 正常"
+  ],
+  "next": [
+    "合并内容待 Codex 独立验收（如需）",
+    "集成合并 main 待用户明确授权",
+    "main 侧两套件失败与 5 用例种子债务归 main 修复"
+  ],
+  "references": [],
+  "actor": "zcode",
+  "created_at": "2026-09-22T07:40:11.311550+00:00",
+  "sequence": 184,
+  "filename": "000184-959bdd703dd3.json",
+  "record_hash": "8bb2293d2c6b01087d4e227775204e2b89ba01d615db3690e76aa35822ae5a68",
+  "context_advanced": true
+}

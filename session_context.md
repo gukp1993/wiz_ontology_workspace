@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`5610f217d771b308`
+上下文版本：`c83344b2e64a10e6`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### assist-fill-production · zcode · 已实施，待验收
+
+时间：2026-09-22T07:40:11.311550+00:00；记录：`.collaboration/entries/000184-959bdd703dd3.json`
+
+按用户指令把 main（578acd7，93 提交：本体构建 V2/解析并发/检索优化/依赖校验修复等）合并入 codex/assist-fill-production，merge commit 4c9e5fb。冲突 3 处：App.vue（保留 provide('ontology-id') + main 下划线改名）、接口文档 README 变更表（两侧 12 行按日期交错）、session_context.md（取我方后 render 重建）。自动合并文件复核：server.py 双侧白名单/401 排空并存，6 个表单组件辅助接线完好。mapping_forms.test.mjs 适配 main lint 改名（api._setRuleInput/_selectImplementation/_implInputRows，断言语义不变）。验证：vue-tsc 0 错、build 过、前端套件 45/47（flow_test_workspace/legacy_graph_bridge 两套件在 main 578acd7 上同样失败，属 main 既有债务未修）、后端 quick 3/3 + unit 48/48 + http 11/11 + assist 专项全过。补齐 worktree 缺失的 ontology/releases 种子（从 main 只读拷贝 156K，修 3 个缺种子用例）。18951 已用登记命令重启：页面 200、admin/admin 登录成功、未登录 401、build-capabilities 与 assist-context 均正常响应。合并内容尚未独立验收；集成合并 main 仍待用户明确授权。
+
+- 验证：merge commit 4c9e5fb（父：d690442 + 578acd7），工作树干净；cd frontend && npm run typecheck 0 错；npm run build 通过；前端 47 套件 45 过；2 失败在 main 同样失败（main 既有）；python3 tests/run.py quick=3/3 unit=48/48 http=11/11；test_assist_context/schema/api 全过；18951 重启后：登录页 200、admin/admin 成功、未登录 401、/api/build-capabilities 与 /api/assist-context 正常
+- 下一步：合并内容待 Codex 独立验收（如需）；集成合并 main 待用户明确授权；main 侧两套件失败与 5 用例种子债务归 main 修复
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### retrieve筛选优化-剖析与基准基建（codex/build-progress-log） · zcode · 已实施，待验收
 
@@ -138,13 +148,3 @@ V2-10 解析并发（线程池）六项任务全部完成：68adc85 契约先行
 - 验证：冻结 agent 独立复算：包可导入、登记一对一、detect_kind 逐条与需求 §5 核对全对、parserMatrix 9 行、DEDICATED_KINDS 含六新 kind、blacklist 与 §4 一致、08 分册契约先行完整
 - 下一步：接线归属线：提交前处理 a/b（展示层小项），注意 git add 未跟踪文件；本会话只等 V2-10 开发收尾→转测试 agent 验收
 - 依据/文档：.collaboration/entries/000174（接线冻结裁决）；workbench/ontology_build/parsers/__init__.py；frontend/src/ontology/build/BuildReviewPage.vue:139
-
-### semantica 源码调研 md 文档交付（用户指令） · zcode · 已实施，待验收
-
-时间：2026-09-21T08:59:48.622757+00:00；记录：`.collaboration/entries/000175-011c540884ce.json`
-
-按用户「输出md文档给我」指令交付 文档/本体自动化构建评审_20260921/semantica源码调研_自动化图谱构建机制_20260921.md：前两轮 semantica 源码调研结论整理成正式文档（七节+附录：整体流程/文件解析/LLM 参与/核心算法/准确性机制/三处文档与实现不符/借鉴点，全部结论带文件:行号）。文档头部声明性质为调研材料，供白名单第三项 semantica 技术画像（W11 源码面）引用，不占用其冻结的四段产出结构。README 同步新增「调研材料」节登记该文档。纯文档交付，未改代码。
-
-- 验证：文档 7 节内容全部来自本轮会话已核实的源码事实（浅克隆 /tmp/semantica-research，v0.6.8 线），无新增未经核对的表述；README 链接指向同目录文档，相对路径有效；写入时发现共享上下文新增两条他人记录：000173 codex 的 GitHub 调研、000174 另一 zcode 会话的生成实测——均未纳入本次提交
-- 下一步：semantica 技术画像正式交付仍归 W11/储能fdev 认领位，本侧文档仅作其源码面输入；如需与工作台生成链路的逐项对照或正式画像报告，待用户明确指令
-- 依据/文档：文档/本体自动化构建评审_20260921/semantica源码调研_自动化图谱构建机制_20260921.md；文档/本体自动化构建评审_20260921/README.md
