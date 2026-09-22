@@ -8,12 +8,15 @@
        进度行据此追加「等待第 N 批返回（还有 X 批未完成，已等待 Y）」，超过 60 秒再加一句安心提示；
        心跳字段缺失时展示与改动前完全一致（不推算、不本地计时）。
      · state=interrupted 必须写明「服务重启导致中断，可重试」，绝不显示为运行中。
+     · 生成日志区（需求：生成进度实时可观测）：逐行展示 checkpoint.generate.log 与 generate.notes，
+       默认展开、可折叠（折叠只显示最新一条）；新行到达自动滚到底部（用户上滚阅读时暂停吸附）；
+       字段缺失/为空时整块不渲染，兼容旧数据。批次状态行逐批标 ✓/✗（失败批带原因）。
      · 失败保留已完成阶段并展示 run.error 原文；取消/重试分别走 build-run-cancel / build-run-resume。
      · 取消提示：取消不保证立即终止已发出的模型请求，但晚到的结果不会写入当前批次。
      · 用量（calls/promptBytes/completionBytes/durationMs）作为次要信息，没有就不显示。
      请求一律经 ./api（内部走 app/http.ts），错误如实展示、不吞。 -->
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppError from '../../shared/AppError.vue'
 import { cancelRun, errorMessage, fetchRun, resumeRun } from './api'
 import {
@@ -81,6 +84,62 @@ const failedBatches = computed(() => {
 })
 const batchTotal = computed(() => run.value?.checkpoint?.generate?.batches?.total ?? 0)
 const planPersisted = computed(() => run.value?.checkpoint?.generate?.planPersisted === true)
+
+// ── 批次状态行 + 生成日志区（需求：生成进度实时可观测 F2/F3；1.5 秒轮询天然实时） ──
+/** 已完成批号列表：服务端旧数据/扫描运行可能没有 batches 字段，一律按空数组兜底。 */
+const doneBatches = computed<number[]>(() => {
+  const done = run.value?.checkpoint?.generate?.batches?.done
+  return Array.isArray(done) ? done : []
+})
+/** 生成日志行：可能不存在/为空/旧数据无此字段，缺失一律按空数组处理（整块不渲染）。 */
+const generateLog = computed<string[]>(() => {
+  const log = run.value?.checkpoint?.generate?.log
+  return Array.isArray(log) ? log : []
+})
+/** 模型说明/管线注记：与日志同一区块展示（日志行在前、说明在后，服务端各自按时间追加）。 */
+const generateNotes = computed<string[]>(() => {
+  const notes = run.value?.checkpoint?.generate?.notes
+  return Array.isArray(notes) ? notes : []
+})
+const hasGenerateLog = computed(() => generateLog.value.length > 0 || generateNotes.value.length > 0)
+const logTitle = computed(() => `生成日志（${generateLog.value.length + generateNotes.value.length} 条）`)
+/** 折叠时只显示最新一条：优先最新日志行，无日志行时取最新说明。 */
+const latestLogLine = computed(() => {
+  if (generateLog.value.length > 0) return generateLog.value[generateLog.value.length - 1]
+  return generateNotes.value[generateNotes.value.length - 1] || ''
+})
+
+const logExpanded = ref(true)
+const logScrollRef = ref<HTMLElement | null>(null)
+/** 用户手动上滚离底时暂停自动吸附；滚回底部附近或重新展开时恢复。 */
+const logPinnedToBottom = ref(true)
+
+async function scrollLogToBottom() {
+  await nextTick()
+  const el = logScrollRef.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+function onLogScroll() {
+  const el = logScrollRef.value
+  if (!el) return
+  logPinnedToBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+}
+function toggleLogExpanded() {
+  logExpanded.value = !logExpanded.value
+  if (logExpanded.value) {
+    logPinnedToBottom.value = true
+    void scrollLogToBottom()
+  }
+}
+// 轮询带回新日志行/说明时自动滚到底部（折叠状态或用户上滚阅读时不打扰）
+watch(
+  () => [generateLog.value.length, generateNotes.value.length, logExpanded.value] as const,
+  ([, , expanded]) => {
+    if (!expanded || !logPinnedToBottom.value) return
+    void scrollLogToBottom()
+  },
+)
+
 
 /** 失败入口文案（G23）：「第 N 步失败（原因）」——批次失败给出批号，其余给出阶段。 */
 const failureEntry = computed(() => {
@@ -413,6 +472,36 @@ onUnmounted(() => {
         </span>
       </div>
 
+      <!-- 批次状态行：逐批标 ✓/✗，不只给汇总数字（空数据不渲染） -->
+      <div v-if="doneBatches.length || failedBatches.length" class="bp-batch-chips" role="list" aria-label="批次状态">
+        <span
+          v-for="position in doneBatches" :key="'ok-' + position" role="listitem"
+          class="bp-batch-chip bp-batch-ok" :title="`批 ${position} 已完成`"
+        >✓ 批 {{ position }}</span>
+        <span
+          v-for="failure in failedBatches" :key="'bad-' + failure.position" role="listitem"
+          class="bp-batch-chip bp-batch-bad" :title="failure.error"
+        >✗ 批 {{ failure.position }}：{{ failure.error }}</span>
+      </div>
+
+      <!-- 生成日志区：逐行渲染 checkpoint.generate.log（+notes），最新在下；旧数据无字段时整块不渲染 -->
+      <div v-if="hasGenerateLog" class="bp-genlog">
+        <div class="bp-genlog-head">
+          <span class="eyebrow">{{ logTitle }}</span>
+          <button type="button" class="bp-genlog-toggle" :aria-expanded="logExpanded" @click="toggleLogExpanded()">
+            {{ logExpanded ? '收起' : '展开' }}
+          </button>
+        </div>
+        <p v-if="!logExpanded" class="bp-genlog-latest">{{ latestLogLine }}</p>
+        <div v-else ref="logScrollRef" class="bp-genlog-body" @scroll.passive="onLogScroll">
+          <p v-for="(line, i) in generateLog" :key="'log-' + i + '-' + line" class="bp-genlog-line">{{ line }}</p>
+          <template v-if="generateNotes.length > 0">
+            <p class="bp-genlog-group">模型说明</p>
+            <p v-for="(note, i) in generateNotes" :key="'note-' + i + '-' + note" class="bp-genlog-line bp-genlog-note">{{ note }}</p>
+          </template>
+        </div>
+      </div>
+
       <div class="bp-actions">
         <button v-if="running" type="button" class="danger-ghost" :disabled="cancelling" @click="onCancel()">
           {{ cancelling ? '正在取消…' : '取消生成' }}
@@ -495,6 +584,18 @@ onUnmounted(() => {
 .bp-error-text .eyebrow{display:block;color:var(--danger);margin-bottom:4px}
 .bp-checkpoint{margin:14px 0 0;padding:10px 12px;border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);font-size:13px}
 .bp-checkpoint .eyebrow{display:block;color:var(--blue-ink);margin-bottom:4px}
+.bp-batch-chips{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;margin:14px 0 0}
+.bp-batch-chip{font-size:12px;line-height:1.6;padding:2px 9px;border-radius:var(--r-pill);border:1px solid var(--line);background:var(--paper-2);max-width:100%;overflow-wrap:anywhere;white-space:pre-wrap}
+.bp-batch-ok{color:var(--ok);border-color:var(--ok-line);background:var(--ok-soft)}
+.bp-batch-bad{color:var(--danger);border-color:var(--danger-line);background:var(--danger-soft)}
+.bp-genlog{margin:14px 0 0;border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-sm);padding:10px 12px}
+.bp-genlog-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bp-genlog-toggle{font-size:12px;padding:2px 10px}
+.bp-genlog-latest{margin:8px 0 0;font-size:12px;line-height:1.7;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.bp-genlog-body{margin:8px 0 0;overflow-y:auto;max-height:200px}
+.bp-genlog-line{margin:0;font-size:12px;line-height:1.7;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink)}
+.bp-genlog-group{margin:8px 0 0;font-size:11px;letter-spacing:1px;font-weight:650;color:var(--muted)}
+.bp-genlog-note{color:var(--muted)}
 .bp-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}
 .bp-hint{margin:10px 0 0}
 .danger-ghost{color:var(--danger);border-color:var(--danger-line)}

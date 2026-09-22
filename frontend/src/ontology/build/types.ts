@@ -182,6 +182,11 @@ export interface RunCheckpoint {
       done: number[]
       failed: { position: number; error: string }[]
     }
+    /** 生成进度实时可观测：每批完成时随检查点追加的中文日志行（服务端上限 500 条，超限移除最早；
+     *  旧运行/扫描运行可能无此字段，前端按缺失=空处理）。 */
+    log?: string[]
+    /** 模型说明/管线注记（_note() 积累，随批次检查点透传；旧数据可能无此字段）。 */
+    notes?: string[]
   }
   scan?: {
     materials: number
