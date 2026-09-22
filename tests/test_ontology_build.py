@@ -1197,6 +1197,79 @@ def flow_parse_concurrency():
         protocol.PARSE_TIMEOUT_SECONDS = saved_timeout
         build_pipeline.parse_material = probe4.original
 
+    # ⑥ worker 异常隔离（G25c 严重#1）：两条复现路径下 run 仍正常完成、其余文件 success
+    def _raise_for(match, exc_factory, original):
+        def _handler(path, material_id, kind, rel_path=''):
+            if match and match in str(rel_path):
+                raise exc_factory()
+            return original(path, material_id, kind, rel_path)
+        return _handler
+
+    # 路径①：注入 RuntimeError（worker 内直接抛）
+    original_parse = build_pipeline.parse_material
+    build_pipeline.parse_material = _raise_for(
+        'boom', lambda: RuntimeError('注入的解析器崩溃'), original_parse)
+    try:
+        task5, _rid5, run5 = _scan_task_files('worker异常隔离-注入', [
+            ('boom.md', '# 崩溃文件\n\n设备台账说明。\n'),
+            ('ok1.md', '# 正常一\n\n额定容量说明。\n'),
+            ('ok2.md', '# 正常二\n\n监测数据说明。\n')])
+        _, listing = api('/api/build-materials', query='?taskId=' + task5)
+        by_name5 = {m['relPath']: m for m in listing.get('items') or []}
+        boom = by_name5.get('boom.md') or {}
+        others_ok = all((by_name5.get(n) or {}).get('parseState') == 'success'
+                        for n in ('ok1.md', 'ok2.md'))
+        check(run5.get('state') == 'succeeded',
+              'worker 异常隔离①（注入 RuntimeError）：run 仍正常完成（不再杀死整轮扫描）',
+              actual=(run5.get('state'), run5.get('error')))
+        check(boom.get('parseState') == 'failed' and 'RuntimeError' in str(boom.get('error'))
+              and others_ok,
+              'worker 异常隔离①：崩溃文件 failed（原因含异常摘要）、其余文件 success（G25c）',
+              actual=(boom.get('parseState'), boom.get('error'),
+                      [(n, (by_name5.get(n) or {}).get('parseState'))
+                       for n in ('ok1.md', 'ok2.md')]))
+        check((boom.get('coverage') or {}).get('factCount') == 0
+              and '注入的解析器崩溃' in str((boom.get('coverage') or {}).get('notes')),
+              'worker 异常隔离①：崩溃文件事实清空且 coverage 记录原因（与超时同口径）',
+              actual=boom.get('coverage'))
+    finally:
+        build_pipeline.parse_material = original_parse
+
+    # 路径②：适配器返回 None → parse_material 后处理段抛 AttributeError（真实代码路径，
+    # 不改 parsers 源文件：猴补 REGISTRY 中的适配器为其返回 None 的桩）
+    from workbench.ontology_build.parsers import base as parsers_base
+    original_handler = parsers_base.REGISTRY.get('md')
+
+    def _none_for_match(match, original):
+        def _handler(path, material_id, rel_path=''):
+            if match in str(rel_path):
+                return None            # 契约外返回值：触发 parse_material 后处理段异常
+            return original(path, material_id, rel_path)
+        return _handler
+
+    try:
+        parsers_base.REGISTRY['md'] = _none_for_match('none1', original_handler)
+        task6, _rid6, run6 = _scan_task_files('worker异常隔离-契约外返回值', [
+            ('none1.md', '# 契约外一\n\n设备台账。\n'),
+            ('ok3.md', '# 正常三\n\n额定容量。\n')])
+        _, listing = api('/api/build-materials', query='?taskId=' + task6)
+        by_name6 = {m['relPath']: m for m in listing.get('items') or []}
+        none1 = by_name6.get('none1.md') or {}
+        check(run6.get('state') == 'succeeded',
+              'worker 异常隔离②（适配器返回 None）：run 仍正常完成',
+              actual=(run6.get('state'), run6.get('error')))
+        check(none1.get('parseState') == 'failed'
+              and 'AttributeError' in str(none1.get('error'))
+              and (by_name6.get('ok3.md') or {}).get('parseState') == 'success',
+              'worker 异常隔离②：契约外返回值触发的后处理异常被隔离为该文件 failed（G25c）',
+              actual=(none1.get('parseState'), none1.get('error'),
+                      (by_name6.get('ok3.md') or {}).get('parseState')))
+        check((none1.get('coverage') or {}).get('factCount') == 0,
+              'worker 异常隔离②：崩溃文件事实清空（不保留半成品）', actual=none1.get('coverage'))
+    finally:
+        if original_handler is not None:
+            parsers_base.REGISTRY['md'] = original_handler
+
 
 # --- 回归流：V2-8 生成断点续跑与状态回退（G23） ----------------------------------------
 def flow_generate_resume():

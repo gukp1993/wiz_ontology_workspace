@@ -471,11 +471,16 @@ def _scan_write(conn, owner_id, run_id, task_id, item, result):
 def _collect_pool_result(owner_id, run_id, task_id, item, parse_futures):
     """主线程收集池内解析结果（V2-10）：按登记顺序、单文件等待超时、迟到结果丢弃。
 
-    * 等待按 0.5s 短片轮询（总时长 ≤ protocol.PARSE_TIMEOUT_SECONDS）：取消请求可在
-      短片边界生效（stage/content_tx 的事务内取消检查），不被长等待阻塞响应。
+    * 等待按 0.5s 短片轮询（总时长 ≤ protocol.PARSE_TIMEOUT_SECONDS）：**本函数不阻塞
+      取消判定**——轮询期间每片都回到主线程，`runner.stage()/content_tx()` 的事务内
+      取消检查照常执行；但「取消在多长时间内生效」由**当前文件的解析速度**决定：
+      若排在前面的文件仍在解析，主线程会一直等到它的结果或单文件超时（最坏 ≤120s）
+      才推进到取消检查点（需求 §5.7：执行中的 worker 让其完成当前文件）。
     * 超时 → 该文件经 content_tx 标 failed（原因「解析超时」）并清空既有事实；
       **迟到的解析结果一律丢弃、不再落库**（防重复 facts），需要内容走单文件重试。
-    * worker 异常（parse_material 理论上不抛，防御）→ 该文件 failed，不传染其他文件。
+    * worker 异常（含适配器返回 None 等契约外返回值在后处理期抛出的异常，如
+      AttributeError）→ 该文件经 content_tx 标 failed 并清空既有事实（与超时路径同口径），
+      **只影响该文件、不传染其他文件、不杀死 run**（G25c）。
     """
     future = parse_futures[item['id']]
     deadline = time.monotonic() + protocol.PARSE_TIMEOUT_SECONDS
@@ -491,6 +496,13 @@ def _collect_pool_result(owner_id, run_id, task_id, item, parse_futures):
             break
         except FutureTimeoutError:
             continue
+        except Exception as exc:  # noqa: BLE001 - worker 异常只影响该文件（G25c）
+            # worker 内异常（注入失败/适配器契约外返回值触发的后处理异常等）：
+            # 与超时同口径落库——failed + 清空既有事实 + 原因含异常摘要。
+            return runner.content_tx(
+                owner_id, run_id,
+                lambda conn, item=item, exc=exc:
+                _scan_write_pool_failure(conn, owner_id, run_id, task_id, item, exc))
     if timed_out:
         return runner.content_tx(owner_id, run_id,
                                  lambda conn, item=item:
@@ -499,10 +511,41 @@ def _collect_pool_result(owner_id, run_id, task_id, item, parse_futures):
         outcome = runner.content_tx(owner_id, run_id,
                                     lambda conn, item=item, result=result:
                                     _scan_write(conn, owner_id, run_id, task_id, item, result))
-    except Exception as exc:  # noqa: BLE001 - worker 异常只影响该文件
+    except Exception as exc:  # noqa: BLE001 - 结果落库阶段的异常也只影响该文件
         outcome = {'state': 'failed', 'facts': 0, 'modules': [],
                    'error': '解析材料失败（%s）：%s' % (exc.__class__.__name__, exc)}
     return outcome
+
+
+def _pool_failure_message(exc):
+    """worker 异常摘要（截断到既有 notes 长度口径，避免异常原文撑爆 coverage）。"""
+    detail = str(exc).replace('\n', ' ').strip()
+    if len(detail) > 300:
+        detail = detail[:300] + '…'
+    return ('解析失败（%s：%s）：该文件已按失败处理并清空事实，其余材料继续解析；'
+            '原因定位后可对该文件执行「重试解析」。' % (exc.__class__.__name__, detail))
+
+
+def _scan_write_pool_failure(conn, owner_id, run_id, task_id, item, exc):
+    """worker 异常的文件级落库（同一写事务内核对取消/fencing）：failed + 清空既有事实。
+
+    与超时路径同口径：清空既有事实（不保留旧 facts、不把失败当空内容继续），
+    failedSegments 留异常原因；迟到/无效结果永不落库。
+    """
+    runner.check_cancelled(conn, run_id, owner_id)
+    message = _pool_failure_message(exc)
+    store.replace_material_facts(conn, task_id, owner_id, item['id'], [])
+    coverage = {'modules': [],
+                'notes': [message],
+                'failedSegments': [{'kind': 'file',
+                                    'locator': {'kind': 'text', 'file': item['relPath']},
+                                    'reason': '解析失败（%s）' % exc.__class__.__name__}],
+                'factCount': 0}
+    store.update_material(conn, item['id'], owner_id, parse_state='failed', coverage=coverage,
+                          error='解析失败（%s）：%s' % (exc.__class__.__name__,
+                                                      str(exc).strip()[:120]))
+    return {'state': 'failed', 'facts': 0, 'modules': [],
+            'error': '解析失败（%s）：%s' % (exc.__class__.__name__, str(exc).strip()[:120])}
 
 
 def _scan_write_timeout(conn, owner_id, run_id, task_id, item):
