@@ -241,9 +241,14 @@ def get_tasks(query):
 
 def get_task(query):
     task_id = _query(query, 'taskId')
+    owner_id = _owner()
     with sto.read_connection() as conn:
         detail = task_domain.get_task_detail(conn, task_id)
-        detail['stale'] = task_domain.stale_for_task(conn, task_id, _owner())
+        detail['stale'] = task_domain.stale_for_task(conn, task_id, owner_id)
+        # schema2 运行：详情里的 run 同样输出冻结轮询摘要（08 §14.3）
+        latest = store.latest_run(conn, task_id, owner_id)
+        if latest is not None and detail.get('run'):
+            detail['run'] = _v2_run_view(conn, latest, detail['run'])
         detail['capabilities'] = {'limits': protocol.LIMITS,
                                   'ocrAvailable': _ocr_capability()['available']}
     return detail, 200
@@ -617,7 +622,7 @@ def post_run_cancel(payload):
     runner.request_cancel(owner_id, run_id)
     with sto.read_connection() as conn:
         run = store.get_run(conn, run_id, owner_id)
-        return {'run': store.run_view(run)}, 200
+        return {'run': _v2_run_view(conn, run, store.run_view(run))}, 200
 
 
 def post_run_resume(payload):
