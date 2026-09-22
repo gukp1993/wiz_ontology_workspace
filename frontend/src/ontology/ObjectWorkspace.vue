@@ -15,9 +15,12 @@
      属性表单由 PropertyManager 自带同一契约；浏览态删除仍走撤销快照 + changed。
      20260919：关系画布（ObjectCanvas）按用户要求移除——对象/链接可视化改用「本体图谱」
      只读视图；「在画布查看」入口与画布来源表单（origin='canvas'）一并移除。
-     20260921（T5）：对象/链接表单接入「✦ 辅助填写」面板（assist/AssistPanel + ontologyBindings，
-     O1/O3）：采纳只改本地草稿，不触发表单保存；手改字段经 assistTouched 通知面板置过期；
-     编辑器关闭面板收起，切换编辑目标以新 binding 重开。 -->
+     20260922（T5 改版，整表自动填写）：对象/链接表单页头次要入口「✦ 自动填写」（默认不渲染
+     任何 AI 区域，A01；保存仍是主操作），点击挂载 AssistPanel 抽屉（assist/AssistPanel +
+     ontologyBindings，O1/O3）。回填只改本地草稿、绝不触发表单保存（引擎保证）；表单上方状态条
+     「已填写 N 项，尚未保存 / 撤销本次填写 / 查看修改」由 binding 的 round 镜像渲染；
+     手改字段即 noteManualChange + notifyDraftChanged（禁整轮撤销 + 作废在途生成，§4.5）。
+     编辑器关闭面板卸载，切换编辑目标以新 binding 重开（切目标作废在途请求）。 -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
 import LegacyGraphHost from './legacyGraph/LegacyGraphHost.vue'
@@ -43,7 +46,7 @@ import { commitRuleAssociations, ruleAssociationsOf, rulesOf, rulesOfObject } fr
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 import AssistPanel from '../assist/AssistPanel.vue'
 import { objectAssistBinding, linkAssistBinding } from '../assist/ontologyBindings'
-import type { AssistApi } from '../assist/useAssistPanel'
+import { defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
 
 // focusType/focusProperty：共享属性库「查看引用」/校验问题/旧深链跳转定位
 // （propertyFocusId 存 apiName 或 @id，此处换算为节点 @id；指向共享定义时落到首个引用属性）。
@@ -250,29 +253,65 @@ async function saveLink() {
   locate(e.id); restoreListScroll()
 }
 
-// ─── 辅助填写（2026-09-21 T5，O1/O3）：对象/链接编辑表单接入 AI 建议 ───
-// 面板挂在编辑表单一侧，binding 由 assist/ontologyBindings 工厂构造（白名单快照与合并）。
-// 边界：采纳只改本地草稿（「已填入，尚未保存」由面板提示），绝不触发表单保存；持久化仍由
-// 用户点表单「保存」走 form-save 链路（含既有校验与撤销记录）。同一屏只服务当前编辑目标：
-// 编辑器关闭（或切到属性表单）面板收起；直接替换编辑目标时 assistOpen 保持、binding 对象
-// 变化由面板 watch 重开为新目标（重新取上下文）。
-const assistApi = inject<AssistApi>('assist-api') // 测试注入桩；缺省 null → 面板内部用 defaultAssistApi()
+// ─── 整表自动填写（2026-09-22 T5 改版，O1/O3）：对象/链接编辑表单页头「✦ 自动填写」 ───
+// 默认不渲染任何 AI 区域（A01）：入口是页头次要按钮，保存仍是主操作；点击挂载 AssistPanel
+// 抽屉（onMounted 自动 open 取上下文），×/Esc/遮罩关闭经 @close 卸载。回填只改本地草稿
+// （引擎保证，绝不触发表单保存）；表单上方状态条由 binding 的 round 镜像渲染（已填 N 项，
+// 尚未保存／另有 M 项待补充／逐字段旧值→新值），「撤销本次填写」走 binding.undoRound
+// （恢复本轮开始前草稿；期间手改禁用）。手改字段即 noteManualChange + notifyDraftChanged：
+// 禁整轮撤销 + 作废在途生成（§4.5）。同一屏只服务当前编辑目标：属性表单（T6）不在本页挂面板，
+// 直接替换编辑目标时 binding 对象变化由面板 watch 重开（切目标作废在途请求）。
+const assistApiInjected = inject<AssistApi>('assist-api') // 测试注入桩；缺省用默认实现
+const innerAssistApi = assistApiInjected ?? defaultAssistApi()
+// 面板 api 包装：fill 响应流经宿主供 binding 观测「另有 M 项待补充」（引擎仍是唯一权威）
+const assistApi: AssistApi = {
+  context: body => innerAssistApi.context(body),
+  generate: async body => {
+    const resp = await innerAssistApi.generate(body)
+    assistBinding.value?.observeFill(resp)
+    return resp
+  },
+}
 const assistOpen = ref(false)
 const assistOntologyId = inject<string>('ontology-id', 'storage')
-const assistPanelRef = ref<{ notifyDraftChanged(): void } | null>(null)
-const assistTouchTick = ref(0) // 手改字段次数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
+const assistPanelRef = ref<InstanceType<typeof AssistPanel> | null>(null)
+const assistTouchTick = ref(0) // 手改字段次数（测试观察点；SSR 下模板 ref 为 null 自动跳过）
+// binding 身份必须稳定：状态条镜像与引擎宿主都挂在 binding 对象上，同一编辑器对象复用同一
+// binding（Vue 3.5 下 computed 在重新求值时若无订阅者保持不了引用恒定，按 editor 对象缓存）。
+let assistBoundEditor: Editor | null = null
+let assistBoundBinding: ReturnType<typeof objectAssistBinding> | ReturnType<typeof linkAssistBinding> | null = null
 const assistBinding = computed(() => {
   const e = editor.value
-  if (!e) return null
-  if (e.kind === 'object') return objectAssistBinding(e.draft, { ontologyId: assistOntologyId, targetId: e.isNew ? '' : e.id, contextTitle: e.assistTitle })
-  if (e.kind === 'link') return linkAssistBinding(e.draft, { ontologyId: assistOntologyId, targetId: e.isNew ? '' : e.id, contextTitle: e.assistTitle })
-  return null // 属性表单由 PropertyManager 自行接入（T6），不在本页挂面板
+  if (!e || (e.kind !== 'object' && e.kind !== 'link')) return null // 属性表单由 PropertyManager 自行接入（T6），不在本页挂面板
+  if (assistBoundEditor !== e || !assistBoundBinding) {
+    assistBoundEditor = e
+    const opts = { ontologyId: assistOntologyId, targetId: e.isNew ? '' : e.id, contextTitle: e.assistTitle }
+    assistBoundBinding = e.kind === 'object' ? objectAssistBinding(e.draft, opts) : linkAssistBinding(e.draft, opts)
+  }
+  return assistBoundBinding
 })
 watch(assistBinding, b => { if (!b) assistOpen.value = false })
-function toggleAssist() { assistOpen.value = !assistOpen.value }
-// 手改字段 → 通知面板：旧建议过期、解除撤销保护；采纳/撤销写草稿由面板自管草稿指纹，
-// 不经此路径（指纹自检保证面板自身写入不会误伤）。
-function assistTouched() { assistTouchTick.value++; assistPanelRef.value?.notifyDraftChanged() }
+// 入口按钮 aria-expanded：面板已挂载时以抽屉实际收展为准（done 自动收起后回落为 false）
+const assistExpanded = computed(() => !!assistOpen.value && !(assistPanelRef.value?.collapsed ?? false))
+function toggleAssist() {
+  if (!assistOpen.value) { assistOpen.value = true; return } // 首次打开：挂载面板（自动取上下文）
+  const p = assistPanelRef.value
+  if (!p) return
+  if (p.collapsed) p.expand() // done 自动收起后重新展开
+  else p.close() // 展开中 → 用户主动关闭（emit close → 卸载，回到入口按钮）
+}
+function onAssistPanelClosed() { assistOpen.value = false }
+// 手改字段 → 登记 binding（禁整轮撤销 + 状态条说明）并通知面板（作废在途生成，§4.5）
+function assistTouched() {
+  assistTouchTick.value++
+  assistBinding.value?.noteManualChange()
+  assistPanelRef.value?.notifyDraftChanged()
+}
+// 宿主「撤销本次填写」：恢复本轮开始前草稿；撤销也是草稿变更，作废在途生成防迟到写入
+function undoAssistRound() {
+  if (!assistBinding.value?.undoRound()) return
+  assistPanelRef.value?.notifyDraftChanged()
+}
 function setObjectField(key: 'label' | 'comment', value: string) { const d = objectDraft.value; if (!d) return; d[key] = value; assistTouched() }
 function setLinkField(key: 'label' | 'from' | 'to' | 'cardinality' | 'reverseLabel' | 'comment', value: string) { const d = linkDraft.value; if (!d) return; d[key] = value; assistTouched() }
 
@@ -704,14 +743,29 @@ async function removeNode(id: string, label: string, confirmText?: string) {
     <PropertyManager v-if="editor.kind === 'property'" :key="editor.propertyId || 'new'" :state="state" kind="property" :target-type-id="editor.targetTypeId" :property-id="editor.propertyId" :canvas-return="canvasReturn" @back-to-graph="backToGraph" @close="closeEditor" @saved="onPropertySaved"/>
     <section v-else-if="editor.kind === 'object'" class="card detail-card ow-editor">
       <EditorHead :canvas-return="canvasReturn" back-label="← 返回对象" @back-to-graph="backToGraph" @close="closeEditor"/>
-      <div class="ow-assist-row"><button type="button" :aria-pressed="assistOpen" @click="toggleAssist">✦ 辅助填写</button></div>
+      <div class="ow-assist-row">
+        <button type="button" class="ow-assist-trigger" id="ow-assist-trigger-object" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
+      </div>
       <div class="detail-heading"><div><span class="eyebrow">对象类型</span><h2>{{ editor.isNew ? '新建对象类型' : '维护对象定义' }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
+      <!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->
+      <div v-if="assistBinding && (assistBinding.round.statusBarText || assistBinding.round.undone)" class="assist-bar" role="status">
+        <span v-if="assistBinding.round.statusBarText" class="assist-bar-text">{{ assistBinding.round.statusBarText }}</span>
+        <span v-else class="assist-bar-text">已撤销本次自动填写，表单已恢复。</span>
+        <button v-if="assistBinding.round.statusBarText" type="button" class="row-link" :disabled="!assistBinding.round.canUndo" @click="undoAssistRound">撤销本次填写</button>
+        <details v-if="assistBinding.round.changes.length" class="assist-bar-changes">
+          <summary>查看修改</summary>
+          <ul>
+            <li v-for="c in assistBinding.round.changes" :key="c.field"><strong>{{ c.label }}</strong>：{{ c.oldText }} → {{ c.newText }}</li>
+          </ul>
+        </details>
+        <span v-if="assistBinding.round.undoHint" class="assist-bar-hint">{{ assistBinding.round.undoHint }}</span>
+      </div>
       <div class="form-grid">
         <Field label="对象名称" class="full" :model-value="objectDraft?.label || ''" required example="储能簇" @update:model-value="setObjectField('label', $event)"/>
         <Field label="业务定义" type="textarea" class="full" :model-value="objectDraft?.comment || ''" required example="说明它是什么，用什么业务边界区分。" help="只需名称和业务定义即可保存；属性与链接在对象内补充。" @update:model-value="setObjectField('comment', $event)"/>
       </div>
-      <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi ?? undefined" @close="assistOpen = false"/>
+      <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="ow-assist-trigger-object" @close="onAssistPanelClosed"/>
       <div class="detail-footer">
         <div class="tools"><button type="button" class="primary" :disabled="editorSaving" @click="saveObject">{{ editorSaving ? '保存中…' : '保存' }}</button><button type="button" @click="closeEditor">取消</button></div>
         <span>只影响当前本体草稿；已发布版本不变。</span>
@@ -719,9 +773,24 @@ async function removeNode(id: string, label: string, confirmText?: string) {
     </section>
     <section v-else-if="editor.kind === 'link'" class="card detail-card ow-editor">
       <EditorHead :canvas-return="canvasReturn" back-label="← 返回对象" @back-to-graph="backToGraph" @close="closeEditor"/>
-      <div class="ow-assist-row"><button type="button" :aria-pressed="assistOpen" @click="toggleAssist">✦ 辅助填写</button></div>
+      <div class="ow-assist-row">
+        <button type="button" class="ow-assist-trigger" id="ow-assist-trigger-link" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
+      </div>
       <div class="detail-heading"><div><span class="eyebrow">业务链接</span><h2>{{ editor.isNew ? '定义业务链接' : '维护 · ' + (linkDraft?.label || '未命名链接') }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
+      <!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->
+      <div v-if="assistBinding && (assistBinding.round.statusBarText || assistBinding.round.undone)" class="assist-bar" role="status">
+        <span v-if="assistBinding.round.statusBarText" class="assist-bar-text">{{ assistBinding.round.statusBarText }}</span>
+        <span v-else class="assist-bar-text">已撤销本次自动填写，表单已恢复。</span>
+        <button v-if="assistBinding.round.statusBarText" type="button" class="row-link" :disabled="!assistBinding.round.canUndo" @click="undoAssistRound">撤销本次填写</button>
+        <details v-if="assistBinding.round.changes.length" class="assist-bar-changes">
+          <summary>查看修改</summary>
+          <ul>
+            <li v-for="c in assistBinding.round.changes" :key="c.field"><strong>{{ c.label }}</strong>：{{ c.oldText }} → {{ c.newText }}</li>
+          </ul>
+        </details>
+        <span v-if="assistBinding.round.undoHint" class="assist-bar-hint">{{ assistBinding.round.undoHint }}</span>
+      </div>
       <div class="form-grid">
         <label>起点对象 *<AppSelect :model-value="linkDraft?.from || ''" aria-label="起点对象" :options="linkTargetOptions" @update:model-value="setLinkField('from', $event)"/></label>
         <label>终点对象 *<AppSelect :model-value="linkDraft?.to || ''" aria-label="终点对象" :options="linkTargetOptions" @update:model-value="setLinkField('to', $event)"/></label>
@@ -737,7 +806,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
         <Field label="业务定义" type="textarea" :model-value="linkDraft?.comment || ''" example="用业务语言说明这条关系的含义" @update:model-value="setLinkField('comment', $event)"/>
       </details>
       <p class="relation-sentence">{{ typeName(linkDraft?.from) }} → {{ linkDraft?.label || '链接名称' }} → {{ typeName(linkDraft?.to) }}</p>
-      <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi ?? undefined" @close="assistOpen = false"/>
+      <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="ow-assist-trigger-link" @close="onAssistPanelClosed"/>
       <div class="detail-footer">
         <div class="tools"><button type="button" class="primary" :disabled="editorSaving" @click="saveLink">{{ editorSaving ? '保存中…' : '保存' }}</button><button type="button" @click="closeEditor">取消</button></div>
         <span>只影响当前本体草稿；已发布版本不变。</span>
@@ -1051,8 +1120,16 @@ async function removeNode(id: string, label: string, confirmText?: string) {
 /* 更多操作（R3）：删除对象收进菜单，触发器与菜单项均可键盘操作 */
 .ow-more{position:relative;display:inline-block}
 .relation-sentence{margin:18px 0 0}
-/* 辅助填写（T5）：入口按钮紧贴表单头一行；面板为表单内一张卡片，不挤压既有版式 */
+/* 整表自动填写（T5 改版）：页头次要入口（保存仍是主操作）+ 表单上方状态条 */
 .ow-assist-row{display:flex;margin:-6px 0 12px}
+.ow-assist-trigger{color:var(--blue-ink,#285bea)}
+.assist-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:8px 12px;background:var(--blue-soft,#edf3ff);border:1px solid var(--blue-line,#c4d5f5);border-radius:6px;font-size:13px}
+.assist-bar-text{color:var(--blue-ink,#285bea);font-weight:600}
+.assist-bar-hint{color:var(--muted,#75869b)}
+.assist-bar-changes{flex-basis:100%}
+.assist-bar-changes summary{cursor:pointer;color:var(--blue-ink,#285bea)}
+.assist-bar-changes ul{margin:8px 0 0;padding-left:18px}
+.assist-bar-changes li{margin:2px 0;overflow-wrap:anywhere}
 .ow-assist-panel{margin-top:16px}
 /* 对象/链接独立编辑表单：沿用原有版式，撑满右侧工作区（不设宽度上限，也不缩窄画布与数据表） */
 .ow-graph-wrap{display:block}

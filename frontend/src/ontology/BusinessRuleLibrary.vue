@@ -9,10 +9,13 @@
      详情/引用对象为只读抽屉，Esc/遮罩/关闭均可退；无复制、分类、状态与执行。
      20260920 字段精简：编辑为三字段（规则名称/业务定义必填、规则内容选填），
      历史 output 有值时只读展示为「历史补充说明」；不自动迁移、不清空。
-     20260921（T7，O4）：编辑表单接入「✦ 辅助填写」面板（assist/AssistPanel + workflowBindings）：
-     采纳只改本地草稿，不触发表单保存；手改字段经 assistTouched 通知面板置过期；目标切换
-     （openEdit 换 draft 引用）由面板 watch 重开；关闭编辑器面板一并收起。历史 output 只读区
-     不在白名单草稿内，辅助填写不触及。 -->
+     20260922（T5 改版，整表自动填写）：编辑表单页头次要入口「✦ 自动填写」（默认不渲染任何
+     AI 区域，A01；保存仍是主操作），点击挂载 AssistPanel 抽屉（assist/AssistPanel +
+     workflowBindings）。回填只改本地草稿、绝不触发表单保存；表单上方状态条（已填写 N 项，
+     尚未保存／撤销本次填写／查看修改）由 binding 的 round 镜像渲染；手改字段即
+     noteManualChange + notifyDraftChanged（禁整轮撤销 + 作废在途生成，§4.5）。目标切换
+     （openEdit 换 draft 引用）由面板 watch 重开；关闭编辑器面板卸载。历史 output 只读区
+     不在白名单草稿内，自动填写不触及。 -->
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
@@ -21,8 +24,8 @@ import OntDrawer from '../shared/OntDrawer.vue'
 import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
 import AssistPanel from '../assist/AssistPanel.vue'
-import { ruleAssistBinding } from '../assist/workflowBindings'
-import type { AssistApi } from '../assist/useAssistPanel'
+import { ruleAssistBinding, type RuleAssistDraft } from '../assist/workflowBindings'
+import { defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
 import { useOntTable } from './ontList'
 import { objectsOfRule, RULE_FIELDS, RULE_LEGACY_FIELDS, rulesOf, ruleFieldErrors } from './businessRuleModel'
 import { externalDependencies, externalDependencyTarget, ruleDeleteCheck } from './dependencyModel'
@@ -204,30 +207,68 @@ function goObject(objectTypeId: string) {
   emit('navigate', 'objects', { type: objectTypeId, tab: 'rules' })
 }
 
-// ─── 辅助填写（2026-09-21 T7，O4）：规则编辑表单接入 AI 建议 ───
-// 面板挂在编辑表单一侧，binding 由 assist/workflowBindings 工厂构造（白名单快照与合并）。
-// 边界：采纳只改本地草稿（「已填入，尚未保存」由面板提示），绝不触发表单保存；持久化仍由
-// 用户点「保存定义」走 form-save 链路（含既有校验与撤销记录）。新建规则未入库 targetId 传空串，
-// 编辑既有规则指向其 id；切换编辑目标（openEdit 换 draft 引用）binding 对象随之更新，由面板
-// watch 重开为新目标；关闭编辑器面板一并收起。历史 output 只读区不在草稿与白名单内，辅助不触及。
-const assistApi = inject<AssistApi>('assist-api') // 测试注入桩；缺省 null → 面板内部用 defaultAssistApi()
+// ─── 整表自动填写（2026-09-22 T5 改版，O4）：规则编辑表单页头「✦ 自动填写」 ───
+// 默认不渲染任何 AI 区域（A01）：入口是页头次要按钮，保存仍是主操作；点击挂载 AssistPanel
+// 抽屉（onMounted 自动 open 取上下文），×/Esc/遮罩关闭经 @close 卸载。回填只改本地草稿
+// （引擎保证，绝不触发表单保存）；表单上方状态条由 binding 的 round 镜像渲染，「撤销本次
+// 填写」走 binding.undoRound（恢复本轮开始前草稿；期间手改禁用）。手改字段即
+// noteManualChange + notifyDraftChanged：禁整轮撤销 + 作废在途生成（§4.5）。新建规则未入库
+// targetId 传空串，编辑既有规则指向其 id；切换编辑目标（openEdit 换 draft 引用）binding
+// 对象随之更新，由面板 watch 重开（切目标作废在途请求）；关闭编辑器面板卸载。历史 output
+// 只读区不在草稿与白名单内，自动填写不触及。
+const assistApiInjected = inject<AssistApi>('assist-api') // 测试注入桩；缺省用默认实现
+const innerAssistApi = assistApiInjected ?? defaultAssistApi()
+// 面板 api 包装：fill 响应流经宿主供 binding 观测「另有 M 项待补充」（引擎仍是唯一权威）
+const assistApi: AssistApi = {
+  context: body => innerAssistApi.context(body),
+  generate: async body => {
+    const resp = await innerAssistApi.generate(body)
+    assistBinding.value?.observeFill(resp)
+    return resp
+  },
+}
 const assistOpen = ref(false)
-const assistPanelRef = ref<{ notifyDraftChanged(): void } | null>(null)
-const assistTouchTick = ref(0) // 手改字段次数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
+const assistPanelRef = ref<InstanceType<typeof AssistPanel> | null>(null)
+const assistTouchTick = ref(0) // 手改字段次数（测试观察点；SSR 下模板 ref 为 null 自动跳过）
+// binding 身份必须稳定（状态条镜像挂在 binding 上）：同一编辑草稿对象复用同一 binding，
+// openEdit 换 draft 引用即换 binding（Vue 3.5 下 computed 重新求值保不了引用恒定，按 draft 对象缓存）。
+let assistBoundDraft: RuleAssistDraft | null = null
+let assistBoundBinding: ReturnType<typeof ruleAssistBinding> | null = null
 const assistBinding = computed(() => {
   if (mode.value !== 'edit' || !draft.value) return null
-  const record = isNewRule.value ? null : rows.value.find((r: any) => r.id === editId.value)
-  return ruleAssistBinding(draft.value, {
-    ontologyId: assistOntologyId,
-    targetId: isNewRule.value ? '' : editId.value,
-    contextTitle: isNewRule.value ? '新建业务规则' : '维护「' + (record?.name || '未命名规则') + '」的业务规则',
-  })
+  if (assistBoundDraft !== draft.value || !assistBoundBinding) {
+    assistBoundDraft = draft.value
+    const record = isNewRule.value ? null : rows.value.find((r: any) => r.id === editId.value)
+    assistBoundBinding = ruleAssistBinding(draft.value, {
+      ontologyId: assistOntologyId,
+      targetId: isNewRule.value ? '' : editId.value,
+      contextTitle: isNewRule.value ? '新建业务规则' : '维护「' + (record?.name || '未命名规则') + '」的业务规则',
+    })
+  }
+  return assistBoundBinding
 })
 watch(assistBinding, b => { if (!b) assistOpen.value = false })
-function toggleAssist() { assistOpen.value = !assistOpen.value }
-// 手改字段 → 通知面板：旧建议过期、解除撤销保护；采纳/撤销写草稿由面板自管草稿指纹，
-// 不经此路径（指纹自检保证面板自身写入不会误伤）。
-function assistTouched() { assistTouchTick.value++; assistPanelRef.value?.notifyDraftChanged() }
+// 入口按钮 aria-expanded：面板已挂载时以抽屉实际收展为准（done 自动收起后回落为 false）
+const assistExpanded = computed(() => !!assistOpen.value && !(assistPanelRef.value?.collapsed ?? false))
+function toggleAssist() {
+  if (!assistOpen.value) { assistOpen.value = true; return } // 首次打开：挂载面板（自动取上下文）
+  const p = assistPanelRef.value
+  if (!p) return
+  if (p.collapsed) p.expand() // done 自动收起后重新展开
+  else p.close() // 展开中 → 用户主动关闭（emit close → 卸载，回到入口按钮）
+}
+function onAssistPanelClosed() { assistOpen.value = false }
+// 手改字段 → 登记 binding（禁整轮撤销 + 状态条说明）并通知面板（作废在途生成，§4.5）
+function assistTouched() {
+  assistTouchTick.value++
+  assistBinding.value?.noteManualChange()
+  assistPanelRef.value?.notifyDraftChanged()
+}
+// 宿主「撤销本次填写」：恢复本轮开始前草稿；撤销也是草稿变更，作废在途生成防迟到写入
+function undoAssistRound() {
+  if (!assistBinding.value?.undoRound()) return
+  assistPanelRef.value?.notifyDraftChanged()
+}
 
 // ── 安全删除（20260920 需求 12/13）：与图谱/对象页共用同一依赖判断（ruleDeleteCheck）。
 // 有对象引用或契约/接口等直接依赖 → 阻断：列出业务名称并打开「引用对象」抽屉作为定位入口；
@@ -337,10 +378,25 @@ async function removeRule(id: string) {
      从图谱跳入时在此给出「← 返回图谱」，与对象/属性/动作编辑表单同一位置同一写法。 -->
 <section v-if="mode === 'edit'" class="card detail-card">
   <EditorHead :canvas-return="canvasReturn" back-label="← 返回规则列表" @back-to-graph="backToGraph" @close="cancelEdit"/>
-  <div class="lib-assist-row"><button type="button" :aria-pressed="assistOpen" @click="toggleAssist">✦ 辅助填写</button></div>
+  <div class="lib-assist-row">
+    <button type="button" class="lib-assist-trigger" id="rule-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
+  </div>
   <div class="detail-heading">
     <div><span class="eyebrow">{{ isNewRule ? '新建规则' : '编辑规则' }}</span><h2>{{ draft?.name || '未命名规则' }}</h2></div>
     <span class="status-pill">业务规则</span>
+  </div>
+  <!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->
+  <div v-if="assistBinding && (assistBinding.round.statusBarText || assistBinding.round.undone)" class="assist-bar" role="status">
+    <span v-if="assistBinding.round.statusBarText" class="assist-bar-text">{{ assistBinding.round.statusBarText }}</span>
+    <span v-else class="assist-bar-text">已撤销本次自动填写，表单已恢复。</span>
+    <button v-if="assistBinding.round.statusBarText" type="button" class="row-link" :disabled="!assistBinding.round.canUndo" @click="undoAssistRound">撤销本次填写</button>
+    <details v-if="assistBinding.round.changes.length" class="assist-bar-changes">
+      <summary>查看修改</summary>
+      <ul>
+        <li v-for="c in assistBinding.round.changes" :key="c.field"><strong>{{ c.label }}</strong>：{{ c.oldText }} → {{ c.newText }}</li>
+      </ul>
+    </details>
+    <span v-if="assistBinding.round.undoHint" class="assist-bar-hint">{{ assistBinding.round.undoHint }}</span>
   </div>
   <div class="form-grid">
     <Field v-for="[key] in RULE_FIELDS" :key="key" :label="FIELD_LABEL[key]"
@@ -356,7 +412,7 @@ async function removeRule(id: string) {
       <small class="muted">历史数据保留展示，不参与校验与保存；如需调整可复制到上方「规则内容」后编辑。</small>
     </div>
   </div>
-  <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="lib-assist-panel" :binding="assistBinding" :api="assistApi ?? undefined" @close="assistOpen = false"/>
+  <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="lib-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="rule-assist-trigger" @close="onAssistPanelClosed"/>
   <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
   <div class="detail-footer">
     <div class="tools"><button type="button" class="primary" :disabled="saving" @click="saveEdit">{{ saving ? '保存中…' : '保存定义' }}</button><button type="button" @click="cancelEdit">取消</button></div>
@@ -376,7 +432,15 @@ async function removeRule(id: string) {
 .rule-legacy{background:var(--paper-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin-top:4px}
 .rule-legacy-label{margin:0 0 4px;font-size:12px;font-weight:600;color:var(--muted)}
 .rule-legacy-value{margin:0 0 4px;white-space:pre-wrap;overflow-wrap:anywhere}
-/* 辅助填写（T7）：入口行贴 EditorHead（写法同 ObjectWorkspace 的 ow-assist-row），面板挂表单尾部 */
+/* 整表自动填写（T5 改版）：页头次要入口（保存仍是主操作）+ 表单上方状态条；写法同 ObjectWorkspace */
 .lib-assist-row{display:flex;margin:-6px 0 12px}
+.lib-assist-trigger{color:var(--blue-ink,#285bea)}
+.assist-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:8px 12px;background:var(--blue-soft,#edf3ff);border:1px solid var(--blue-line,#c4d5f5);border-radius:6px;font-size:13px}
+.assist-bar-text{color:var(--blue-ink,#285bea);font-weight:600}
+.assist-bar-hint{color:var(--muted,#75869b)}
+.assist-bar-changes{flex-basis:100%}
+.assist-bar-changes summary{cursor:pointer;color:var(--blue-ink,#285bea)}
+.assist-bar-changes ul{margin:8px 0 0;padding-left:18px}
+.assist-bar-changes li{margin:2px 0;overflow-wrap:anywhere}
 .lib-assist-panel{margin-top:16px}
 </style>
