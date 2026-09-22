@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`0bc574a4440bccc0`
+上下文版本：`52f017bd92f36abd`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### ui_fix 第七轮体验复测（合并 main 后，零新缺陷） · codex · 需求已交付
+
+时间：2026-09-22T06:31:35.465215+00:00；记录：`.collaboration/entries/000185-39ff1adfc077.json`
+
+在 worktree/ui_fix（分支 codex/ui_fix，端口 18882，PID 32229）对合并后 HEAD 16c1c99 + 升级到 20260921_0004 的分支库跑第七轮点击驱动复测：新缺陷 0，未产生代码修复提交，仅补记开发计划 §9.12（ba7046e）。实算坐实 D2 .danger-btn 颜色（--danger/#b03a3a + --danger-line/#f2cfcf），由代码层核实升级为浏览器验收。
+
+- 决定：升级分支库前先 transfer backup 出在线快照并另存根密钥副本到 .runtime/（禁止 cp 正在写的库），只停本 worktree server.pid 记录的进程；迁移前产物保留不删，作为回退物；控制台唯一 /api/build-run 404 按接口文档 05 #65『无运行记录 404』归类为探测噪声，不改前端也不静默吞；复测用的临时生成任务（含 2 份上传物料）测完即删：直查分支库确认 12 张 wb_build_* 表全为 0，避免留下测试残留；D1 三处可访问名称与共享属性库『日期→时间』芯片需已有本体/项目/编排数据才渲染；uiverify 是空快照账号，造数据会写入含真实数据的分支库副本，按既有边界不自行推进，留给用户指定验收账号或明确授权造演示数据
+- 验证：git merge-base --is-ancestor main HEAD = yes（main⊆分支）；alembic_version 实查 20260921_0004；npm run build（vue-tsc+vite）与 npx eslint src 通过，页面 script[src] 为合并后构建 index-DyWe6o7h.js（仅改 hash 不重载文档曾造成测量假象，已用 reload(ignoreCache) 纠正）；main 侧新增前端 928 行：十六进制色/rgba/内联 h1/!important 命中 0；『解析并发 8 线程』与 9 行解析器支持矩阵、后缀过滤（选中 2·上传 2·跳过 0）、扫描 2 成功 2 均实测通过；a11y 契约逐卡实测（main 新增『文件夹详情』+ 分支『删除生成任务』）：tabindex=-1、自动聚焦入卡、Tab 圈禁且 preventDefault、禁用『删除任务』不入焦点序（输入确认名后入列）、Escape 只关一层、关闭后焦点归还触发器；13 个可达视图单 h1、无错误横幅；CSSOM 全表扫描『删 outline 未补焦点环』命中 0，全局 :focus-visible 环在位；未点击任何生成/运行/抽取动作（该账号模型服务=未配置），未新建本体或项目
+- 下一步：等用户对第七轮结论与分支 HEAD 表态；合并 codex/ui_fix→main 及重启主工作台仍需用户另行明确授权；如用户希望浏览器坐实 D1 与共享属性库芯片，请指定带本体/项目/编排数据的验收账号，或授权在本分支库副本内造可删演示数据；§9.10 末『留给用户或后续专项』清单（dataTypeLabel 日期/时间、legacyGraph 写死日期项、背板 mousedown 关闭口径、PickerRow.actions.danger 改名、removeRuleRef 缺确认、FlowTestWorkspace role=tab 关联、App.vue 自有两卡、B7 重名、需求归档缺 3 份文件、审视报告处置、~2744 处 px 魔数基线）仍待用户决定
+- 依据/文档：文档/需求/20260921_样式与交互统一/开发计划.md §9.12；分支提交 ba7046e（docs）/ 16c1c99（被验 HEAD）/ ae4ce18（merge main）/ 476cd28（合并后 a11y 补丁）；.runtime/workbench-pre0004-20260922-140638.sqlite3 与 .runtime/wb-root-pre0004.key.bak（迁移前回退物，保留）
 
 ### ui_fix 分支同步 main（主干→分支日常合并） · codex · 已实施，待验收
 
@@ -138,14 +149,3 @@ V2-10（G25 a-f）独立验收完成，结论不通过（1 严重）。在 /tmp/
 - 验证：G25a：独立脚本 g25_equiv.py 双实例对比——内容集合 21 条逐字段一致 + rowid 物理插入序逐元素一致 + 落库序==材料登记序；G25b/G25c/G25d/G25e：g25_whitebox.py 11/12（唯一失败=异常隔离缺陷）；超时时序证据 timeout@1.01s < worker_done@3.01s 且 facts 不变；write_tx 线程追踪 parsers 0 写；G25f：基准复跑 2 轮（3.44/4.05、3.98/4.08）+ CPU 竞争轮（5.60/6.11）；重解析对照 200×5000行 3.44 vs 3.78、xlsx 2.30 vs 2.34；回归：test_ontology_build 244/244、parsers 95/95、purge 17/17、storage_contract 60/60、runner_isolation 34/34、finish_guard 27/27、vue-tsc exit 0；缺陷复现：注入 RuntimeError 与畸形适配器 None 返回均致 run failed 且其余材料 pending/running（G25c 违反）
 - 下一步：开发修复严重#1：_collect_pool_result 把 future.result() 的异常纳入隔离（该文件 failed 继续下一个），并评估 parse_material 后处理段纳入 except 或返回值类型校验；修复后按两条复现路径+全量回归交回复测；补登记 README 变更记录 V2-10 一行（capabilities.limits.parseConcurrency）；修正 _collect_pool_result 取消注释（0.5s 短片边界→当前文件收集完成后生效，最坏≤120s）；观察项不阻塞：并发在当前文件构成下无加速（GIL+落库串行占比97%）；基准脚本 concurrency 形参未用；同路径重传生成第二行材料（既有行为）
 - 依据/文档：/tmp/v2_test_report_v2_10.md；worktree build-governance@e03257d（V2-10 七提交）；workbench/ontology_build/pipeline.py:454-488（_collect_pool_result）；workbench/ontology_build/parsers/__init__.py:127-141（parse_material 后处理在 try 外）
-
-### ontology-build-v2-10-parse-concurrency（V2-10/G25，worktree/build-governance） · zcode · 已实施，待验收
-
-时间：2026-09-22T01:32:25.390535+00:00；记录：`.collaboration/entries/000177-3e98e93a65fe.json`
-
-V2-10 解析并发（线程池）六项任务全部完成：68adc85 契约先行（08 §2.1 limits.parseConcurrency + §4 并发模型冻结）；feebad2 线程池核心（run 内 ThreadPoolExecutor，第①级专用解析器单文件粒度池内并行、worker 只解析不写库、主线程按物料登记顺序收集并逐个短事务落库；LLM 兜底与 index 串行；取消 shutdown(wait=False, cancel_futures=True)；0.5s 短片轮询收集使取消即时生效；单文件等待超时标 failed「解析超时」并清空事实、迟到结果一律丢弃）；a766747 capabilities 暴露 parseConcurrency（默认 min(8,CPU)，env WIZ_BUILD_PARSE_CONCURRENCY 覆盖）；3731593 前端能力面板；cb65d4f 六组专项回归（等价指纹/峰值并发/取消保留/超时丢弃/env 回退）+ G25d 暴露的重扫复用缺陷修复（_start_scan 全量 pending 重置使 08 §4 复用承诺从未生效）；494f8fd G25f 基准脚本 + 开发计划 §12.4 数字记录。
-
-- 决定：收集用 0.5s 短片轮询（总等待≤120s）：取消请求可在短片边界生效，不被长等待阻塞；G25d 验收暴露 _start_scan 重置缺陷：任务级扫描保留 success 材料供复用，单物料重试仍强制重解析（G22 不变）；LLM 兜底保持主线程串行（远程调用+单任务预算计数语义），第①级进池
-- 验证：tests/test_ontology_build.py 244/244（新增 flow_parse_concurrency 18 项：等价指纹逐字节一致、峰值并发≥2、取消后 facts 稳定、超时迟到结果丢弃、env 覆盖/回退）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；vue-tsc 0 错误、npm run build 通过；ruff 本组改动文件全过；G25f：1200 小文件串行 3.33–5.04s vs 并发8 3.45–3.93s（小文本 GIL 主导无显著加速，含一组负载离群值；详见开发计划 §12.4）
-- 下一步：待测试 agent 独立验收（G25a–f）；工作树内存在另一并行任务（结构化格式解析 v1）的未提交文件（parsers/ 7 个新文件 + __init__/protocol/blacklist/pipeline 未提交修改）——非本任务范围，未代为提交/修改；本任务回归已在其当前状态下 244/244 通过；tests/test_ontology_build_task_purge.py:115 基线即有 F841 维持未动
-- 依据/文档：worktree/build-governance 分支 codex/build-governance：68adc85/feebad2/a766747/3731593/cb65d4f/494f8fd；文档/接口文档/08-从物料自动构建本体接口.md §2.1/§4；文档/需求/20260920_从物料自动构建本体/开发计划.md §12.4
