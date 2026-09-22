@@ -130,7 +130,25 @@ export interface RunProgress {
   waitingCount?: number
   waitedSeconds?: number
 }
-export interface RunUsage { calls: number; promptBytes: number; completionBytes: number; durationMs: number }
+/** 08 §14.3（生成控输出 v3）：token 统计为新增可空项——任一次调用 usage 未知则整体为 null
+ *  （不拿局部和冒充总数）；旧运行/未接线后端可能整组缺省这些字段（可选性即为此容忍，
+ *  字段名与「可空性」与 08 逐字一致）。completionTokens 已含推理输出（OpenAI 兼容语义），
+ *  展示绝不与 reasoningTokens 双加。 */
+export interface RunUsage {
+  calls: number
+  promptBytes: number
+  completionBytes: number
+  durationMs: number
+  promptTokens?: number | null
+  completionTokens?: number | null
+  totalTokens?: number | null
+  /** 已知完成 token 部分和（未知调用不计 0） */
+  knownCompletionTokens?: number
+  /** 用量未知的调用次数（外部计费可能已发生） */
+  unknownUsageCalls?: number
+  /** 统计范围：schema2 计划代次；范围外调用/旧数据为 null */
+  planEpoch?: number | null
+}
 export interface RunError { message: string; retryable: boolean }
 export interface RunBaseline {
   materialRevision: number
@@ -163,37 +181,101 @@ export interface BuildRun {
   updatedAt: string
 }
 
-/** 检查点摘要（V2-8；不含 factId 明细）：generate 为批次/阶段检查点；
+// ── 08 §14.3（生成控输出 v3）：checkpoint.generate 双版本（schema1 旧批次 / schema2 目标计划） ──
+/** schema1（旧批次计划，08 §1.5 原形状）——既有字段逐字保留，永不改动。 */
+export interface GenerateCheckpointSchema1 {
+  batchId: string
+  scopeRevision: number
+  materialRevision: number
+  /** 确定性阶段（筛选/对齐）产物是否已持久化（重试复用、不重算） */
+  planPersisted: boolean
+  modelFacts: number
+  relevant: number
+  related: number
+  excluded: number
+  batches: {
+    size: number
+    total: number
+    done: number[]
+    failed: { position: number; error: string }[]
+  }
+  /** 生成进度实时可观测日志（08 §1.5；旧运行可缺省，前端按缺失=空处理）。 */
+  log?: string[]
+  /** 模型说明/管线注记（旧数据可缺省）。 */
+  notes?: string[]
+}
+
+/** 输出预算三元组（08 §14.3）：C=上下文限制、L=生效单次输出请求上限、T=单次输出规划目标；未配置为 null。 */
+export interface GenerateBudgetView {
+  contextLimit: number | null
+  requestOutputCap: number | null
+  targetOutputBudget: number | null
+}
+
+/** 作业状态计数（08 §14.3）：splitParents=因输出超限拆分出的父作业数（不算失败，也不算成功叶）。 */
+export interface GenerateJobsSummary {
+  queued: number
+  running: number
+  succeeded: number
+  failed: number
+  blocked: number
+  splitParents: number
+}
+
+/** 目标覆盖计数（08 §14.3）：分母按语义目标解释，不按旧批号。 */
+export interface GenerateCoverage {
+  targetTotal: number
+  targetCompleted: number
+  targetPending: number
+}
+
+/** 计划受阻原因（08 §14.2/§14.3）：已接受作业后异步发现超限 → Run.failed + blocking（不伪造 422）。 */
+export interface GenerateBlocking {
+  code: string
+  message: string
+}
+
+/** schema2（目标/作业/尝试计划）摘要——与 08 §14.3 JSON 逐字段一致；
+ *  不再输出旧 batches/planPersisted/modelFacts，batchId/scopeRevision/materialRevision/log/notes 保留。 */
+export interface GenerateCheckpointV2 {
+  batchId: string
+  scopeRevision: number
+  materialRevision: number
+  schemaVersion: 2
+  adaptive: true
+  planId: string
+  planEpoch: number
+  jobs: GenerateJobsSummary
+  coverage: GenerateCoverage
+  /** 输入 token 估算方式（utf8_proxy=UTF-8 字节代理，非精确 tokenizer） */
+  estimateKind: string
+  budget: GenerateBudgetView
+  blocking: GenerateBlocking | null
+  log?: string[]
+  notes?: string[]
+}
+
+/** 轮询里 schema2 分支的实际形态（判别联合 v2 臂；schemaVersion 恒为 2）。 */
+export type GenerateCheckpointV2View = { schemaVersion: 2 } & GenerateCheckpointV2
+
+/** 检查点摘要（V2-8；不含 factId 明细）：generate 按 schemaVersion 双版本——
+ *  schema1 旧批次计划 / schema2 目标计划（08 §14.3，前端按 isSchemaV2 分支显示）；
  *  scan 携带本轮兜底消耗（G19 单任务累计限额的对账来源，08 §4.3）。 */
 export interface RunCheckpoint {
-  generate?: {
-    batchId: string
-    scopeRevision: number
-    materialRevision: number
-    /** 确定性阶段（筛选/对齐）产物是否已持久化（重试复用、不重算） */
-    planPersisted: boolean
-    modelFacts: number
-    relevant: number
-    related: number
-    excluded: number
-    batches: {
-      size: number
-      total: number
-      done: number[]
-      failed: { position: number; error: string }[]
-    }
-    /** 生成进度实时可观测：每批完成时随检查点追加的中文日志行（服务端上限 500 条，超限移除最早；
-     *  旧运行/扫描运行可能无此字段，前端按缺失=空处理）。 */
-    log?: string[]
-    /** 模型说明/管线注记（_note() 积累，随批次检查点透传；旧数据可能无此字段）。 */
-    notes?: string[]
-  }
+  generate?: GenerateCheckpointSchema1 | GenerateCheckpointV2View
   scan?: {
     materials: number
     /** 本轮自身兜底消耗（跨运行求和 = 单任务累计，08 §4.3） */
     fallbackFiles: number
     fallbackBytes: number
   }
+}
+
+/** 类型守卫：checkpoint.generate 是否为 schema2（目标/作业计划）摘要；非 v2（含空值）一律 false。 */
+export function isSchemaV2(
+  generate: RunCheckpoint['generate'] | null,
+): generate is GenerateCheckpointV2View {
+  return (generate as { schemaVersion?: unknown } | null | undefined)?.schemaVersion === 2
 }
 
 // ── §1.8 Delivery ──────────────────────────────────────────────────────────
@@ -438,6 +520,41 @@ export function runErrorRetryable(run: BuildRun | null): boolean {
   const e = run?.error
   if (!e) return false
   return typeof e === 'string' ? true : e.retryable !== false
+}
+
+/** token 计数展示：千分位分组；空值语义由调用方表达（如「未配置」「含未知」），此处只收数字。 */
+export function formatTokenCount(value: number): string {
+  if (!Number.isFinite(value)) return String(value)
+  return value.toLocaleString('zh-CN')
+}
+
+/** 08 §14.3 estimateKind 中文标注：估算方式必须显式标明非精确；未知值原样回显并注明，不冒充精确值。 */
+export function estimateKindLabel(kind: string): string {
+  if (kind === 'utf8_proxy') return 'UTF-8 字节代理（非精确 tokenizer）'
+  if (kind === 'tokenizer') return '本地 tokenizer（精确）'
+  return kind ? `${kind}（未知估算方式）` : '未知估算方式'
+}
+
+/** 08 §14.2/§14.3：blocking.code → 中文处置指引。
+ *  配置问题指到具体配置项；计划/预算耗尽说明「需新建计划」；未知代码给保守通用指引——
+ *  不把「重试」当作所有情况的万能入口。 */
+export function blockingAdviceText(code: string): string {
+  if (code === 'BUDGET_PROFILE_REQUIRED' || code === 'BUDGET_PROFILE_MISMATCH' || code === 'BUDGET_CONFIG_INVALID') {
+    return '属生成控输出配置问题：请先在服务端环境配置中核对上下文限制（WIZ_BUILD_CONTEXT_TOKENS）、'
+      + '已核实输出上限（WIZ_BUILD_OUTPUT_LIMIT_TOKENS）与模型绑定（WIZ_BUILD_PROFILE_PROVIDER_ID / WIZ_BUILD_PROFILE_MODEL），'
+      + '修正后重新发起生成。'
+  }
+  if (code === 'BUDGET_PLAN_TOO_LARGE' || code === 'BUDGET_PLAN_MISMATCH' || code === 'UNKNOWN_CHECKPOINT_SCHEMA') {
+    return '当前生成计划无法继续复用：需新建生成计划（返回重新发起生成）；已成功目标的候选会保留。'
+  }
+  if (
+    code === 'TARGET_BUDGET_EXCEEDED' || code === 'JOB_BUDGET_EXCEEDED' || code === 'ATTEMPT_BUDGET_EXCEEDED'
+    || code === 'WALL_TIME_BUDGET_EXCEEDED' || code === 'CHECKPOINT_BUDGET_EXCEEDED' || code === 'SPLIT_DEPTH_EXCEEDED'
+    || code === 'FINAL_CANDIDATES_EXCEEDED' || code === 'JOB_ATTEMPTS_EXHAUSTED' || code === 'OVERSIZED_ATOMIC_TARGET'
+  ) {
+    return '生成预算或规模上限已耗尽：需新建生成计划才能继续；已成功目标的候选保留，不会被丢弃。'
+  }
+  return '请先按上方原因处理（配置问题先修正配置；计划预算耗尽则新建生成计划），再重新发起生成。'
 }
 
 export function formatBytes(size: number): string {

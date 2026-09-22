@@ -11,6 +11,13 @@
      · 生成日志区（需求：生成进度实时可观测）：逐行展示 checkpoint.generate.log 与 generate.notes，
        默认展开、可折叠（折叠只显示最新一条）；新行到达自动滚到底部（用户上滚阅读时暂停吸附）；
        字段缺失/为空时整块不渲染，兼容旧数据。批次状态行逐批标 ✓/✗（失败批带原因）。
+     · 08 §14.3（生成控输出 v3）：checkpoint.generate 按 schemaVersion 分支显示——schema1 保留旧批次
+       展示（批号 chips/批次检查点，仅 !isSchemaV2 时渲染）；schema2 显示目标进度（已处理目标 X/Y、
+       成功叶任务、待处理/失败/受阻、因输出超限拆分次数——分母按语义目标解释，splitParents 不算失败）、
+       估算方式显式标注、预算三项（空值=未配置）与受阻原因+处置指引（此时重试按钮为「重新规划生成」，
+       不把「重试」当万能入口）；log/notes 两个版本都保留（08 §14.3 明确保留）。
+     · Run.usage 新增 token 统计（08 §14.3）：completionTokens 可空（null 显示「含未知」，不拿局部和
+       冒充总数）、已知部分和、未知用量调用次数（提示外部计费可能已发生）；reasoning 不单独加算显示。
      · 失败保留已完成阶段并展示 run.error 原文；取消/重试分别走 build-run-cancel / build-run-resume。
      · 取消提示：取消不保证立即终止已发出的模型请求，但晚到的结果不会写入当前批次。
      · 用量（calls/promptBytes/completionBytes/durationMs）作为次要信息，没有就不显示。
@@ -20,7 +27,9 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppError from '../../shared/AppError.vue'
 import { cancelRun, errorMessage, fetchRun, resumeRun } from './api'
 import {
-  RUN_STATE_LABELS, STAGE_LABELS, TASK_STATUS_LABELS, formatBytes, labelOf, runErrorRetryable, runErrorText,
+  RUN_STATE_LABELS, STAGE_LABELS, TASK_STATUS_LABELS,
+  blockingAdviceText, estimateKindLabel, formatBytes, formatTokenCount, isSchemaV2,
+  labelOf, runErrorRetryable, runErrorText,
 } from './types'
 import type { BuildRun, RunStage } from './types'
 
@@ -69,7 +78,11 @@ const stateNote = computed(() => {
   const state = run.value?.state
   if (state === 'interrupted') return '服务重启导致中断，可重试：已完成阶段的结果保留，重试从匹配到的检查点继续。'
   if (state === 'cancelled') return '生成已取消，未创建任何本体；可重试继续剩余阶段。'
-  if (state === 'failed') return '生成在某个阶段失败，未创建正式本体；已完成阶段的结果保留，可重试当前阶段。'
+  if (state === 'failed') {
+    // schema2 计划受阻不是普通阶段失败：不把「重试」当万能入口（08 §14.3）
+    if (generateV2.value?.blocking) return '生成因计划受阻而停止，未创建正式本体；已成功目标的候选保留，请按受阻原因处理后重新规划生成。'
+    return '生成在某个阶段失败，未创建正式本体；已完成阶段的结果保留，可重试当前阶段。'
+  }
   if (state === 'queued') return '运行已排队，尚未开始处理。'
   if (state === 'succeeded') return '初稿已就绪，请人工评审候选定义与证据。'
   return ''
@@ -77,18 +90,75 @@ const stateNote = computed(() => {
 
 const running = computed(() => run.value?.state === 'running' || run.value?.state === 'queued')
 
-/** V2-8：批次检查点摘要——失败批次列表（生成运行专用）。 */
+/** V2-8：批次检查点摘要——失败批次列表（生成运行专用；schema2 无批次字段，恒为空）。 */
 const failedBatches = computed(() => {
-  const batches = run.value?.checkpoint?.generate?.batches
+  const generate = run.value?.checkpoint?.generate
+  if (!generate || isSchemaV2(generate)) return []
+  const batches = generate.batches
   return batches?.failed?.length ? batches.failed : []
 })
-const batchTotal = computed(() => run.value?.checkpoint?.generate?.batches?.total ?? 0)
-const planPersisted = computed(() => run.value?.checkpoint?.generate?.planPersisted === true)
+const batchTotal = computed(() => {
+  const generate = run.value?.checkpoint?.generate
+  if (!generate || isSchemaV2(generate)) return 0
+  return generate.batches?.total ?? 0
+})
+const planPersisted = computed(() => {
+  const generate = run.value?.checkpoint?.generate
+  if (!generate || isSchemaV2(generate)) return false
+  return generate.planPersisted === true
+})
+
+// ── 08 §14.3：schema2（目标/作业计划）分支——分母按语义目标解释，不出现旧批号口径 ──
+/** schema2 检查点摘要；非 schema2 运行（旧批次计划/空）为 null，页面按 schema1 展示。 */
+const generateV2 = computed(() => {
+  const generate = run.value?.checkpoint?.generate
+  return isSchemaV2(generate) ? generate : null
+})
+const isGenerateV2 = computed(() => generateV2.value !== null)
+/** 主进度：X/Y 按语义目标计；计划未给出覆盖计数时不编数字。 */
+const v2TargetText = computed(() => {
+  const coverage = generateV2.value?.coverage
+  if (!coverage || !(coverage.targetTotal > 0)) return '目标进度（服务端尚未给出计数）'
+  return `已处理目标 ${coverage.targetCompleted} / ${coverage.targetTotal}`
+})
+/** 细分行：成功叶任务 N · 待处理/失败/受阻 M · 因输出超限拆分 K 次（splitParents 不算失败）。 */
+const v2JobsText = computed(() => {
+  const v2 = generateV2.value
+  if (!v2) return ''
+  return [
+    `成功叶任务 ${v2.jobs.succeeded}`,
+    `待处理 ${v2.coverage.targetPending}`,
+    `失败 ${v2.jobs.failed}`,
+    `受阻 ${v2.jobs.blocked}`,
+    `因输出超限拆分 ${v2.jobs.splitParents} 次`,
+  ].join(' · ')
+})
+/** 估算方式显式标注（08 §14.3：utf8_proxy 非精确 tokenizer，绝不冒充精确值）。 */
+const v2EstimateText = computed(() => (
+  generateV2.value ? `估算方式：${estimateKindLabel(generateV2.value.estimateKind)}` : ''
+))
+/** 预算三项：上下文限制 / 单次输出请求上限 / 单次输出规划目标（空值显示「未配置」）。 */
+const v2BudgetText = computed(() => {
+  const budget = generateV2.value?.budget
+  if (!budget) return ''
+  const fmt = (v: number | null): string => (typeof v === 'number' ? `${formatTokenCount(v)} token` : '未配置')
+  return `预算：上下文限制 ${fmt(budget.contextLimit)} · 单次输出请求上限 ${fmt(budget.requestOutputCap)} · 单次输出规划目标 ${fmt(budget.targetOutputBudget)}`
+})
+/** 计划受阻信息（null=未受阻）；处置指引见 blockingAdviceText。 */
+const v2Blocking = computed(() => generateV2.value?.blocking || null)
+/** 重试入口文案：schema2 受阻时不是「重试」而是「重新规划生成」（当前计划不可继续，08 §14.5）。 */
+const retryLabel = computed(() => {
+  if (generateV2.value?.blocking) return '重新规划生成'
+  return failedBatches.value.length ? '重试失败批次' : '重试 / 继续生成'
+})
+const retryBusyLabel = computed(() => (generateV2.value?.blocking ? '正在提交重新规划…' : '正在提交重试…'))
 
 // ── 批次状态行 + 生成日志区（需求：生成进度实时可观测 F2/F3；1.5 秒轮询天然实时） ──
-/** 已完成批号列表：服务端旧数据/扫描运行可能没有 batches 字段，一律按空数组兜底。 */
+/** 已完成批号列表：schema2/旧数据/扫描运行可能没有 batches 字段，一律按空数组兜底。 */
 const doneBatches = computed<number[]>(() => {
-  const done = run.value?.checkpoint?.generate?.batches?.done
+  const generate = run.value?.checkpoint?.generate
+  if (!generate || isSchemaV2(generate)) return []
+  const done = generate.batches?.done
   return Array.isArray(done) ? done : []
 })
 /** 生成日志行：可能不存在/为空/旧数据无此字段，缺失一律按空数组处理（整块不渲染）。 */
@@ -199,18 +269,33 @@ const waitText = computed(() => {
   if (wait.waited !== null) parts.push(`已等待 ${formatDuration(wait.waited * 1000)}`)
   return parts.length > 0 ? `等待第 ${wait.position} 批返回（${parts.join('，')}）` : `等待第 ${wait.position} 批返回`
 })
+/** schema2 等待文案：沿用服务端心跳数值，但不用「批」措辞（目标/作业口径，08 §14.3）。 */
+const v2WaitText = computed(() => {
+  const wait = batchWait.value
+  if (!wait) return ''
+  const parts: string[] = []
+  if (wait.count > 0) parts.push(`还有 ${wait.count} 项未完成`)
+  if (wait.waited !== null) parts.push(`已等待 ${formatDuration(wait.waited * 1000)}`)
+  return parts.length > 0 ? `正在等待模型返回（${parts.join('，')}）` : '正在等待模型返回'
+})
 /** 等待超过 60 秒时的安心提示：单批抽取耗时 1–4 分钟属正常，避免用户误判卡死。 */
-const waitHint = computed(() => (
-  batchWait.value && batchWait.value.waited !== null && batchWait.value.waited > 60
-    ? '模型正在处理大批次，单批可能耗时 1–4 分钟，请耐心等待；进度每 15 秒刷新一次。'
-    : ''
-))
+const waitHint = computed(() => {
+  const wait = batchWait.value
+  if (!wait || wait.waited === null || wait.waited <= 60) return ''
+  return generateV2.value
+    ? '模型正在处理较大目标，单项可能耗时 1–4 分钟，请耐心等待；进度每 15 秒刷新一次。'
+    : '模型正在处理大批次，单批可能耗时 1–4 分钟，请耐心等待；进度每 15 秒刷新一次。'
+})
 
 /** 真实进度文案：只回报服务端给出的阶段名与 done/total，不推算百分比、不做倒计时；
  *  等待期间追加批次心跳（已完成批数 / 等待批号 / 已等待秒数），不覆盖既有 done/total。 */
 const progressText = computed(() => {
   const value = run.value
   if (!value) return ''
+  // schema2：分母按语义目标解释，不出现「批」口径（08 §14.3）
+  if (generateV2.value) {
+    return batchWait.value ? `${v2TargetText.value} · ${v2WaitText.value}` : v2TargetText.value
+  }
   const stage = currentStageLabel.value || '阶段处理中'
   const done = value.progress?.done, total = value.progress?.total
   const wait = batchWait.value
@@ -221,9 +306,14 @@ const progressText = computed(() => {
   return `${stage}：已完成 ${done} / ${total} 批 · ${waitText.value}`
 })
 const progressPercent = computed(() => {
-  // 仅用于进度条宽度，仍来自真实 done/total；无计数时不画。
+  // 仅用于进度条宽度；schema2 比例按目标权重计算（整合计划 §7），只信覆盖计数、不用旧批号。
   const value = run.value
   if (!value) return null
+  const coverage = generateV2.value?.coverage
+  if (coverage) {
+    if (!(coverage.targetTotal > 0)) return null
+    return Math.min(100, Math.max(0, Math.round((coverage.targetCompleted / coverage.targetTotal) * 100)))
+  }
   const done = value.progress?.done, total = value.progress?.total
   if (typeof done !== 'number' || typeof total !== 'number' || total <= 0) return null
   return Math.min(100, Math.max(0, Math.round((done / total) * 100)))
@@ -234,7 +324,7 @@ const baselineRows = computed(() => {
   if (!value) return [] as { label: string; value: string }[]
   const base = value.baseline
   const hashes = Array.isArray(base?.materialHashes) ? base.materialHashes : []
-  return [
+  const rows = [
     { label: '材料数', value: `${hashes.length} 份` },
     { label: '材料修订', value: String(base?.materialRevision ?? '—') },
     { label: '范围修订', value: String(base?.scopeRevision ?? '—') },
@@ -242,6 +332,13 @@ const baselineRows = computed(() => {
     { label: '提示词版本', value: base?.promptVersion || '—' },
     { label: '模型指纹', value: base?.providerFingerprint || '—' },
   ]
+  // schema2（08 §14.5）：显示计划标识与代次，便于理解「新建计划/重新规划」后的分母与候选变化
+  const v2 = generateV2.value
+  if (v2) {
+    rows.push({ label: '计划 ID', value: v2.planId || '—' })
+    rows.push({ label: '计划代次', value: v2.planEpoch > 0 ? `第 ${v2.planEpoch} 代` : '—' })
+  }
+  return rows
 })
 const usageRows = computed(() => {
   const usage = run.value?.usage
@@ -251,6 +348,16 @@ const usageRows = computed(() => {
   if (typeof usage.durationMs === 'number' && usage.durationMs > 0) rows.push({ label: '累计耗时', value: formatDuration(usage.durationMs) })
   if (typeof usage.promptBytes === 'number' && usage.promptBytes > 0) rows.push({ label: '输入字节', value: formatBytes(usage.promptBytes) })
   if (typeof usage.completionBytes === 'number' && usage.completionBytes > 0) rows.push({ label: '输出字节', value: formatBytes(usage.completionBytes) })
+  // 08 §14.3 token 统计：completionTokens=null 表示有调用用量未知（显示「含未知」，不拿局部和冒充总数）；
+  // completionTokens 已含推理输出，reasoning 不单独显示加算。字段缺省（旧数据/未接线）则整组不显示。
+  if (typeof usage.completionTokens === 'number') rows.push({ label: '输出 token', value: formatTokenCount(usage.completionTokens) })
+  else if (usage.completionTokens === null) rows.push({ label: '输出 token', value: '含未知' })
+  if (typeof usage.knownCompletionTokens === 'number' && usage.knownCompletionTokens > 0) {
+    rows.push({ label: '已知输出 token（部分和）', value: formatTokenCount(usage.knownCompletionTokens) })
+  }
+  if (typeof usage.unknownUsageCalls === 'number' && usage.unknownUsageCalls > 0) {
+    rows.push({ label: '未知用量调用', value: `${usage.unknownUsageCalls} 次（外部计费可能已发生）` })
+  }
   return rows
 })
 function formatDuration(ms: number): string {
@@ -337,9 +444,11 @@ async function onResume(resumeMode: 'auto' | 'abstract' = 'auto') {
     run.value = { ...run.value, state: 'queued', error: null }
     actionNote.value = resumeMode === 'abstract'
       ? `已从「${STAGE_LABELS.abstract}」重新生成：沿用上次筛选与对齐的结果，所有抽象批次重新执行。`
-      : (failedBatches.value.length
-        ? '已提交「重试失败批次」：只重跑失败的批次，成功批次候选保留。'
-        : '已提交重试：已完成阶段的结果保留，运行从匹配到的检查点继续。')
+      : (generateV2.value?.blocking
+        ? '已提交重新规划生成：以服务端计划校验结果为准；已成功目标的候选保留。'
+        : (failedBatches.value.length
+          ? '已提交「重试失败批次」：只重跑失败的批次，成功批次候选保留。'
+          : '已提交重试：已完成阶段的结果保留，运行从匹配到的检查点继续。'))
     stopPolling()
     schedulePoll()
   } catch (error) {
@@ -462,18 +571,19 @@ onUnmounted(() => {
         </span>
       </div>
 
-      <div v-if="run && run.kind === 'generate' && failedBatches.length" class="bp-checkpoint">
+      <!-- 批次检查点/批号 chips：schema1（旧批次计划）专用展示，schema2 按目标口径显示、不再用批号 -->
+      <div v-if="run && run.kind === 'generate' && !isGenerateV2 && failedBatches.length" class="bp-checkpoint">
         <span class="eyebrow">批次检查点</span>
         <span class="muted">
-          共 {{ batchTotal }} 批 · 已完成 {{ run.checkpoint?.generate?.batches.done.length ?? 0 }} 批 ·
+          共 {{ batchTotal }} 批 · 已完成 {{ doneBatches.length }} 批 ·
           失败 {{ failedBatches.length }} 批（第
           {{ failedBatches.map(b => b.position).join('、') }} 批）·
           {{ planPersisted ? '筛选/对齐产物已持久化，重试不重算确定性阶段' : '无持久化产物，重试将重算确定性阶段' }}
         </span>
       </div>
 
-      <!-- 批次状态行：逐批标 ✓/✗，不只给汇总数字（空数据不渲染） -->
-      <div v-if="doneBatches.length || failedBatches.length" class="bp-batch-chips" role="list" aria-label="批次状态">
+      <!-- 批次状态行：逐批标 ✓/✗，不只给汇总数字（空数据不渲染；仅 schema1） -->
+      <div v-if="!isGenerateV2 && (doneBatches.length || failedBatches.length)" class="bp-batch-chips" role="list" aria-label="批次状态">
         <span
           v-for="position in doneBatches" :key="'ok-' + position" role="listitem"
           class="bp-batch-chip bp-batch-ok" :title="`批 ${position} 已完成`"
@@ -482,6 +592,23 @@ onUnmounted(() => {
           v-for="failure in failedBatches" :key="'bad-' + failure.position" role="listitem"
           class="bp-batch-chip bp-batch-bad" :title="failure.error"
         >✗ 批 {{ failure.position }}：{{ failure.error }}</span>
+      </div>
+
+      <!-- 08 §14.3：schema2 目标计划进度——分母按语义目标解释，splitParents 不算失败；
+           log/notes 未到达时整块不渲染（v-if 分支，属预期） -->
+      <div v-if="generateV2" class="bp-target" role="group" aria-label="目标计划进度">
+        <span class="eyebrow">目标进度（按语义目标计数，非旧批号）</span>
+        <p class="bp-target-main">{{ v2TargetText }}</p>
+        <p class="bp-target-sub">{{ v2JobsText }}</p>
+        <p class="bp-target-sub">{{ v2EstimateText }}</p>
+        <p v-if="v2BudgetText !== ''" class="bp-target-sub">{{ v2BudgetText }}</p>
+      </div>
+
+      <!-- schema2 计划受阻：原因 code+message 与处置指引（配置问题指配置项；预算耗尽需新建计划） -->
+      <div v-if="v2Blocking" class="bp-error-text">
+        <span class="eyebrow">生成受阻（{{ v2Blocking.code }}）</span>
+        {{ v2Blocking.message }}
+        <span class="bp-block-advise">{{ blockingAdviceText(v2Blocking.code) }}</span>
       </div>
 
       <!-- 生成日志区：逐行渲染 checkpoint.generate.log（+notes），最新在下；旧数据无字段时整块不渲染 -->
@@ -510,7 +637,7 @@ onUnmounted(() => {
           v-if="run && isTerminal(run.state) && run.state !== 'succeeded'"
           type="button" class="primary" :disabled="resuming" @click="onResume('auto')"
         >
-          {{ resuming ? '正在提交重试…' : failedBatches.length ? '重试失败批次' : '重试 / 继续生成' }}
+          {{ resuming ? retryBusyLabel : retryLabel }}
         </button>
         <button
           v-if="run && isTerminal(run.state) && run.state !== 'succeeded' && failedBatches.length"
@@ -584,6 +711,11 @@ onUnmounted(() => {
 .bp-error-text .eyebrow{display:block;color:var(--danger);margin-bottom:4px}
 .bp-checkpoint{margin:14px 0 0;padding:10px 12px;border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);font-size:13px}
 .bp-checkpoint .eyebrow{display:block;color:var(--blue-ink);margin-bottom:4px}
+.bp-target{margin:14px 0 0;padding:10px 12px;border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);font-size:13px}
+.bp-target .eyebrow{display:block;color:var(--blue-ink);margin-bottom:4px}
+.bp-target-main{margin:0 0 4px;font-weight:650}
+.bp-target-sub{margin:0 0 4px;color:var(--muted)}
+.bp-block-advise{display:block;margin-top:4px}
 .bp-batch-chips{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;margin:14px 0 0}
 .bp-batch-chip{font-size:12px;line-height:1.6;padding:2px 9px;border-radius:var(--r-pill);border:1px solid var(--line);background:var(--paper-2);max-width:100%;overflow-wrap:anywhere;white-space:pre-wrap}
 .bp-batch-ok{color:var(--ok);border-color:var(--ok-line);background:var(--ok-soft)}
