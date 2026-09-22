@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`bc09c7301a448dcb`
+上下文版本：`f479b1de26cdcc4b`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 交付 assist-fill 正式实现独立验收执行指令 · zcode · 需求已交付
+
+时间：2026-09-22T00:44:11.869478+00:00；记录：`.collaboration/entries/000170-e2017238069c.json`
+
+按用户指令交付可直接交给其他 harness 的独立验收执行指令（纯文档）：文档/需求/20260920_本体与项目辅助填写/独立验收执行指令_正式实现_20260922.md（提交 3e3ae89）。指令自包含：被验代码 SHA fe1179f（其后仅文档/协作提交，HEAD 可前进）、隔离环境 18951 双账号（assist_dev=合成数据+模型桩 18913；admin=真实模型 minimax 限次≤4 次生成）、V1–V8 必做验证（交付完整性与三方文档一致/后端三套件复跑/前端 46 套件+typecheck+build/11 场景浏览器链路含 revision 零保存取证/生命周期与保护/安全红线凭据零出网/真实模型抽查/双视口）、只读边界与禁止项、既有登记项、三态判定与交付格式、通过停在待用户授权集成。
+
+- 决定：代码交付锚定 fe1179f（最后一处代码变更），其后文档/协作提交不算被验内容变更；验收方只读仓库产物进 /tmp；真实模型生成全程限 ≤4 次并要求如实区分桩与真 LLM 验证；P4 场景允许「assist 链路与零保存断言通过、表单保存被既有业务校验正确拦截」判通过；验收方可在 18951 自建合成数据补齐场景；test_assist_api 端口 18911/18912 被占则报告不强杀
+- 验证：指令中引用的 SHA/环境/数据 id 均按当前实况核对：HEAD d99178a、18951 HTTP 200、桩 18913 在线、种子数据 id 与账号齐全；指令提交前 git status 核对仅新增该文档，无他人内容带入
+- 下一步：用户将指令全文交给其他 harness 执行独立验收；验收通过停在待用户授权集成，合并需用户明确指令
+- 依据/文档：文档/需求/20260920_本体与项目辅助填写/独立验收执行指令_正式实现_20260922.md（提交 3e3ae89）；被验分支 codex/assist-fill-production 代码交付 fe1179f；HEAD d99178a；环境 http://127.0.0.1:18951（admin/admin；assist_dev/AssistDev#2026）
 
 ### assist-fill-production 子代理验收循环：三轮后通过 · zcode · 已验证
 
@@ -140,14 +151,3 @@ T11完成：O1/O2/O2b/O3/O4/O5/P2/S14/S15/三视口通过；P1/P5辅助上下文
 - 下一步：T4 路由调用 parse_model_output 时传 mode 与 normalize_draft 的 draft_kind；行级身份表字段核对（params/lookup 的 identityField）需 T4 在 context 注入 identity:{table,fields} 或用 candidates 覆盖；交 Codex 独立验收；HTTP 层与真实模型联调属 T4/T11 范围未做
 - 依据/文档：workbench/assist_schema.py；tests/test_assist_schema.py；workbench/assist_fields.py；文档/接口文档/04-编排与LLM接口.md §5；文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md §8.2
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### assist-fill-production T1 辅助填写上下文构建及脱敏 · zcode · 已实施，待验收
-
-时间：2026-09-21T07:02:09.603542+00:00；记录：`.collaboration/entries/000158-2698549e7868.json`
-
-在已登记 worktree（assist-fill-production，基线 b231179=T0 冻结提交）交付 T1 两个新文件：workbench/assist_context.py（build_context/sign_token/verify_token/check_generate/compute_fingerprint/ContextStale）与 tests/test_assist_context.py（12 组用例）。只读语义：不写修订、不持 LOCK、不起服务、不连真实库/LLM、未执行 git 操作；未改任何既有文件（assist_schema.py/AssistPanel.vue 等为并行 T2/T3 代理文件，未触碰）。
-
-- 决定：build_context(space, project_id, target_kind, target_id, purpose, draft, ontology_id='storage') 返回 (payload, token_payload)：payload 为 §5.1 完整响应体（contextToken 已签名/contextFingerprint/context），T2 可直接返回；exp=now+TOKEN_TTL(600s)，dh=canonical_hash(白名单裁剪后 draft)。；错误语义对齐 server.py 既有映射：ValueError→400；AuthRequired→401；ProjectNotFound/VersionNotFound/WorkspaceNotFound/storage.NotFound→404（targetId 不可见按不存在抛 NotFound）；CatalogCacheUnreadable→503 冒泡；令牌问题一律 ContextStale(ValueError 子类)→409 CONTEXT_STALE。verify_token 只管验签/结构/过期，uid 归属在 check_generate 用 auth.require_user_id 比对。；项目区指纹与候选共用 _project_authority 单次读取（项目 head token＋引用版本坐标＋目录 fingerprint:generation 含损坏条目＋全部编排 head token），杜绝候选与指纹不同基线；本体区先取 head token 再读草稿（fail-closed 方向）。compute_fingerprint 可独立调用供 check_generate 注入。；候选裁剪按类独立（每类 60、每表字段 100、hint 160 字），截断显式标记为 §5.1 增量键：context.definitionsTruncated/catalogTruncated/flowsTruncated＋catalog[i].fieldsTruncated＋flows[i].inputsTruncated/outputsTruncated/fieldsTruncated。目录口径同 GET project-state：单条损坏跳过该连接（指纹仍计入），存储层失败 503 冒泡不降级。；HMAC 密钥为进程级 secrets.token_bytes(32) 懒生成（不落盘不进日志）；令牌只含 uid/space/projectId/targetKind/targetId/fp/dh/exp/purpose。场景候选：本体区对象/属性/共享属性/链接/规则/动作摘要；项目区按 draft.kind 分派（identity/field/database/redis/flow/linkMapping/actionBinding），连接只取 id/名称/engine，目录字段只取 name/comment/dataType。
-- 验证：WIZ_WORKBENCH_ROOT=$(mktemp -d) python3 tests/test_assist_context.py → 12/12 通过、退出码 0：正常构建×4（本体 object/项目 identity/propertySource(flow)/actionBinding）、白名单与形态 9 类 ValueError、越权 404 含跨账号、令牌篡改/过期/缺字段、check_generate 四类 stale、脱敏（脏连接 password 与 LLM API Key 不进返回值）+modelReady 两分支、截断（65→60/105→100/62→60 均带 truncated）、目录损坏跳过+存储失败冒泡、只读不变式零写入。；不预设 WIZ_WORKBENCH_ROOT 直跑同样 12/12 退出 0；python3 -m py_compile 通过（本机 3.9.6，无 3.10+ 语法）；tests/run.py --list 已收录（unit 组自动发现）。未跑前端/服务/全量回归（纯新增两文件，git status 确认零既有文件改动）。
-- 下一步：T2 接线：/api/assist-context 可直接返回 build_context 的 payload；generate 侧调 check_generate(tp, space, project_id, target_kind, target_id, draft, lambda: assist_context.compute_fingerprint(space, project_id))；按 docstring 的异常映射转状态码。；T3 前端镜像消费截断标记键；接口文档 04 §5.1 需登记截断增量键与 title 规则（本轮无文档改权）。；T4 复用 token_payload 的 dh/fp 与 canonical_hash(normalize_draft(...))；propertySource 候选已按 draft.kind 在服务端分派。
-- 依据/文档：workbench/assist_context.py；tests/test_assist_context.py；workbench/assist_fields.py（T0 冻结，只读）；文档/接口文档/04-编排与LLM接口.md §5.1/§5.2；文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md
