@@ -630,6 +630,13 @@ def run_checkpoint_view(row):
         return None
     checkpoint = _loads(raw if raw is not None else '{}', {})
     view = {}
+
+    def _string_list(value):
+        """类型防御：仅接受字符串数组（生成日志/notes 由管线写入），其余一律视为缺失。"""
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, str)]
+
     gen = checkpoint.get('generate')
     if isinstance(gen, dict):
         plan = gen.get('plan') if isinstance(gen.get('plan'), dict) else {}
@@ -651,6 +658,9 @@ def run_checkpoint_view(row):
                 'failed': [{'position': int(item.get('position') or 0),
                             'error': str(item.get('error') or '')} for item in failed],
             },
+            # 生成进度实时可观测：批次日志行与 notes 随 checkpoint 透传（上限截断在管线侧）
+            'log': _string_list(gen.get('log')),
+            'notes': _string_list(gen.get('notes')),
         }
     scan = checkpoint.get('scan')
     if isinstance(scan, dict):
