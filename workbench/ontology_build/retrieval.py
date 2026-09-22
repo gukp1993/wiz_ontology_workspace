@@ -27,6 +27,7 @@
 """
 
 import hashlib
+import json
 import re
 
 # 中文（含扩展区）与英文/数字标识的粗切分：不做分词，保持确定性
@@ -341,6 +342,40 @@ def select_scope_ids(selection, bucket='relevant'):
     return [str(item) for item in value] if isinstance(value, list) else []
 
 
+def _fact_identity_json(fact):
+    """事实身份 → 规范 JSON 串（snippet_digest 的唯一输入；小对象，键排序稳定）。
+
+    身份 = snippet + kind + locator 稳定标量字段 + data 语义键（field/path/value）：
+    同文件同字段同值的「真副本」身份相同（去重的本来目的不变）；不同主体/字段的
+    相同取值身份不同（R3 修复：battery.voltage=220 与 motor.power=220 不再互判重复）。
+    只取 data 顶层的三个语义键、locator 只取标量值（不复制整棵 data），单趟哈希 O(n)。
+    """
+    fact = fact if isinstance(fact, dict) else {}
+    identity = {'snippet': str(fact.get('snippet') or ''), 'kind': str(fact.get('kind') or '')}
+    locator = fact.get('locator') if isinstance(fact.get('locator'), dict) else {}
+    stable_locator = {}
+    for key, value in locator.items():
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            stable_locator[str(key)] = str(value)
+    if stable_locator:
+        identity['locator'] = stable_locator
+    data = fact.get('data') if isinstance(fact.get('data'), dict) else {}
+    semantic = {}
+    for key in ('field', 'path', 'value'):
+        value = data.get(key)
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool) and str(value):
+            semantic[key] = str(value)
+    if semantic:
+        identity['data'] = semantic
+    return json.dumps(identity, ensure_ascii=False, sort_keys=True)
+
+
 def snippet_digest(fact):
-    """供 alignment / 复核共用的片段哈希（同一实现的唯一入口）。"""
-    return _snippet_hash((fact or {}).get('snippet'))
+    """供 alignment / 复核共用的片段哈希（同一实现的唯一入口）。
+
+    事实身份 = snippet + kind + locator 稳定字段 + data 语义键（field/path/value，
+    json.dumps sort_keys 规范化）：真副本（同文件同字段同值）哈希仍相同、照旧判重；
+    不同主体/字段的相同取值哈希不再相同（R3 修复）。locator 缺失时身份退化为
+    snippet+kind（不炸、可判重），哈希输入增大后仍为单趟 O(n)。
+    """
+    return hashlib.sha1(_fact_identity_json(fact).encode('utf-8')).hexdigest()

@@ -1,10 +1,18 @@
 """从物料构建本体：跨来源对齐（**纯函数**，不访问数据库、不调用模型）。
 
-两块职责（开发计划 §5.2、接口文档 08 §1.6）：
+三块职责（开发计划 §5.2、接口文档 08 §1.6）：
 1. `group_evidence(facts, relevant_ids)` —— 把检索到的事实按“像候选的同一主体”
-   （DDL 表 / 代码符号 / 文档章节）分组，并对同一 snippet 哈希去重：重复副本不算独立
+   （DDL 表 / 代码符号 / 文档章节）分组，并对同一**事实身份**（retrieval.snippet_digest：
+   snippet + kind + locator + data 语义键，非仅 snippet）去重：重复副本不算独立
    佐证，只在 duplicates 里指向首个副本。供复核页与管线抽取前查看证据分布。
-2. `align(candidates)` —— 同一批候选内合并。规则是保守的：
+2. `namespace_batch(candidates, position, existing=None)` —— 批次级临时键命名空间化（R1）：
+   模型只被要求 key「批内唯一」，不同批次可能重用同名键（obj/p）；候选跨批累积后
+   引用索引对同名键「首到者胜」，第二批判定的属性会解析到第一批判定的宿主。
+   在候选入跨批累积集合（与同事务落库）前调用：与累积集合**实际冲突**的键加
+   `b{position}:` 前缀（无冲突的键保留原键，入库行为与历史一致），并按
+   「先建映射、再替换」同步重写批内 ownerKey 与链接 sourceRef/targetRef——
+   跨批键绝不冲突，批内引用关系完整保留（截断拆批的子批同属一个 position）。
+3. `align(candidates)` —— 同一批候选内合并。规则是保守的：
    * 只有 **同名（casefold 后一致）+ 同类型** 才合并；仅名称相同、类型不同绝不合并；
    * 属性额外要求 dataType 一致且宿主对象（ownerKey 解析到的规范名）一致
      （D08：不同数据类型的属性不自动合并，宿主不同的同名属性也不自动合并）；
@@ -66,6 +74,68 @@ def align_key(candidate, owner_name=None):
         host = _normal_name(owner_name)
         key += '@%s' % (host or 'unknown')
     return key
+
+
+def namespace_batch(candidates, position, existing=None):
+    """一批候选的临时键命名空间化：与累积集合冲突的键加批次前缀并重写批内引用（R1）。
+
+    R1：SYSTEM_EXTRACT 只要求 key「批内唯一」，不同批次可能重用同名键（obj/p）。
+    候选跨批累积后 `_ref_index` 对同名键首到者胜，第二批判定的属性 ownerKey 会
+    解析到第一批判定的宿主对象（alignedKey 错记 @宿主，同名同 dataType 的属性
+    被误并为一项）。在入累积集合（与同事务落库）前调用本函数：
+
+    * `existing`（跨批累积集合的当前候选列表）提供时（**含空列表**：首批无冲突，
+      不加前缀），只为与已有键**实际冲突**的键加 `b{position}:` 前缀（position
+      为 1 起的批次序号）——键跨批唯一即无冲突，不加前缀，入库键与历史行为完全
+      一致（兼容旧候选行/既有断言）；冲突键加前缀后跨批绝不冲突（目标键若仍被
+      占用则追加 `_` 兜底），批内引用（属性 ownerKey、链接 sourceRef/targetRef）
+      按「先收集本批 key→新 key 映射，再替换引用值」同步重写，引用关系完整保留；
+    * `existing` 省略（None）时全部非空键加前缀（纯批语义，供直调与测试）；
+    * 引用指向批外键（跨批引用本就不合法）或为空时原样保留；已带本批前缀的键
+      视为已处理，原样保留（幂等，防重复前缀）；截断拆批的子批同属一个
+      position，前缀一致。
+
+    返回新候选列表（浅拷贝逐项，不修改入参）；同名键批内重复时映射取首到者
+    （与 `_dedupe_keys` 保留首个的口径一致）。
+    """
+    items = [candidate for candidate in (candidates or []) if isinstance(candidate, dict)]
+    prefix = 'b%d:' % max(1, int(position or 0))
+    prefixing_all = existing is None   # 未提供累积集合 = 纯批语义：全部加前缀
+    taken = {_text(node.get('key')) for node in (existing or []) if isinstance(node, dict)} \
+        if existing is not None else set()
+    mapping, used = {}, set(taken)
+    for candidate in items:
+        key = _text(candidate.get('key'))
+        if not key or key.startswith(prefix) or key in mapping:
+            continue
+        if not prefixing_all and key not in taken:
+            continue   # 跨批无冲突：保留原键（兼容路径），无需命名空间化
+        target = prefix + key
+        while target in used:   # 极小概率目标键仍被占用：追加下划线兜底，绝不制造新冲突
+            target += '_'
+        used.add(target)
+        mapping[key] = target
+    if not mapping:
+        return items
+    out = []
+    for candidate in items:
+        node = dict(candidate)
+        key = _text(node.get('key'))
+        if key in mapping:
+            node['key'] = mapping[key]
+        owner = _text(node.get('ownerKey'))
+        if owner in mapping:
+            node['ownerKey'] = mapping[owner]
+        fields = node.get('fields') if isinstance(node.get('fields'), dict) else None
+        if fields:
+            fields = dict(fields)
+            for slot in ('sourceRef', 'targetRef'):
+                ref = _text(fields.get(slot))
+                if ref in mapping:
+                    fields[slot] = mapping[ref]
+            node['fields'] = fields
+        out.append(node)
+    return out
 
 
 def _evidence_ids(candidate, field=None):
@@ -136,21 +206,47 @@ def merge_group(members):
 
 
 def _ref_index(items):
-    """候选引用索引：临时键与 ID 都能解析（与 ontology_adapter._resolve 口径一致）。"""
+    """候选引用索引：临时键与 ID 都能解析（与 ontology_adapter._resolve 口径一致）。
+
+    R1 兜底：同名临时键跨批出现时（未经 `namespace_batch` 的旧存量数据、或直调
+    `align` 的场景），旧实现「首到者胜」会把后续批次的同名对象吞掉，属性宿主必然
+    解析错。这里保留**全部**同名命中（按出现顺序），交 `_owner_name_for` 按
+    「最近 precedent」消歧；键唯一时命中唯一，行为与旧实现完全一致。
+    """
     index = {}
-    for candidate in items:
+    for order, candidate in enumerate(items):
         for field in ('key', 'id'):
             ref = _text(candidate.get(field))
-            if ref and ref not in index:
-                index[ref] = candidate
+            if ref:
+                index.setdefault(ref, []).append((order, candidate))
     return index
 
 
-def _owner_name_for(candidate, index):
+def _resolve_owner(index, owner_key, own_order):
+    """ownerKey → 宿主对象候选；解析不到返回 None。
+
+    同名命中多个对象时取**属性之前最近的宿主**：抽取与累积都按批连续落位、
+    批内对象先于其属性输出，最近 precedent 与「批内解析」一致（跨批同名时这比
+    全局首到者胜可靠）；之前没有命中（属性先于对象输出的少数布局）则取之后最近
+    的一个。仅作未命名空间化数据的兜底，管线主路径的键经 `namespace_batch`
+    已批间唯一，不会进入多命中分支。
+    """
+    matches = index.get(owner_key) or []
+    objects = [(order, node) for order, node in matches
+               if _text(node.get('type')).casefold() == 'object']
+    if not objects:
+        return None
+    if len(objects) == 1:
+        return objects[0][1]
+    preceding = [item for item in objects if item[0] < own_order]
+    return preceding[-1][1] if preceding else objects[0][1]
+
+
+def _owner_name_for(candidate, index, own_order=0):
     """属性/规则/动作的 ownerKey → 宿主对象候选的名称；解析不到返回 None（键里记 unknown）。"""
     if _text(candidate.get('type')).casefold() not in ('property',):
         return None
-    owner = index.get(_text(candidate.get('ownerKey')))
+    owner = _resolve_owner(index, _text(candidate.get('ownerKey')), own_order)
     if isinstance(owner, dict) and _text(owner.get('type')).casefold() == 'object':
         return _text(owner.get('name'))
     return None
@@ -161,17 +257,21 @@ def align(candidates):
 
     返回 {'candidates': [...], 'notes': [...], 'stats': {...}}；
     合并后的候选带 alignedKey / conflicts / mergedFromKeys，evidenceStatus 按上述规则重算。
-    属性的对齐键含宿主对象名（D08）：宿主先经本批引用索引解析（临时键或 ID），
-    解析不到按 'unknown' 参与分组。
+    属性的对齐键含宿主对象名（D08）：宿主先经本批引用索引解析（临时键或 ID；
+    同名键多命中时按 `_resolve_owner` 的最近 precedent 消歧），解析不到按
+    'unknown' 参与分组。
     """
     items = [candidate for candidate in (candidates or []) if isinstance(candidate, dict)]
     index = _ref_index(items)
-    groups, order = {}, []
+    owner_names = [_owner_name_for(candidate, index, order)
+                   for order, candidate in enumerate(items)]
+    groups, order, first_order = {}, [], {}
     for cand_index, candidate in enumerate(items):
-        key = align_key(candidate, _owner_name_for(candidate, index))
+        key = align_key(candidate, owner_names[cand_index])
         bucket_key = key or '#unnamed-%d' % cand_index  # 无名称候选绝不合并
         if bucket_key not in groups:
             groups[bucket_key] = []
+            first_order[bucket_key] = cand_index
             order.append(bucket_key)
         groups[bucket_key].append(candidate)
 
@@ -179,7 +279,7 @@ def align(candidates):
     merged_total = conflicts_total = 0
     for bucket_key in order:
         members = groups[bucket_key]
-        key = align_key(members[0], _owner_name_for(members[0], index))
+        key = align_key(members[0], owner_names[first_order[bucket_key]])
         if len(members) == 1:
             candidate = dict(members[0])
             conflicts = [item for item in (candidate.get('conflicts') or []) if isinstance(item, dict)]
@@ -254,7 +354,8 @@ def group_evidence(facts, relevant_ids=None):
 
     返回 {'groups': [{'key','kind','factIds','items','duplicates','modules','materialIds'}],
           'duplicates': {factId: 首个副本 factId}, 'notes': [...], 'stats': {...}}
-    事实先按 id 去重；重复（同 snippet 哈希）只在 duplicates 里指向首个副本，不计入 items。
+    事实先按 id 去重；重复（同事实身份，见 retrieval.snippet_digest）只在 duplicates 里
+    指向首个副本，不计入 items。
     """
     allowed = None
     if relevant_ids is not None:

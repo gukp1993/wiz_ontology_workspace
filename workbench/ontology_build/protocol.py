@@ -255,7 +255,12 @@ def clamp_snippet(text, limit=SNIPPET_LIMIT):
 
 
 def default_decision(evidence_status, has_structural_issues):
-    """默认人工决定：有依据且结构完整 → include；弱证据/冲突/结构问题 → defer。"""
+    """默认人工决定：有依据且结构完整 → include；弱证据/冲突/结构问题 → defer。
+
+    只在候选**首次**校验（逐批 verify，尚无 alignedKey）时赋值。跨批合并后证据状态被
+    重算（conflict/inferred/insufficient）时，已有的自动 include 由 pipeline.verify_candidates
+    撤销为 defer（reviewed=true 的人工决定不动），交付端 _delivery_allowed 另有硬门禁兜底。
+    """
     if evidence_status == 'supported' and not has_structural_issues:
         return 'include'
     return 'defer'

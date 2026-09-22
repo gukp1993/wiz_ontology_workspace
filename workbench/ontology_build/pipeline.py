@@ -64,7 +64,6 @@ GENERATE_LOG_LIMIT = 500
 _EXTRACT_TIMEOUT_BASE_SECONDS = 60
 _EXTRACT_TIMEOUT_PER_FACT_SECONDS = 10
 _EXTRACT_TIMEOUT_CAP_SECONDS = 900
-_BATCH_WAIT_SLACK_SECONDS = 180
 
 
 def _extract_call_timeout(provider, fact_count):
@@ -75,11 +74,6 @@ def _extract_call_timeout(provider, fact_count):
         configured = 60
     needed = _EXTRACT_TIMEOUT_BASE_SECONDS + _EXTRACT_TIMEOUT_PER_FACT_SECONDS * max(0, int(fact_count or 0))
     return min(_EXTRACT_TIMEOUT_CAP_SECONDS, max(configured, needed))
-
-
-def _batch_wait_timeout(provider, fact_count=0):
-    """批次等待预算：拆批后子批串行执行，按 2×单次超时 + slack 估算。"""
-    return 2 * _extract_call_timeout(provider, fact_count) + _BATCH_WAIT_SLACK_SECONDS
 
 
 def _merge_usage(left, right):
@@ -119,20 +113,26 @@ _HEARTBEAT_SECONDS = 15
 
 def _run_batches_adaptive(owner_id, run_id, label, batches, pending, provider, scope,
                           done_positions, accumulated, model_facts, on_result=None):
-    """批次抽取调度：自适应并发 + 心跳 + **完成即按前缀顺序回调落库**。
+    """批次抽取调度：自适应并发 + 心跳 + **完成即按批次身份独立回调落库**。
 
     on_result(position, result)：批次完成后立即回调（调用方校验证据 + 同事务落库 +
     写检查点）。**不能等全部批次跑完再落库**——池运行可能持续数分钟，中途取消或
     服务被杀会让已成功批次的结果全部丢失（实测：438 秒仍 candidates=0、done 为空，
     恢复要全量重跑），违反 V2-8「已完成批次候选各自提交」承诺。
-    回调按**前缀顺序**触发（1,2,3… 连续完成才推进），落库顺序仍等于串行版。
+    R5 修复：废弃「连续前缀」刷写游标——非连续续跑（如 done={2}、pending=[1,3]）时
+    批 1 完成会把游标卡在已完成的 2，批 3 的结果永远刷不出去（返回值调用方也不
+    消费 → 候选静默丢失、不报错、重试也不补）。现在每个 position 的结果一完成就
+    独立回调，落库顺序不再强求等于串行版：候选展示与 definitionOrder 预检均按
+    类型 + 对齐键排序（见 DEFINITION_ORDER_NOTE），与落库先后无关，确定性不受影响。
 
     为什么自适应：实测 GLM-5.3-Flash 账号并发 2 稳定、4 路零星 429、16 路多数失败
     （并发能力上限 50 与账号 RPM 限流是两件事）；固定并发要么浪费要么大批失败。
     连续成功升一路（至上限），撞 429 降一路并冷却 20 秒。
 
-    为什么按序返回：候选落库顺序决定定义顺序，必须与串行版一致
-    （与 V2-10「解析并发、落库串行」同一确定性原则）。
+    回调异常一律上抛（含 runner.Cancelled）：落库写事务失败由调用方回调计入
+    failed_batches（错误注明「落库失败」），绝不静默吞掉——内存 done 不允许先于
+    事务成功成为权威状态。
+
     心跳：等待期间每 15 秒写 waitingPosition/waitingCount，页面据此显示真实等待
     （用户实测反馈「抽象本体定义只有处理中」）。
     """
@@ -141,7 +141,6 @@ def _run_batches_adaptive(owner_id, run_id, label, batches, pending, provider, s
     cap = max(ADAPTIVE_MIN_WORKERS, min(ADAPTIVE_MAX_WORKERS, int(protocol.LLM_CONCURRENCY)))
     pool = ThreadPoolExecutor(max_workers=cap, thread_name_prefix='build-extract')
     results = {}
-    next_flush = min((pos for pos, _batch in pending), default=1)   # 前缀刷写游标
     queued = list(pending)
     running = {}
     workers_wanted = min(cap, len(queued))
@@ -164,16 +163,10 @@ def _run_batches_adaptive(owner_id, run_id, label, batches, pending, provider, s
                               'error': '批次执行异常：%s' % type(exc).__name__}
                 results[position] = result
                 if on_result is not None:
-                    # 前缀刷写：只推进连续完成的位置，保证落库顺序 = 串行版
-                    while next_flush in results:
-                        flush_result = results.pop(next_flush)
-                        try:
-                            on_result(next_flush, flush_result)
-                        except runner.Cancelled:
-                            raise
-                        except Exception:  # noqa: BLE001 - 单批落库失败不拖垮其余批次
-                            pass
-                        next_flush += 1
+                    # R5：按批次身份独立落库——每批完成立即回调，不再按「连续前缀」
+                    # 刷写（那会在非连续续跑时把后完成批卡死在空洞后，静默丢批）。
+                    # 异常（含 runner.Cancelled）一律上抛，绝不静默吞掉。
+                    on_result(position, result)
                 if result.get('ok'):
                     success_streak += 1
                     if success_streak >= 2 and workers_wanted < cap:
@@ -210,7 +203,15 @@ def _extract_batch_with_split(provider, scope, batch, depth=0):
     真实复现：40 条/批时模型为每条事实产出候选 JSON，输出必然超预算 → 整批失败；
     拆小后单次输出量减半。瞬态错误（连接失败/5xx/429/超时）退避重试 2 次
     （并发场景 provider 偶发拒绝；实测并发 3 批大请求时出现过）。
-    两条子批都失败才判该批失败（错误取其一并注明已拆批）。
+
+    返回三态（R4 修复，拆批与嵌套拆批同样适用）：
+    * 全成功     ok=True，candidates 为两半全部候选；
+    * 全失败     ok=False，candidates 为空；
+    * 部分成功   ok=False —— 父批按**失败**记账（不进 done，重试整批重跑），
+      但成功半的 candidates 仍随结果返回（不浪费已成功的调用）；error 注明
+      「拆批后部分失败：已保留 X 条候选，失败子批涉及事实 …可重试」，
+      failedFactIds 携带失败子批全部事实 id（供日志与重试提示）。整批重跑的
+      幂等由调用方落库前按批内已存在的 alignedKey/原始 key 去重保证（防重复候选）。
     """
     result = None
     call_timeout = _extract_call_timeout(provider, len(batch))
@@ -238,19 +239,42 @@ def _extract_batch_with_split(provider, scope, batch, depth=0):
     left = _extract_batch_with_split(provider, scope, batch[:middle], depth + 1)
     right = _extract_batch_with_split(provider, scope, batch[middle:], depth + 1)
     usage = _merge_usage(left.get('usage'), right.get('usage'))
-    if not left.get('ok') and not right.get('ok'):
-        merged = {'ok': False, 'candidates': [], 'usage': usage,
-                  'error': '截断后拆批重试仍失败：%s' % (left.get('error') or right.get('error') or '')}
+    left_ok, right_ok = bool(left.get('ok')), bool(right.get('ok'))
+    left_candidates = list(left.get('candidates') or [])
+    right_candidates = list(right.get('candidates') or [])
+    merged = {'usage': usage,
+              'rejectedRefs': int(left.get('rejectedRefs') or 0) + int(right.get('rejectedRefs') or 0),
+              'notes': list(left.get('notes') or []) + list(right.get('notes') or [])}
+    if left_ok and right_ok:
+        merged.update({'ok': True, 'candidates': left_candidates + right_candidates})
     else:
-        merged = {'ok': True,
-                  'candidates': list(left.get('candidates') or []) + list(right.get('candidates') or []),
-                  'usage': usage,
-                  'rejectedRefs': int(left.get('rejectedRefs') or 0) + int(right.get('rejectedRefs') or 0),
-                  'notes': list(left.get('notes') or []) + list(right.get('notes') or [])}
+        # 失败侧的事实 id：嵌套部分失败用其上报的 failedFactIds（精确到失败子批），
+        # 整半失败回退为该半全部事实 id。
+        failed_fact_ids = []
+        if not left_ok:
+            failed_fact_ids.extend(left.get('failedFactIds') or _fact_ids_of(batch[:middle]))
+        if not right_ok:
+            failed_fact_ids.extend(right.get('failedFactIds') or _fact_ids_of(batch[middle:]))
+        # 成功半（含嵌套部分失败里已抽出的）候选照常返回，不浪费；ok=False 让父批
+        # 按失败记账，重试整批重跑。
+        kept = left_candidates + right_candidates
+        merged.update({'ok': False, 'candidates': kept, 'failedFactIds': failed_fact_ids})
+        if kept:
+            shown = '、'.join(failed_fact_ids[:8]) + ('…' if len(failed_fact_ids) > 8 else '')
+            merged['error'] = ('拆批后部分失败：已保留 %d 条候选，失败子批涉及事实 %s，可重试'
+                               % (len(kept), shown))
+        else:
+            merged['error'] = '截断后拆批重试仍失败：%s' % (left.get('error') or right.get('error') or '')
     # 拆批信息只在最外层（depth=0）随结果上抛：批次日志据此记「已自动拆批重试」行。
     if depth == 0:
         merged['split'] = {'from': len(batch), 'halves': [middle, len(batch) - middle]}
     return merged
+
+
+def _fact_ids_of(facts):
+    """批次内事实 id 列表（R4：拆批部分失败时随 error 上抛，供日志与重试提示）。"""
+    return [str(fact.get('id')) for fact in (facts or [])
+            if isinstance(fact, dict) and str(fact.get('id') or '').strip()]
 
 # 人工排除决定回放的有效窗口（D04）：store.list_batches 默认只取最近 20 批，直接用默认值会
 # 把更早批次里的人工否决静默丢掉（保护再次失效）。这里放宽到任务级不设限的实用上限
@@ -902,12 +926,29 @@ def verify_candidates(candidates, fact_ids, weak_fact_ids=None):
                                  '候选证据包含 LLM 兜底解析产物（弱证据，module=llm-fallback）：'
                                  '一律按「推断待确认」处理并默认暂缓，不进入有依据初稿选择集'))
             report['fallbackDowngraded'] += 1
+        # R2：合并后二次 verify 时（alignment.align 已给候选写入 alignedKey），证据状态
+        # 可能较逐批 verify 时被重算降级（conflict/inferred/insufficient）。逐批阶段依据
+        # 旧状态给出的自动 include 不再成立：未经人工确认（reviewed 非 true）必须撤销为
+        # defer 并登记 issue，绝不让冲突候选带着 include 进入默认交付集合。首次赋值
+        # （尚无 alignedKey 的逐批候选）与人工决定（reviewed=true / exclude）不受影响。
+        decision = _text(candidate.get('decision'))
+        if decision == 'include' and not bool(candidate.get('reviewed')) \
+                and _text(candidate.get('alignedKey')) and status != 'supported':
+            push('AUTO_INCLUDE_REVOKED', 'decision',
+                 '跨批合并后证据状态为 %s，自动纳入已撤销，请人工确认' % status)
+            decision = 'defer'
         candidate['issues'] = issues[:40]
-        candidate['decision'] = _text(candidate.get('decision')) or \
+        candidate['decision'] = decision or \
             protocol.default_decision(status, has_structural)
         report['issues'] += len(candidate['issues'])
         report['structural'] += 1 if has_structural else 0
         out.append(candidate)
+    revoked = sum(1 for item in out if any(
+        isinstance(issue, dict) and issue.get('code') == 'AUTO_INCLUDE_REVOKED'
+        for issue in (item.get('issues') or [])))
+    if revoked:
+        report['notes'].append('跨批合并后 %d 个候选证据状态降级（冲突/推断/证据不足），'
+                               '默认纳入已自动撤销为暂缓，请人工确认后再纳入交付。' % revoked)
     if report['droppedRefs']:
         report['notes'].append('剔除幻造证据引用 %d 处（对应候选已降级，绝不展示虚构位置）。'
                                % report['droppedRefs'])
@@ -1157,6 +1198,7 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
         related_n = int(saved_plan.get('related') or 0)
         excluded_n = int(saved_plan.get('excluded') or 0)
         duplicates_n = int(saved_plan.get('duplicates') or 0)
+        duplicate_of = dict(saved_plan.get('duplicateOf') or {})  # 续跑沿用上次的全池剔除映射
         groups_count = int(saved_plan.get('groups') or 0)
         truncated = max(0, len(plan_ids) - MAX_MODEL_FACTS)
         pool = model_facts
@@ -1184,18 +1226,23 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
                      {'done': len(pool), 'total': len(pool), 'relevant': relevant_n,
                       'related': related_n, 'excluded': excluded_n})
 
-        # align：同主体证据分组 + 同一片段哈希去重（重复副本不算独立佐证）
+        # align：同主体证据分组 + 全池事实身份去重（R3：身份=片段+定位+数据语义键，
+        # 同文件同字段同值的真副本只保留首个；不同主体/字段的相同取值不算重复）
         label = protocol.GENERATE_STAGE_LABELS['align']
         runner.stage(owner_id, run_id, 'align', label, {'done': 0, 'total': len(pool)})
         grouped = alignment.group_evidence(facts, selection['relevant'] + selection['related'])
-        seen_digest, model_facts = set(), []
-        for fact in pool:  # 保持“相关优先”顺序，重复片段只保留首个
+        digest_keeper, model_facts, duplicate_of = {}, [], {}
+        for fact in pool:  # 保持“相关优先”顺序，同身份副本只保留首个并登记 duplicateOf
             digest = retrieval.snippet_digest(fact)
-            if digest in seen_digest:
+            keeper_id = digest_keeper.get(digest)
+            if keeper_id is not None:
+                fact_id = str(fact.get('id') or '')
+                if fact_id:
+                    duplicate_of[fact_id] = keeper_id
                 continue
-            seen_digest.add(digest)
+            digest_keeper[digest] = str(fact.get('id') or '')
             model_facts.append(fact)
-        duplicates_n = grouped['stats']['duplicates']
+        duplicates_n = len(duplicate_of)  # 全池实际剔除数（不借用 grouped 的组内同片段口径）
         groups_count = len(grouped['groups'])
         truncated = max(0, len(model_facts) - MAX_MODEL_FACTS)
         if truncated:
@@ -1203,7 +1250,8 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
             _note(notes, '事实总量超过单次生成上限 %d，按相关度优先保留前 %d 条，'
                          '其余 %d 条未发送给模型（可缩小范围后重跑）。'
                          % (MAX_MODEL_FACTS, len(model_facts), truncated))
-        _note(notes, '证据分组 %d 组，重复片段 %d 条只计一次佐证。'
+        _note(notes, '证据分组 %d 组，全池剔除同身份重复副本 %d 条'
+                     '（被剔 id → 保留 id 见 plan.duplicateOf，重复副本不计独立佐证）。'
                      % (len(grouped['groups']), duplicates_n))
         runner.stage(owner_id, run_id, 'align', label,
                      {'done': len(model_facts), 'total': len(model_facts),
@@ -1213,6 +1261,7 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
         'modelFactIds': [str(fact.get('id')) for fact in model_facts],
         'relevant': relevant_n, 'related': related_n, 'excluded': excluded_n,
         'duplicates': duplicates_n, 'groups': groups_count,
+        'duplicateOf': duplicate_of,  # 全池剔除映射：{被剔事实id: 保留事实id}（来源可追溯）
         'scopeRevision': int(scope.get('revision') or 0),
         'materialRevision': int(task.get('materialRevision') or 0) if task else 0,
     }
@@ -1293,14 +1342,16 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
     # 并在等待期间每 15 秒写心跳（waitingPosition/waitedSeconds），
     # 解决「页面几分钟只显示处理中」；结果按批次序号返回，落库顺序与串行版一致。
     def _flush_batch(position, result):
-        """批次完成即校验+落库+检查点（V2-8 逐批持久化；由调度器按前缀顺序回调）。
+        """批次完成即校验+落库+检查点（V2-8 逐批持久化；调度器按批次身份独立回调）。
 
         为什么必须在这里落库而不是等全部批次结束：池运行可能持续数分钟，中途取消或
         服务被杀会让已成功批次结果全部丢失（实测 438 秒仍 candidates=0），
         与「已完成批次候选各自提交、重试只补缺口」的承诺矛盾。
+        R5：写事务失败不得静默——回滚内存标记并把该批计入 failed_batches（错误注明
+        「落库失败」）；accumulated/done 只在事务成功后更新为权威状态。
         """
         nonlocal rejected_total
-        verified = []      # 本批校验通过的候选（成功分支填充；失败批保持空）
+        verified = []      # 本批校验通过的候选（成功/部分成功分支填充；失败批保持空）
         _add_usage(usage, result.get('usage'))
         failed_batches[:] = [item for item in failed_batches
                              if int(item.get('position') or 0) != position]
@@ -1310,6 +1361,18 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
             batch_log.append('批 %d/%d 失败：%s'
                              % (position, len(batches),
                                 str(result.get('error') or '未知错误')[:160]))
+            if result.get('candidates'):
+                # R4 修复：拆批部分失败——父批已按失败记账（不进 done，重试整批重跑），
+                # 成功半候选仍校验落库（不浪费已成功的调用）；重跑幂等由 _flush_tx 内
+                # 的批内去重保证。候选与成功批同样加批次命名空间（拆批子批同属一个
+                # position，前缀一致）。
+                verified, _partial_report = verify_candidates(
+                    result.get('candidates') or [], by_id.keys(), weak_fact_ids=weak_fact_ids)
+                if verified:
+                    verified = alignment.namespace_batch(verified, position,
+                                                         existing=accumulated)
+                    batch_log.append('批 %d/%d 部分成功：已保留 %d 条候选，失败子批整批重试补跑'
+                                     % (position, len(batches), len(verified)))
         else:
             done_positions.add(position)
             rejected_total += int(result.get('rejectedRefs') or 0)
@@ -1322,7 +1385,15 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
             verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys(),
                                                   weak_fact_ids=weak_fact_ids)
             if verified:
-                accumulated.extend(verified)
+                # R1（跨批临时键冲突）：模型 key 只保证批内唯一，跨批重用同名键时
+                # 全局引用索引「首到者胜」会把后续批次的属性解析到错误宿主。入累积
+                # 集合与同事务落库前做批次级命名空间化：与累积集合实际冲突的键加
+                # `b{position}:` 前缀并重写批内 ownerKey/链接端点引用（无冲突的键
+                # 保留原键，入库行为与历史一致）；重新赋值 verified 让同事务落库
+                # 写入同一键空间——续跑从库里载入的种子与本次批次一致（拆批子批
+                # 同属一个 position，前缀一致）。
+                verified = alignment.namespace_batch(verified, position,
+                                                     existing=accumulated)
             batch_log.append('批 %d/%d 完成：候选 %d 个'
                              % (position, len(batches), len(verified)))
         # 候选写入与检查点必须**同一事务**提交：分成两个事务时，若在两者之间被杀/取消，
@@ -1330,14 +1401,45 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
         # 同事务后二者同生共死：要么都写入（重试会跳过该批），要么都没写（重试重跑该批）。
         # 取消/执行权核对由 content_tx 在同一写事务内完成（R4-01）。
         def _flush_tx(conn):
-            if verified:
-                _append_candidates(conn, owner_id, task_id, batch_id, verified)
+            to_write = verified
+            if to_write:
+                # R4 配套幂等：拆批部分失败的批整批重跑时，成功半候选已在前次落库——
+                # 写入前按同批已存在的 alignedKey/原始 key 跳过，评审页不出现重复候选。
+                existing_aligned, existing_keys = set(), set()
+                for item in store.all_candidates(conn, task_id, owner_id, batch_id=batch_id,
+                                                 include_merged=True):
+                    aligned = _text(item.get('alignedKey'))
+                    if aligned:
+                        existing_aligned.add(aligned)
+                    item_key = _text(item.get('key'))
+                    if item_key:
+                        existing_keys.add(item_key)
+                to_write = [item for item in to_write
+                            if not ((_text(item.get('alignedKey'))
+                                     and _text(item.get('alignedKey')) in existing_aligned)
+                                    or (_text(item.get('key'))
+                                        and _text(item.get('key')) in existing_keys))]
+            if to_write:
+                _append_candidates(conn, owner_id, task_id, batch_id, to_write)
             store.update_run(conn, run_id, owner_id,
                              checkpoint=_checkpoint(set(done_positions), list(failed_batches),
                                                     extra={'log': batch_log[-GENERATE_LOG_LIMIT:],
                                                            'notes': list(notes)}),
                              lease=runner.lease_of(owner_id, run_id) or None)
-        runner.content_tx(owner_id, run_id, _flush_tx)
+        try:
+            runner.content_tx(owner_id, run_id, _flush_tx)
+        except runner.Cancelled:
+            raise
+        except Exception as exc:  # noqa: BLE001 - R5：落库失败不得静默，显式按失败记账
+            done_positions.discard(position)   # 事务未成功：内存 done 不许成为权威状态
+            detail = ('落库失败：%s' % (str(exc) or type(exc).__name__))[:400]
+            failed_batches[:] = [item for item in failed_batches
+                                 if int(item.get('position') or 0) != position]
+            failed_batches.append({'position': position, 'error': detail})
+            batch_log.append('批 %d/%d %s' % (position, len(batches), detail[:160]))
+            return
+        if verified:
+            accumulated.extend(verified)   # 事务成功后才并入内存权威状态（R5）
         runner.stage(owner_id, run_id, 'abstract', label,
                      {'done': len(done_positions), 'total': len(batches),
                       'facts': len(model_facts), 'candidates': len(accumulated)})
@@ -1345,6 +1447,27 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
     _run_batches_adaptive(
         owner_id, run_id, label, batches, pending_batches, provider, scope,
         done_positions, accumulated, model_facts, on_result=_flush_batch)
+    # R5 收尾兜底：调度器正常返回后，「已落库（done）∪ 已失败」必须覆盖全部 pending；
+    # 有遗漏（正常路径不应再有）显式计入 failed_batches 并落检查点，绝不静默。
+    _accounted = set(done_positions) | {int(item.get('position') or 0)
+                                        for item in failed_batches}
+    _missing = [position for position, _batch in pending_batches
+                if position not in _accounted]
+    if _missing:
+        for position in _missing:
+            failed_batches.append({'position': position,
+                                   'error': '批次结果既未落库也未计入失败（调度异常），'
+                                            '已按失败处理，可「重试失败批次」补跑'})
+            batch_log.append('批 %d/%d 结果丢失，已按失败处理（可重试补跑）'
+                             % (position, len(batches)))
+        _note(notes, '检测到 %d 个批次结果未落库：已显式计入失败批次，可重试补跑。' % len(_missing))
+        runner.content_tx(owner_id, run_id,
+                          lambda conn: store.update_run(
+                              conn, run_id, owner_id,
+                              checkpoint=_checkpoint(set(done_positions), list(failed_batches),
+                                                     extra={'log': batch_log[-GENERATE_LOG_LIMIT:],
+                                                            'notes': list(notes)}),
+                              lease=runner.lease_of(owner_id, run_id) or None))
     errors = ['第 %d 批抽取失败：%s' % (item['position'], item.get('error') or '未知错误')
               for item in failed_batches]
     for message in errors:

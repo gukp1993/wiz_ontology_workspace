@@ -45,10 +45,28 @@ def owner():
     return auth.require_user_id()
 
 
+def _delivery_allowed(candidate):
+    """交付选定门禁（R2）：未经人工确认的冲突/证据不足候选不进交付选定集合。
+
+    decision='include' 只是机器默认决定，其成立前提是「证据状态 supported 且无冲突」；
+    该前提在跨批合并降级、模型注入 decision 字段或直接写库时都可能失效。这里做交付侧
+    最后一道硬门禁：满足以下之一才可交付——
+    * reviewed=true：评审页人工确认过的 include，尊重人工决定照常交付；
+    * 无 conflicts 且 evidenceStatus='supported'：机器默认 include 的成立前提仍在。
+    生成端 verify（AUTO_INCLUDE_REVOKED）会在合并降级时撤销自动 include，本门禁兜底
+    拦下绕过生成端的所有路径；被拦候选进入预检的排除报告（conflictExcluded*）。
+    """
+    if bool(candidate.get('reviewed')):
+        return True
+    if candidate.get('conflicts'):
+        return False
+    return str(candidate.get('evidenceStatus') or '') == 'supported'
+
+
 def _selected_candidates(conn, task_id, owner_id, batch_id):
-    """选定集合：decision='include' 且未被合并掉的候选（跨账号/他任务不可见）。"""
+    """选定集合：decision='include'、未被合并掉且通过 _delivery_allowed 门禁（跨账号/他任务不可见）。"""
     items = store.all_candidates(conn, task_id, owner_id, batch_id=batch_id)
-    selected = [c for c in items if c['decision'] == 'include']
+    selected = [c for c in items if c['decision'] == 'include' and _delivery_allowed(c)]
     return items, selected
 
 
@@ -157,6 +175,9 @@ def precheck(conn, task_id, batch_id=None):
     counts = {}
     for candidate in selected:
         counts[candidate['type']] = counts.get(candidate['type'], 0) + 1
+    # R2 排除报告：带冲突或证据状态非 supported 且未经人工确认的 include 候选已被
+    # 门禁移出选定集合，这里显式计数并注明，绝不静默消失。
+    gated = [c for c in items if c['decision'] == 'include' and not _delivery_allowed(c)]
     issues = _blocking_issues(conn, task_id, owner_id, batch_id)
     deferred = [c for c in items if c['decision'] == 'defer']
     excluded = [c for c in items if c['decision'] == 'exclude']
@@ -175,6 +196,12 @@ def precheck(conn, task_id, batch_id=None):
         'issues': issues,
         'excluded': len(excluded),
         'deferred': len(deferred),
+        'conflictExcluded': len(gated),
+        'conflictExcludedItems': [{'id': c['id'], 'name': c['name'], 'type': c['type'],
+                                   'evidenceStatus': c['evidenceStatus'],
+                                   'conflicts': len(c.get('conflicts') or [])} for c in gated],
+        'notes': (['有 %d 项带来源冲突或证据不足的候选未经人工确认，已移出交付选定集合；'
+                   '请到评审页确认或处理后重新运行交付前检查。' % len(gated)] if gated else []),
         'coverage': coverage,
         'checkToken': token,
         'batchId': batch_id,
