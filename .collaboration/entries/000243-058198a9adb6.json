@@ -1,0 +1,20 @@
+{
+  "ticket": "10f76047ff3b41a294f23a419cc17c05",
+  "task": "整表自动填写原型改为按需侧栏",
+  "status": "ready",
+  "summary": "按用户反馈改同一两页原型：默认隐藏自动填写，页头入口按需打开右侧面板，完成后收起返回表单；需补问则保持，支持关闭/Esc/窄屏遮罩，保留输入及手工填写路径。未改正式业务代码。",
+  "decisions": [],
+  "verification": [
+    "内联JS node --check通过；本轮未浏览器实测。"
+  ],
+  "next": [],
+  "references": [
+    "文档/需求/20260922_整表自动填写交互/交互原型_v1.html"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-22T08:49:09.393941+00:00",
+  "sequence": 243,
+  "filename": "000243-058198a9adb6.json",
+  "record_hash": "66e44faa924cbe3d36727d7271a01474867ab683f07d435076e044f4c46299a6",
+  "context_advanced": false
+}
