@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`d7d7ac3f5c16b29b`
+上下文版本：`f840770e5240eb19`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,18 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### auto_build-token-pilot-v2 整合试点方案 · codex · 需求已交付
+
+时间：2026-09-22T07:31:42.069282+00:00；记录：`.collaboration/entries/000192-1be3034f3e5d.json`
+
+交付控输出与质量对比试点v2，整合稀疏协议、语义分批、超限恢复、字段级证据及程序组装。先独立实验，再决定在线接入。仅文档，未实施实验或业务代码，未运行模型。
+
+- 决定：本文为唯一试点执行入口，不混用两组v1参数；输出估算比例0.5，基线按当前已交接实现冻结。；原8KB、重复实例、大Schema三类样本；先A/D冒烟再A/B/C/D，分别评估协议与调度；含全部失败重试用量。；质量门槛优先；总token下降与单次超限恢复分开评价；用户看真实结果后决定在线接入。
+- 验证：只读核对当前候选prompt、协议与在途修改；独立子agent复核试验及完整性门槛。；试验入口和测试明确待实现，无实测收益声明。
+- 下一步：实施harness核对owner与基线后按P0-P4开发独立实验，自测提交并交Codex验收，不自动在线接入或合并。
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/控输出与质量对比试点_v2.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### auto_build-output-budget-v1 方案交付 · codex · 需求已交付
 
@@ -53,17 +65,6 @@
 - 验证：代码805e1d9：llm_client未设置reasoning_effort且未返回provider usage；llm usage仅bytes。；JSON通用数组只留结构摘要；模型响应已有标准化边界，内部压缩不必变更前后端候选协议。；2026-09-22查Z.ai官方：GLM5.3Flash不支持禁用思考，effort支持low/high/max，默认max；实际endpoint未读取、参数未实测。
 - 下一步：实验建议尚未执行；先固定质量与用量基线，单因素比较推理档、协议、输入表示，再调批次。
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/输出Token膨胀_专项分析意见_Codex_20260922.md；https://docs.z.ai/guides/capabilities/thinking
-
-### Codex 五阶段方案审核意见分析（R1-R5 逐条独立复现） · zcode · 已确认决定
-
-时间：2026-09-22T06:27:02.893418+00:00；记录：`.collaboration/entries/000185-f5adf7220be7.json`
-
-对 Codex 审核意见（五阶段方案审核意见_Codex_20260922.md）逐条独立复现。**5 条 P1 全部复现成功**：R1 跨批临时键冲突致属性宿主错误（电池/逆变器各带同 key 属性，对齐后 2 条并为 1 条，alignedKey 错记为 @电池）；R4 拆批半失败被判父批成功（左成右败仍返回 ok=True，调用方据 ok 记 done → 该半批永久缺失）；R5 非连续失败批续跑漏落库（done={2}/pending=[1,3] 时仅批1回调落库、批3 静默丢弃；终局验证 accumulated 非空且 failed_batches 为空 → 运行继续并报成功 = 静默数据丢失且重试不补）；R2 冲突项默认纳入（跨批降级 conflict 但 decision 保持 include、reviewed/reason 空，交付端仅按 include 选取）；R3 去重误剔（battery.voltage=220 与 motor.power=220 因 snippet 哈希相同被剔 1 条，对外 reporting duplicates=0）。另核实第4节批评：429「降挡重排」表述与代码不符（只减并发+冷却，未放回 queued）；JSON 修复确会追加第2次调用故 390 秒非全局上限。
-
-- 决定：R1-R5 均为代码级正确性缺陷且已独立复现，应作为修复生成可靠性前的阻断项，优先级高于进度展示与 429 体验类问题。；R5 性质最严重：静默数据丢失且谎报成功（缺整批候选但运行 succeeded），重试不会补。；审核意见第4.1条质疑成立：原瓶颈论证是同一数据回算且未计 reasoning；后续实测已发现 reasoning_content 占输出约 50%（8676 vs 3007 字符），该发现尚未写入方案文档（reasoning 命中 0 次），需补充。
-- 验证：R1 /tmp/repro_r1.py：4 候选→对齐后 3，属性 2→1，alignedKey=property:额定功率#number@电池。；R4 /tmp/repro_r4.py：调用序列 [全批,左半,右半,右半重试]，返回 ok=True、split={'from':4,'halves':[2,2]}。；R5 /tmp/repro_r5.py 与 repro_r5_final.py：flush=[1]、残留 results=[3]；终局 done=[1,2]、failed=[] → 报成功。；R2 /tmp/repro_r2.py：二次 verify 后 evidenceStatus=conflict、decision=include、reviewed=None、reason=None。；代码与第三例：pipeline.py:1191-1197/236-249/157-176/906-907/1314；retrieval.py:344-346；delivery.py:48-52（R3 复现见 /tmp/repro_r3.py，哈希同为 f37062d9a65543a4…，duplicates=0）。
-- 下一步：待用户裁决是否按 R1-R5 出整改需求；本轮仅分析，未改任何业务代码。；方案文档待补：reasoning_content 占输出 50% 的实测、第4.1条论证修正、429/390秒口径修正。；复现脚本在 /tmp，未入库；如需留证应移入 tests/ 或证据目录。
-- 依据/文档：审核意见：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md；被审文档：同目录 生成五阶段完整方案_20260922.md（869 行）；代码基线：codex/auto_build @ 578acd7
 
 ### auto_build-五阶段方案审核 · codex · 已确认决定
 
