@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`07feb393f342e901`
+上下文版本：`57fcf80d6457c723`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,16 +22,15 @@
 
 ## 最近交接（新 → 旧）
 
-### auto-build-output-v3 · zcode · 已实施，待验收
+### auto-build-output-v3 · zcode · 需求已交付
 
-时间：2026-09-22T13:05:34.089002+00:00；记录：`.collaboration/entries/000210-b71e9ef08f3d.json`
+时间：2026-09-22T13:08:13.096971+00:00；记录：`.collaboration/entries/000211-ba5367e9b162.json`
 
-本体生成控输出v3（D00–D19）实施完成，停在待Codex独立验收。实施HEAD 7bca975（分支codex/auto_build，接手7dedc00，基main 578acd7）。22个提交覆盖：契约冻结87d1473→D01-D14逐任务→D16在线接线85aac98→D17脚本A/B全过→D18真实试验→D19收口7bca975。全量回归 all 77/77全绿、前端typecheck+build通过、隔离浏览器5项验收通过（4态截图+无console错误）。D17双适配器契约矩阵抓出并修复3项真缺陷（commit_* bool语义、resume预检误拦legacy、amend通道缺失+候选id跨epoch冲突+路由判据）。D18真实试验（GLM-5.3-Flash合成simple样本）：G2三项如实——质量门未过（金样命中2/51、重复身份34条）、compact收益门未测（B臂未跑）、成本不可证（A侧usage大量unknown）；A臂高TIMEOUT率(6调用5超时)vs D臂(12调用11成功)为真实观察。默认开关全关；main未合并；18765与18890均未动。
+已交付独立验收指令并提交（74066ee）：验收对象更新为 74066ee（文档提交；验收入口为 <worktree>/文档/需求/20260920_从物料自动构建本体/验收指令_控输出v3_20260922.md，自包含可复制总指令+§3 A–G 清单+§4 七项重点复核+边界与交付格式）。代码面 SHA 仍为 f72fb98（74066ee 仅加文档）。等 Codex 验收，停在待授权集成。
 
-- 决定：实施期7项契约裁定已落batch_contracts并记录于整合计划§8.1（拆分登记制expandedInto/failed显式重排队/commit_* bool语义/normalize_usage幂等/planEpoch种子/attempt记账通道/别名范围）；新增amend_plan通道：save_plan仅初建，执行器计划内事件一律amend（在线条件写/实验结构+容量校验后UPDATE）；v2/legacy路由：仅「已有旧计划(无版本或v1)的auto续跑」走legacy，新运行与v2计划走v2，abstract对旧计划=新epoch；D18结果按整合计划§12 G2口径交付：未达标不伪装，可交付legacy+自适应分批与实验性compact（默认不启用）
-- 验证：python3 tests/run.py all → 77/77全绿（修复后终跑，日志/tmp/all_reg4.log）；npm run typecheck 0错误 + npm run build 成功；隔离浏览器5项（schema2成功/受阻/unknown/schema1/无console错误）全过（截图已入库）；D17脚本A 15项检查 + 脚本B 6契约×双适配器全过；D18真实试验：D臂12调用/11成功/60318 known tokens/软限生效；报告与原始结果JSON已入库 文档/需求/20260920_从物料自动构建本体/试验证据_D18_20260922/
-- 下一步：交Codex独立验收（对应HEAD 7bca975）；验收通过后待用户授权集成并合并main；未测项：B/C臂、原8KB真实样本、真实语义质量调优（超出本需求范围）
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §13；文档/需求/20260920_从物料自动构建本体/试验证据_D18_20260922/D18_真实试验报告.md；文档/接口文档/08-从物料自动构建本体接口.md §14
+- 决定：验收指令明确：R1-R5 自测与 D17/D18 自测均非验收结论；G2 三项应核为 质量门未过/收益门未测/成本不可证，若报告称达标即不通过
+- 下一步：Codex 验收 74066ee（差异仅文档）；通过后待用户授权集成合并 main
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收指令_控输出v3_20260922.md
 
 ### auto-build-output-v3/D18_报告 · zcode · 已实施，待验收
 
