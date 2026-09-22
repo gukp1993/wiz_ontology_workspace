@@ -25,8 +25,8 @@ import _SourcePreview from './SourcePreview.vue'
 import {localProperties,effectiveProperty,valueShapeOf,propertyTypeLabel,signatureDataType,dataTypeLabel} from '../ontology/propertyModel'
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 import AssistPanel from '../assist/AssistPanel.vue'
-import {propertySourceBinding,propertySourceAssistKind} from '../assist/propertySourceBinding'
-import type {AssistApi,AssistHostBinding} from '../assist/useAssistPanel'
+import {propertySourceBinding,propertySourceAssistKind,propertySourceFieldLabel,type PropertySourceAssistHostBinding} from '../assist/propertySourceBinding'
+import {defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
 const props=defineProps<{projectState:any;refState:any;b:any;report?:any}>()
 const emit=defineEmits(['before-change','changed','edit-state','go-tab','setup-end','goto-properties','open-ontology'])
 function mutate(fn){emit('before-change');fn();emit('changed')}
@@ -582,19 +582,27 @@ const paramOptions=computed(()=>[
 function paramModel(token:string):string{const v=draft.value?.params?.[token];if(!v)return '';if(v.from==='primary')return 'primary';if(v.from==='identityField')return 'idfield:'+String(v.field||'');return 'prop:'+String(v.property||'')}
 function setParam(token:string,value:string){const d:any=draft.value;if(!d)return;if(!d.params)d.params={};if(!value)delete d.params[token];else if(value==='primary')d.params[token]={from:'primary'};else if(value.startsWith('idfield:'))d.params[token]={from:'identityField',field:value.slice(8)};else d.params[token]={from:'property',property:value.slice(5)}}
 const previewKey=computed(()=>{const d:any=draft.value;if(!d||d.kind!=='redis')return '';const sample=String(samplePrimary.value||'').trim()||'123';return String(d.key||'').replace(/\{([^{}\s]+)\}/g,(m,t)=>{const v=d.params?.[t];return v?.from==='primary'?sample:v?.from==='identityField'?'身份字段值':v?.from==='property'?'属性值':m})})
-// ---------- 辅助填写（T9 · P2/P3/P4，2026-09-21）：AI 建议只采纳进本地草稿，绝不自动保存 ----------
-// 仅配置态且当前草稿 kind ∈ {field,database,redis,flow} 提供入口；aggregate/computed 为只读
-// 遗留结构、registered/none/unknown 非可辅助的取值结构，均无入口。目标切换（openEditor）与
-// 关闭（closeEditor/离开恢复）面板收起；kind 切到不可辅助结构时由 watch 同步收起。
-const assistApi=inject<AssistApi>('assist-api') // 测试注入桩；缺省 undefined → 面板内部用 defaultAssistApi()
+// ---------- 整表自动填写（T7 · P2/P3/P4，2026-09-22 改版）：回填只改本地草稿，绝不自动保存 ----------
+// 仅配置态且当前草稿 kind ∈ {field,database,redis,flow} 提供入口（页头次要按钮，保存仍是主操作）；
+// aggregate/computed 为只读遗留结构、registered/none/unknown 非可辅助的取值结构，均无入口。
+// 回填只写 draft 与说明草稿：绝不触发 form-save/commit-now/touch/changed（等待超过自动保存窗口
+// 也不会落盘），持久化仍由用户点「保存」走既有校验链路。目标切换（openEditor）与关闭
+// （closeEditor）面板收起；kind 切到不可辅助结构时由 watch 同步收起。
+// 撤销单元 = 一次会话（首轮＋续轮）：宿主镜像经 binding.round 渲染状态条与「撤销本次填写」，
+// 期间手改即禁整轮撤销；拒绝原因（kind 边界/依赖链/行不完整）经 binding.refusals 展示。
+const assistInjectedApi=inject<AssistApi|null>('assist-api',null) // 测试注入桩；缺省走默认实现
+const assistApi:AssistApi=assistInjectedApi??defaultAssistApi()
 const assistVisible=ref(false)
-const assistBinding=shallowRef<AssistHostBinding|null>(null)
+const assistBinding=shallowRef<PropertySourceAssistHostBinding|null>(null)
 const assistPanelRef=ref<InstanceType<typeof AssistPanel>|null>(null)
 const assistTouchTick=ref(0) // 手改计数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
 const assistAvailable=computed(()=>propertySourceAssistKind(draft.value)!=='')
-let assistBaseline='' // 面板对齐点（打开/采纳/撤销）的草稿+说明 JSON：面板写入不算手改
+const assistExpanded=computed(()=>!!assistVisible.value&&!(assistPanelRef.value?.collapsed??false))
+const assistRefusals=computed(()=>assistBinding.value?assistBinding.value.refusals.value:[])
+const assistBarVisible=computed(()=>!!assistBinding.value&&(!!assistBinding.value.round.statusBarText||assistBinding.value.round.undone))
+let assistBaseline='' // 面板对齐点（打开/回填/撤销）的草稿+说明 JSON：面板写入不算手改
 const assistFingerprint=()=>JSON.stringify([draft.value,noteDraft.value])
-function buildAssistBinding():AssistHostBinding{
+function buildAssistBinding():PropertySourceAssistHostBinding{
   const inner=propertySourceBinding({
     draft:()=>draft.value,
     noteDraft:()=>noteDraft.value,
@@ -606,16 +614,24 @@ function buildAssistBinding():AssistHostBinding{
     contextTitle:'配置「'+(selectedMeta.value?.label||selectedApi.value||'属性')+'」的取值来源'})
   return {
     ...inner,
+    applyDraft:next=>{inner.applyDraft?.(next);assistBaseline=assistFingerprint()},
     apply:values=>{inner.apply(values);assistBaseline=assistFingerprint()},
     restore:snap=>{inner.restore(snap);assistBaseline=assistFingerprint()}}
 }
-function openAssist(){assistBaseline=assistFingerprint();assistBinding.value=buildAssistBinding();assistVisible.value=true}
+function openAssist(){
+  assistBaseline=assistFingerprint()
+  const next=buildAssistBinding()
+  next.resetRefusals() // 新一轮：拒绝记录随打开重置（回填期间的拒绝在同一轮内累积展示）
+  assistBinding.value=next
+  assistVisible.value=true
+}
 function closeAssist(){assistVisible.value=false}
-function toggleAssist(){assistVisible.value?closeAssist():openAssist()}
+function toggleAssist(){if(!assistVisible.value){openAssist();return}assistPanelRef.value?.toggle()}
+function undoAssist(){if(!assistBinding.value?.undoRound())return;assistPanelRef.value?.notifyDraftChanged()}
 watch(assistAvailable,ok=>{if(!ok)closeAssist()})
-// 面板写入（apply/restore）以外的草稿/说明变化都算手改：通知面板使结果过期、解除撤销保护
+// 面板写入（applyDraft/apply/restore）以外的草稿/说明变化都算手改：作废在途请求 + 禁整轮撤销（§4.5）
 watch(assistFingerprint,json=>{if(assistVisible.value&&json!==assistBaseline)assistTouched()})
-function assistTouched(){assistTouchTick.value++;assistPanelRef.value?.notifyDraftChanged()}
+function assistTouched(){assistTouchTick.value++;assistBinding.value?.noteManualChange();assistPanelRef.value?.notifyDraftChanged()}
 // ---------- 计算函数：展示实现输入绑定并选择输出 ----------
 const saveDisabled=computed(()=>draft.value?.kind==='aggregate'||draft.value?.kind==='computed')
 const needTimestamp=computed(()=>{const d:any=draft.value;if(!d||d.kind!=='database')return false;return draftShape.value==='timeSeries'||d.result?.selection==='latest'})
@@ -1004,15 +1020,41 @@ if(psPendingOf(props.b.object_type)){
 <button class="ps-back" @click="requestClose">← 返回属性清单</button>
 <span class="ps-object-tag">当前对象 · {{objectLabel}}</span>
 </div>
-<!-- 辅助填写（T9）：仅可辅助的取值结构（field/database/redis/flow）显示入口；列表态不显示 -->
-<div v-if="assistAvailable" class="ps-assist-row"><button type="button" :aria-pressed="assistVisible" @click="toggleAssist">✦ 辅助填写</button></div>
-<AssistPanel v-if="assistVisible && assistBinding" ref="assistPanelRef" class="ps-assist-panel" :binding="assistBinding" :api="assistApi ?? undefined" @close="closeAssist"/>
+<!-- 辅助填写（T7）：仅可辅助的取值结构（field/database/redis/flow）显示入口；列表态不显示 -->
+<div class="ps-config-top">
+<button class="ps-back" @click="requestClose">← 返回属性清单</button>
+<span class="ps-config-top-right">
+<span class="ps-object-tag">当前对象 · {{objectLabel}}</span>
+<!-- 整表自动填写入口（T7 改版）：页头次要按钮，保存仍是主操作 -->
+<button v-if="assistAvailable" id="ps-assist-trigger" type="button" class="ps-assist-trigger"
+        :aria-expanded="assistExpanded ? 'true' : 'false'" aria-controls="ps-assist-drawer"
+        @click="toggleAssist">✦ 自动填写</button>
+</span>
+</div>
 <div v-if="draft&&selectedMeta" class="ps-config-head">
 <div class="ps-config-title">
 <h2>配置 · {{selectedMeta.label}}</h2>
 <p class="ps-def">{{selectedMeta.comment||'（本体中未填写业务定义）'}}</p>
 </div>
 <span v-if="headBadge" class="ps-badge">{{headBadge}}</span>
+</div>
+<!-- 回填状态条（面板外、表单上方，宿主渲染）：已填写 N 项尚未保存 + 撤销本次填写 + 查看修改 + 拒绝原因 -->
+<div v-if="assistBarVisible||assistRefusals.length" class="assist-statusbar" role="status">
+<div class="assist-statusbar-row">
+<span v-if="assistBinding?.round.statusBarText" class="assist-statusbar-text">{{assistBinding.round.statusBarText}}</span>
+<span v-else-if="assistBinding?.round.undone" class="assist-statusbar-text">已撤销本次自动填写，表单已恢复。</span>
+<button v-if="assistBinding?.round.statusBarText" type="button" :disabled="!assistBinding.round.canUndo" @click="undoAssist">撤销本次填写</button>
+<details v-if="assistBinding?.round.changes.length" class="assist-changes">
+<summary>查看修改</summary>
+<ul>
+<li v-for="c in assistBinding.round.changes" :key="c.field"><strong>{{c.label}}</strong>：{{c.oldText}} → {{c.newText}}</li>
+</ul>
+</details>
+</div>
+<p v-if="assistBinding?.round.undoHint" class="assist-statusbar-hint">{{assistBinding.round.undoHint}}</p>
+<div v-if="assistRefusals.length" class="assist-refusals" role="alert">
+<p v-for="(r,i) in assistRefusals" :key="i">未能填写「{{propertySourceFieldLabel(r.field)}}」：{{r.reason}}</p>
+</div>
 </div>
 <!-- 项目说明（v2.1）：在前、默认展开可折叠；下方取值配置默认折叠为摘要（unknown 只读分支默认展开） -->
 <div v-if="draft" class="ps-desc-wrap">
@@ -1275,6 +1317,8 @@ if(psPendingOf(props.b.object_type)){
 </div>
 <p class="ps-foot-note">说明与取值配置一起保存写入当前项目草稿；取消放弃本次修改。</p>
 </div>
+<!-- 自动填写抽屉（T3 状态机 + T7 宿主 binding）：回填只改本地草稿，保存仍由用户显式触发 -->
+<AssistPanel v-if="assistVisible && assistBinding" ref="assistPanelRef" class="ps-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="ps-assist-trigger" @close="closeAssist"/>
 </div>
 </div></template>
 <style scoped>
@@ -1296,12 +1340,24 @@ if(psPendingOf(props.b.object_type)){
 .pill-pending{background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)}
 .pill-unknown{background:var(--paper-3);border-color:var(--line);color:var(--muted)}
 /* 配置态骨架 */
-.ps-assist-row{display:flex;margin:0 0 12px}
+.ps-assist-trigger{flex:none;color:var(--blue);background:transparent;border-color:var(--line);font-size:13px}
+.ps-assist-trigger:hover{color:var(--blue-deep);border-color:var(--blue-line)}
 .ps-assist-panel{margin:0 0 14px}
+/* 回填状态条（T7 · 面板外、表单上方）：已填 N 项 + 撤销本次填写 + 查看修改 + 拒绝原因 */
+.assist-statusbar{border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:6px;padding:10px 12px;margin:0 0 14px}
+.assist-statusbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.assist-statusbar-text{color:var(--blue-ink);font-weight:600;font-size:13px}
+.assist-changes summary{cursor:pointer;color:var(--muted);font-size:13px}
+.assist-changes ul{margin:8px 0 0;padding-left:18px}
+.assist-changes li{margin:3px 0;overflow-wrap:anywhere;font-size:13px}
+.assist-statusbar-hint{margin:8px 0 0;color:var(--muted);font-size:13px}
+.assist-refusals{margin:8px 0 0}
+.assist-refusals p{margin:3px 0;color:var(--danger);font-size:13px;overflow-wrap:anywhere}
 .ps-config-top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
 .ps-back{background:transparent;border-color:transparent;color:var(--blue);padding-left:0;font-size:14px}
 .ps-back:hover{color:var(--blue-deep);border-color:transparent}
 .ps-object-tag{font-size:12px;color:var(--muted);background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:5px 10px;white-space:nowrap}
+.ps-config-top-right{display:flex;align-items:center;gap:10px}
 .ps-config-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}
 .ps-config-title{min-width:0}
 .ps-config-head h2{margin:0 0 6px}
