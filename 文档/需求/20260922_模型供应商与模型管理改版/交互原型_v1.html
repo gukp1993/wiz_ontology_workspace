@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模型供应商与模型管理改版 · 交互原型 v1</title>
+<style>
+  :root{
+    --line:#d9dee5; --muted:#6b7480; --ink:#1f2733; --bg:#f4f6f8; --card:#ffffff;
+    --blue:#2f6fed; --blue-soft:#e8effd; --blue-ink:#2456c4; --green:#1e8e5a; --green-soft:#e6f5ee;
+    --red:#c23f3f; --red-soft:#fbecec; --amber:#9a6b1f; --amber-soft:#fdf3e0; --radius:8px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg)}
+  .wrap{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:19px;margin:0 0 4px}
+  h2{font-size:16px;margin:0}
+  h3{font-size:14px;margin:0 0 8px}
+  .muted{color:var(--muted)} .small{font-size:12px}
+  .banner{background:var(--amber-soft);border:1px solid #ecd9b0;border-radius:var(--radius);padding:8px 14px;margin:12px 0;font-size:12.5px}
+  .tabs{display:flex;gap:6px;margin:14px 0;flex-wrap:wrap}
+  .tabs button{border:1px solid var(--line);background:var(--card);border-radius:20px;padding:5px 14px;cursor:pointer;font-size:13px}
+  .tabs button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:14px}
+  .panelhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px}
+  .panelhead p{margin:4px 0 0;font-size:12.5px;color:var(--muted);max-width:640px}
+  button{font:inherit}
+  button.primary{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:7px 16px;cursor:pointer}
+  button.mini{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:12.5px;white-space:nowrap}
+  button.mini.danger-btn{color:var(--red);border-color:#e3bcbc}
+  button.mini:disabled{opacity:.5;cursor:not-allowed}
+  .pill{font-size:10px;border-radius:8px;padding:1px 8px;background:var(--blue-soft);color:var(--blue-ink);margin-left:6px;vertical-align:2px}
+  .pill.gray{background:#eef0f3;color:var(--muted)}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .provider-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .provider-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--radius);padding:9px 14px}
+  .provider-row .grow{flex:1;min-width:0}
+  .provider-row .grow strong{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+  .provider-row .small{font-size:12px}
+  .default-bar{display:flex;align-items:center;gap:10px;border:1px dashed #b9cbe8;background:var(--blue-soft);border-radius:var(--radius);padding:8px 14px;margin-top:10px;font-size:13px}
+  .switch{position:relative;width:34px;height:19px;flex:none}
+  .switch input{opacity:0;width:0;height:0}
+  .switch i{position:absolute;inset:0;background:#c7cedb;border-radius:12px;cursor:pointer;transition:.15s}
+  .switch i::after{content:"";position:absolute;width:15px;height:15px;border-radius:50%;background:#fff;top:2px;left:2px;transition:.15s}
+  .switch input:checked + i{background:var(--green)}
+  .switch input:checked + i::after{left:17px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{color:var(--muted);font-weight:500;font-size:12px;white-space:nowrap}
+  td .dim{color:var(--muted);font-size:12px}
+  .tag{font-size:10.5px;border:1px solid var(--line);border-radius:5px;padding:0 6px;color:var(--muted);margin-left:6px}
+  .tag.over{border-color:#c8d8f5;color:var(--blue-ink);background:var(--blue-soft)}
+  .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:10px}
+  .tpl{border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;cursor:pointer}
+  .tpl.on{border-color:var(--blue);background:var(--blue-soft)}
+  .tpl strong{display:block}
+  .tpl .small{margin-top:3px}
+  label{display:block;margin:10px 0;font-size:13px}
+  label > span{display:block;margin-bottom:4px}
+  input[type=text],input[type=password],input[type=number],select{width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff}
+  .form-row{display:flex;gap:10px}
+  .form-row label{flex:1}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(20,26,35,.42);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;z-index:50}
+  .modal-card{background:#fff;border-radius:12px;padding:18px 20px;width:640px;max-width:100%;max-height:84vh;overflow:auto;box-shadow:0 18px 50px rgba(0,0,0,.25)}
+  .dialogtools{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+  .dialogtools button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:6px 14px;cursor:pointer}
+  .steps{display:flex;gap:8px;margin:10px 0 4px;font-size:12.5px;color:var(--muted)}
+  .steps b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#eef0f3;margin-right:6px;font-weight:600}
+  .steps .on{color:var(--blue-ink)} .steps .on b{background:var(--blue);color:#fff}
+  .inline-success{color:var(--green)} .inline-error{color:var(--red)}
+  .notice{background:var(--green-soft);color:var(--green);border-radius:6px;padding:6px 12px;margin:8px 0;font-size:13px;display:none}
+  .node-demo{border:1px solid var(--line);border-radius:10px;background:#fff;padding:14px 16px}
+  .field-help{font-size:12px;color:var(--muted);margin:2px 0 8px}
+  .hintbox{border-left:3px solid var(--blue);background:var(--blue-soft);padding:8px 12px;border-radius:0 6px 6px 0;font-size:12.5px;margin:10px 0}
+  .footnote{color:var(--muted);font-size:12px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>模型供应商与模型管理改版 · 交互原型 v1</h1>
+  <p class="muted small">参照 ZCode 开源配置模型：内置目录 → 供应商（模板继承）→ 模型规则（目录覆盖 / 手动）。配套文档：需求说明.md / 开发计划.md / 执行指令.md（同目录）。</p>
+  <div class="banner">⚠︎ 模拟范围：本页为纯前端静态原型，全部数据为内置演示数据；「保存 / 测试连通 / 删除」仅改变页面状态，不落库、不发真实请求。实际能力以需求说明 v1 与开发计划 v1 为准。</div>
+
+  <div class="tabs" id="tabs">
+    <button data-v="v1" class="on">① 设置主页（供应商列表）</button>
+    <button data-v="v2">② 新增供应商（模板向导）</button>
+    <button data-v="v3">③ 供应商详情（模型管理）</button>
+    <button data-v="v4">④ 编排节点选模型</button>
+  </div>
+
+  <!-- ============ 场景一：设置主页 ============ -->
+  <section id="v1" class="view">
+    <div class="card">
+      <div class="panelhead">
+        <div>
+          <h2>模型设置</h2>
+          <p>模型配置分为「供应商 → 模型」两级：供应商持有接口地址与 API Key（加密保存、只写不读回），模型挂在供应商下，同一供应商可启用多个模型。配置为账号级，供函数编排、本体构建等全工作台使用。</p>
+        </div>
+        <button class="primary" onclick="go('v2')">＋ 新增供应商</button>
+      </div>
+
+      <div class="default-bar">
+        <span class="pill green" style="margin:0">默认模型</span>
+        <span id="defaultText">智谱 BigModel · glm-4.7 · 思考档位：medium</span>
+        <span class="muted small">未明确指定模型的节点与本体构建使用此默认。</span>
+        <button class="mini" style="margin-left:auto" onclick="openDefault()">更改默认</button>
+      </div>
+
+      <div class="provider-list" id="plist"></div>
+      <p class="footnote">提示：禁用的供应商 / 模型保留配置但不出现在各处选择列表；被编排节点引用时报「已禁用」而非「不存在」。</p>
+    </div>
+  </section>
+
+  <!-- ============ 场景二：新增供应商向导 ============ -->
+  <section id="v2" class="view" style="display:none">
+    <div class="card">
+      <div class="panelhead"><div><h2>新增供应商</h2><p>先选模板：模板预填协议类型、接口地址与该供应商的常用模型目录；也可以选「自定义」从空白填写。下一步只需填 API Key。</p></div></div>
+      <div class="steps"><span class="on"><b>1</b>选择模板</span> → <span id="step2label"><b>2</b>接入信息</span> → <span><b>3</b>启用模型</span></div>
+
+      <!-- Step 1 -->
+      <div id="w1">
+        <div class="tpl-grid" id="tplgrid"></div>
+        <p class="muted small" style="margin-top:12px">「目录」指内置模型清单（上下文窗口 / 最大输出 / 思考档位已预置），选模板后自动带入，可逐个开关。</p>
+      </div>
+
+      <!-- Step 2 -->
+      <div id="w2" style="display:none">
+        <h3 id="w2title"></h3>
+        <p class="field-help" id="w2proto"></p>
+        <label><span>显示名称 *</span><input type="text" id="f-name" value="智谱 BigModel"></label>
+        <div class="form-row">
+          <label><span>API Key *</span><input type="password" id="f-key" placeholder="sk-…（加密保存，只写不读回）"></label>
+          <label style="flex:0 0 200px"><span>密钥管理页</span><input type="text" disabled id="f-mgmt" value="bigmodel.cn/usercenter/apikeys"></label>
+        </div>
+        <label><span>接口地址（API 根，可覆盖模板预填）*</span><input type="text" id="f-url" value="https://open.bigmodel.cn/api/paas/v4"></label>
+        <div class="form-row">
+          <label><span>超时（秒）</span><input type="number" value="60" min="1" max="300"></label>
+          <label><span>温度（求值建议 0）</span><input type="number" value="0" min="0" max="2" step="0.1"></label>
+        </div>
+        <div class="dialogtools">
+          <button onclick="wizard(1)">上一步</button>
+          <button class="primary" onclick="wizard(3)">下一步</button>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div id="w3" style="display:none">
+        <h3>启用模型 <span class="muted small" id="w3sub"></span></h3>
+        <p class="field-help">以下来自内置目录，默认已勾选推荐模型；只启用需要的即可，之后可随时在供应商详情中增改。无需再填 Key。</p>
+        <table id="w3table"></table>
+        <div class="dialogtools">
+          <button onclick="wizard(2)">上一步</button>
+          <button class="primary" onclick="finishWizard()">完成创建</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 场景三：供应商详情 ============ -->
+  <section id="v3" class="view" style="display:none">
+    <div class="card">
+      <div class="panelhead">
+        <div>
+          <h2>供应商详情 · 智谱 BigMarket <span id="detailTitle"></span></h2>
+          <p>编辑接入信息与模型清单。目录模型只存「差异覆盖」（例：只改最大输出），目录升级不丢配置；目录外模型用手动模式全量填写。</p>
+        </div>
+        <div><button class="mini" onclick="go('v1')">← 返回列表</button></div>
+      </div>
+
+      <div class="form-row" style="margin-top:6px">
+        <label><span>显示名称</span><input type="text" value="智谱 BigModel"></label>
+        <label><span>协议类型</span><select disabled><option>OpenAI 兼容 chat/completions</option></select></label>
+      </div>
+      <div class="form-row">
+        <label><span>API Key（留空 = 沿用已保存密钥）</span><input type="password" placeholder="留空 = 沿用已保存密钥（不回显）"></label>
+        <label><span>状态</span><label style="margin:2px 0"><span class="switch"><input type="checkbox" checked><i></i></span>&nbsp;启用</label></label>
+      </div>
+      <div class="dialogtools" style="justify-content:flex-start"><button class="primary">保存供应商</button><button class="mini" id="detailTest">测试连通</button><span class="inline-success small" id="detailTestResult" style="display:none">连通成功（412ms）</span></div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:16px 0 10px">
+      <div class="panelhead">
+        <h3 style="margin:0">模型（3 启用 / 5 目录）</h3>
+        <div><button class="mini" onclick="openModelDialog('catalog')">＋ 从目录添加</button> <button class="mini" onclick="openModelDialog('manual')">＋ 手动添加</button></div>
+      </div>
+      <table id="mtable"></table>
+      <p class="footnote">「覆盖」标记 = 该行存在用户差异覆盖（如最大输出、思考档位），其余字段仍继承内置目录；点击「重置」回到目录默认。</p>
+    </div>
+  </section>
+
+  <!-- ============ 场景四：编排节点 ============ -->
+  <section id="v4" class="view" style="display:none">
+    <div class="card">
+      <div class="panelhead"><div><h2>函数编排 · Python 节点（LLM 求值）</h2><p>节点绑定升级为「供应商 → 模型 → 思考档位」级联；留空 = 跟随默认模型。旧节点只存供应商的绑定自动回退为该供应商的默认模型，无需改动。</p></div></div>
+      <div class="node-demo">
+        <h3>LLM 求值设置</h3>
+        <div class="form-row">
+          <label><span>供应商</span>
+            <select id="n-prov" onchange="renderNodeModels()">
+              <option value="">（跟随默认：智谱 BigModel）</option>
+              <option>智谱 BigModel</option>
+              <option>MiniMax</option>
+              <option>DeepSeek（已禁用）</option>
+            </select>
+          </label>
+          <label><span>模型</span><select id="n-model"></select></label>
+          <label><span>思考档位</span>
+            <select><option>（默认）</option><option>disabled</option><option>low</option><option>medium</option><option>high</option></select>
+          </label>
+        </div>
+        <p class="field-help" id="n-hint"></p>
+        <div class="hintbox">选中「DeepSeek（已禁用）」时：模型下拉置空并提示「该供应商已禁用，配置检查将报错」——演示见下拉选择。</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 默认模型弹窗 -->
+<div class="modal-backdrop" id="defaultDlg" style="display:none" onclick="if(event.target===this)closeDefault()">
+  <section class="modal-card" role="dialog" aria-modal="true" style="width:480px">
+    <h2>默认模型</h2>
+    <p class="field-help">精确到「供应商 × 模型 × 思考档位」。未明确指定的节点、本体构建均使用它。</p>
+    <label><span>供应商</span><select id="d-prov" onchange="renderDefaultModels()"><option>智谱 BigModel</option><option>MiniMax</option></select></label>
+    <label><span>模型</span><select id="d-model"></select></label>
+    <label><span>思考档位（可选）</span><select><option>（不指定）</option><option>disabled</option><option>low</option><option>medium</option><option>high</option></select></label>
+    <div class="dialogtools"><button onclick="closeDefault()">取消</button><button class="primary" onclick="saveDefault()">保存默认</button></div>
+  </section>
+</div>
+
+<!-- 添加模型弹窗 -->
+<div class="modal-backdrop" id="modelDlg" style="display:none" onclick="if(event.target===this)closeModelDialog()">
+  <section class="modal-card" role="dialog" aria-modal="true">
+    <h2 id="mdTitle">从目录添加模型</h2>
+    <p class="field-help" id="mdHelp"></p>
+    <div id="mdCatalog">
+      <label><span>目录模型</span>
+        <select><option>glm-4.6-flash — 128K 上下文 / 32K 输出 / 档位 4 档</option><option>glm-4.5-air — 128K / 32K / 4 档</option><option>embedding-3 — 8K / 8K / 无档位</option></select>
+      </label>
+      <div class="hintbox">默认全部继承目录元数据，无需填写；需要差异时在添加后于模型表中覆盖（本原型场景三演示）。</div>
+    </div>
+    <div id="mdManual" style="display:none">
+      <label><span>模型 ID *（API 参数名，如 abab-7b-chat）</span><input type="text" placeholder="目录没有的模型，全量填写"></label>
+      <div class="form-row">
+        <label><span>上下文窗口 *</span><input type="number" value="128000"></label>
+        <label><span>最大输出 *</span><input type="number" value="16384"></label>
+      </div>
+      <label><span>思考档位（无则不填）</span><input type="text" placeholder="例如：disabled, low, medium, high"></label>
+    </div>
+    <div class="dialogtools"><button onclick="closeModelDialog()">取消</button><button class="primary">添加</button></div>
+  </section>
+</div>
+
+<div class="notice" id="toast"></div>
+
+<script>
+/* ---------- 演示数据 ---------- */
+const providers = [
+  { name:'智谱 BigModel', sub:'OpenAI 兼容 · open.bigmodel.cn/api/paas/v4', on:true, def:true,  models:{on:3,total:5} },
+  { name:'MiniMax',       sub:'OpenAI 兼容 · api.minimax.cn/v1',           on:true,  def:false, models:{on:1,total:2} },
+  { name:'DeepSeek',      sub:'Anthropic 兼容 · api.deepseek.com/anthropic',on:false,def:false, models:{on:1,total:1} },
+];
+const templates = [
+  { id:'bigmodel-standard', name:'智谱 BigModel（OpenAI 兼容）', proto:'OpenAI 兼容 chat/completions', url:'https://open.bigmodel.cn/api/paas/v4', mgmt:'bigmodel.cn/usercenter/apikeys', n:5 },
+  { id:'bigmodel-anthropic',name:'智谱 BigModel（Anthropic 兼容）', proto:'Anthropic messages', url:'https://open.bigmodel.cn/api/anthropic', mgmt:'bigmodel.cn/usercenter/apikeys', n:5 },
+  { id:'deepseek', name:'DeepSeek', proto:'Anthropic messages', url:'https://api.deepseek.com/anthropic', mgmt:'platform.deepseek.com/api_keys', n:2 },
+  { id:'minimax', name:'MiniMax', proto:'OpenAI 兼容 chat/completions', url:'https://api.minimax.cn/v1', mgmt:'platform.minimaxi.com', n:2 },
+  { id:'kimi', name:'月之暗面 Kimi', proto:'Anthropic messages', url:'https://api.moonshot.cn/anthropic', mgmt:'platform.moonshot.cn', n:3 },
+  { id:'qwen', name:'通义千问（百炼）', proto:'OpenAI 兼容 chat/completions', url:'https://dashscope.aliyuncs.com/compatible-mode/v1', mgmt:'bailian.console.aliyun.com', n:4 },
+  { id:'openai-compatible', name:'OpenAI 兼容 · 自定义', proto:'OpenAI 兼容 chat/completions', url:'（手填）', mgmt:'', n:0, custom:true },
+  { id:'anthropic-compatible', name:'Anthropic 兼容 · 自定义', proto:'Anthropic messages', url:'（手填）', mgmt:'', n:0, custom:true },
+];
+const catalogModels = [
+  { id:'glm-4.7', dn:'GLM-4.7', ctx:'128K', out:'16K', lv:'disabled / low / medium / high', on:true },
+  { id:'glm-4.7-flash', dn:'GLM-4.7 Flash', ctx:'128K', out:'16K', lv:'disabled / low / medium / high', on:true },
+  { id:'glm-4.6', dn:'GLM-4.6', ctx:'128K', out:'32K', lv:'disabled / low / medium / high', on:false },
+  { id:'glm-4.6-flash', dn:'GLM-4.6 Flash', ctx:'128K', out:'32K', lv:'disabled / low / medium / high', on:false },
+  { id:'embedding-3', dn:'Embedding-3', ctx:'8K', out:'—', lv:'无', on:false },
+];
+const detailModels = [
+  { id:'glm-4.7', dn:'GLM-4.7', mode:'目录', ctx:'128K', out:'16K（覆盖：8K）', lv:'disabled / low / medium / high', on:true, over:true },
+  { id:'glm-4.7-flash', dn:'GLM-4.7 Flash', mode:'目录', ctx:'128K', out:'16K', lv:'disabled / low / medium / high', on:true, over:false },
+  { id:'glm-4.6', dn:'GLM-4.6', mode:'目录', ctx:'128K', out:'32K', lv:'disabled / low / medium / high', on:true, over:false },
+  { id:'glm-4.6-flash', dn:'GLM-4.6 Flash', mode:'目录', ctx:'128K', out:'32K', lv:'—', on:false, over:false },
+  { id:'glm-4.5-air', dn:'GLM-4.5 Air', mode:'目录', ctx:'128K', out:'32K', lv:'—', on:false, over:false },
+  { id:'glm-4-long', dn:'GLM-4-Long', mode:'手动', ctx:'1M', out:'4K', lv:'无', on:false, over:false },
+];
+
+/* ---------- 场景切换 ---------- */
+function go(v){
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.v===v));
+  document.querySelectorAll('.view').forEach(s=>s.style.display = s.id===v ? '' : 'none');
+  window.scrollTo(0,0);
+}
+document.getElementById('tabs').addEventListener('click', e=>{ if(e.target.dataset.v) go(e.target.dataset.v); });
+
+function toast(t){ const el=document.getElementById('toast'); el.textContent=t; el.style.display='block'; clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none',2600); }
+
+/* ---------- 场景一：列表 ---------- */
+function renderProviders(){
+  document.getElementById('plist').innerHTML = providers.map((p,i)=>`
+    <div class="provider-row">
+      <label class="switch" title="启用 / 禁用（保留配置）"><input type="checkbox" ${p.on?'checked':''} onchange="toggleProv(${i},this.checked)"><i></i></label>
+      <div class="grow">
+        <strong>${p.name}</strong>${p.def?'<span class="pill">默认</span>':''}
+        <div class="muted small">${p.sub} · 密钥已配置 · 模型 ${p.models.on} 启用 / ${p.models.total} 目录</div>
+      </div>
+      <button class="mini" onclick="go('v3')">模型管理</button>
+      <button class="mini" onclick="toast('模拟：连通成功（388ms）')">测试连通</button>
+      <button class="mini danger-btn" onclick="delProv(${i})">删除</button>
+    </div>`).join('');
+}
+function toggleProv(i,on){ providers[i].on=on; renderProviders(); toast(on?'已启用（模拟，未落库）':'已禁用：该供应商的模型不再出现在选择列表（模拟）'); }
+function delProv(i){
+  const wasDef = providers[i].def;
+  providers.splice(i,1);
+  if(wasDef && providers.length){ providers[0].def=true; document.getElementById('defaultText').textContent = providers[0].name+' · （其首个启用模型） · 兜底默认'; }
+  renderProviders();
+  toast(wasDef ? '已删除默认供应商：默认已兜底切换（模拟）' : '已删除（模拟）');
+}
+
+/* ---------- 场景二：向导 ---------- */
+let picked=null, wStep=1;
+function renderTplGrid(){
+  document.getElementById('tplgrid').innerHTML = templates.map((t,i)=>`
+    <div class="tpl ${picked===i?'on':''}" onclick="pickTpl(${i})">
+      <strong>${t.name}${t.custom?' <span class="tag">自定义</span>':''}</strong>
+      <div class="muted small">${t.proto}<br>${t.url}${t.n?` · 目录 ${t.n} 模型`:''}</div>
+    </div>`).join('');
+}
+function pickTpl(i){
+  picked=i; renderTplGrid();
+  const t=templates[i];
+  document.getElementById('w2title').textContent=t.name;
+  document.getElementById('w2proto').textContent=`模板预填 · 协议：${t.proto} · 密钥管理页：${t.mgmt||'—'}`;
+  document.getElementById('f-name').value = t.custom?'':t.name.replace(/（.*）/,'');
+  document.getElementById('f-url').value = t.custom?'':t.url;
+  document.getElementById('f-mgmt').value = t.mgmt||'—';
+}
+function wizard(step){
+  wStep=step;
+  ['w1','w2','w3'].forEach((id,k)=>document.getElementById(id).style.display = (k+1)===step?'':'none');
+  const labels=[[1,2,3],[1,2,3]]; // steps 高亮
+  document.querySelectorAll('.steps span').forEach((s,k)=>s.classList.toggle('on', k===step-1));
+  if(step===3){
+    document.getElementById('w3sub').textContent='— 来自模板「'+(picked!=null?templates[picked].name:'')+'」的内置目录';
+    document.getElementById('w3table').innerHTML = catalogModels.map((m,i)=>`
+      <tr>
+        <td><label class="switch"><input type="checkbox" ${m.on?'checked':''}><i></i></label></td>
+        <td><strong>${m.dn}</strong><div class="dim">${m.id}</div></td>
+        <td>${m.ctx}</td><td>${m.out}</td><td class="dim">${m.lv}</td>
+      </tr>`).join('');
+  }
+}
+function finishWizard(){
+  const name = document.getElementById('f-name').value || '自定义供应商';
+  providers.unshift({ name, sub:'（模板新增 · 演示）', on:true, def:false, models:{on:2,total:5} });
+  renderProviders(); go('v1'); toast('供应商已创建（模拟，未落库）——真实实现见开发计划 T6/T7');
+}
+
+/* ---------- 场景三：详情 ---------- */
+function renderDetail(){
+  document.getElementById('detailTitle').innerHTML='';
+  document.getElementById('mtable').innerHTML =
+    `<tr><th>启用</th><th>模型</th><th>模式</th><th>上下文</th><th>最大输出</th><th>思考档位</th><th></th></tr>` +
+    detailModels.map(m=>`
+      <tr>
+        <td><label class="switch"><input type="checkbox" ${m.on?'checked':''} onchange="toast(this.checked?'已启用（模拟）':'已禁用（模拟）')"><i></i></label></td>
+        <td><strong>${m.dn}</strong><div class="dim">${m.id}</div></td>
+        <td>${m.mode}${m.over?'<span class="tag over">覆盖</span>':''}</td>
+        <td>${m.ctx}</td><td>${m.out}</td><td class="dim">${m.lv}</td>
+        <td style="white-space:nowrap">
+          <button class="mini" onclick="toast('模拟：编辑覆盖（上下文 / 最大输出 / 档位 / 显示名）')">覆盖</button>
+          ${m.over?'<button class="mini" onclick="toast(\'模拟：已重置为目录默认\')">重置</button>':''}
+          <button class="mini danger-btn" onclick="toast('模拟：目录条目移除后回到目录默认；手动条目则彻底删除')">移除</button>
+        </td>
+      </tr>`).join('');
+}
+
+/* ---------- 默认模型弹窗 ---------- */
+const modelByProv = { '智谱 BigModel':['glm-4.7','glm-4.7-flash','glm-4.6'], 'MiniMax':['MiniMax-M2.5','MiniMax-M2.5-pro'] };
+function openDefault(){ renderDefaultModels(); document.getElementById('defaultDlg').style.display='flex'; }
+function closeDefault(){ document.getElementById('defaultDlg').style.display='none'; }
+function renderDefaultModels(){
+  const p=document.getElementById('d-prov').value;
+  document.getElementById('d-model').innerHTML = modelByProv[p].map(m=>`<option>${m}</option>`).join('');
+}
+function saveDefault(){
+  const p=document.getElementById('d-prov').value, m=document.getElementById('d-model').value;
+  document.getElementById('defaultText').textContent = `${p} · ${m} · 思考档位：（按选择）`;
+  closeDefault(); toast('默认模型已更新（模拟）');
+}
+
+/* ---------- 添加模型弹窗 ---------- */
+function openModelDialog(mode){
+  document.getElementById('mdTitle').textContent = mode==='catalog' ? '从目录添加模型' : '手动添加模型';
+  document.getElementById('mdHelp').textContent = mode==='catalog'
+    ? '选择一个内置目录中尚未启用的模型，默认全部继承目录元数据（上下文 / 最大输出 / 思考档位），无需填写。'
+    : '目录之外的模型：全量必填。手动条目与目录条目互斥，同一模型 ID 不可同时存在。';
+  document.getElementById('mdCatalog').style.display = mode==='catalog'?'':'none';
+  document.getElementById('mdManual').style.display = mode==='manual'?'':'none';
+  document.getElementById('modelDlg').style.display='flex';
+}
+function closeModelDialog(){ document.getElementById('modelDlg').style.display='none'; }
+
+/* ---------- 场景四：节点级联 ---------- */
+const nodeModels = { '':['（跟随默认：glm-4.7）'], '智谱 BigModel':['（该供应商默认：glm-4.7）','glm-4.7','glm-4.7-flash','glm-4.6'], 'MiniMax':['（该供应商默认：MiniMax-M2.5）','MiniMax-M2.5','MiniMax-M2.5-pro'], 'DeepSeek（已禁用）':['（该供应商已禁用）'] };
+function renderNodeModels(){
+  const p=document.getElementById('n-prov').value;
+  const sel=document.getElementById('n-model');
+  sel.innerHTML = nodeModels[p].map((m,i)=>`<option ${p==='DeepSeek（已禁用）'?'disabled':''}>${m}</option>`).join('');
+  document.getElementById('n-hint').textContent =
+    p==='' ? '未指定：运行时取「默认模型」三元组（智谱 BigModel · glm-4.7 · medium）。'
+    : p==='DeepSeek（已禁用）' ? '该供应商已禁用：配置检查将报「LLM 提供方已禁用」（区别于不存在）。'
+    : `旧节点只存供应商、不存模型时：回退该供应商默认模型（${nodeModels[p][0].replace(/（|该供应商默认：|）/g,'')}）。`;
+}
+
+/* ---------- init ---------- */
+renderProviders(); renderTplGrid(); renderDetail(); renderNodeModels();
+</script>
+</body>
+</html>

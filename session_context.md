@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`ae5ba5c791a84938`
+上下文版本：`72a89e28f6213b09`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,18 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 模型供应商与模型管理改版-需求四件套交付 · zcode · 已确认决定
+
+时间：2026-09-22T15:53:41.606973+00:00；记录：`.collaboration/entries/000256-0332c7e4714b.json`
+
+按用户指令参照 ZCode 开源配置模型（本机 ~/.zcode/v2/provider_config.json 与 kingsword09/zcode-cli 文档、应用内置目录 zcode-builtin.json 已核实）交付模型配置改版四件套：三层配置模型（内置目录→供应商模板继承→模型规则目录覆盖/手动）、默认模型三元组 {providerId,modelId,reasoningLevel}、wb_llm_providers/wb_llm_models 两表+Alembic 迁移（providerId 稳定使密钥零重加密）、9 个 API 端点契约、T1-T10 并行任务表。未实施业务代码。
+
+- 决定：模型配置从扁平单表改为 ZCode 式三层结构：仓库内置目录 JSON + 供应商(模板继承/覆盖) + 模型规则(catalog 增量覆盖 | manual 全量)；默认项升级为 {providerId,modelId,reasoningLevel}，替代 models.default_provider_id；isDefault→defaultSelection 属破坏性接口变更需登记；api_type 支持 openai-chat-completions(P0) 与 anthropic-messages(P1)；不抄 OAuth 账号体系/openai-responses/map 表达式引擎，参数注入用按协议的固定映射枚举；迁移保持 provider_id 原值不变，密钥 AAD 不变零重加密；旧编排节点仅 providerId 的绑定回退该供应商默认模型；开放决策点待用户拍板：内置目录首版收录范围、/v1/models 拉取按钮、anthropic-messages 是否首版做
+- 验证：现状调研：Explore 子代理只读核实 llm_providers/flow_routes/llm_client/schema/前端设置页/接口文档04 全链路；ZCode 侧核实：本机 provider_config.json 实际结构、zcode-builtin.json(rev30) 模板与模型规则计数、开源仓库 provider.example.json 与 PROVIDER_CONFIG 文档；原型 HTML 标签配对与 JS 语法检查通过；文档不含任何真实密钥（provider_config.json 中的 Key 未复制）
+- 下一步：用户拍板 3 个开放决策点后冻结契约（开发计划 T0）；实施需用户按执行指令 §1 下达 worktree 创建指令；接口文档先行（T3）
+- 依据/文档：文档/需求/20260922_模型供应商与模型管理改版/需求说明.md；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md；文档/需求/20260922_模型供应商与模型管理改版/执行指令.md；文档/需求/20260922_模型供应商与模型管理改版/交互原型_v1.html
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### assist-fill-production · zcode · 已实施，待验收
 
@@ -145,12 +157,3 @@ T2 交付：新增 workbench/assist_ops.py（受限 operations 校验器，模�
 - 下一步：待用户授权后 ./start.sh rebuild（构建成功才切服务）并重启主工作台，再做浏览器抽验；代码回退不等于数据回退。；序号 000187/000188 在两工作树各自计数下重号（文件名 hash 不同、无 Git 冲突），如需澄清按既有约定追加纠正记录，不改写历史。
 - 依据/文档：提交：收纳 65bbe34；合并 d0d60b0（父 65bbe34 + 064cf10）；合并前 main 基线 578acd7→d08b96b。；实施与复测记录：文档/需求/20260921_样式与交互统一/开发计划.md §9.13（第八轮 6 缺陷、12 行复测值表、未覆盖项）。；设计契约：DESIGN.md（时间唯一出口 shared/format.ts、fixed 表 min-width + overflow:auto 约定、空态需区分"未选择"与"一个也没有"）。
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 整表自动填写原型改为按需侧栏 · codex · 需求已交付
-
-时间：2026-09-22T08:49:09.393941+00:00；记录：`.collaboration/entries/000243-058198a9adb6.json`
-
-按用户反馈改同一两页原型：默认隐藏自动填写，页头入口按需打开右侧面板，完成后收起返回表单；需补问则保持，支持关闭/Esc/窄屏遮罩，保留输入及手工填写路径。未改正式业务代码。
-
-- 验证：内联JS node --check通过；本轮未浏览器实测。
-- 依据/文档：文档/需求/20260922_整表自动填写交互/交互原型_v1.html
