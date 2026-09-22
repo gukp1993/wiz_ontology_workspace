@@ -1,0 +1,2 @@
+precheck True [] excluded 1 counts {'property': 1}
+prepare blocked: 交付前检查未通过

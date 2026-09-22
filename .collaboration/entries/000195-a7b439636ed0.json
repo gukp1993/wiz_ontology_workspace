@@ -1,0 +1,25 @@
+{
+  "ticket": "fc1f2a2dc1554bf9b97bdfbfee9bd6ac",
+  "task": "auto_build R1-R5整改独立复验",
+  "status": "blocked",
+  "summary": "22a60e5整改复验未通过：R1拆分子批最终属性归属错误(P1)、R2门禁后预检与装配不一致(P2)、R4部分成功重试重复候选(P2)。交付报告、可复跑合成证据及整改执行指令；未改业务代码或合并main。",
+  "decisions": [],
+  "verification": [
+    "完整回归60/60、主套件单独250/250、事实身份21/21通过。",
+    "R1真实拆分至assemble复现错误domain；R2真实临时SQLite复现precheck=True但prepare被阻断；R4真实AST闭包+内存I/O替身复现重复，未宣称真实库全链路。",
+    "期间HEAD推进7dedc00，仅文档变化；22a60e5到7dedc00的workbench/frontend/tests无差异。"
+  ],
+  "next": [
+    "按整改执行指令修复A1-A3并补真实库恢复/最终图/浏览器验证，提交精确SHA交Codex复验；不合并main。"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/验收报告_R1-R5复验_Codex_20260922.md",
+    "文档/需求/20260920_从物料自动构建本体/整改执行指令_R1-R5复验问题_20260922.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-22T08:06:30.191317+00:00",
+  "sequence": 195,
+  "filename": "000195-a7b439636ed0.json",
+  "record_hash": "8259c9df5a27ab32c4dc4f615eeca9fbc80bfb57689ef2eb4c0444d31df01721",
+  "context_advanced": true
+}

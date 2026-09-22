@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`9810609b6a947c1e`
+上下文版本：`62a3780f36a01bb8`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,6 +22,17 @@
 
 ## 最近交接（新 → 旧）
 
+### auto_build R1-R5整改独立复验 · codex · 受阻
+
+时间：2026-09-22T08:06:30.191317+00:00；记录：`.collaboration/entries/000195-a7b439636ed0.json`
+
+22a60e5整改复验未通过：R1拆分子批最终属性归属错误(P1)、R2门禁后预检与装配不一致(P2)、R4部分成功重试重复候选(P2)。交付报告、可复跑合成证据及整改执行指令；未改业务代码或合并main。
+
+- 验证：完整回归60/60、主套件单独250/250、事实身份21/21通过。；R1真实拆分至assemble复现错误domain；R2真实临时SQLite复现precheck=True但prepare被阻断；R4真实AST闭包+内存I/O替身复现重复，未宣称真实库全链路。；期间HEAD推进7dedc00，仅文档变化；22a60e5到7dedc00的workbench/frontend/tests无差异。
+- 下一步：按整改执行指令修复A1-A3并补真实库恢复/最终图/浏览器验证，提交精确SHA交Codex复验；不合并main。
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收报告_R1-R5复验_Codex_20260922.md；文档/需求/20260920_从物料自动构建本体/整改执行指令_R1-R5复验问题_20260922.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
 ### auto-build-output-v3 最终合并需求与并行执行指令 · codex · 需求已交付
 
 时间：2026-09-22T07:55:11.397868+00:00；记录：`.collaboration/entries/000194-fa15f2751f11.json`
@@ -33,6 +44,17 @@
 - 下一步：用户将最终执行指令交实施harness，核对实际SHA与owner后按DAG开发自测提交，交Codex独立验收。
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md；文档/需求/20260920_从物料自动构建本体/本体生成控输出_最终执行指令_v3.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### R1–R5 五项正确性缺陷整改（开发-测试循环完成，待 Codex 复验） · zcode · 已实施，待验收
+
+时间：2026-09-22T07:42:35.583638+00:00；记录：`.collaboration/entries/000193-2e98bf99648e.json`
+
+按用户指令「用多个子agent开始整改，执行开发-测试循环」完成 Codex 审核意见五条 P1 的整改。协调者拆分四路并行（文件归属互斥：A=R5+R4 调度器/拆批、B=R1 命名空间、C=R2 冲突门禁、D=R3 事实身份），每路以 /tmp/repro_*.py 复现脚本为验收锚点（修复前全部复现失败→修复后全部转绿），pipeline.py 按行号区域切分独占编辑区，git 提交由协调者统一串行执行。修复内容：R1 冲突条件命名空间+引用同步重写+key 规范化；R2 合并降级后未经确认 include 自动撤销（AUTO_INCLUDE_REVOKED）+交付端硬门禁（conflictExcluded/Items）；R3 事实身份哈希（snippet+kind+locator+data 语义键）+plan.duplicateOf+duplicates 实数；R4 拆批部分失败父批按失败记账+整批重跑幂等；R5 批次完成即独立落库+落库失败计 failed+收尾核对覆盖；删死代码 _batch_wait_timeout。提交：22a60e5（代码+116 项新测试+接口文档 08/README）、8d38f63（方案文档归档+协作记录）；基线 805e1d9。全量回归 tests/run.py all 60/60、test_ontology_build 250/250 零断言修改、ruff 全过。停在与 Codex 审核意见同等的「待复验」状态，未合并 main。
+
+- 决定：四路并行按文件归属互斥拆分：pipeline.py 是四路共同热点，按行号区域切分独占编辑区（调度器=A、累加点=B、verify/门禁=C、去重循环=D），越界即停；实践零冲突。；提交粒度：五项修复在 pipeline.py 深度交织，拆分会制造不完整中间态，故单 commit 22a60e5 分列五项；接口文档与代码同 commit（AGENTS 契约先行规则）。；R1 采用冲突条件前缀而非无条件前缀：既有测试按原始 key 直改种子行，无条件前缀破坏其契约；冲突条件模式使 test_ontology_build 250/250 零断言修改原生兼容。；接口文档 08 更新范围：§1.6 决定重算时机+新 issue 码、§5 批次独立落库/拆批部分失败/重复事实身份、§8.1 交付选定集合口径+conflictExcluded 字段；README 变更记录登记。
+- 验证：五条复现脚本终验（最新代码）：repro_r1/r2/r3/r4/r5_final 全部「未复现」（修复前全部复现成功）。；新增测试 4 套件 116 项：batch_accounting 36（非连续续跑/乱序落库/落库失败计 failed/拆批四态/幂等重试/429 单次）、key_namespace 30、conflict_gate 29（含人工确认保留 include、交付门禁计数）、fact_identity 21（含 5 万条 0.9s 冒烟）。；全量回归：tests/run.py all 60/60 通过（含并行线四套件自动发现）；test_ontology_build 250/250 零既有断言修改；ruff 全部改动文件 All checks passed。；提交：22a60e5（fix，六代码文件+四测试文件+08 分册+README）、8d38f63（docs，四份方案文档+协作记录）；基线 805e1d9；工作区干净。；过程插曲归因：C 时点报 test_ontology_build 108/110 失败系 B 第一版无条件前缀中间态，B 迭代为冲突条件模式后消除；D 时点 60/60 与 A 收尾时点互证并行改动可共存。
+- 下一步：待 Codex 复验本次整改（对象：22a60e5，对照审核意见 R1–R5 验收标准；复现脚本在 /tmp 可复用，建议复验后转正入 tests/）。；已知遗留（未修，均有归属）：拆批两子批间同名 key 回落 _dedupe_keys（彻底解决需拆批处给子批独立前缀）；_flush_batch 部分成功分支未累计 rejectedRefs；all_candidates 500 行上限对单批去重覆盖的影响受 MAX_CANDIDATES_PER_BATCH=500 约束。；审核意见 D1–D3（覆盖预算/按主体编批/金样质量评价）与「布尔短标量过滤」属方案层改进，待用户拍板后另立需求。；分支 codex/auto_build 未合并 main——按流程等用户明确集成指令。
+- 依据/文档：提交：22a60e5（fix R1–R5）、8d38f63（docs 归档）；分支 codex/auto_build；审核对象：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md（已提交 805e1d9）；并行 agent 交接：entries 000189（C）/000190（B）/000191（A）/000185（协调者复现分析）
 
 ### auto_build-token-pilot-v2 整合试点方案 · codex · 需求已交付
 
@@ -132,26 +154,3 @@
 - 验证：源码基线578acd7d47e2e457757e088110f2582ae261cbb0。；纯函数合成数据复现引用误合并、冲突include、同值去重丢失；Future替身复现非连续续跑漏回调及429不重排。；拆批部分失败由控制流核实。未访问真实数据或外部模型，未做完整回归或浏览器验收。
 - 下一步：先修订方案与正确性复验场景；开发集成按后续授权。
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md
-
-### retrieve筛选优化-剖析与基准基建（codex/build-progress-log） · zcode · 已实施，待验收
-
-时间：2026-09-22T04:35:04.133748+00:00；记录：`.collaboration/entries/000183-29b8b3b3c3ef.json`
-
-R1/R3/R5/R7 剖析与基建交付：①新增 tests/retrieve_fixture.py（生产对齐合成夹具，默认 276k 条≈26 条/物料、四类 kind、五档长度、PRIMARY_SCOPE 弱词 85+hints 14 对齐 P2 扫描口径；纯标准库确定性，ruff 通过，不 import workbench）；②剖析报告 retrieve优化剖析报告_v1.md：基线=3dc51dc 快照（git show 导出仓库外加载，未改任何仓库文件），实测+外推——基线 build_index 占总耗时 96.7-98.8% 且呈幂指数≈2.0-2.4 膨胀（token 桶 fact_id not in bucket 线性查重随桶长线性增长），276k 外推 40-60 分钟与生产实测 40 分钟同量级吻合；优化后(retrieval.py@964493a) 276k 实测 45.29s（R3≤5min 达成）、峰值 RSS 919.6MB、texts 282.6MB 驻留未变（O1 未实施）。select 基线与优化版持平（合并正则≈逐词 in）；意外热点=依赖扩展全桶扫描二次项（select 13%→42% 随规模升）。③基准脚本 tests/benchmark_retrieve.py 已由实施线先期提交（d6ed223），本轮按写入归属未覆盖；发现其 --mode profile 空表缺陷（pstats 行带缩进致 startswith('ncalls') 恒假）与 --concurrency 占位缺口，留给脚本 owner。
-
-- 决定：不覆盖在途线已提交的 tests/benchmark_retrieve.py 与等价金样（owner 归属）；剖析基线按需求锁定 3dc51dc 快照而非测量时 HEAD（HEAD 已前移但 retrieval.py 未再变，git diff 核实）；夹具 scope include 采用生产口吻长尾句（弱 gram 必须落在 include——select 第三循环只扫 include 弱词+hints，goal/relations 弱词被基线丢弃）；初轮矩阵部分 wall 点受并发残留干扰已识别，引用数字均经空机复测；RSS/profile 占比对争用不敏感沿用原矩阵
-- 验证：ruff check tests/retrieve_fixture.py 通过（含 E4/E7/E9/F/B）；夹具自检：同 seed 确定性、分批==整建、分布符合设计（3000 条）；三方等价哨兵：inst==base 逐字节一致（计时副本可信）、head==base selection 逐字节一致（3 组 scope×2000 条）、head tokens 桶为空；关键 wall 点空机复测：base 20k index 9.1s（原 22.5s 判为干扰剔除）、base 40k 47.0s 双跑、head 276k 45.29s；幂律拟合 6 点：p≈2.01（残差包络 28-60 分钟区间）
-- 下一步：脚本 owner：benchmark_retrieve.py profile 空表一行修复 + --concurrency 占位（V2-10 复用）；O1 单遍融合未实施——报告 §3.4/§6.4 已留对照基线（texts 282.6MB 驻留、双遍）；依赖扩展二次项（select 42.7s 中约半）为 O0-O3 未覆盖的后续算法轮次候选；剖析脚本现居 /tmp/prof（仓库外），是否入库由集成负责人/用户决定
-- 依据/文档：worktree/build-governance/tests/retrieve_fixture.py；文档/需求/20260920_从物料自动构建本体/retrieve优化剖析报告_v1.md；worktree/build-governance/tests/benchmark_retrieve.py（在途线 d6ed223，未改动）
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### ontology-build-retrieve-optimize（retrieve 算法优化，worktree/build-governance） · zcode · 已实施，待验收
-
-时间：2026-09-22T03:32:02.816815+00:00；记录：`.collaboration/entries/000182-ba6ddcc2eb3a.json`
-
-retrieve 优化 O0/O2/O3 实现完成（协调者并行拆分后我的范围）：O0 build_index 增 with_tokens=False（默认跳过 tokens 死工作，键恒存在空 dict）；O2 四词表合并正则（re.escape+交替）单趟命中探测，展示词按原词表顺序原 term-in-text 判定经 _hits 复算（S1 边界：不用 findall 拼 reasons）；O3 定级早停。调用点零改动（pipeline.run_generate 不变即生效）。等价金样 15/15 逐字节一致（内嵌 3dc51dc 基线快照），全量回归 250/250×2 + 全部相关套件绿。O1 单遍融合按协调指示挂起，待并行剖析 agent 的归因报告（文本驻留 vs 子串扫描占比）决策；texts 共享无重复构建已由金样断言 12 确认。范围说明：R1 剖析/R3 性能/R5 内存数字归并行专项 agent；原派发的 200k 基线跑批已按协调意图中途停止（避免同机双份跑批互扰）。
-
-- 决定：合并正则仅作早停探测，展示词一律 _hits 原序复算（S1：findall 非重叠匹配与逐词成员判定在重叠词上不等价）；O1 挂起而非实施：等并行剖析归因数据；texts 共享无重复构建的核对部分已完成（金样断言）；全部实现收在 retrieval.py 内部 + 新增测试/基准文件，调用点与 pipeline.py/protocol.py 零改动
-- 验证：tests/test_retrieve_equivalence.py 15/15：手构造 18 条×8 组 scope + 合成 8000×3 组 scope，selection（三列表含顺序+reasons 逐字+counts）json sort_keys 逐字节一致；O0 断言（默认无 tokens/显式恢复/桶结构与 searchable_text 同基线）；tests/test_ontology_build.py 250/250（连续 2 次）；parsers 95/95、struct_parsers 143/143、parser_wiring 97/97、struct_e2e 87/87、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；ruff 全过；V2-8 复用探针桩（test_ontology_build:1377-1398）无需变更：未新增检索入口（S3 满足）；基准脚本 tests/benchmark_retrieve.py 入库（bench/profile 两模式，RETRIEVE_BENCH_RESULT 可读输出）；R1/R3/R5 数字归并行 agent
-- 下一步：待并行剖析 agent 交付 R1 归因报告后决策 O1 实施或降级（协调者转发）；R3 性能目标（≤5 分钟）与 R5 内存水位由并行 agent 数字补录开发计划；分支归属说明供协调者知晓：retrieve 实现本体经由共享检出被并行线捆包提交为 964493a（retrieval.py 与我工作区实现逐字节一致，已核对）；开发计划记录原落 build-progress-log（cb64855），已以 plumbing 快进补录 build-governance（78cf7df，不影响共享检出）；金样/基准脚本 d6ed223 两分支皆有
-- 依据/文档：codex/build-governance：78cf7df（开发计划记录）/964493a（实现本体，retrieval.py 含我的实现）/d6ed223（金样+基准脚本）；codex/build-progress-log：cb64855（同一开发计划变更，与 78cf7df 内容一致）；workbench/ontology_build/retrieval.py、tests/test_retrieve_equivalence.py、tests/benchmark_retrieve.py

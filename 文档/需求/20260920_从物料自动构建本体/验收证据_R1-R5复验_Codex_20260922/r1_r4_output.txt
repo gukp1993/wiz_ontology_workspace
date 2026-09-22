@@ -1,0 +1,4 @@
+R1 split ok: True actual domains: [('电池额定功率', '电池'), ('逆变器额定功率', '电池')]
+R4 initial partial rows: [('obj', '园区', None), ('b2:obj', '电池', None)]
+R4 repeated partial rows: [('obj', '园区', None), ('b2:obj', '电池', None), ('b2:obj_', '电池', None)]
+Both outstanding defects reproduced; assertions describe current defects, not desired behavior.
