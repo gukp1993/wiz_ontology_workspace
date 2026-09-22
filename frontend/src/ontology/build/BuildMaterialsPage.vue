@@ -486,14 +486,19 @@ watch(() => props.taskId, () => {
 
 // ─── 继续条件 ────────────────────────────────────────────────────────────
 const successCount = computed(() => stateSum('success'))
+const partialCount = computed(() => stateSum('partial'))
 const gapCount = computed(() => stateSum('partial') + stateSum('failed'))
 const scannedAnything = computed(() => groups.value.some(g => Object.keys(g.byParseState).some(k => k !== 'pending')))
 const hasGap = computed(() => gapCount.value > 0)
-const canContinue = computed(() => successCount.value > 0 && (!hasGap.value || ack.value))
+// 08 §4.2（需求 §4.2）：「部分失败可以继续，但需用户明确确认覆盖缺口」——
+// 降级解析（partial，如 .json 文本线索）与完整解析同为可用材料；后端
+// task_baseline 的可用口径一致（success/partial）。全部失败（failed）才不可继续。
+const usableCount = computed(() => successCount.value + partialCount.value)
+const canContinue = computed(() => usableCount.value > 0 && (!hasGap.value || ack.value))
 const blockedReason = computed(() => {
   if (listError.value) return '材料清单读取失败，请先重试。'
   if (!totalMaterials.value) return '还没有材料：先上传材料并扫描。'
-  if (successCount.value === 0) return hasGap.value ? '至少需要一份未排除且解析成功的材料才能继续。' : '还没有解析成功的材料：先点击「扫描物料」。'
+  if (usableCount.value === 0) return hasGap.value ? '材料的解析结果均不可用（全部失败）：请重试解析，或换用可解析的材料（源码 / SQL / DOCX / PDF / XLSX / MD）。' : '还没有解析成功的材料：先点击「扫描物料」。'
   if (hasGap.value && !ack.value) return '存在解析缺口：请先勾选「我了解材料覆盖缺口」，或重试/排除有问题的材料。'
   return ''
 })
@@ -627,7 +632,7 @@ const blockedReason = computed(() => {
       {{ runErrorText(run) || '本次运行未完成。' }}
     </p>
     <p v-if="run && run.state === 'succeeded'" class="bt-note" :class="{ warn: hasGap }">
-      扫描结束：{{ successCount }} 份材料解析成功，{{ gapCount }} 份存在覆盖缺口{{ hasGap ? '（缺口未确认前不能继续）' : '' }}。
+      扫描结束：{{ successCount }} 份完整解析成功<template v-if="partialCount">，{{ partialCount }} 份降级解析（文本线索，quality=low，仍可作为生成依据）</template>，{{ gapCount }} 份存在覆盖缺口{{ hasGap ? '（缺口未确认前不能继续）' : '' }}。
     </p>
   </section>
 
