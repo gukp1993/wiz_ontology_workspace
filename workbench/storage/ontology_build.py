@@ -1110,3 +1110,39 @@ def create_ontology_asset(conn, owner_user_id, external_id, name, payload, paylo
                   'q': snapshot['seq'], 'now': now})
     return {'assetUid': asset_uid, 'snapshotId': snapshot['snapshot_id'], 'revision': token,
             'seq': snapshot['seq'], 'contentHash': snapshot['content_hash']}
+
+
+# --- 在线批次计划持久化（D08 batch_persistence.py 的数据访问点，2026-09-22 追加）--------
+
+def run_checkpoint_doc(conn, run_id, owner_user_id):
+    """读运行的完整 checkpoint dict（原始形态，非 run_checkpoint_view 摘要）。
+
+    仅供 batch_persistence OnlinePersistence 读写 schema2 计划使用：
+    * 运行不存在/跨账号 → None（与归属纪律一致，不泄露存在性）；
+    * checkpoint_json 为 NULL/''/坏 JSON → {}（视为「尚无检查点」，调用方按缺计划处理）。
+    不做结构解释（schemaVersion 判定在域层 batch_state.validate_plan_doc）。
+    """
+    row = conn.execute(sto.text('SELECT checkpoint_json FROM wb_build_runs '
+                                'WHERE run_id = :r AND owner_user_id = :o'),
+                       {'r': run_id, 'o': owner_user_id or ''}).mappings().first()
+    if row is None:
+        return None
+    return _loads(row['checkpoint_json'] if row['checkpoint_json'] is not None else '{}', {})
+
+
+def iterate_candidates_page(conn, task_id, owner_user_id, after_id, limit):
+    """候选 keyset 分页：按 candidate_id 升序，取 candidate_id > after_id 的前 limit 条。
+
+    D08 iterate_candidates 的底层页读取（契约：复验/终态检查必须走分页迭代，
+    不复用 all_candidates(limit=500) 当全量）。要点：
+    * **含已合并候选**（不过滤 origin.mergedInto）：终态检查需要对任务产出的全部候选
+      计数（如 MAX_FINAL_CANDIDATES 上限核对），被合并掉的候选也是本轮产出；
+    * after_id 传 ''/None 从头开始；页大小收敛在 1..2000；
+    * 归属过滤 task_id + owner_user_id，跨账号一律不可见。
+    """
+    size = max(1, min(int(limit or 200), 2000))
+    rows = conn.execute(sto.text(
+        'SELECT * FROM wb_build_candidates WHERE task_id = :t AND owner_user_id = :o '
+        "AND candidate_id > :a ORDER BY candidate_id LIMIT :l"),
+        {'t': task_id, 'o': owner_user_id or '', 'a': str(after_id or ''), 'l': size}).mappings().all()
+    return [candidate_view(r) for r in rows]
