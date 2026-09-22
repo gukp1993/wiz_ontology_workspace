@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`62a3780f36a01bb8`
+上下文版本：`6c4f3277eecbfa85`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### auto-build-output-v3 · zcode · 实施中
+
+时间：2026-09-22T08:20:23.871555+00:00；记录：`.collaboration/entries/000196-150c5f67d722.json`
+
+接手《本体生成控输出_最终执行指令_v3.md》并开工：实际HEAD 7dedc00（基线main 578acd7，R1–R5修复22a60e5已在基线内）、分支codex/auto_build、在途仅共享上下文自动汇总无他人未提交业务代码。D00进行中：batch_contracts.py已写入并冒烟通过（Profile/Target/Job/Attempt/CallResult/Codec/Persistence/执行器事件/HTTP摘要/usage不双计口径逐项冻结）；接口文档08新增§14+变更记录、README/05已登记、workbench-tasks/auto_build.json已登记。下一步按冻结契约并行派发D01/D03/D05/D06/D07/D11/D15。
+
+- 决定：契约冻结于batch_contracts.py：schema2内部结构/错误码/usage聚合（unknown不冒充总数，reasoning不双计）/checkpoint软阈值=1MiB-16KiB-8KiB×(在途+1)/jobId由planEpoch+目标集+splitPath派生；estimate_request冻结为utf8_proxy（字节数+32×消息数）；文件owner按整合计划§8表：C=pipeline/llm/protocol/routes/App.vue/tests.run.py/契约文档，D=storage/ontology_build.py+runner.py，B=llm_client.py，其余新建模块
+- 下一步：D00提交后并行派发W1七任务；D09/D16由协调者串行；G1机制门=共享核心+两存储适配器假模型/恢复契约；停在待Codex验收
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md；文档/接口文档/08-从物料自动构建本体接口.md §14
 
 ### auto_build R1-R5整改独立复验 · codex · 受阻
 
@@ -144,13 +154,3 @@
 - 验证：R1 /tmp/repro_r1.py：4 候选→对齐后 3，属性 2→1，alignedKey=property:额定功率#number@电池。；R4 /tmp/repro_r4.py：调用序列 [全批,左半,右半,右半重试]，返回 ok=True、split={'from':4,'halves':[2,2]}。；R5 /tmp/repro_r5.py 与 repro_r5_final.py：flush=[1]、残留 results=[3]；终局 done=[1,2]、failed=[] → 报成功。；R2 /tmp/repro_r2.py：二次 verify 后 evidenceStatus=conflict、decision=include、reviewed=None、reason=None。；代码与第三例：pipeline.py:1191-1197/236-249/157-176/906-907/1314；retrieval.py:344-346；delivery.py:48-52（R3 复现见 /tmp/repro_r3.py，哈希同为 f37062d9a65543a4…，duplicates=0）。
 - 下一步：待用户裁决是否按 R1-R5 出整改需求；本轮仅分析，未改任何业务代码。；方案文档待补：reasoning_content 占输出 50% 的实测、第4.1条论证修正、429/390秒口径修正。；复现脚本在 /tmp，未入库；如需留证应移入 tests/ 或证据目录。
 - 依据/文档：审核意见：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md；被审文档：同目录 生成五阶段完整方案_20260922.md（869 行）；代码基线：codex/auto_build @ 578acd7
-
-### auto_build-五阶段方案审核 · codex · 已确认决定
-
-时间：2026-09-22T06:13:40.153468+00:00；记录：`.collaboration/entries/000184-3abd0f203dc9.json`
-
-五阶段职责可保留，建议修改后复审。确认跨批引用误合并、冲突默认纳入、同值事实去重丢失、拆批半失败判成功、非连续续跑漏回调。仅交付审核文档；未改原方案和业务代码，未合并或更新服务。
-
-- 验证：源码基线578acd7d47e2e457757e088110f2582ae261cbb0。；纯函数合成数据复现引用误合并、冲突include、同值去重丢失；Future替身复现非连续续跑漏回调及429不重排。；拆批部分失败由控制流核实。未访问真实数据或外部模型，未做完整回归或浏览器验收。
-- 下一步：先修订方案与正确性复验场景；开发集成按后续授权。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md

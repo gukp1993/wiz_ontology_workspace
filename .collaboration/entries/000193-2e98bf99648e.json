@@ -1,0 +1,36 @@
+{
+  "ticket": "db3462b5bba94f2fb013cdcb892e1b86",
+  "task": "R1–R5 五项正确性缺陷整改（开发-测试循环完成，待 Codex 复验）",
+  "status": "implemented",
+  "summary": "按用户指令「用多个子agent开始整改，执行开发-测试循环」完成 Codex 审核意见五条 P1 的整改。协调者拆分四路并行（文件归属互斥：A=R5+R4 调度器/拆批、B=R1 命名空间、C=R2 冲突门禁、D=R3 事实身份），每路以 /tmp/repro_*.py 复现脚本为验收锚点（修复前全部复现失败→修复后全部转绿），pipeline.py 按行号区域切分独占编辑区，git 提交由协调者统一串行执行。修复内容：R1 冲突条件命名空间+引用同步重写+key 规范化；R2 合并降级后未经确认 include 自动撤销（AUTO_INCLUDE_REVOKED）+交付端硬门禁（conflictExcluded/Items）；R3 事实身份哈希（snippet+kind+locator+data 语义键）+plan.duplicateOf+duplicates 实数；R4 拆批部分失败父批按失败记账+整批重跑幂等；R5 批次完成即独立落库+落库失败计 failed+收尾核对覆盖；删死代码 _batch_wait_timeout。提交：22a60e5（代码+116 项新测试+接口文档 08/README）、8d38f63（方案文档归档+协作记录）；基线 805e1d9。全量回归 tests/run.py all 60/60、test_ontology_build 250/250 零断言修改、ruff 全过。停在与 Codex 审核意见同等的「待复验」状态，未合并 main。",
+  "decisions": [
+    "四路并行按文件归属互斥拆分：pipeline.py 是四路共同热点，按行号区域切分独占编辑区（调度器=A、累加点=B、verify/门禁=C、去重循环=D），越界即停；实践零冲突。",
+    "提交粒度：五项修复在 pipeline.py 深度交织，拆分会制造不完整中间态，故单 commit 22a60e5 分列五项；接口文档与代码同 commit（AGENTS 契约先行规则）。",
+    "R1 采用冲突条件前缀而非无条件前缀：既有测试按原始 key 直改种子行，无条件前缀破坏其契约；冲突条件模式使 test_ontology_build 250/250 零断言修改原生兼容。",
+    "接口文档 08 更新范围：§1.6 决定重算时机+新 issue 码、§5 批次独立落库/拆批部分失败/重复事实身份、§8.1 交付选定集合口径+conflictExcluded 字段；README 变更记录登记。"
+  ],
+  "verification": [
+    "五条复现脚本终验（最新代码）：repro_r1/r2/r3/r4/r5_final 全部「未复现」（修复前全部复现成功）。",
+    "新增测试 4 套件 116 项：batch_accounting 36（非连续续跑/乱序落库/落库失败计 failed/拆批四态/幂等重试/429 单次）、key_namespace 30、conflict_gate 29（含人工确认保留 include、交付门禁计数）、fact_identity 21（含 5 万条 0.9s 冒烟）。",
+    "全量回归：tests/run.py all 60/60 通过（含并行线四套件自动发现）；test_ontology_build 250/250 零既有断言修改；ruff 全部改动文件 All checks passed。",
+    "提交：22a60e5（fix，六代码文件+四测试文件+08 分册+README）、8d38f63（docs，四份方案文档+协作记录）；基线 805e1d9；工作区干净。",
+    "过程插曲归因：C 时点报 test_ontology_build 108/110 失败系 B 第一版无条件前缀中间态，B 迭代为冲突条件模式后消除；D 时点 60/60 与 A 收尾时点互证并行改动可共存。"
+  ],
+  "next": [
+    "待 Codex 复验本次整改（对象：22a60e5，对照审核意见 R1–R5 验收标准；复现脚本在 /tmp 可复用，建议复验后转正入 tests/）。",
+    "已知遗留（未修，均有归属）：拆批两子批间同名 key 回落 _dedupe_keys（彻底解决需拆批处给子批独立前缀）；_flush_batch 部分成功分支未累计 rejectedRefs；all_candidates 500 行上限对单批去重覆盖的影响受 MAX_CANDIDATES_PER_BATCH=500 约束。",
+    "审核意见 D1–D3（覆盖预算/按主体编批/金样质量评价）与「布尔短标量过滤」属方案层改进，待用户拍板后另立需求。",
+    "分支 codex/auto_build 未合并 main——按流程等用户明确集成指令。"
+  ],
+  "references": [
+    "提交：22a60e5（fix R1–R5）、8d38f63（docs 归档）；分支 codex/auto_build",
+    "审核对象：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md（已提交 805e1d9）",
+    "并行 agent 交接：entries 000189（C）/000190（B）/000191（A）/000185（协调者复现分析）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T07:42:35.583638+00:00",
+  "sequence": 193,
+  "filename": "000193-2e98bf99648e.json",
+  "record_hash": "bd1ad538857aa59ff4f95d50749618d47f825207e219498fbebcbe666b3f5ed6",
+  "context_advanced": false
+}
