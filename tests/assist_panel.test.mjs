@@ -193,6 +193,22 @@ async function openedPanel({ host, contextOver } = {}) {
   assert('⑤c 回填后等待（超过自动保存窗口）引擎无任何额外写入', await Promise.resolve(panel.statusBarText.value) === '已填写 1 项，尚未保存' && calls.apply.length === 1)
 }
 
+// ⑥ 主按钮样式不变量（2026-09-22 浏览器验收缺陷回归锁）：
+//    `.assist-actions button`(0,1,1) 只写 background/border，若主操作变体是裸 .assist-primary(0,1,0)，
+//    它的 color:#fff 会压不住前者的……不，是反过来：前者压住后者的背景而后者仍给白字 → 白字白底空框。
+//    断言：主操作变体必须挂在 `.assist-actions button.assist-primary`（后代+元素抬特异性）而非裸单类。
+{
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync('frontend/src/assist/AssistPanel.vue', 'utf8')
+  assert('⑥a 主按钮声明用 .assist-actions button.assist-primary 抬特异性',
+    /\.assist-actions button\.assist-primary\s*\{/.test(src),
+    '缺抬特异性的主按钮声明（会渲染成空框）')
+  assert('⑥b hover 也带同样特异性（压过 .assist-actions button:hover）',
+    /\.assist-actions button\.assist-primary:hover:not\(:disabled\)\s*\{/.test(src))
+  assert('⑥c 不再存在裸 .assist-primary 单类声明',
+    !/(^|\n)\.assist-primary\s*\{/.test(src))
+}
+
 const failed = results.filter(r => !r.ok)
 console.log(`\n统计：${results.length - failed.length}/${results.length} 项通过`)
 if (failed.length) {

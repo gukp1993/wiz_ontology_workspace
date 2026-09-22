@@ -306,8 +306,11 @@ defineExpose({
 .assist-actions button{padding:8px 14px;border:1px solid var(--line,#d8e1ed);border-radius:6px;background:#fff;cursor:pointer;font:inherit}
 .assist-actions button:hover:not(:disabled){background:var(--paper-2,#f0f5ff)}
 .assist-actions button:disabled{opacity:.5;cursor:not-allowed}
-.assist-primary{background:var(--blue-ink,#285bea);color:#fff;border-color:var(--blue-ink,#285bea)}
-.assist-primary:hover:not(:disabled){background:#174ad4}
+/* 主按钮（自动填写）：必须写 `.assist-actions button.assist-primary` 抬特异性——
+   `.assist-actions button`(0,1,1) 会反吃裸 `.assist-primary`(0,1,0) 的 background/border，
+   而 color:#fff 仍在生效 → 白字白底（空框）缺陷。hover 同理需 (0,4,1) 压过 (0,3,1)。 */
+.assist-actions button.assist-primary{background:var(--blue-ink,#285bea);color:#fff;border-color:var(--blue-ink,#285bea)}
+.assist-actions button.assist-primary:hover:not(:disabled){background:var(--blue-deep,#174ad4);color:#fff}
 .assist-banner{border:1px solid var(--line,#dce4ee);border-radius:6px;padding:10px 12px;margin:10px 0;font-size:13px}
 .assist-banner p{margin:0 0 6px;overflow-wrap:anywhere}
 .assist-banner button{margin-right:8px;padding:4px 10px}
