@@ -1,0 +1,31 @@
+{
+  "ticket": "c128218aafa84ee2ac7f50eddcb0ea9b",
+  "task": "assist-fill-production 第二轮复验（DEF-EXT-1 闭环）",
+  "status": "verified",
+  "summary": "第二轮独立复验通过。变更核对：84eb6be..HEAD 仅 d7d4c20 一个提交、仅 ObjectWorkspace.vue+assist_object_workspace.test.mjs 两文件，与修复声明一致（assistTitle 打开时冻结、computed 改读冻结值）。DEF-EXT-1 浏览器直证 18/18 断言通过（assist_dev@18951，全程 CDP Input.* 真实事件，模型桩 18913）：采纳含 label 建议后「已填入表单，尚未保存」出现、面板保持结果态、撤销可用、intent 保留、标题稳定、label 写入表单；采纳零保存（revision 三测不变）；手改后撤销失效、标题不变；表单保存 revision 前进。回归抽查与上轮通过项抽查全过。console 探针自证后清零。收尾已恢复种子基线，仓库源码区零写入。",
+  "decisions": [
+    "DEF-EXT-1 判定已闭环：P1 修复有效且无回归，总判定通过",
+    "验收写库仅限 assist_dev 合成验收本体（复验链路内保存），结束已恢复种子"
+  ],
+  "verification": [
+    "git log/diff 84eb6be..HEAD：1 提交 2 文件（d7d4c20）；单测 assist_object_workspace.test.mjs 9/9（含新增 2 组断言）",
+    "前端 46/46 套件、vue-tsc typecheck、vite build 全过",
+    "浏览器断言 18/18：A1-A7 采纳后 banner/结果态/撤销/intent/标题/label 写入/零保存；B1-B4 手改后撤销失效/标题冻结/失效提示/值精确；C1 保存 revision 前进 r-b2ce036ff00e→r-2d729da4cdf1",
+    "V5.3 撤销保护抽查过（B1）；V6.2 账号隔离抽查过（admin GET assist_dev 本体 404、列表不含辅助验收本体）",
+    "console 探针自证后：console/exception 0、仅 2 条 network 404（V6.2 负例预期，URL 已核对）"
+  ],
+  "next": [
+    "待用户明确授权集成/合并；种子基线中部分 description 为上轮验收留存内容（AI建议-业务定义-*），不影响功能"
+  ],
+  "references": [
+    "/tmp/kg_ext_accept_r2/results/r2_defext1.json",
+    "/tmp/kg_ext_accept_r2/shots/",
+    "d7d4c20"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T03:55:54.563356+00:00",
+  "sequence": 172,
+  "filename": "000172-25d11081518c.json",
+  "record_hash": "edf9d361da5e2647d04a3326671f27c22f6482987a7e7eaa14ce0455437e56cb",
+  "context_advanced": false
+}

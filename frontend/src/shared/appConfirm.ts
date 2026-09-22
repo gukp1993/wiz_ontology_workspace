@@ -32,6 +32,9 @@ function openDialog(opts: AppConfirmOptions): Promise<boolean> {
     card.className = 'modal-card'
     card.setAttribute('role', 'dialog')
     card.setAttribute('aria-modal', 'true')
+    // 本模块自带 Tab/Enter/Escape 圈禁；shared/modalFocus.ts 见到该属性即完全不插手，
+    // 否则它会按下层业务弹窗把焦点从确认框里抢走（appConfirm 通常盖在弹窗之上）。
+    card.setAttribute('data-modal-a11y', 'manual')
 
     if (opts.title) {
       const h2 = document.createElement('h2')
@@ -49,13 +52,7 @@ function openDialog(opts: AppConfirmOptions): Promise<boolean> {
     cancelBtn.textContent = opts.cancelLabel || '取消'
     const confirmBtn = document.createElement('button')
     confirmBtn.type = 'button'
-    confirmBtn.className = opts.danger ? 'danger' : 'primary'
-    // 危险确认：全局 .danger 自带 margin/font-size，会破坏按钮外观，用内联样式拉回并固定红字。
-    if (opts.danger) {
-      confirmBtn.style.color = '#b03a3a'
-      confirmBtn.style.margin = '0'
-      confirmBtn.style.fontSize = 'inherit'
-    }
+    confirmBtn.className = opts.danger ? 'danger-btn' : 'primary'
     confirmBtn.textContent = opts.confirmLabel || '确定'
     tools.append(cancelBtn, confirmBtn)
     card.appendChild(tools)

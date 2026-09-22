@@ -80,7 +80,7 @@ async function check(){busy.value=true;result.value='';try{const data=await valu
 <div class="sample-panel"><h3>样本检验</h3><Field label="样本值" v-model="sample" :type="complex?'textarea':'text'" :example="example" :help="complex?'输入 JSON 数组或对象。':'数值不附带单位；是／否填写 true 或 false。'" @update:model-value="result=''"/><button :disabled="busy" @click="check">{{busy?'检验中…':'检验样本'}}</button><p role="status" :class="result==='样本符合定义'?'inline-success':'inline-error'" v-if="result">{{result}}</p></div>
 <details class="technical-section"><summary>查看引用位置 · {{references.length}}</summary><p v-for="location in referenceLocations" :key="location.id+location.label"><button class="row-link" @click="openReference(location)">{{location.label}} ↗</button></p><p v-if="!references.length">尚未引用。</p></details>
 <SourceReference :ids="node['mg:sourceIds']" :note="node['mg:reviewNote']"/>
-<div class="detail-footer"><span>修改后点击顶部保存草稿</span><button class="danger" :disabled="references.length>0" @click="remove">删除值类型</button></div>
+<div class="detail-footer"><span>修改后点击顶部保存草稿</span><button class="danger-btn" :disabled="references.length>0" @click="remove">删除值类型</button></div>
 </section><section v-else class="card"><div class="empty-state"><div class="empty-state-ico">◇</div><p>还没有值类型。</p><button class="primary" @click="create">新建值类型</button></div></section>
 </EditorLayout>
 </template>

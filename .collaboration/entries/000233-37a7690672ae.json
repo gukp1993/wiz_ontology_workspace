@@ -1,0 +1,31 @@
+{
+  "ticket": "d68703eac6dd48bfa1d74ec41c561080",
+  "task": "分支现状澄清：worktree/build-governance 为何检出在 codex/build-progress-log（用户问询）",
+  "status": "decision",
+  "summary": "用户问「不是在 build-governance 这个 worktree，怎么又是在 build-progress-log」。用 reflog 查清：2026-09-22 11:16:46 本共享工作树目录执行过一次 checkout（moving from codex/build-governance to codex/build-progress-log），codex/build-progress-log 就在那一刻由 HEAD 创建；工作树目录同一时刻只能检出一个分支，此后所有并行线在同一目录的提交（06723a3/cb64855/dccad00/9d2e39a/debbf63/0c473a7/d3bf0be）全部落在该分支。经逐项核实纠正此前交接（000229/000232）中「retrieve 优化双分支需解缠」的表述：两分支 retrieval.py 逐字节一致（964493a 为共同基线，实现已在两侧），codex/build-governance 仅比 progress-log 多 1 个纯文档提交 78cf7df（开发计划 +39 行），不存在代码重复。另：进度页前端 BuildProgressPage.vue/types.ts 至今未提交（只在工作树 + 11:29 构建的 dist），属进度可观测线。",
+  "decisions": [
+    "纠正：不存在「retrieve 优化双分支需解缠」——两分支 retrieval.py 一致，governance 仅多一个纯文档提交 78cf7df；集成实际只需合并 codex/build-progress-log 的 7 个提交 + 78cf7df，无冲突、无需解缠。"
+  ],
+  "verification": [
+    "git reflog show --all 全仓只有 1 条 checkout 记录：worktrees/build-governance/HEAD@{2026-09-22 11:16:46} moving from codex/build-governance to codex/build-progress-log。",
+    "git reflog show codex/build-progress-log 首条：964493a branch: Created from HEAD（11:16:46）；此前全部提交在 codex/build-governance。",
+    "git log codex/build-progress-log..codex/build-governance = 仅 78cf7df；git show --stat 78cf7df = 只改开发计划.md(+39/-0)。",
+    "git diff codex/build-governance codex/build-progress-log -- workbench/ontology_build/retrieval.py 为空（完全一致）。",
+    "git diff --stat 两分支 = pipeline.py/protocol.py/server.py/storage/ontology_build.py/tests+entries，无前端文件 → 进度页前端改动只在工作区未提交。"
+  ],
+  "next": [
+    "集成阶段：合 codex/build-progress-log（含我这条线的 9d2e39a/0c473a7/06723a3 与 RST 修复 debbf63）+ 取 78cf7df 的文档提交即可，无代码冲突。",
+    "进度页前端两文件需由其 owner 提交或集成时一并收纳（当前 dist 已含、源码未入库）。",
+    "本轮不动分支指针：共享目录有他人在途未提交文件（BuildProgressPage.vue/types.ts），抢占式切换会打断并行线；解缠/切回仍留集成负责人。"
+  ],
+  "references": [
+    "证据命令：git reflog show --all / git reflog show codex/build-progress-log / git show 78cf7df / git diff codex/build-governance codex/build-progress-log",
+    "worktree 路径：worktree/build-governance（物理目录）↔ 检出分支 codex/build-progress-log @ d3bf0be"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T04:27:27.128689+00:00",
+  "sequence": 233,
+  "filename": "000233-37a7690672ae.json",
+  "record_hash": "66e1c81e741b206a2a40c5c46801c445a4c90e96fec4de68b7cbd6645cefdfae",
+  "context_advanced": false
+}

@@ -29,7 +29,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
 
 from workbench import auth, auth_routes
-from workbench import model_routes, project_routes, projects, versions, workspaces
+from workbench import assist_routes, model_routes, project_routes, projects, versions, workspaces
 from workbench import config_package_routes, flow_routes, storage
 from workbench import ontology_build_routes as build_routes
 from workbench.config_packages import ImportConflict, TokenError
@@ -121,6 +121,9 @@ POST_ROUTES = {
     '/api/llm-provider-delete': flow_routes.post_llm_provider_delete,
     '/api/llm-provider-default': flow_routes.post_llm_provider_default,
     '/api/llm-provider-test': flow_routes.post_llm_provider_test,
+    # 表单辅助填写（04 §5）：只读语义，不写业务修订，不持全局写锁
+    '/api/assist-context': assist_routes.post_assist_context,
+    '/api/assist-generate': assist_routes.post_assist_generate,
     # 从物料自动构建本体（08 分册）：长任务一律返回 runId，后台执行不持锁
     '/api/build-task-create': build_routes.post_task_create,
     '/api/build-task-rename': build_routes.post_task_rename,

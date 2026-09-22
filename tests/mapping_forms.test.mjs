@@ -1,4 +1,18 @@
 // 单页属性表单与链接缺连接回归；只使用内存夹具及临时编译目录。
+// 2026-09-22 合并 main 后适配 lint 改名（unused 符号加 _ 前缀）：api._setRuleInput/_selectImplementation/_implInputRows，断言语义不变。
+// 2026-09-21（T9 修复，全绿口径）：PropertySources 现行为——
+// ① 未配置属性先进 none 态（「＋ 取值配置」/ freshDbDraft 再展开表单）；新建来源只有
+//   数据源（field/database/redis）、函数编排、登记信息三条链路；
+// ② 旧 computed 家族（规则绑定 / inlineSql / calcFunction）没有新建与编辑入口：
+//   switchKind 已无 computed 分支（pickCard('computed') 落 freshDbDraft），模板只剩只读
+//   展示分支；但已保存绑定仍由 propertyView 解码、saveDraft 走同一套 issuesOf 校验、
+//   commitProperty 原样回写（清单态「配置有误」同源）。因此 V3/V4 声明式输入、值类型
+//   相容、内联 SQL、计算函数绑定各段改用「已存绑定夹具 + openEditor/selectImplementation/
+//   setRuleInput/saveDraft（存活 api）」驱动，不再手工构造 mode='rule' 草稿；
+// ③ selectImplementation/setRuleInput 仍是存活 api：按规则声明初始化 inputs；
+// ④ 纯函数层（scanSqlParams/effectiveParams）用直测锁定（页面参数行随旧表单移除）；
+// ⑤ QueryRuleManager（规则库/计算函数）与 LinkMappings 仍为完整 UI 链路，原样覆盖。
+// 辅助填写（P2/P3/P4）覆盖在 tests/assist_property_sources.test.mjs（工厂/采纳零保存/上下文快照）。
 // node --import ./tests/ts_hooks.mjs tests/mapping_forms.test.mjs
 import assert from 'node:assert/strict'
 import {createRequire} from 'node:module'
@@ -19,6 +33,7 @@ async function loadComponent(name){
  assert.deepEqual(template.errors,[])
  let code=script.content.replace(/import AppSelect from ['"].*?['"]/,'const AppSelect = globalThis.__mappingSelect')
  code=code.replace(/import MappingDescription from ['"].*?['"]/,'const MappingDescription = globalThis.__mappingSelect')
+ code=code.replace(/import AssistPanel from ['"].*?['"]/,'const AssistPanel = {props:["binding","api"],render:() => null}')
  code=code.replace(/import SourcePreview from ['"].*?['"]/,'const SourcePreview = globalThis.__mappingSelect')
  code=code.replace(/import QueryRuleImplementation from ['"].*?['"]/,'const QueryRuleImplementation = globalThis.__mappingSelect')
  code=code.replace(/import (RuleValue|ImplementationManager) from ['"].*?['"]/g,(_,name)=>'const '+name+' = globalThis.__mappingSelect')
@@ -49,7 +64,10 @@ try{
  }
  const {api,html}=await mount(await loadComponent('PropertySources'))
  api.openEditor('power');let page=await html()
- assert.match(page,/数据连接/);assert.match(page,/取值字段/);assert.doesNotMatch(page,/下一步|上一步|steps-bar|<template/)
+ assert.match(page,/尚未配置取值来源/,'未配置属性先进 none 态：只保存说明不创建来源配置');assert.doesNotMatch(page,/下一步|上一步|steps-bar|<template/)
+ api.draft.value=api.freshDbDraft() // 等价「＋ 取值配置」：进入实例来源字段草稿
+ page=await html()
+ assert.match(page,/数据连接/);assert.match(page,/取值字段/)
  await api.saveDraft();assert.equal(saved,0);assert.match(api.editError.value,/字段/)
  api.draft.value.field='rated_power';await api.saveDraft();assert.equal(saved,1);assert.equal(b.properties.power,'rated_power')
  api.openEditor('power');api.dbTableChanged('samples');assert.equal(api.draft.value.result.valueField,'');assert.equal(api.directFieldOptions.value[0].value,'cluster_id')
@@ -60,17 +78,29 @@ try{
  api.openEditor('history');assert.equal(api.draftShape.value,'timeSeries');api.dataConnectionChanged('db:db');api.dbTableChanged('samples');api.addMatch();api.draft.value.lookup.match[0].field='cluster_id';api.draft.value.result.valueField='soc';page=await html();assert.match(page,/结果时间字段/);assert.match(page,/条件1来源字段/)
  await api.saveDraft();assert.equal(saved,2);assert.match(api.editError.value,/时间字段/)
  api.draft.value.result.timestampField='sampled_at';api.setEncoding('datetime');await api.saveDraft();assert.equal(saved,3);assert.equal(b.properties.history.kind,'database')
- api.openEditor('power');api.pickCard('computed');api.draft.value.mode='rule';api.draft.value.implementation='impl';page=await html();assert.match(page,/实现输出/);api.draft.value.output='out';failSave=true;await api.saveDraft();assert.equal(api.configuring.value,true);assert.equal(api.draft.value.output,'out');assert.match(api.editError.value,/测试保存失败/);failSave=false;api.closeEditor()
+ // 「保存失败保草稿」在存活的 redis 链路上验证（旧 computed 表单已死）：
+ api.openEditor('soc');failSave=true;await api.saveDraft();assert.equal(api.configuring.value,true);assert.equal(api.draft.value.key,'soc-{id}');assert.match(api.editError.value,/测试保存失败/);failSave=false;api.closeEditor();assert.equal(b.properties.soc.key,'soc-{id}')
  const link=await mount(await loadComponent('LinkMappings'));link.api.openNew(graph.at(-1));link.api.draft.value.field='storage_id';page=await link.html();assert.match(page,/终点对象已选择表，但尚未配置数据连接/);assert.match(page,/配置储能设备数据连接/);assert.doesNotMatch(page,/刷新中/)
  await link.api.save();assert.equal(saved,3);assert.match(link.api.message.value,/终点对象尚未配置数据连接/)
  target.connection='db';page=await link.html();assert.doesNotMatch(page,/终点对象已选择表/);assert.equal(link.api.targetCatalog.value.name,'storage');assert.equal(link.api.draft.value.field,'storage_id');link.api.draft.value.targetField='id';await link.api.save();assert.equal(saved,4);assert.equal(b.relations[0].targetField,'id')
- const {socRule}=await import('../frontend/src/project/queryRules.ts');const rule=socRule();rule.objectType='cluster';rule.connection='db';projectState.implementations.push(rule)
- api.openEditor('history');api.pickCard('computed');api.draft.value.mode='rule';api.draft.value.implementation=rule.id;api.draft.value.output='series';assert.equal(api.declaredShapeOf(rule.id,'series'),'timeSeries');assert.equal(api.implInputRows.value.length,2);page=await html();assert.match(page,/查询储能簇 SOC 采样序列/);await api.saveDraft();assert.equal(saved,5);assert.equal(b.properties.history.implementation,rule.id)
- const {reusableScadaRule}=await import('../frontend/src/project/queryRules.ts');const reusable=reusableScadaRule();reusable.connection='db';projectState.implementations.push(reusable)
- api.openEditor('history');api.pickCard('computed');api.selectImplementation(reusable.id);assert.equal(api.draft.value.inputs.model_name,'clusters');assert.equal(api.draft.value.inputs.model_id,'{id}');assert.equal(api.draft.value.output,'series')
- page=await html();assert.match(page,/规则输入 attr_name/);await api.saveDraft();assert.equal(saved,5);assert.match(api.editError.value,/attr_name/)
- api.setRuleInput('attr_name','soc');await api.saveDraft();assert.equal(saved,6);assert.equal(b.properties.history.inputs.attr_name,'soc')
- api.openEditor('history');assert.equal(api.draft.value.inputs.attr_name,'soc');api.setRuleInput('attr_name','temperature');api.closeEditor();assert.equal(b.properties.history.inputs.attr_name,'soc','取消不会改动已保存参数')
+ // —— 遗留 computed 规则绑定：只读展示 + 保存校验/原样回写（V1 专用规则、V2 复用规则）——
+ // 现组件无「新建/编辑规则绑定」入口（旧「实现输出」表单为死链路，20260919 起新取值走函数编排）；
+ // 已存绑定仍由 openEditor 读入（只读展示）、saveDraft 走同一套校验并 commitProperty 原样回写。
+ // 本段以「已保存绑定」夹具驱动同一链路，替代旧的手工 mode='rule' 草稿写法。
+ const {socRule,reusableScadaRule}=await import('../frontend/src/project/queryRules.ts')
+ const rule=socRule();rule.objectType='cluster';rule.connection='db';projectState.implementations.push(rule)
+ const reusable=reusableScadaRule();reusable.connection='db';projectState.implementations.push(reusable)
+ b.properties.history={kind:'computed',implementation:rule.id,output:'series'}
+ api.openEditor('history');page=await html()
+ assert.doesNotMatch(page,/实现输出/,'旧规则绑定只读展示，不再提供实现输出编辑表单');assert.match(page,/此属性保留了旧的取值规则/)
+ assert.match(page,/查询储能簇 SOC 采样序列/);assert.equal(api.declaredShapeOf(rule.id,'series'),'timeSeries');assert.equal(api._implInputRows.value.length,2)
+ await api.saveDraft();assert.equal(saved,5);assert.equal(b.properties.history.implementation,rule.id,'保存不破坏遗留规则绑定结构')
+ b.properties.history={kind:'computed',implementation:reusable.id,output:'series',inputs:{model_name:'clusters',attr_name:'',model_id:'{id}'}}
+ api.openEditor('history');await api.saveDraft();assert.equal(saved,5);assert.match(api.editError.value,/attr_name/,'V2 规则必填入参拦截')
+ api._setRuleInput('attr_name','soc');await api.saveDraft();assert.equal(saved,6);assert.equal(b.properties.history.inputs.attr_name,'soc')
+ api.openEditor('history');assert.equal(api.draft.value.inputs.attr_name,'soc');api._setRuleInput('attr_name','temperature');api.closeEditor();assert.equal(b.properties.history.inputs.attr_name,'soc','取消不会改动已保存参数')
+ api.openEditor('history');api._selectImplementation(reusable.id) // 存活 api：非声明式复用规则初始化旧三参数（model_name 取实例表）
+ assert.equal(api.draft.value.inputs.model_name,'clusters');assert.equal(api.draft.value.inputs.model_id,'{id}');assert.equal(api.draft.value.output,'series');api.closeEditor()
  const manager=await mount(await loadComponent('QueryRuleManager'));manager.api.open(rule);page=await manager.html();assert.match(page,/规则名称 \*/);assert.doesNotMatch(page,/保存时绑定属性|规则适用对象|规则名称（选填）/);assert.equal(manager.api.draft.value.schemaVersion,4);assert.equal(manager.api.draft.value.mode,'sqlSteps');assert.equal(rule.schemaVersion,1)
  b.properties.history={kind:'computed',implementation:rule.id,output:'series'};await manager.api.save();assert.equal(projectState.implementations.find(i=>i.id===rule.id).schemaVersion,4);assert.deepEqual(b.properties.history.inputs,{model_name:'m_storage_cluster_phase',attr_name:'soc',model_id:'{id}'})
  page=await manager.html();assert.match(page,/取值规则库/);assert.match(page,/采样值取值规则/);assert.match(page,/详情/);assert.doesNotMatch(page,/SQL 查询步骤|SQL 模板|规则实现|新建采样取值规则/,'规则库默认列表不展开实现详情')
@@ -78,6 +108,9 @@ try{
  const ruleCount=projectState.implementations.length;manager.api.openSampling();const fixedId=manager.api.draft.value.id;manager.api.close();manager.api.openSampling();assert.equal(manager.api.draft.value.id,fixedId);assert.equal(projectState.implementations.length,ruleCount,'再次配置复用规则，不新增记录');manager.api.close()
 
  // —— V4/V3 声明式规则输入与返回类型相容（审阅缺陷1/缺陷2 表单级回归）——
+ // 从已存 computed 绑定出发：openEditor 读入 → selectImplementation 按 V3/V4 inputs 声明初始化
+ // （存活 api，不再统一塞 model_name/attr_name/model_id）；保存拦截走 saveDraft 的 extraIssuesOf
+ // （与清单态「配置有误」同源，V3/V4 值类型比较与后端 project_validation 镜像一致）。
  const v4Rule=(type,valueType)=>({id:'v4-'+type+'-'+valueType,kind:'queryRule',schemaVersion:4,mode:'sqlSteps',name:'V4 '+valueType+' '+type,connection:'db',
   inputs:[{name:'device_id',type:'string',description:'设备主键',source:'binding'},{name:'startTime',type:'dateTime',description:'查询开始',source:'runtime'}],
   steps:[type==='scalar'
@@ -85,94 +118,86 @@ try{
    :{id:'u1',key:'dev',name:'查设备序列',cardinality:'many',sql:'SELECT ts, name AS device_name FROM storage WHERE id = :device_id AND ts >= :startTime'}],
   result:type==='scalar'?{step:'u1',type:'scalar',valueType,value:'device_name'}:{step:'u1',type:'timeSeries',valueType,value:'device_name',timestamp:'ts'}})
  const v4Text=v4Rule('scalar','string'),v4TextSeries=v4Rule('timeSeries','string'),v4Double=v4Rule('scalar','double'),v4Bool=v4Rule('scalar','boolean'),v4Date=v4Rule('scalar','dateTime')
- projectState.implementations.push(v4Text,v4TextSeries,v4Double,v4Bool,v4Date);const implCountAfterV4=projectState.implementations.length // 缺陷1：V4 按 inputs 声明展示 binding 参数、runtime 仅说明；初始化不再统一塞 model_name/attr_name/model_id；保存重开不丢
- api.openEditor('note');api.pickCard('computed');api.selectImplementation(v4Text.id)
+ projectState.implementations.push(v4Text,v4TextSeries,v4Double,v4Bool,v4Date);const implCountAfterV4=projectState.implementations.length
+ // 缺陷1：V4 按 inputs 声明初始化 binding 参数；runtime 参数不进入初始化；保存重开不丢
+ const seedRule=(apiName,implId)=>{b.properties[apiName]={kind:'computed',implementation:implId,output:'series'}}
+ seedRule('note',reusable.id)
+ api.openEditor('note');api._selectImplementation(v4Text.id)
  assert.deepEqual(api.draft.value.inputs,{device_id:''},'按声明初始化，不塞旧三参数')
- page=await html();assert.match(page,/device_id · 设备主键/);assert.match(page,/查询时传入（无需在此填写）：startTime/);assert.doesNotMatch(page,/规则输入 model_name|attr_name · 属性名/)
+ page=await html();assert.match(page,/此属性保留了旧的取值规则/,'旧规则绑定只读展示（声明展示行随旧表单移除）')
  await api.saveDraft();assert.equal(saved,7);assert.match(api.editError.value,/请填写输入参数 device_id/)
- api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,8)
+ api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,8)
  assert.deepEqual(b.properties.note,{kind:'computed',implementation:v4Text.id,output:'series',inputs:{device_id:'{id}'}})
  api.openEditor('note');assert.equal(api.draft.value.inputs.device_id,'{id}','保存重开后参数不丢失');api.closeEditor()
  // V3 声明式入参同样按 inputs 初始化
  const v3declared={id:'v3decl',kind:'queryRule',schemaVersion:3,name:'V3 声明入参',connection:'db',inputs:[{name:'model_name',type:'string',description:'表名',source:'binding'},{name:'startTime',type:'dateTime',source:'runtime'}],steps:[{id:'q',name:'查询',table:'t',cardinality:'one',where:[{field:'id',op:'eq',value:'{{inputs.model_name}}'}],select:[{as:'value',field:'soc'}]}],result:{type:'scalar',valueType:'double',step:'q',value:'value'}}
  projectState.implementations.push(v3declared)
- api.openEditor('soc');api.pickCard('computed');api.selectImplementation(v3declared.id)
- assert.deepEqual(api.draft.value.inputs,{model_name:''},'V3 按声明初始化')
- page=await html();assert.match(page,/model_name · 表名/);assert.doesNotMatch(page,/规则输入 attr_name/);api.closeEditor()
+ api.openEditor('note');api._selectImplementation(v3declared.id)
+ assert.deepEqual(api.draft.value.inputs,{model_name:''},'V3 按声明初始化');api.closeEditor()
  // 缺陷2：V4 返回值类型与属性数据类型比对（文本/数值/是/否/日期时间一致逻辑，数值属性兼容 double）
- api.openEditor('power');api.pickCard('computed');api.selectImplementation(v4Text.id);api.setRuleInput('device_id','{id}')
+ seedRule('power',v4Text.id)
+ api.openEditor('power');api._selectImplementation(v4Text.id);api._setRuleInput('device_id','{id}')
  await api.saveDraft();assert.equal(saved,8);assert.match(api.editError.value,/取值规则值类型与属性数据类型不匹配/,'文本规则绑数值属性必须拦截')
- api.selectImplementation(v4Double.id);api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,9,'数值规则绑数值属性可保存')
- api.openEditor('flag');api.pickCard('computed');api.selectImplementation(v4Bool.id);api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,10,'是/否规则绑布尔属性可保存')
- api.openEditor('commissioned');api.pickCard('computed');api.selectImplementation(v4Date.id);api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,11,'日期时间规则绑日期属性可保存')
- api.openEditor('note');api.pickCard('computed');api.selectImplementation(v4Bool.id);api.setRuleInput('device_id','{id}')
+ api._selectImplementation(v4Double.id);api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,9,'数值规则绑数值属性可保存')
+ seedRule('flag',v4Bool.id)
+ api.openEditor('flag');api._selectImplementation(v4Bool.id);api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,10,'是/否规则绑布尔属性可保存')
+ seedRule('commissioned',v4Date.id)
+ api.openEditor('commissioned');api._selectImplementation(v4Date.id);api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,11,'日期时间规则绑日期属性可保存')
+ api.openEditor('note');api._selectImplementation(v4Bool.id);api._setRuleInput('device_id','{id}')
  await api.saveDraft();assert.equal(saved,11);assert.match(api.editError.value,/取值规则值类型与属性数据类型不匹配/,'布尔规则绑文本属性必须拦截');api.closeEditor()
  // 时序：文本序列绑文本序列属性成功；绑数值序列 / 单值绑序列 均拦截
- api.openEditor('tsnote');api.pickCard('computed');api.selectImplementation(v4TextSeries.id);api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,12,'文本时间序列规则绑文本序列属性可保存')
- api.openEditor('history');api.pickCard('computed');api.selectImplementation(v4TextSeries.id);api.setRuleInput('device_id','{id}')
+ seedRule('tsnote',v4TextSeries.id)
+ api.openEditor('tsnote');api._selectImplementation(v4TextSeries.id);api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,12,'文本时间序列规则绑文本序列属性可保存')
+ api.openEditor('history');api._selectImplementation(v4TextSeries.id);api._setRuleInput('device_id','{id}')
  await api.saveDraft();assert.equal(saved,12);assert.match(api.editError.value,/取值规则值类型与属性数据类型不匹配/,'文本序列绑数值序列必须拦截')
- api.selectImplementation(v4Text.id);api.setRuleInput('device_id','{id}')
+ api._selectImplementation(v4Text.id);api._setRuleInput('device_id','{id}')
  await api.saveDraft();assert.equal(saved,12);assert.match(api.editError.value,/函数输出数据类型与属性要求不匹配/,'单值绑序列属性必须拦截');api.closeEditor()
+ assert.ok(implCountAfterV4>0)
 
  // —— 属性内 SQL 取值（computed/mode=inlineSql，方案 A1-A10 表单级）——
+ // 现组件无内联 SQL 新建入口（switchKind 无 computed 分支，A1「新配置默认直接 SQL」为死链路）；
+ // 已保存的 inlineSql 绑定仍由 propertyView 解码 → extraIssuesOf/inlineSqlErrors 校验 →
+ // commitProperty 原样回写。参数扫描/裁剪为纯函数（页面参数绑定行随旧表单移除）：
+ // 用 scanSqlParams/effectiveParams 直测锁定词法边界与裁剪语义。
  delete b.properties.power
- api.openEditor('power');api.pickCard('computed')
- assert.equal(api.draft.value.mode,'inline','新配置默认直接 SQL')
- page=await html();assert.match(page,/直接编写 SQL/);assert.match(page,/引用已有规则/)
- api.draft.value.inline.connection='db';api.draft.value.inline.sql='SELECT SUM(rated_power) AS value FROM clusters'
- page=await html();assert.doesNotMatch(page,/参数 \{/,'无参数不显示绑定行')
- api.draft.value.inline.sql="SELECT SUM(rated_power) AS value FROM clusters WHERE park = :park_id -- :fake\n  AND flag = :zero"
- page=await html();assert.match(page,/参数 \{park_id\} 来源/);assert.match(page,/参数 \{zero\} 来源/);assert.doesNotMatch(page,/\{fake\}/,'注释内伪参数不识别')
- api.setInlineBinding('park_id','projectParameter');api.setInlineBinding('zero','constant')
- page=await html();assert.match(page,/请选择项目参数/);assert.match(page,/常量值/)
- api.draft.value.inline.params.park_id.key='park_id';api.draft.value.inline.params.zero.value='0'
+ const {scanSqlParams,effectiveParams}=await import('../frontend/src/project/inlineSql.ts')
+ const inlineSqlText="SELECT SUM(rated_power) AS value FROM clusters WHERE park = :park_id -- :fake\n  AND flag = :zero"
+ b.properties.power={kind:'computed',mode:'inlineSql',inlineSql:{version:1,connection:'db',sql:inlineSqlText,params:{park_id:{from:'projectParameter',key:'park_id'},zero:{from:'constant',dataType:'string',value:'0'}}}}
+ api.openEditor('power')
+ assert.equal(api.draft.value.mode,'inlineSql');assert.deepEqual(scanSqlParams(api.draft.value.inlineSql.sql),['park_id','zero'],'注释内伪参数不识别')
  const implCountBeforeInline=projectState.implementations.length
  await api.saveDraft();assert.equal(saved,13,'A2/A3：保存成功，implementations 不变')
- assert.deepEqual(b.properties.power,{kind:'computed',mode:'inlineSql',inlineSql:{version:1,connection:'db',
-  sql:"SELECT SUM(rated_power) AS value FROM clusters WHERE park = :park_id -- :fake\n  AND flag = :zero",
-  params:{park_id:{from:'projectParameter',key:'park_id'},zero:{from:'constant',dataType:'string',value:'0'}}}})
+ assert.deepEqual(b.properties.power,{kind:'computed',mode:'inlineSql',inlineSql:{version:1,connection:'db',sql:inlineSqlText,params:{park_id:{from:'projectParameter',key:'park_id'},zero:{from:'constant',dataType:'string',value:'0'}}}})
  assert.equal(projectState.implementations.length,implCountBeforeInline,'不新增 implementations')
  // 保存重开：原文与绑定完整；列表摘要「直接 SQL · 连接名称」
- api.openEditor('power');assert.equal(api.draft.value.mode,'inline');assert.match(api.draft.value.inline.sql,/SUM\(rated_power\)/)
- assert.equal(api.inlineBindingKind('park_id'),'projectParameter');assert.equal(api.inlineBindingKind('zero'),'constant')
+ api.openEditor('power');assert.equal(api.draft.value.mode,'inlineSql');assert.match(api.draft.value.inlineSql.sql,/SUM\(rated_power\)/)
+ assert.equal(api.draft.value.inlineSql.params.park_id.from,'projectParameter');assert.equal(api.draft.value.inlineSql.params.zero.from,'constant')
  api.closeEditor();page=await html();assert.match(page,/直接 SQL · 测试库/)
- // A4：改 SQL 移除 :zero → 不再显示，保存后不进生效参数；保留的 park_id 绑定不丢
- api.openEditor('power');api.draft.value.inline.sql='SELECT rated_power AS value FROM clusters WHERE park = :park_id'
- page=await html();assert.match(page,/参数 \{park_id\} 来源/);assert.doesNotMatch(page,/\{zero\}/)
+ // A4：移除的参数不进生效配置（裁剪发生在表单提交视图层，该视图模型已随旧入口移除；纯函数语义在此锁定）
+ assert.deepEqual(effectiveParams({park_id:{from:'projectParameter',key:'park_id'},zero:{from:'constant',dataType:'string',value:'0'}},'SELECT :park_id AS value FROM t'),{park_id:{from:'projectParameter',key:'park_id'}},'A4：移除的参数不进生效配置')
+ // A5：明确空字符串常量有效；0/false 合法
+ api.openEditor('power');api.draft.value.inlineSql.sql="SELECT :empty, :zero, :flag FROM clusters WHERE id = :park_id"
+ api.draft.value.inlineSql.params={empty:{from:'constant',dataType:'string',value:''},zero:{from:'constant',dataType:'string',value:'0'},flag:{from:'constant',dataType:'boolean',value:'false'},park_id:{from:'projectParameter',key:'park_id'}}
  await api.saveDraft();assert.equal(saved,14)
- assert.deepEqual(b.properties.power.inlineSql.params,{park_id:{from:'projectParameter',key:'park_id'}},'移除的参数不进生效配置')
- // A5：明确空字符串常量有效；0/false 合法；未绑定拦截
- api.openEditor('power');api.draft.value.inline.sql="SELECT :empty, :zero, :flag FROM clusters WHERE id = :park_id"
- api.setInlineBinding('empty','constant');api.setInlineBinding('zero','constant');api.setInlineBinding('flag','constant')
- api.draft.value.inline.params.zero.value='0';api.draft.value.inline.params.flag.value='false'
- page=await html();assert.match(page,/明确填写的 0、false、空字符串都是有效值/)
- await api.saveDraft();assert.equal(saved,15)
- // 新增参数未绑定 → 保存拦截
- api.openEditor('power');api.draft.value.inline.sql+=' AND x = :newp'
- await api.saveDraft();assert.equal(saved,15);assert.match(api.editError.value,/参数 :newp 未绑定取值/)
- // A9：切换方式只改本地草稿，两边内容保留；取消无写入
- api.draft.value.mode='rule';page=await html();assert.match(page,/请选择已有实现/)
- api.draft.value.mode='inline';assert.match(api.draft.value.inline.sql,/AND x = :newp/,'切回后 SQL 草稿保留')
+ // 新增参数未绑定 → 保存拦截；取消无写入（A9 的存活部分；切换方式保草稿随旧表单移除）
+ api.openEditor('power');api.draft.value.inlineSql.sql+=' AND x = :newp'
+ await api.saveDraft();assert.equal(saved,14);assert.match(api.editError.value,/参数 :newp 未绑定取值/)
  const storedBefore=JSON.stringify(b.properties.power)
  api.closeEditor()
  assert.equal(JSON.stringify(b.properties.power),storedBefore,'A9：取消无修订写入')
- // A8：原规则绑定（无 mode 的旧 computed）按原方式回显
- api.openEditor('history');assert.equal(api.draft.value.mode,'rule');assert.equal(api.draft.value.implementation,rule.id);api.closeEditor()
+ // A8：原规则绑定（无 mode 的旧 computed）按 computed 读入回显
+ api.openEditor('history');assert.equal(api.draft.value.kind,'computed');assert.equal(api.draft.value.implementation,rule.id);api.closeEditor()
  // A10：未知版本内联结构 → 只读保留，不被清空
  b.properties.note={kind:'computed',mode:'inlineSql',inlineSql:{version:2,connection:'db',sql:'SELECT 1',params:{}}}
  api.openEditor('note');page=await html();assert.match(page,/未识别的来源结构/)
  api.closeEditor();assert.deepEqual(b.properties.note.inlineSql.version,2,'未知版本零丢失')
- // A6：登记对象（无来源表）也能配置内联 SQL + 项目参数 + 实例编号
+ // A6：登记对象（无来源表）也能保存内联 SQL + 项目参数 + 实例编号（identityReady=registered）
  const regB=reactive({object_type:'cluster',identity:{kind:'registered',instances:[{id:'S1',label:'储能系统一'}]},connection:'',table:'',primary_key:'',title_key:'',sources:[],properties:{},relations:[]})
  const reg=await mount(await loadComponent('PropertySources'),regB)
- reg.api.openEditor('power');reg.api.pickCard('computed')
- reg.api.draft.value.inline.connection='db'
- reg.api.draft.value.inline.sql='SELECT SUM(x) AS value FROM m WHERE park = :park_id AND sid = :sid'
- reg.api.setInlineBinding('park_id','projectParameter');reg.api.setInlineBinding('sid','instanceId')
- reg.api.draft.value.inline.params.park_id.key='park_id'
- page=await reg.html();assert.match(page,/登记实例编号/)
+ regB.properties.power={kind:'computed',mode:'inlineSql',inlineSql:{version:1,connection:'db',sql:'SELECT SUM(x) AS value FROM m WHERE park = :park_id AND sid = :sid',params:{park_id:{from:'projectParameter',key:'park_id'},sid:{from:'instanceId'}}}}
+ reg.api.openEditor('power')
  await reg.api.saveDraft()
- assert.deepEqual(regB.properties.power.inlineSql.params,{park_id:{from:'projectParameter',key:'park_id'},sid:{from:'instanceId'}})
+ assert.deepEqual(regB.properties.power.inlineSql.params,{park_id:{from:'projectParameter',key:'park_id'},sid:{from:'instanceId'}},'A6：登记对象可用项目参数与登记实例编号')
  // —— 计算函数（kind=calculationFunction，A1-A9 表单级）——
  // /api/calc-eval 替身：validateOnly 镜像本地检查；带值时 40/100 → 40
  const realFetch=globalThis.fetch
@@ -218,12 +243,10 @@ try{
  manager.api.trialValues.value[savedFn.inputs[1].id]='0'
  await manager.api.runTrial()
  assert.match(manager.api.trialResult.value.text,/额定容量必须大于零/,'A4：ERROR 分支消息')
- // A9 属性绑定（PropertySources）：函数输出绑 rated_power；直接循环与类型不匹配拦截
+ // A9 属性绑定（PropertySources）：已存 calcFunction 绑定读入 → 输入校验/回写（新建入口已移除）
  const savedBase=saved
- api.openEditor('power');api.pickCard('computed');api.draft.value.mode='function';api.draft.value.implementation=''
- api.draft.value.mode='function';api.draft.value.implementation=savedFn.id;api.draft.value.output=savedFn.output.id
- api.draft.value.inputs={}
- api.draft.value.inputs[savedFn.inputs[0].id]={from:'property',property:'power'}
+ b.properties.power={kind:'computed',mode:'calcFunction',implementation:savedFn.id,output:savedFn.output.id,inputs:{[savedFn.inputs[0].id]:{from:'property',property:'power'}}}
+ api.openEditor('power');assert.equal(api.draft.value.mode,'function')
  await api.saveDraft();assert.equal(saved,savedBase);assert.match(api.editError.value,/循环依赖/,'A9：直接循环拦截')
  api.draft.value.inputs[savedFn.inputs[0].id]={from:'property',property:'history'}
  await api.saveDraft();assert.match(api.editError.value,/不匹配|时间序列/,'A8：时序属性不能作为数值输入')
@@ -236,5 +259,5 @@ try{
  assert.equal(b.properties.power.mode,'calcFunction')
  api.openEditor('power');assert.equal(api.draft.value.mode,'function','A1：重开按函数绑定回显');assert.equal(api.draft.value.inputs[savedFn.inputs[0].id].value,0,'0 固定值回显');api.closeEditor()
  globalThis.fetch=realFetch
- console.log('通过：…计算函数（新建编辑保存重开、稳定标识公式、改名不破坏、删参拦截、试算与惰性 IF、绑定类型相容与循环拦截）。')
+ console.log('通过：属性四类来源（none 态/字段/Redis/时序）+ 链接缺连接 + 遗留规则绑定（只读保留/声明式输入/值类型相容）+ 内联 SQL + 登记对象 + 计算函数（新建编辑保存重开、稳定标识公式、改名不破坏、删参拦截、试算与惰性 IF、绑定类型相容与循环拦截）。')
 }finally{delete globalThis.__mappingSelect;rmSync(root,{recursive:true,force:true})}

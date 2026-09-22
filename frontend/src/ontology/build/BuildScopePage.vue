@@ -482,7 +482,7 @@ onUnmounted(() => {
 <div class="bp-scope">
   <header class="bp-head">
     <div>
-      <h1>确定建模范围</h1>
+      <h2>确定建模范围</h2>
       <p class="muted">
         不用一次说清楚：结合材料逐步确认，右侧摘要是本次生成的正式依据。
         <template v-if="taskName">当前任务：{{ taskName }}</template>
@@ -680,7 +680,9 @@ onUnmounted(() => {
 <style scoped>
 .bp-scope{display:flex;flex-direction:column;gap:14px}
 .bp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
-.bp-head h1{font-size:21px;margin:0 0 6px;display:flex;align-items:center;gap:8px}
+/* 页内标题降为 h2（顶栏已有页面级 h1）：字号/字重逐值保持原 h1 渲染结果，
+   font-weight 显式写 700 是因为全局 h2 规则会把 UA 的 bold 拉到 650 */
+.bp-head h2{font-size:21px;font-weight:700;margin:0 0 6px;display:flex;align-items:center;gap:8px}
 .bp-head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .bp-banner{border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--warn);border-radius:var(--r-md);padding:10px 14px;font-size:13px;margin:0}
 .bp-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:16px;align-items:start}

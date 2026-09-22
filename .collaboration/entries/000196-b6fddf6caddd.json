@@ -1,0 +1,26 @@
+{
+  "ticket": "1817a6538ec04530aea312e2553df11a",
+  "task": "开发修复完成（3提交）→ 测试复测已派发",
+  "status": "in_progress",
+  "summary": "开发agent按第一轮问题清单完成4项修复并提交（73bd704之上：8c6c9d9严重#1、5b95df8一般#2/#3/#4、7d59dd4归档）。修复方式：#1删除侧双基准解析兼容生产形态+relative_to防逃逸+purge夹具新增form=production场景与穿越/缺失防御断言（task_purge 17/17）；#2新增scan_fallback_usage按任务全部scan运行求和实现单任务累计口径（检查点只记本轮自身消耗防重复计数），08§4.3改写；#3环境变量WIZ_BUILD_LLM_FALLBACK_MAX_FILES/BYTES覆盖默认200个/50MB，capabilities展示；#4选实现复用——plan_reusable不再排除abstract模式，新增必炸桩探针测试实证确定性阶段未重算。全量回归自述226/226+各套件全过+vue-tsc 0错。已发同一测试agent复测：核对diff无夹带/生产路径形态purge实测磁盘真删/单任务累计语义断言区分度/回归抽测/隔离实例级联删除磁盘复验/上轮#3#4闭合。开发如实说明：基线即有的task_purge F841按既有代码不重排未动；生产6137孤儿blob为存量数据需用户决定清理。",
+  "decisions": [
+    "复测由同一测试代理执行（保有第一轮全部上下文与问题清单）"
+  ],
+  "verification": [
+    "开发报告含逐项commit与测试原文摘要；修复范围限于4项问题无夹带（自述，待测试代理diff核对）"
+  ],
+  "next": [
+    "复测结论：通过→循环结束交最终交付汇报；不通过→继续修复循环",
+    "存量孤儿blob清理（如各实例仍有）与生产实例部署时机待用户指令"
+  ],
+  "references": [
+    "worktree/build-governance（codex/build-governance 7d59dd4）",
+    "/tmp/v2_test_report_round1.md"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T19:20:16.695049+00:00",
+  "sequence": 196,
+  "filename": "000196-b6fddf6caddd.json",
+  "record_hash": "744abdeb024ec93241e62b953841fb9c85a25aa04447b16f624bf287a8f9d2b4",
+  "context_advanced": false
+}

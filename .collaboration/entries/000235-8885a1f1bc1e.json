@@ -1,0 +1,36 @@
+{
+  "ticket": "0c38a1344a8b4354bbf1091d1138eae4",
+  "task": "按用户指令集成合并 worktree/build-governance 及其分支到 main，并清理开发环境",
+  "status": "implemented",
+  "summary": "按用户明确指令（「把build-governance的内容合并到主干，然后删除此worktree」，并追问是否含 build-progress-log、其他分支一并合并）完成集成与清理。经核实该 worktree 实际检出 codex/build-progress-log（目录名≠分支名），两条分支均属该树、均无未合并提交。集成：建临时树 integration/ontology-build，先收纳在途未提交成果（85a40ed：进度页前端+检索夹具+交接条目），再 --no-ff 合入 codex/build-progress-log（771e8d1）与 codex/build-governance（578acd7）；唯一冲突 session_context.md 不手工拼接、保留 main 侧后由 render 重建。验证：与已验证分支代码逐字节一致；前端构建通过；56/56 测试全过（含真实数据 E2E：过滤写入落库、60 候选、8 行日志）；迁移演练 0003→0004 成功且幂等。main 已快进至 578acd7。清理：停 18881、删临时集成树与开发树、删三条已合并分支；备份落盘 backups/wiz_kq_builder_v2-build-governance-20260922。主工作台 18765 未重启亦未更新。",
+  "decisions": [
+    "分支真名为 codex/build-progress-log（检出于 worktree/build-governance 目录）；合并须同时合入 codex/build-governance（含纯文档提交 78cf7df）。",
+    "在途未提交成果先提交为 85a40ed 再合并，避免随 worktree 删除丢代码。",
+    "session_context.md 冲突不手工拼接：保留 main 侧后由 context.py render 重建。",
+    "开发树含真实数据与根密钥：删前 transfer backup 生成 WAL 一致快照 + 复制 wb-root.key + blob，校验后才删。",
+    "5 个测试失败经对照确认为环境性（缺 ontology/ 森林）非合并缺陷：分支树同样失败、main 主树全通过；补 ontology/ 后 56/56 全过。"
+  ],
+  "verification": [
+    "代码等价：git diff --stat codex/build-progress-log HEAD -- workbench frontend/src tests 为空。",
+    "56/56 通过：ontology_build 250/250、progress_log 25/25、struct_parsers 143/143、struct_e2e 87/87、retrieve_equivalence 15/15、materials_views 10/10、task_purge 17/17 及 5 个需 ontology/ 的用例全过。",
+    "真实数据 E2E（合并代码+迁移库，端口 18884）：登录 200、POST build-task-filter 写入 filter_json 落库、候选 60、checkpoint 8 行日志/13 条 notes。",
+    "迁移演练（/tmp 副本）：20260920_0003 → transfer init → 20260921_0004 两列就位、任务与 165 候选保留、integrity ok、重复执行幂等；npm run build 通过且产物 hash 与分支 dist 一致。",
+    "清理核对：worktree list 仅剩他任务的 assist-fill-production/ui_fix；18881 监听 0；18765 返回 200 未受影响。"
+  ],
+  "next": [
+    "主工作台 18765 是旧版本且库停在 20260920_0003：主环境更新需另行授权（构建 + transfer init 迁移 + 重启）。",
+    "main 保留两份未跟踪需求文档（retrieve优化剖析报告_v1.md、需求说明_生成进度实时可观测_v1.md），未提交入库。",
+    "非阻断遗留：store.all_candidates 500 行上限、_batch_wait_timeout 死代码、runner._semaphore 未获取；检索优化 O1 单遍融合待剖析结论。"
+  ],
+  "references": [
+    "main 合并提交：578acd7（含 771e8d1/85a40ed）；前基线 2fe297e",
+    "备份：backups/wiz_kq_builder_v2-build-governance-20260922/（库+根密钥+blob）",
+    "已删除：两棵 worktree 与 codex/build-progress-log|codex/build-governance|integration/ontology-build 三分支"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T04:50:14.070427+00:00",
+  "sequence": 235,
+  "filename": "000235-8885a1f1bc1e.json",
+  "record_hash": "7844bc1b4c3524ec7349441e860212e2a9e21ec032b8444230c8c7c94f0eddd5",
+  "context_advanced": true
+}

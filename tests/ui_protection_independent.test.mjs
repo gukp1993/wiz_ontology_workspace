@@ -86,6 +86,7 @@ async function compileSFC(relPath,scriptReplace=[],{render=false}={}){
   const id='indep-'+basename(relPath).replace(/\W+/g,'-')
   const script=compileScript(descriptor,{id})
   let code=script.content.replace(/import type \{[^}]*\} from ['"][^'"]+['"]\s*;?/g,'')
+  code=code.replace(/import AssistPanel from ['"][^'"]+['"]/,'const AssistPanel = {props:[\'binding\',\'api\',\'locate\'],render:() => null}') // T8/T10：面板桩（本文件聚焦表单保护，不测面板）
   for(const [re,rep] of scriptReplace)code=code.replace(re,rep)
   if(render){
     const tpl=compileTemplate({source:descriptor.template.content,filename,id,ssr:true,ssrCssVars:[],compilerOptions:{bindingMetadata:script.bindings}})

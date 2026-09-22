@@ -1,0 +1,27 @@
+{
+  "formId": "object",
+  "schemaVersion": 1,
+  "title": "对象定义",
+  "space": "ontology",
+  "fields": [
+    {
+      "id": "label",
+      "label": "对象名称",
+      "type": "text",
+      "required": true,
+      "maxLength": 120,
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "comment",
+      "label": "业务定义",
+      "type": "textarea",
+      "required": true,
+      "maxLength": 2000,
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    }
+  ],
+  "lists": [],
+  "codecs": [],
+  "refProviders": {}
+}

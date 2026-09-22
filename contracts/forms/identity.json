@@ -1,0 +1,58 @@
+{
+  "formId": "identity",
+  "schemaVersion": 1,
+  "title": "实例识别",
+  "space": "project",
+  "fields": [
+    {
+      "id": "mode",
+      "label": "实例来源方式",
+      "type": "enum",
+      "required": true,
+      "enum": ["database", "registered"],
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "connection",
+      "label": "数据连接",
+      "type": "ref",
+      "refProvider": "connection:mysql",
+      "visibleWhen": {"field": "mode", "op": "eq", "value": "database"},
+      "requires": "mode",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "table",
+      "label": "来源表／视图",
+      "type": "ref",
+      "refProvider": "table",
+      "visibleWhen": {"field": "mode", "op": "eq", "value": "database"},
+      "requires": "mode",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "primaryKey",
+      "label": "实例主键",
+      "type": "ref",
+      "refProvider": "identityField",
+      "visibleWhen": {"field": "mode", "op": "eq", "value": "database"},
+      "requires": "mode",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "note",
+      "label": "说明",
+      "type": "textarea",
+      "maxLength": 2000,
+      "nullable": true,
+      "ai": {"fillable": true, "clearable": true, "sensitive": false}
+    }
+  ],
+  "lists": [],
+  "codecs": [],
+  "refProviders": {
+    "connection:mysql": "mysqlConnections",
+    "table": "catalogTables",
+    "identityField": "identityTableFields"
+  }
+}

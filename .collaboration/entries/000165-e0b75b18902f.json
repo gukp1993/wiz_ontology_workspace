@@ -1,0 +1,34 @@
+{
+  "ticket": "da369bb083944404b063b1f975c0d817",
+  "task": "assist-fill-production：本体与项目辅助填写正式实现（T0～T12 全量交付）",
+  "status": "implemented",
+  "summary": "按开发计划 T0～T12 完成正式实现并自测，交付 SHA 8a27163（分支 codex/assist-fill-production，base 039a4f0，worktree/assist-fill-production）。后端新增 assist_fields/assist_context/assist_schema/assist_service/assist_routes 五模块＋server 白名单 2 路由（只读语义、不持写锁、trace 不出服务端）；前端新增 assist/（types/状态机/面板＋6 表单 binding 适配器），11 场景 O1～O5、P1～P6 全部接入：采纳只改本地草稿零自动保存、手改失效、一次性撤销、CONTEXT_STALE 重取、凭据永不出网。接口文档 04§5/05/README 已登记。环境：http://127.0.0.1:18951（隔离数据根 .runtime/assist-data，账号 assist_dev，本地模型桩 18912 已注册默认）。停在被 Codex 独立验收，环境保留。",
+  "decisions": [
+    "协议 T0 冻结：contextToken HMAC 签名 TTL600s 绑定用户/目标/权威指纹/draft 摘要；错误码 409 CONTEXT_STALE/422 MODEL_NOT_CONFIGURED/502 MODEL_BAD_RESPONSE/504 MODEL_TIMEOUT；上限 intent≤4000/answers≤8×2000/questions≤3/suggestions≤12/issues≤30/draft≤200KB",
+    "模型输出分层校验：整体结构违规 502；单条违规丢弃留痕；ref 幻觉/复合组行级越界/formatting 历史样式转 blocked 可见禁选；dataType+obsType 原子组；ifQuestion 未答转 pending；等值丢弃；id 服务端重编；模型自带 state 不采信",
+    "浏览器验收两轮 6+1 项 P1 全部修复复验：identityLinkBindings 补 projectId；未配置目标容忍（定义在引用版本即放行标未配置，幻觉目标仍 404）；LinkMappings targetId 对齐「对象类型.关系id」；种子数据形状错误（relations 归属/identity 结构/动作关联）不属产品缺陷已改种子",
+    "默认模型走 llm_providers.default_provider 按账号解析；自动化验证全部用本地模型桩（合成建议），真实模型联调未做须用户授权配置，交付报告如实区分"
+  ],
+  "verification": [
+    "后端：test_assist_context 14/14（越权/令牌/指纹/脱敏/截断/未配置容忍/幻觉仍404/只读不变式）、test_assist_schema 57/57、test_assist_api 10/10（本地模型桩走真实网络：401/400/404/409/422/502/504/200empty＋采纳前后草稿零变化）；python3 tests/run.py all 51/52→唯一失败为环境缺 pypdf（物料构建模块，安装后 parsers 95/95），与本功能无关",
+    "前端：46/46 套件全绿（新增 assist 九套 274 项断言；mapping_forms 修复基线既有失败，覆盖点保留 147→133 断言，死链路展示断言随旧表单移除并在文件头登记）；vue-tsc 0 错误；npm run build 通过",
+    "浏览器（隔离实例 18951 真实点击两轮，CDP Input.* 无 el.click，证据 /tmp/kg_t11_browser/agent{,2}/）：15 条矩阵＋6+1 项 P1 修复复验全过；revision 取证：各场景采纳后等 ≥2.5s revision 不变、表单保存才前进（O1/P1/P2/P4/P6 取证）；凭据零出网断言过；XSS 纯文本；三档视口面板可达；第二轮正式窗口 console error/warning/未捕获全 0",
+    "环境隔离：全部命令 cwd=worktree；端口 18951（禁 18765/8765）；独立数据根合成数据可丢弃；测试账号 assist_dev 仅存于隔离根；未连真实 MySQL/Redis/LLM；未合并 main、未推送、未重启主工作台"
+  ],
+  "next": [
+    "交 Codex 独立验收：验收环境可直接复用 http://127.0.0.1:18951（assist_dev/AssistDev#2026，模型桩在跑）；重点复核 11 场景采纳零自动保存（revision 冻结）、CONTEXT_STALE 链路、凭据不出网、未配置目标容忍边界",
+    "真实模型联调需用户授权配置提供方后另行执行；集成合并等待用户明确授权，本环境保留供验收"
+  ],
+  "references": [
+    "交付 SHA 8a27163（docs 落款）＋ f355ca0/60c65c0（功能与测试对齐）；分支 codex/assist-fill-production",
+    "文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md §8/§9（环境登记/字段映射/交付记录）",
+    "文档/接口文档/04-编排与LLM接口.md §5、05 速查表 53a/53b、README 变更记录",
+    "浏览器证据：/tmp/kg_t11_browser/agent/ 与 agent2/；共享任务登记 .git/workbench-tasks/assist-fill-production.json"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T16:02:07.039015+00:00",
+  "sequence": 165,
+  "filename": "000165-e0b75b18902f.json",
+  "record_hash": "a26ef0e453ed27c88c7be47a991d126f5480ec8bf41bbac56bcb8a3e58683f3c",
+  "context_advanced": false
+}

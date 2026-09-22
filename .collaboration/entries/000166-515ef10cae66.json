@@ -1,0 +1,29 @@
+{
+  "ticket": "199fd878d584432db3aeaadff691b6b9",
+  "task": "assist-fill-production 默认勾选门控测试适配（worktree/assist-fill-production）",
+  "status": "implemented",
+  "summary": "按新门控语义（ready 且宿主旧值为空才默认勾选）适配 3 个辅助填写套件：assist_action_bindings/assist_identity_link/assist_object_workspace。替换已有值的用例保留非空初值并显式 setChecked 后采纳；每套件新增「旧值非空→ready 默认 checked=false」断言，并在 identity_link ②e、action_bindings ⑥d2 补正向断言（旧值为空→默认勾选）。未改任何产品代码。",
+  "decisions": [],
+  "verification": [
+    "node --import ./tests/ts_hooks.mjs tests/assist_action_bindings.test.mjs → 57/57，退出码 0",
+    "node --import ./tests/ts_hooks.mjs tests/assist_identity_link.test.mjs → 16/16，退出码 0",
+    "node --import ./tests/ts_hooks.mjs tests/assist_object_workspace.test.mjs → 9/9，退出码 0",
+    "cd frontend && npm run typecheck → 退出码 0",
+    "git status 核对：本轮仅改动上述 3 个测试文件，产品侧改动（useAssistPanel.ts 等）为此前已有未提交内容"
+  ],
+  "next": [
+    "待 Codex 独立验收本轮测试适配与产品门控实现"
+  ],
+  "references": [
+    "tests/assist_action_bindings.test.mjs",
+    "tests/assist_identity_link.test.mjs",
+    "tests/assist_object_workspace.test.mjs",
+    "frontend/src/assist/useAssistPanel.ts"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T18:28:42.606843+00:00",
+  "sequence": 166,
+  "filename": "000166-515ef10cae66.json",
+  "record_hash": "3c7a23bdfb5eb4d7e1d6a8e609d4e64a318c99310ad88562e90452de60f699ee",
+  "context_advanced": false
+}

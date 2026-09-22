@@ -69,7 +69,7 @@ def _discover_unit():
 
 GROUPS['quick'] = QUICK_TESTS
 GROUPS['http'] = HTTP_TESTS
-GROUPS['unit'] = _discover_unit()
+GROUPS['unit'] = sorted(set(_discover_unit()) | {'test_autofill_integration.py'})  # T9 autofill/1 对抗集成（自起隔离服务 18941/18942，约 6s）
 GROUPS['external'] = EXTERNAL_TESTS
 GROUPS['all'] = GROUPS['quick'] + [t for t in GROUPS['http'] if t not in QUICK_TESTS] + GROUPS['unit']
 

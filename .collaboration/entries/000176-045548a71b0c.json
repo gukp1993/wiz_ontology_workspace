@@ -1,0 +1,29 @@
+{
+  "ticket": "1f627460304f465dab3bbc7a2f35a433",
+  "task": "OpenSPG 自动化图谱构建调研报告落盘归档（用户指令：输出md文档）",
+  "status": "decision",
+  "summary": "按用户指令把 OpenSPG 调研整理为正式 md 文档，归档至 文档/需求/20260920_从物料自动构建本体/OpenSPG自动化图谱构建机制调研_20260921.md（318 行，commit bbf7a61）。文档含：调研基线（KAG v0.8.0 fdab15b + openspg main ceeb3ef）、TL;DR 五条结论、两仓库分工、双链构建流程、5 种文件解析与 5 种切分策略、8 类 LLM 环节详解、核心算法（SPG schema/两模式抽取/实体归一三段式/融合/KGDSL 推理/互索引）、七道本体准确性机制、局限清单、对本工作台物料构建需求的七条启示、源码证据索引附录。",
+  "decisions": [
+    "归档位置定为需求线目录 文档/需求/20260920_从物料自动构建本体/（该调研直接服务该需求线）；如需移至其他目录由用户指令",
+    "提交范围严格限定本人文件：调研文档 + 本会话在途交接条目 000167-000172；不提交 codex 在途工作（000173、semantica源码调研、评审README修改）与其他 zcode 会话 000174（生成实测 blocked），session_context.md 留待下一轮 render 汇总"
+  ],
+  "verification": [
+    "git show bbf7a61：6 文件 456 行（1 份调研文档 318 行 + 5 条本人交接条目），未含他人文件",
+    "文档内全部源码结论沿用已人工抽查的文件:行号证据（default_chain 链序、ner.py schema 注入、kag_postprocessor 向量链接等均已复核吻合）"
+  ],
+  "next": [
+    "codex 在途 semantica 调研（000173）与本篇 OpenSPG 调研互为补充，技术画像汇总时可一并引用",
+    "如需把调研启示落入 20260920 需求增量，属新任务待用户指令"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/OpenSPG自动化图谱构建机制调研_20260921.md",
+    "commit bbf7a61",
+    "/tmp/kag-research 与 /tmp/openspg-research（临时克隆）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T09:00:18.342232+00:00",
+  "sequence": 176,
+  "filename": "000176-045548a71b0c.json",
+  "record_hash": "507a5704c979b103ebf04a2fd8d9ed0637acc278a058f6ebfcb517867150ac00",
+  "context_advanced": false
+}

@@ -15,6 +15,9 @@ import {sourcesOf,commitSources,dropSource,propertyView,catalogOf,tableCatalog,t
 import type {RegisteredInstanceView,IdentityRefItem} from './bindingModel'
 import {effectiveProperty} from '../ontology/propertyModel'
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
+import AssistPanel from '../assist/AssistPanel.vue'
+import {identityAssistBinding} from '../assist/identityLinkBindings'
+import {defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
 const props=defineProps<{projectState:any;refState:any;b:any}>()
 const emit=defineEmits(['before-change','changed','edit-state','go-tab'])
 function before(){emit('before-change')}
@@ -74,10 +77,47 @@ async function submit(apply:()=>void):Promise<{ok:boolean;message:string}>{
   if(formSave)return formSave.submitForm('project',apply)
   before();apply();changed();return {ok:true,message:''}
 }
+// ── 整表自动填写（2026-09-22 T8 改版，P1 实例识别）─────────────────────────────
+// 默认不渲染任何 AI 区域（A01）：入口是实例识别表单页头的次要按钮「✦ 自动填写」，保存仍是主操作；
+// 点击挂载 AssistPanel 抽屉（onMounted 自动 open 取上下文）。回填只改本地草稿（引擎保证，绝不触发
+// 表单保存：无 touch/changed/form-save/commit-now 调用）；表单上方状态条由 binding 的 round 镜像
+// 渲染（已填 N 项，尚未保存／另有 M 项待补充／逐字段旧值→新值），「撤销本次填写」走 binding.undoRound
+// （恢复本轮开始前草稿；期间手改禁用并说明，§4.5）。手改字段即 noteManualChange + notifyDraftChanged：
+// 禁整轮撤销 + 作废在途生成。契约与 P1 边界见 assist/identityLinkBindings.ts 头注（registered 模式
+// 只暴露 mode/note，登记实例清单 instances 永不出网、不被批量生成、不凭 id 名称推断唯一性）。
+const assistApiInjected=inject<AssistApi|null>('assist-api',null) // 测试注入桩；缺省用默认实现
+const innerAssistApi=assistApiInjected??defaultAssistApi()
+// 面板 api 包装：fill 响应流经宿主供 binding 观测「另有 M 项待补充」（引擎仍是唯一权威）
+const assistApi:AssistApi={
+  context:body=>innerAssistApi.context(body),
+  generate:async(assistBody:any)=>{const resp=await innerAssistApi.generate(assistBody);assistBinding.value?.observeFill(resp);return resp},
+}
+const assistOpen=ref(false)
+const assistPanelRef=ref<InstanceType<typeof AssistPanel>|null>(null)
+const assistTouchTick=ref(0) // 手改字段次数（测试观察点；SSR 下模板 ref 为 null 自动跳过）
+// binding 身份必须稳定（状态条镜像与引擎宿主都挂在同一 binding 对象上）：进入实例识别编辑态时构造，
+// 关闭/切目标即作废；再次进入按新目标重建（切目标作废在途请求由面板 watch 负责）。
+let assistBoundBinding:ReturnType<typeof identityAssistBinding>|null=null
+const assistBinding=computed(()=>(editing.value==='identity'?assistBoundBinding:null))
+watch(assistBinding,b=>{if(!b)assistOpen.value=false})
+// 入口按钮 aria-expanded：面板已挂载时以抽屉实际收展为准（done 自动收起后回落为 false）
+const assistExpanded=computed(()=>!!assistOpen.value&&!(assistPanelRef.value?.collapsed??false))
+function toggleAssist(){
+  if(!assistOpen.value){assistOpen.value=true;return} // 首次打开：挂载面板（自动取上下文）
+  const p=assistPanelRef.value
+  if(!p)return
+  if(p.collapsed)p.expand() // done 自动收起后重新展开
+  else p.close()            // 展开中 → 用户主动关闭（emit close → 卸载，回到入口按钮）
+}
+function onAssistPanelClosed(){assistOpen.value=false}
+// 手改字段 → 登记 binding（禁整轮撤销 + 状态条说明）并通知面板（作废在途生成，§4.5）
+function assistTouched(){assistTouchTick.value++;assistBinding.value?.noteManualChange();assistPanelRef.value?.notifyDraftChanged()}
+// 宿主「撤销本次填写」：恢复本轮开始前草稿；撤销也是草稿变更，作废在途生成防迟到写入
+function undoAssistRound(){if(!assistBinding.value?.undoRound())return;assistPanelRef.value?.notifyDraftChanged()}
 let identityBaseline='',sourceBaseline=''
 const dirty=computed(()=>{
   if(editing.value==='note')return noteDraft.value!==noteBaseline.value
-  if(editing.value==='identity')return JSON.stringify(identityDraft.value)!==identityBaseline
+  if(editing.value==='identity')return JSON.stringify(identityDraft.value)!==identityBaseline||noteDraft.value!==noteBaseline.value
   if(editing.value==='source')return JSON.stringify(sourceDraft.value)!==sourceBaseline
   return false
 })
@@ -87,7 +127,17 @@ onBeforeUnmount(()=>formGuard?.unregister(guard))
 function openIdentity(){
   identityDraft.value={mode:bindingIdentityOf(props.b),connection:String(props.b.connection||''),table:String(props.b.table||''),primary_key:String(props.b.primary_key||''),instances:registeredInstancesOf(props.b)}
   identityBaseline=JSON.stringify(identityDraft.value)
+  // 说明草稿对齐到已保存说明：自动填写快照里的 note 反映真实当前值（与说明编辑态打开时同一语义）
+  noteDraft.value=savedNote.value;noteBaseline.value=savedNote.value
   message.value='';tableChangeNote.value='';refreshMessage.value='';switchNote.value='';switchBlock.value=''
+  // 每次进入编辑态构造新 binding：状态条镜像与撤销单元随本轮编辑对象从零开始（不串上一轮残留）
+  assistBoundBinding=identityAssistBinding(()=>identityDraft.value,noteDraft,{
+    projectId:String(props.projectState?.projectId||''),
+    targetId:String(props.b?.object_type||''),
+    contextTitle:'配置「'+objectName.value+'」的实例识别',
+    applyMode:switchIdentityMode, // 复用既有切换拦截（登记引用未清理时阻止切回数据库表／视图）
+  })
+  assistOpen.value=false
   editing.value='identity'
 }
 function openSource(s?:any){
@@ -99,7 +149,7 @@ function openSource(s?:any){
   message.value='';refreshMessage.value=''
   editing.value='source'
 }
-function closeEditor(){editing.value=null;identityDraft.value={mode:'database',connection:'',table:'',primary_key:'',instances:[]};sourceDraft.value=null;message.value='';tableChangeNote.value='';refreshMessage.value='';switchNote.value='';switchBlock.value='';saving.value=false}
+function closeEditor(){editing.value=null;identityDraft.value={mode:'database',connection:'',table:'',primary_key:'',instances:[]};sourceDraft.value=null;message.value='';tableChangeNote.value='';refreshMessage.value='';switchNote.value='';switchBlock.value='';saving.value=false;assistOpen.value=false;assistBoundBinding=null}
 function openNote(){noteDraft.value=savedNote.value;noteBaseline.value=savedNote.value;message.value='';editing.value='note'}
 async function saveNote(){
   if(saving.value)return
@@ -114,11 +164,18 @@ const modeOptions=[{value:'database',label:'数据库表／视图'},{value:'regi
 function identityModeChanged(v:string){
   const target:'registered'|'database'=v==='registered'?'registered':'database'
   if(target===identityDraft.value.mode)return
+  if(!switchIdentityMode(target))return
+  assistTouched()
+}
+// 切换核心逻辑（下拉与辅助采纳共用）：登记引用未清理时阻止切回 database；成功改本地草稿并返回 true。
+// 辅助采纳经此复用既有拦截与提示；手改通知由调用方（identityModeChanged）负责，采纳路径不触发。
+function switchIdentityMode(target:'registered'|'database'):boolean{
+  if(target===identityDraft.value.mode)return true
   if(target==='database'){
     const items=registeredBlockingItemsOf(props.b)
     if(items.length){
       switchBlock.value='不能切回「数据库表／视图」：以下配置依赖项目登记身份，请先到对应页签移除后再切换（不会静默删除）——'+items.map(refItemLabel).join('、')
-      return
+      return false
     }
   }
   switchBlock.value=''
@@ -129,13 +186,16 @@ function identityModeChanged(v:string){
       ?'将改按项目登记识别实例；以下依赖数据库身份的配置会原样保留但暂不生效（切回数据库来源后恢复）——'+deps.map(refItemLabel).join('、')
       :'将改按项目登记识别实例，不依赖数据表；原有数据库连接与表配置保留不用，切回时可恢复。'
   }else switchNote.value=''
+  return true
 }
 // --- 依赖顺序：连接 → 表（目录） → 字段；换连接清表与主键，换表清主键并提示补充来源需重配 ---
 const draftIdentityCatalog=computed(()=>tableCatalog(props.projectState,identityDraft.value.connection,identityDraft.value.table))
-function identityConnChanged(v:string){identityDraft.value.connection=v;identityDraft.value.table='';identityDraft.value.primary_key='';tableChangeNote.value='';refreshMessage.value=''}
+function identityConnChanged(v:string){identityDraft.value.connection=v;identityDraft.value.table='';identityDraft.value.primary_key='';tableChangeNote.value='';refreshMessage.value='';assistTouched()}
 function identityTableChanged(v:string){identityDraft.value.table=v;identityDraft.value.primary_key=''
   tableChangeNote.value=(props.b.table&&props.b.table!==v)||(props.b.connection&&props.b.connection!==identityDraft.value.connection)
-    ?'已切换身份表：已登记补充来源的匹配配置会原样保留（不会自动清空，也不会按同名字段自动重绑）；如字段与新表不匹配，保存后由项目校验报告失效并阻断发布。':''}
+    ?'已切换身份表：已登记补充来源的匹配配置会原样保留（不会自动清空，也不会按同名字段自动重绑）；如字段与新表不匹配，保存后由项目校验报告失效并阻断发布。':''
+  assistTouched()}
+function identityPkChanged(v:string){if(identityDraft.value.primary_key===v)return;identityDraft.value.primary_key=v;assistTouched()}
 // --- 补充来源草稿：连接 → 表 → 匹配字段 ---
 const draftSourceCatalog=computed(()=>sourceDraft.value&&sourceDraft.value.kind==='db'?tableCatalog(props.projectState,sourceDraft.value.connection,sourceDraft.value.table):null)
 function sourceConnChanged(v:string){if(sourceDraft.value.connection===v)return;message.value='';sourceDraft.value.connection=v;sourceDraft.value.table='';sourceDraft.value.matchRight='';refreshMessage.value=''}
@@ -161,6 +221,9 @@ async function removeSource(s:any){
   const r=await submit(()=>dropSource(props.b,s.id))
   if(!r.ok)removeMessage.value='移除未完成：'+r.message+'。可重试或取消。'
 }
+// 辅助采纳进来的说明（noteDraft）随本表单保存一起经既有 commitDesc 落盘（与链接映射保存共用
+// 说明的机制一致）；未采纳/未修改说明时不产生额外修订。
+function commitIdentityNote(){if(noteDraft.value!==noteBaseline.value)commitDesc(props.projectState,'objects',props.b.object_type,null,noteDraft.value)}
 async function saveIdentity(){
   const d=identityDraft.value
   if(saving.value)return
@@ -176,6 +239,7 @@ async function saveIdentity(){
       const kept=new Set(list.map(i=>i.id))
       for(const old of registeredInstancesOf(props.b))if(!kept.has(old.id))dropRegisteredInstance(props.b,old.id)
       commitRegisteredIdentity(props.b,list)
+      commitIdentityNote()
     })
     saving.value=false
     if(r.ok)closeEditor()
@@ -192,6 +256,7 @@ async function saveIdentity(){
     props.b.connection=d.connection;props.b.table=d.table;props.b.primary_key=d.primary_key
     // 切回数据库来源：移除 identity 块；identity.kind 非 registered 的未知值不动（零丢失）
     if(bindingIdentityOf(props.b)==='registered')clearRegisteredIdentity(props.b)
+    commitIdentityNote()
   })
   saving.value=false
   if(r.ok)closeEditor()
@@ -280,8 +345,22 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <!-- ========== 编辑态：实例识别表单 ========== -->
 <template v-else-if="editing==='identity'">
 <div class="os-editor-top"><button class="os-back" @click="closeEditor">← 返回实例识别</button><small class="muted">当前对象 · {{objectName}}</small></div>
+<div class="os-assist-row"><button type="button" class="os-assist-trigger" id="os-assist-trigger-identity" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button></div>
 <h2>{{identityMode==='registered'||b.table?'修改':'配置'}}实例识别</h2>
 <p class="os-note">识别“有哪些{{objectName}}实例”，不限制其属性从哪里获取。</p>
+<!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->
+<div v-if="assistBinding&&(assistBinding.round.statusBarText||assistBinding.round.undone)" class="assist-bar" role="status">
+<span v-if="assistBinding.round.statusBarText" class="assist-bar-text">{{assistBinding.round.statusBarText}}</span>
+<span v-else class="assist-bar-text">已撤销本次自动填写，表单已恢复。</span>
+<button v-if="assistBinding.round.statusBarText" type="button" class="row-link" :disabled="!assistBinding.round.canUndo" @click="undoAssistRound">撤销本次填写</button>
+<details v-if="assistBinding.round.changes.length" class="assist-bar-changes">
+<summary>查看修改</summary>
+<ul>
+<li v-for="c in assistBinding.round.changes" :key="c.field"><strong>{{c.label}}</strong>：{{c.oldText}} → {{c.newText}}</li>
+</ul>
+</details>
+<span v-if="assistBinding.round.undoHint" class="assist-bar-hint">{{assistBinding.round.undoHint}}</span>
+</div>
 <div class="row">
 <label>实例来源方式 *<AppSelect :model-value="identityDraft.mode" aria-label="实例来源方式" :options="modeOptions" @update:model-value="identityModeChanged"/><small class="field-help">数据库表／视图：一行数据对应一个实例；项目登记：手工登记实例清单，不依赖数据表。</small></label>
 </div>
@@ -293,7 +372,7 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <label>来源表／视图 *<AppSelect :key="identityDraft.connection" :model-value="identityDraft.table" aria-label="来源表或视图" searchable :disabled="!identityDraft.connection" :options="[{value:'',label:'请选择表／视图'},...tableOptions(projectState,identityDraft.connection)]" @update:model-value="identityTableChanged"/><small v-if="!identityDraft.connection" class="field-help">先选择数据连接。</small></label>
 </div>
 <div class="row">
-<label>实例主键 *<AppSelect :key="identityDraft.connection+':'+identityDraft.table" :model-value="identityDraft.primary_key" aria-label="实例主键" searchable :disabled="!draftIdentityCatalog" :options="[{value:'',label:'请选择字段'},...fieldOptions(draftIdentityCatalog)]" @update:model-value="identityDraft.primary_key=$event"/><small v-if="identityDraft.connection&&!draftIdentityCatalog" class="field-help">该表不在目录中：请先刷新表结构目录后再选主键。</small><small class="field-help">主键来自当前表，一行对应一个对象实例。</small></label>
+<label>实例主键 *<AppSelect :key="identityDraft.connection+':'+identityDraft.table" :model-value="identityDraft.primary_key" aria-label="实例主键" searchable :disabled="!draftIdentityCatalog" :options="[{value:'',label:'请选择字段'},...fieldOptions(draftIdentityCatalog)]" @update:model-value="identityPkChanged"/><small v-if="identityDraft.connection&&!draftIdentityCatalog" class="field-help">该表不在目录中：请先刷新表结构目录后再选主键。</small><small class="field-help">主键来自当前表，一行对应一个对象实例。</small></label>
 </div>
 <p v-if="tableChangeNote" class="inline-warning" role="alert">{{tableChangeNote}}</p>
 <p v-if="identityDraft.connection&&!catalogOf(projectState,identityDraft.connection)" class="inline-warning">该连接尚未读取表结构目录，无法选择表与字段。<button :disabled="refreshing===identityDraft.connection" @click="refresh(identityDraft.connection)">{{refreshing===identityDraft.connection?'读取中…':'刷新表结构'}}</button></p>
@@ -304,6 +383,7 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <p class="field-help">实例清单随本表单一并保存；编号是实例身份，保存后不可直接修改。切换来源方式或登记实例都只在保存后生效，取消则全部放弃。</p>
 </template>
 <p v-if="message" class="inline-error" role="alert">{{message}}</p>
+<AssistPanel v-if="assistBinding" :open="assistOpen" ref="assistPanelRef" class="os-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="os-assist-trigger-identity" @close="onAssistPanelClosed"/>
 <div class="os-actions"><button class="primary" :disabled="saving" @click="saveIdentity">{{saving?'保存中…':'保存'}}</button><button :disabled="saving" @click="closeEditor">取消</button><small class="field-help">保存写入当前项目草稿；取消放弃本次修改。</small></div>
 </template>
 <!-- ========== 编辑态：补充来源表单 ========== -->
@@ -377,6 +457,17 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 .os-back:hover{color:var(--blue-deep);border-color:transparent}
 .os-note{background:var(--blue-soft);border:1px solid var(--blue-line);border-radius:7px;padding:10px 14px;font-size:13px;color:var(--muted);margin:12px 0}
 .os-actions{display:flex;gap:9px;align-items:center;margin-top:20px;flex-wrap:wrap}
+/* 整表自动填写（T8 改版 P1）：页头次要入口（保存仍是主操作）+ 表单上方状态条（与本体区同款） */
+.os-assist-row{display:flex;margin:-6px 0 12px}
+.os-assist-trigger{color:var(--blue-ink,#285bea)}
+.assist-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:8px 12px;background:var(--blue-soft,#edf3ff);border:1px solid var(--blue-line,#c4d5f5);border-radius:6px;font-size:13px}
+.assist-bar-text{color:var(--blue-ink,#285bea);font-weight:600}
+.assist-bar-hint{color:var(--muted,#75869b)}
+.assist-bar-changes{flex-basis:100%}
+.assist-bar-changes summary{cursor:pointer;color:var(--blue-ink,#285bea)}
+.assist-bar-changes ul{margin:8px 0 0;padding-left:18px}
+.assist-bar-changes li{margin:2px 0;overflow-wrap:anywhere}
+.os-assist-panel{margin-top:16px}
 .os-match-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:18px 0}
 .os-match-side{border:1px solid var(--line);border-radius:8px;padding:16px;background:var(--paper-2);min-width:0}
 .os-match-side h3{font-size:14px;margin:0 0 16px}

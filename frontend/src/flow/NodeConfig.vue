@@ -392,5 +392,5 @@ async function refillSkeleton() {
 .check-line input{width:auto}
 .inline-check{width:auto}
 .mapping-row{align-items:end}
-.field-flash{outline:2px solid var(--blue,#2458d5);background:var(--blue-soft,#edf3ff)!important;border-radius:4px;transition:background .6s ease}
+.field-flash{outline:2px solid var(--focus);outline-offset:2px;background:var(--blue-soft)!important;border-radius:var(--r-sm);transition:background .6s var(--ease)}
 </style>

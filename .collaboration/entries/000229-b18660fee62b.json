@@ -1,0 +1,27 @@
+{
+  "ticket": "9ea5b4acfc3648d4b56ed31f3ed65e4a",
+  "task": "retrieve 优化开发完成（O0/O2/O3+金样15/15）+ 分支事故记录；剖析agent在途",
+  "status": "in_progress",
+  "summary": "retrieve 优化开发agent交付：O0（with_tokens=False 消除tokens死工作）/O2（四词表合并正则单趟探测）/O3（早停定级）完成，金样等价15/15逐字节一致（内嵌3dc51dc基线快照为参考实现），回归全绿（250/250+全系列），基准脚本入库。**分支事故（已由开发agent自行恢复，需知晓）**：共享检出被并行线切到 codex/build-progress-log，其捆包提交 964493a 把开发agent未提交的 retrieval.py 一并带入（内容即其实现，diff核实零差异）；开发agent用 git plumbing（纯快进，父=964493a）将 78cf7df 补录到 codex/build-governance——全程未 stash/reset/revert、未触碰他人在途文件。**现状 tangled**：同一优化存在于两条分支（cb64855 在 build-progress-log、78cf7df 在 build-governance），检出当前停在 build-progress-log 且有进度日志线（000227 生成进度可观测需求线）的在途未提交改动——分支解缠留待集成阶段由集成负责人处理，本侧不动。剖析agent（0788605b）仍在跑（R1 归因报告，O1 决策依据）。",
+  "decisions": [
+    "分支解缠（同一优化双分支存在）留待集成阶段由集成负责人处理，本侧不动在途分支指针",
+    "测试验收等剖析报告→O1决策（实施或降级）后一并做，避免O1实施后二次返工"
+  ],
+  "verification": [
+    "worktree 实测：O0（with_tokens=False 默认跳过）/O2（合并正则）均已在盘；检出分支=codex/build-progress-log；未提交在途=进度日志线文件+retrieve_fixture.py（剖析agent产物）"
+  ],
+  "next": [
+    "剖析报告到达→O1 决策→（如实施）开发→测试agent全项验收（G25与O0/O2/O3+金样）",
+    "循环收官→最终交付汇报"
+  ],
+  "references": [
+    "worktree/build-governance（codex/build-governance 78cf7df / 检出在 build-progress-log）",
+    "/tmp/v2_test_report_v2_10.md"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T03:38:29.754275+00:00",
+  "sequence": 229,
+  "filename": "000229-b18660fee62b.json",
+  "record_hash": "7d0e4f2becb893881f27daf248e44e6e879b6b06703d1a05de9fb1eb951f283a",
+  "context_advanced": false
+}

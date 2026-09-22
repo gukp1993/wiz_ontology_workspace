@@ -1,0 +1,28 @@
+{
+  "ticket": "371c26fee405433a9007a5a345cbda25",
+  "task": "测试第一轮：不通过（1严重+3一般）→ 已打回开发修复",
+  "status": "in_progress",
+  "summary": "测试agent第一轮验收结论：不通过。回归独立复跑全过（222/222、storage 60/60、迁移0004链正确幂等、前端vue-tsc/build/mjs全过；tests/run.py all 5失败均为环境性播种缺口，与本轮diff无关且主仓交叉验证通过）。G17/G18/G20/G21/G22/G23判定符合；两项重点核查裁定：finish_guard断言收敛=合理适配非掩盖回归（基线跑旧测试25/27本就失败，且顺带修复基线就有的重试成功后任务卡scope真实缺陷）、兜底限额按每轮扫描=与需求单任务口径不一致需修正。问题清单：严重#1=级联删除后blob物理文件100%残留（materials.py登记blob_path相对data_dir含ontology-build-blobs/前缀，delete_task_blob_files以blob_dir()再拼→双重前缀永远missing静默跳过；基线425a28d已存在，与生产6137孤儿blob互证）；一般#2=兜底限额口径每轮vs单任务；#3=限额可配置未落地；#4=abstract模式文案与实现不符。已将4项打回开发agent修复（严重#1修复+补生产路径形态回归用例；#2按需求改单任务累计；#3环境变量可配置；#4文案修正），完成后复测。",
+  "decisions": [
+    "严重#1修复方向=登记与删除路径口径统一+补生产路径形态回归用例",
+    "一般#2按已评审需求基线（单任务累计）修正实现，若开发认为每轮更合理须报告交用户裁定，不得自行改需求"
+  ],
+  "verification": [
+    "测试报告存 /tmp/v2_test_report_round1.md；隔离实例（端口18971+临时空库）API实测全流程，测毕按PID精确清理",
+    "开发自测声称的222/222等结果经独立复跑证实"
+  ],
+  "next": [
+    "开发agent修复完成→测试agent复测（同一测试代理，重点复核严重#1与其余三项闭合）",
+    "直至测试通过→最终交付汇报"
+  ],
+  "references": [
+    "/tmp/v2_test_report_round1.md",
+    "worktree/build-governance/workbench/ontology_build/materials.py:484,578-599,768"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T19:03:56.714851+00:00",
+  "sequence": 195,
+  "filename": "000195-bf2b557df611.json",
+  "record_hash": "8080e987f447f9fa365c78d6c395ff0635e59cd7ee49a0f191cbb40bc400820c",
+  "context_advanced": false
+}

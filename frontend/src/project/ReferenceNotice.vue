@@ -47,6 +47,6 @@ const differences=computed(()=>props.objectType?propertyDifferences(current.valu
 </section>
 </template>
 <style scoped>
-.reference-notice{background:var(--warn-soft);border:1px solid var(--warn-line);border-radius:8px;padding:14px 16px;margin:0 0 16px;font-size:13px;color:#624b23}
-.reference-notice p{margin:6px 0}.reference-notice summary{cursor:pointer;margin:8px 0}.reference-notice small{display:block;margin-top:8px;color:#77654b}.reference-notice .tools{margin-top:10px;flex-wrap:wrap}
+.reference-notice{background:var(--warn-soft);border:1px solid var(--warn-line);border-radius:var(--r-md);padding:14px 16px;margin:0 0 16px;font-size:13px;color:var(--warn)}
+.reference-notice p{margin:6px 0}.reference-notice summary{cursor:pointer;margin:8px 0}.reference-notice small{display:block;margin-top:8px;color:var(--muted)}.reference-notice .tools{margin-top:10px;flex-wrap:wrap}
 </style>

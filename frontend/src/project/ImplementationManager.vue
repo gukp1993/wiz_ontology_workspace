@@ -164,12 +164,12 @@ onBeforeUnmount(()=>{if(focusTimer)clearTimeout(focusTimer);if(locateTimer)clear
 </section>
 <section class="sample-panel">
 <div class="panelhead"><h3>输出声明 · 契约要求 {{(editingContract.outputs||[]).length}} 项</h3></div>
-<div v-for="output in editingContract.outputs||[]" :key="output.id"><label class="check-option"><input type="checkbox" :checked="isDeclared(output.id)" @change="toggleDeclaration(output.id)"><span>本实现返回「{{output.name||output.id}}」<small class="muted">（{{sigTypeLabel(output.ref)}}）</small></span></label><small v-if="isDeclared(output.id)" class="field-help" style="margin-left:26px">输出数据类型：{{declaredTypeLabel(output)}}</small><p v-if="attemptedSave&&outputIssue(output)" class="inline-error" style="margin:0 0 8px 26px">{{outputIssue(output)}}</p></div>
+<div v-for="output in editingContract.outputs||[]" :key="output.id"><label class="check-option"><input type="checkbox" :checked="isDeclared(output.id)" @change="toggleDeclaration(output.id)"><span>本实现返回「{{output.name||output.id}}」<small class="muted">（{{sigTypeLabel(output.ref)}}）</small></span></label><small v-if="isDeclared(output.id)" class="field-help under-check">输出数据类型：{{declaredTypeLabel(output)}}</small><p v-if="attemptedSave&&outputIssue(output)" class="inline-error under-check">{{outputIssue(output)}}</p></div>
 <p class="field-help">所有输出均为必需；已声明采集时间的契约必须返回采集时间，不得用查询时间替代。标量输出只能绑定单值属性；时间序列输出须返回时间＋值结构。形态声明用于属性来源校验，本轮不执行函数。</p>
 </section>
 <details class="technical-section"><summary>更多设置（选填）</summary>
 <div class="row"><label>使用的数据连接<AppSelect :model-value="draft.connection||''" aria-label="数据连接" :options="[{value:'',label:'无外部数据需求'},...connectionOptions]" @update:model-value="draft.connection=$event"/></label><label>所属环境（预留）<AppSelect :model-value="draft.environment||''" aria-label="所属环境" :options="[{value:'',label:'默认（单一环境）'},{value:'testing',label:'测试'},{value:'production',label:'生产'}]" @update:model-value="draft.environment=$event"/></label></div>
-<div class="detail-footer"><span>删除实现会同时清理引用它的属性计算来源。</span><button class="danger" :disabled="saving" @click="removeImpl">删除此实现</button></div>
+<div class="detail-footer"><span>删除实现会同时清理引用它的属性计算来源。</span><button class="danger-btn" :disabled="saving" @click="removeImpl">删除此实现</button></div>
 </details>
 <div class="detail-footer">
 <span class="muted">只影响当前项目草稿。</span>
@@ -193,6 +193,9 @@ onBeforeUnmount(()=>{if(focusTimer)clearTimeout(focusTimer);if(locateTimer)clear
 </template>
 </template>
 <style scoped>
+/* 复选框下的续行与勾选框右侧文字对齐（17px 框宽 + 9px 间隙 = 26px） */
+.under-check{margin-left:26px}
+p.under-check{margin:0 0 8px 26px}
 .edit-top{margin-bottom:14px}
 .im-error{margin:0 0 14px}
 .line-row{display:flex;align-items:center;gap:14px;padding:13px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:7px}

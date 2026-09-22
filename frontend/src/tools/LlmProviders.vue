@@ -48,7 +48,7 @@ const formOriginal = ref('')
 const formOk = computed(() => form.value.name.trim() && form.value.endpoint.trim() && form.value.model.trim() && (editingId.value || form.value.apiKey.trim()))
 const formDirty = computed(() => dialog.value && JSON.stringify(form.value) !== formOriginal.value)
 async function closeDialog() {
-  if (formDirty.value && !(await appConfirm({ message: '放弃未保存的修改？' }))) return
+  if (formDirty.value && !(await appConfirm({ message: '放弃未保存的修改？', danger: true }))) return
   dialog.value = false
 }
 async function save() {
@@ -114,12 +114,13 @@ async function test(item: any) {
       <button v-if="!item.isDefault" class="mini" :disabled="!!defaultingId" :title="DEFAULT_HINT" @click="setDefault(item)">{{defaultingId===item.id?'设置中…':'设为默认'}}</button>
       <button class="mini" :disabled="!!testingId" @click="test(item)">测试连通</button>
       <button class="mini" @click="openEdit(item)">编辑</button>
-      <button class="mini danger" @click="remove(item)">删除</button>
+      <button class="mini danger-btn" @click="remove(item)">删除</button>
     </div>
   </div>
 
   <div v-if="dialog" class="modal-backdrop" @click.self="closeDialog">
-    <section class="modal-card" role="dialog" aria-modal="true" aria-label="模型配置">
+    <!-- Escape 走与「取消」按钮同一条 closeDialog（脏表单先经 appConfirm 确认）；tabindex="-1" 保证点空白处后仍收得到按键 -->
+    <section class="modal-card" role="dialog" aria-modal="true" aria-label="模型配置" tabindex="-1" @keydown.esc.stop="closeDialog">
       <h2>{{editingId?'编辑模型配置':'新增模型配置'}}</h2>
       <p class="field-help">OpenAI 兼容 chat/completions 接口。API Key 加密保存、只写不读回；接口地址按已保存内容回显。</p>
       <label>配置名称 *<input v-model="form.name" maxlength="60" placeholder="例如：通用推理模型"/></label>
@@ -160,7 +161,6 @@ async function test(item: any) {
 /* 操作按钮组：固定不收缩、文本不换行，三个按钮与内容块中线对齐 */
 .provider-row>button{flex:none;white-space:nowrap}
 /* 全局 .danger 带 margin-top:12px（为明细页底部按钮设计），在 flex 行内会造成删除按钮下移 6px，这里归零 */
-.provider-row .danger{margin-top:0}
 .pill{font-size:10px;border-radius:8px;padding:1px 8px;background:var(--blue-soft);color:var(--blue-ink);margin-left:6px}
 .form-row{display:flex;gap:10px}
 .form-row label{flex:1}

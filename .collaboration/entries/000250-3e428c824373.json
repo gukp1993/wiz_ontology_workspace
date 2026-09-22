@@ -1,0 +1,35 @@
+{
+  "ticket": "df97605668fc45ecb96837b7c45cae4d",
+  "task": "assist-fill-production T6 属性接入（O2 私有+共享属性，分支 codex/assist-fill-production）",
+  "status": "implemented",
+  "summary": "三文件交付：propertyBinding.ts 重写为 autofill/1 对接面（契约业务枚举快照、五 codec、applyDraft 落位、typeCore 原子组、formatting 依赖序、只读 refusals）；PropertyManager.vue 页头「✦ 自动填写」+宿主状态条（已填 N 项/撤销/查看修改）+手改通知+只读 api 包装转 unresolved，旧建议卡 UI 移除；测试重写 74 项全过，vue-tsc 0 错误。",
+  "decisions": [
+    "codec 只做枚举/结构校验+写扁平副本；真正落位统一在 applyDraft（唯一同时可见 dataType+obsType+formatting，保证原子组与依赖序）",
+    "formatting kind 与生效数据类型一致性放 applyDraft 拒绝（codec 时点看不到同轮 dataType 操作）；样式白名单/历史样式归后端 blocked+保存校验兜底",
+    "离开 timeSeries 须带显式 obsType 空串标记；缺清空标记的不完整离开组按矛盾组整组拒绝，不自动补清",
+    "状态条 N 按宿主 applyDraft 前后投影 diff 去重（含类型联动清理的 formatting，比引擎 copy 级计数如实）；引擎 snapshot() 调用点=新撤销单元边界，宿主据此对齐轮次",
+    "只读保护：binding 层 writable()+refusals 拒写为主；PM api 包装请求期只读时把 operations 转 unresolved 面板展示"
+  ],
+  "verification": [
+    "tests/assist_property_manager.test.mjs 重写 74/74 通过（原子组成组/无半组/独立合法内容照填/撤销单元/续轮/手改禁撤销/保存计数不变/只读拒绝/非 assist 回归）",
+    "npx vue-tsc --noEmit 0 错误；assist_panel 22/22、test_autofill_state 68/68、dependency_guard 22/22、editor_head_consistency 19、object_workspace 7/7、global_interaction 7/7、undo_history 7/7、formatting_options 全过",
+    "npm run lint：本任务文件 0 违规（既有 6 处 no-unused-expressions 在 T7/T8 归属文件）"
+  ],
+  "next": [
+    "assist_object_workspace.test.mjs 7/14 失败：该套件把 PropertyManager 桩为 render:null 且不引用 propertyBinding，失败在对象/链接编辑器流程（T5 归属文件），与 T6 无执行路径交集，待 T5 处理",
+    "AssistPanel 无 id prop，按钮 aria-controls 指向的 pm-assist-drawer 暂悬空（已用 trigger-id 反向接线），T3 加 id 支持后补全",
+    "浏览器验收与 Codex 独立验收待排；未做 git 提交（任务指令禁止 git 命令，提交由协调者安排）"
+  ],
+  "references": [
+    "frontend/src/assist/propertyBinding.ts",
+    "frontend/src/ontology/PropertyManager.vue",
+    "tests/assist_property_manager.test.mjs",
+    "文档/接口文档/04-编排与LLM接口.md §6.6"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T11:17:59.928416+00:00",
+  "sequence": 250,
+  "filename": "000250-3e428c824373.json",
+  "record_hash": "4472f158c69ca1658f1bfb1c0e714938694fea584ffa5e02e3b0fc76250cd6ff",
+  "context_advanced": true
+}

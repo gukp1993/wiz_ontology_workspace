@@ -1,0 +1,32 @@
+{
+  "ticket": "0654174bce214ab092deedeaa5091b9a",
+  "task": "assist-fill-production T9 收尾：mapping_forms 回归修复至全绿",
+  "status": "implemented",
+  "summary": "在已登记 worktree（codex/assist-fill-production）仅修改 tests/mapping_forms.test.mjs 一个文件，把 node --import ./tests/ts_hooks.mjs tests/mapping_forms.test.mjs 修到退出 0（此前 main 基线即失败：PropertySources「未配置先进 none 态」改版后旧断言未同步，且前一 agent 的部分修复留下 openEditor('legacy') 空指针与已删 rule 变量 ReferenceError）。修复口径：保留前一段已修的 none 态/freshDbDraft/redis 保存失败保草稿/LinkMappings 断言；遗留学段按当前存活行为重写——旧 computed 家族（规则绑定/inlineSql/calcFunction）已无新建与编辑入口（switchKind 无 computed 分支、模板只剩只读分支），改用「已存绑定夹具 + openEditor/selectImplementation/setRuleInput/saveDraft（存活 api）」驱动同一套 issuesOf 校验与 commitProperty 回写；scanSqlParams/effectiveParams 纯函数直测锁定；QueryRuleManager（V1→V4 迁移保存/详情/采样复用/计算函数全链）与 LinkMappings 原样保留。死链路删除并注释说明：「实现输出」编辑表单、V3/V4 声明输入页面展示行、内联 SQL 新建默认 mode=inline 视图模型与页面参数行、A9 方式切换保草稿。",
+  "decisions": [
+    "规则/内联/计算函数各段以已存 computed 绑定夹具为起点（propertyView 解码→saveDraft 校验→commitProperty 回写），替代旧手工 mode='rule' 草稿；只改断言不改组件源码",
+    "b.properties.legacy（图外属性）改为复用图内属性 note/power/history/tsnote 等夹具，消除 valueShapeOf 空指针",
+    "恢复 socRule/reusableScadaRule 夹具供 QueryRuleManager 段引用（前一 agent 误删导致 ReferenceError）",
+    "断言计数 147→133：差额为死链路页面展示断言（约 14 处）+ 新增行内注释；存活覆盖点（声明式输入初始化、值类型相容、未绑定参数拦截、取消无写入、稳定标识公式、循环依赖等）全部保留"
+  ],
+  "verification": [
+    "node --import ./tests/ts_hooks.mjs tests/mapping_forms.test.mjs → 退出 0（通过：四类来源+链接缺连接+遗留规则绑定+内联 SQL+登记对象+计算函数全链）",
+    "回归冒烟全过：assist_property_sources 12/12、assist_identity_link 16/16、assist_object_workspace 9/9、assist_property_manager 54/54",
+    "git diff 确认本轮仅 tests/mapping_forms.test.mjs 一个文件变化（组件改动为并行 T7/T8/T9 既有工作区内容）"
+  ],
+  "next": [
+    "待 Codex 独立验收；未覆盖项已在文件头注释与交付报告登记：V3/V4 声明输入/runtime 参数的页面展示行、内联 SQL 页面参数绑定行、A9 方式切换保草稿（均随旧表单移除，无存活载体）"
+  ],
+  "references": [
+    "tests/mapping_forms.test.mjs",
+    "frontend/src/project/PropertySources.vue",
+    "frontend/src/project/QueryRuleManager.vue",
+    "frontend/src/project/inlineSql.ts"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T08:58:52.154589+00:00",
+  "sequence": 163,
+  "filename": "000163-80b4e1ea8e72.json",
+  "record_hash": "ac76be3423c30eae340aed7b1e1623fdb6a9ae8332a77d3c087ddbc92e7d1782",
+  "context_advanced": false
+}

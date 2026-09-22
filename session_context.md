@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`25a87dee87971a86`
+上下文版本：`08e6e081d6fb29dd`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,132 +22,137 @@
 
 ## 最近交接（新 → 旧）
 
-### 模型设置思考强度选项（codex/auto_build 独立功能提交） · zcode · 已实施，待验收
+### model_setting-环境创建 · zcode · 需求已交付
 
-时间：2026-09-22T15:19:56.334008+00:00；记录：`.collaboration/entries/000215-a4d1aec8e9f0.json`
+时间：2026-09-22T16:00:40.560421+00:00；记录：`.collaboration/entries/000257-658879a5b43a.json`
 
-用户指令「模型设置，编辑可设置思考强度」，在 auto_build worktree 实施并提交 c4ba68a（基于 HEAD 0057e9f，与修复提交 1df156f 无文件重叠）。范围：LLM 提供方配置新增 thinking 字段（default|off）——接口文档 04 §4.1/4.2/4.4 + README 变更记录先行；存储列 wb_model_configs.thinking + Alembic 迁移 20260922_0005（server_default 与迁移 DDL 一致）；llm_providers 校验/保存/回显（非法 400、读取宽容）；flow_routes save/test 透传；llm_client.apply_provider_extras 统一 chat/chat_once_result/test_connect 的家族微调（bigmodel.cn+off → thinking:{type:disabled}；minimax 既有行为不变；其他家族不追加）；前端模型设置高级设置加选择器与列表标记。实测依据：GLM-5.3-Flash 关思考单批 150-260s→15.2s（今晚 18891 诊断系列实测）。
+按用户指令从 main(5bfb605) 创建 model_setting 分支与 worktree/model_setting，仅建环境：端口 18971 实测空闲；数据根工作树自含（transfer backup WAL 快照 + 根密钥副本 0600 + ontology-build-blobs 随迁，登记含真实数据不可自动丢弃）。快照体检 integrity ok、副本根密钥推导 key_id 与库内凭据记录匹配、wb_model_configs 现存 2 行（GLM-5.3-Flash/minimax）。依赖未装、服务未启、未开发。登记 workbench-tasks/model_setting.json 与开发计划 §7 环境表。
 
-- 验证：tests/test_llm_providers.py 53/53（新增 12 项：枚举校验/存取回显/路由 400/请求体四组合/chat 桩捕获）；全量回归 tests/run.py all 78/78（exit 0，含 1df156f 修复后的组合状态）；前端 vue-tsc typecheck + vite build 通过；ruff 无告警；迁移演练：transfer init 新库 schema=20260922_0005 含列、裸 SQL 插入回落 default、revision 链 0004→0005 完整
-- 下一步：复验对象更新为 1df156f（验收修复）+ c4ba68a（本功能）；thinking off 的抽取质量 A/B（金样质量门）仍属建议项未做；待 Codex 复验通过后停在待用户授权集成；18891 隔离实例需重启才加载新代码（未动运行中服务）
-- 依据/文档：提交 c4ba68a；接口文档 04 分册 §4；迁移 20260922_0005；实测数据链：本会话 18890/18891 诊断（GLM 默认/关思考/minimax 对照、整文件一发截断实验）
+- 决定：分支名用用户指定的 model_setting（非 codex/ 前缀模板）；端口取 18971：18961/18913 被占，18951 有旧任务关联，选无关联空闲口
+- 验证：git worktree list 确认新树与 auto_build 并存、分支从 5bfb605 派生；transfer backup 输出 11382784B 与 main 库一致；sqlite immutable 只读体检 integrity=ok；key_id 匹配验证：副本根密钥 SHA256 前 16hex == wb_credentials.key_id（c26b32a0c13462a5），副本内加密凭据可解密
+- 下一步：待用户开发指令（执行指令.md §1 模板二）；T0 三决策点（目录范围//v1/models/anthropic-messages）未拍板前不冻结契约
+- 依据/文档：workbench-tasks/model_setting.json；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md（§7 环境登记）
 
-### auto-build-output-v3 · zcode · 已实施，待验收
+### 模型供应商与模型管理改版-需求四件套交付 · zcode · 已确认决定
 
-时间：2026-09-22T13:52:30.658299+00:00；记录：`.collaboration/entries/000214-c17dee5bf734.json`
+时间：2026-09-22T15:53:41.606973+00:00；记录：`.collaboration/entries/000256-0332c7e4714b.json`
 
-验收修复 5 项全部完成并提交 1df156f（基线 e365141，验收结论 entry 000212 有条件通过）。P1-1 实验 commit_failure 重复回调幂等返回 False（state 场景11 + 脚本B 契约3.5 双适配器，漏网原因防复发）；P1-2 容量三通道冻结口径（dispatch=soft(在途+1)−2KiB / write=无在途 soft(0)+16KiB / >1MiB 硬拒；在线/实验写入通道一致；claim 保险丝转 CHECKPOINT_BUDGET_EXCEEDED 受阻收口）——验收反例 O-cap3/O-cap4 复现修复；P2-1 在线 amend 拒初建 + facade 兜底路径首次真实覆盖；P2-2 陈旧 docstring 清零（grep=0）；P2-3 resume 预检 _safe_schema_version 安全解析→422（'x'/'2.5'/99/'' 四态 + 同源修复 _v2_run_view 轮询不裸抛）。验证：定向 6/6 全绿（state 90/acceptance 7契约/storage 85/execution 15场景/budget_http/budget_resume）+ 全量回归 77/77 + ruff 全过。停在待复验，未合并 main。
+按用户指令参照 ZCode 开源配置模型（本机 ~/.zcode/v2/provider_config.json 与 kingsword09/zcode-cli 文档、应用内置目录 zcode-builtin.json 已核实）交付模型配置改版四件套：三层配置模型（内置目录→供应商模板继承→模型规则目录覆盖/手动）、默认模型三元组 {providerId,modelId,reasoningLevel}、wb_llm_providers/wb_llm_models 两表+Alembic 迁移（providerId 稳定使密钥零重加密）、9 个 API 端点契约、T1-T10 并行任务表。未实施业务代码。
 
-- 决定：容量三通道为最终冻结口径（整合计划§13.6 记录）：dispatch(在途+1) 守卫、write 允许终态预留区（1MiB−8KiB 内）、硬上限 1MiB 不放松；跨终态回调整合差异（succeeded 后收 failure：实验抛/在线 False）作为已知差异如实登记未对齐（两者都不改写终态）；P2-3 属实现向文档对齐（400→422），不构成协议变更，未改接口文档
-- 验证：python3 tests/run.py all → 77/77 全绿（/tmp/all_reg5.log）；定向：state 90 / acceptance 7契约双适配器 / storage 85 / execution 15场景 / budget_http / budget_resume 全过；验收反例实证：dispatch(0)=1013760 < soft(1)=1015808（余量2048覆盖claim）；write(0)=1040384=1MiB−8KiB；>1MiB 仍拒；ruff check workbench/ experiments/ tests/ → All checks passed
-- 下一步：交验收方复验（对象 1df156f）；复验通过后待用户授权集成合并 main
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/修复指令_控输出v3验收问题_20260922.md；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §13.6
-
-### 本体生成控输出 v3 验收问题修复指令交付 · zcode · 需求已交付
-
-时间：2026-09-22T13:35:15.897976+00:00；记录：`.collaboration/entries/000213-b0fea050f0c3.json`
-
-用户要求交付修复指令。已写入 worktree 未跟踪文件 文档/需求/20260920_从物料自动构建本体/修复指令_控输出v3验收问题_20260922.md（自包含：总指令/环境边界/5 项冻结要求与建议实现/新增测试映射/验证清单/交付要求/复验口径），待实施者随修复提交入库。P1-1 实验 commit_failure 幂等返 False；P1-2 容量在途口径统一+16KiB 终态预留落地+执行器兜底转 blocked（四条冻结要求）；P2 三项（amend 拒初建+facade 兜底集成测试、docstring 清零、路由预检安全解析 422）。授权边界=原 worktree 修复+自测+提交，停在待复验；不含集成/合并。
-
-- 下一步：实施者按指令修复并自测提交，交复验；复验口径=反例重放+脚本B/预算存储/执行器矩阵+全量回归；P1-2 具体实现路线为建议（guard 收紧 soft(1)、终态宽限 soft(0)+16KiB、claim 兜底），允许等价替代但四条冻结要求缺一不可
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/修复指令_控输出v3验收问题_20260922.md；验收结论 entry 000212-16f646c003a2
-
-### 本体生成控输出 v3（codex/auto_build）独立验收 · zcode · 已验证
-
-时间：2026-09-22T13:30:05.421049+00:00；记录：`.collaboration/entries/000212-16f646c003a2.json`
-
-用户直接指令 zcode 执行独立验收（角色按用户指定优先）。验收 SHA=e365141（代码面 f72fb98，HEAD 未前进；较指令文档的 41efcc1 仅多两个文档/交接提交，无代码差异）。结论：有条件通过——主体与声明相符，但 2×P1+3×P2 需原分支修复后复验。P1-1：ExperimentState.commit_failure 重复回调抛 ValueError 而非冻结语义 False（在线侧返回 False；2ee24cd 只改在线侧；D17 脚本B幂等契约只测 commit_success）。P1-2：容量软阈值边界——在线 _plan_guard 按 inflight=0 放行、claim_job 按新文档在途=1 抛 CheckpointCapacityError 且执行器无捕获，未按冻结契约转 blocked/CHECKPOINT_BUDGET_EXCEEDED（约 8KiB 窗口，resume 不可自愈）；ExperimentState claim 用 inflight=0 与在线口径不一致。P2：在线 amend_plan 无既有计划检查可初建（实验侧拒绝，双实现不一致，无现行生产路径）；docstring 陈旧仍写幂等返回 True；post_run_resume 内联预检非整数 schemaVersion 裸抛 int() 得 500 而非 422。
-
-- 验证：§3-B 全量回归 all 独立复跑 77/77（exit 0）；§3-C 前端 typecheck+build 复跑通过（/tmp/acc_v3_frontend.log）；§3-E 脚本A budget_e2e 直跑内部 28/28；脚本B 6 契约×online/experiment 双适配器全过；§3-A+§4 反例脚本 47 项（/tmp/acc_v3_counterexamples.py）：契约抽查四项全过；45 过 2 不符即 P1-1 与 amend P2；取消语义 5 项、路由守卫 6 例全过；§3-D 5 截图复核通过（合成种子 G3 展示验收，页面自带标注）；§3-F D18 抽查数字全部回溯一致，G2 三结论为未通过/未测/不可证未夸大；§3-G 红线全过：默认关闭+legacy；D18 证据无密钥命中；e365141 不在 main；18765/18890 PID 未动；工作树真实库 mtime 未触碰
-- 下一步：原分支修复 P1-1、P1-2 后交复验（建议顺带三项 P2）；复验范围可限定反例重放 E-bool3/O-cap3/O-cap4/O-amend1 + 脚本B/预算存储矩阵重跑；验收通过后停在待用户授权集成；本轮未改业务代码、未合并 main、未 push、未启停 18765/18890
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收指令_控输出v3_20260922.md；证据：/tmp/acc_v3_regression_all.log、/tmp/acc_v3_frontend.log、/tmp/acc_v3_matrices.log、/tmp/acc_v3_counterexamples.py
-
-### auto-build-output-v3/D18_报告 · zcode · 已实施，待验收
-
-时间：2026-09-22T13:03:18.243804+00:00；记录：`.collaboration/entries/000209-bf762b23af56.json`
-
-D18 真实试验效果报告已交付：/tmp/wiz_pilot_d18/D18_真实试验报告.md（249 行：实验设置/每臂结果表/G2 三项判定/机制结论/未完成项/codec 上线建议/脱敏声明）。本子任务只写报告，未跑试验、未改仓库代码（git status 无本人改动）。全部数字自 results.json 与状态库 SQLite 实读，26 项交叉断言 0 不一致。G2：质量门未过（D object 缺 6/6、property 缺 41/41、link 缺 2/4，命中 2/51、extra 134；34 条结构问题全 duplicateIdentity=17×2金样；precision A 0.0357→D 0.0147 降 2.10pp 超阈，recall A 0.0196→D 0.0392 升 1.96pp 未触阈）；compact 收益门未测（B/C 未跑，不编造收益数字）；成本取舍不可证（A 5/6 unknown、D 1/12 unknown）。A 臂首轮 3×TIMEOUT 已重跑完成且仍 failed（6 调用、knownCompletionTokens 8344、unknown 5、8 条 danglingRef、P 0.0357/R 0.0196），报告 A 列采信重跑、首轮仅作故障记录。
-
-- 决定：codec 上线建议：机制可用，但 compact 收益未实测前不启用——保持在线默认 legacy-v1、compact-v1 仅实验能力默认关闭（对齐整合计划 v3 §12）；A 列采信 A 臂重跑（out-armA）；不用首轮 precision=1.0（空集默认值）作基线，否则得出下降 98.53pp 的假结论；拒绝编造：未给任何 compact 收益百分比与 D-vs-A 成本增幅；A/D 已知部分 7.2×/4.4×/6.6× 仅标非正式参考、不作判定依据；机制结论如实标注：截断拆分链路由 fake 回归覆盖、真实运行未触发（三个 run 的 jobSplit 均 0、无 finishReason=length）
-- 验证：自读 results/.../simple-A-r1.json（首轮）、simple-D-r1.json、out-armA/results/.../simple-A-r1.json、两份 report.json/report.md、config.json/config-A.json、状态库 campaign.sqlite3 与 simple-{A,D}-r1.sqlite3（只读 uri）；26 项数值交叉断言（calls/known/unknown/finishReasons/errorCodes/states/durationMs/promptBytes/events/campaignCounters/qualitySummary/missingByType/coverage/budgetProfile）全部一致，0 不一致；脱敏核对：无 key/api_key/password/secret/bearer 样式串，无 prompt/response 正文键；候选 key/name 均来自仓库内合成 fixture；报告无遗留占位/待补文字（grep 确认）
-- 下一步：待 Codex 验收报告（独立核对数字与 G2 口径）；补齐项（报告 §6）：原 8KB 真实样本并登记 hash；补跑 B/C 臂分离 codec 与装箱效应；消除跨作业重复身份与同义多命名；provider 返回 reasoning/completionBytes；排查 TIMEOUT 频发（三轮共 9 次）；报告在 /tmp（仓库外），如需入库归档请指定仓库内路径与提交范围
-- 依据/文档：/tmp/wiz_pilot_d18/D18_真实试验报告.md；/tmp/wiz_pilot_d18/out-real3/report.json；/tmp/wiz_pilot_d18/out-armA/report.json；/tmp/wiz_pilot_d18/out-real3/results/d18-smoke-20260922/simple-D-r1.json；/tmp/wiz_pilot_d18/out-armA/results/d18-armA-20260922/simple-A-r1.json
-
-### auto-build-output-v3/D14 · zcode · 已实施，待验收
-
-时间：2026-09-22T11:45:59.977606+00:00；记录：`.collaboration/entries/000208-97e8b52fd85c.json`
-
-D14 CLI/模型适配/四臂运行已实施（worktree auto_build，分支 codex/auto_build）：新建 experiments/ontology_token_pilot/adapter.py（FakeModel 脚本事件 length/429/bad_json/crash/unknown_usage、RealModel 懒加载 llm_client、load_config、load_sample_facts 确定性样本事实、run_arm、campaign 预算与暖缓存）、__main__.py（冻结用法 argparse CLI，退出码 0/2/1，report.json+report.md 含 G2 三项判定）、README.md 与 tests/test_ontology_token_pilot_cli.py（7 场景）。四臂全走 batch_execution.run_plan 唯一共享核心：C/D=plan_initial+缺省 pack_next，A/B 仅注入固定20批 planner 且差异登记 meta.adapterDiffs；AST 断言无第二套调度器。
-
-- 决定：A/B 对照臂用 batch_execution._plan_more 既有 planner 注入点实现固定 20 事实批，不复制任何调度逻辑；A/B 无 plan_initial 初始作业；campaign 预算与模型响应暖缓存同放 <output-dir>/states/<campaign>/campaign.sqlite3（跨臂/样本/重复/续跑共享）；物理请求计数逐次即时落库（保守），已知 completion 按本次 runAttempt 收口补记不双计；终态（succeeded/failed/blocked）结果续跑跳过不重做，历史受阻结论保留进续跑报告 notes；重跑须显式删该 run 的结果与状态文件；compact encode_request 实现把目标单元放 payload['facts']（带 alias/unit），FakeModel 按实际实现协议响应（output_codec docstring 的 'units' 键与实现不一致，未改 D06 文件）；结果文件/报告统一过 D13 redact_report；real 模式仅显式 --mode real 时 import workbench 存储层，key 只留内存 provider dict
-- 验证：python3 tests/run.py --test tests/test_ontology_token_pilot_cli.py → 退出码 0（7/7 场景：四臂 CLI 子进程、共享核心+AST 无第二调度器、截断 split 父+子入账、campaign maxAttempts=2 第二臂受阻退出2+续跑累计不重置、repeats=2 暖缓存零物理调用、compact coverage 全命中 decode+金样评价、参数错误退出1）；回归：tests/test_ontology_build_batch_execution.py、test_ontology_token_pilot_state.py、test_ontology_token_pilot_metrics.py、test_ontology_token_pilot_fixtures.py 全部通过；ruff check（新三文件）通过；--mode real 无 provider 时优雅受阻退出 2 并出报告（未派发任何真实调用）
-- 下一步：real 模式实测与 G2 真实收益归 D18；已知限制：campaign 预算库随 output-dir 走，换目录=新预算库（v3 要求跨目录共享，未实现，待 C 裁决）；默认预算 128 物理请求跑不全三样本×四臂矩阵（约需 114 次，C/D 软目标装箱批较小）；扩额须配置显式给出；blocked/failed run 不自动重试（重跑须删该 run 文件）；如需协议登记可将 skip/预算受阻语义并入接口文档 08
-- 依据/文档：experiments/ontology_token_pilot/adapter.py；experiments/ontology_token_pilot/__main__.py；experiments/ontology_token_pilot/README.md；tests/test_ontology_token_pilot_cli.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §8/§11/§12
-
-### auto-build-output-v3/D04 · zcode · 已实施，待验收
-
-时间：2026-09-22T10:39:42.954515+00:00；记录：`.collaboration/entries/000207-82a59abec002.json`
-
-D04 装箱/拆分/稳定ID/覆盖守恒已实施（worktree auto_build，分支 codex/auto_build）：新建 batch_plan.py（纯函数，仅 stdlib+contracts+budget）与 93 断言回归；plan_initial/pack_next/split_or_block/verify_split_coverage/job_definition/estimate_batch_messages 全按冻结规则实现，stable_job_id 复用 contracts。协议变更请求：field selector 拆分子目标为新派生 id，batch_state.job_split 现协议无登记事件，D09 前只能到映射层，待 C 裁决。
-
-- 决定：pack_next/plan_initial/split_or_block 在冻结签名外仅追加 keyword 默认参数（plan_epoch/parent_job_id/parent_split_path/root_job_id/scope_payload），不影响冻结调用；软目标 V 用契约 cold_output_estimate(整批slots,整批I)；硬输出 ΣE 用 expected_output（校准取 max）；反馈收缩以候选单元 E 调 shrink_for_feedback 只缩不扩；field 子目标 targetId 按冻结公式本地派生（t-+sha256(factId+selector)[:16]），不 import semantic_units；field 拆分子作业 contextFactIds 置空（同事实不得既当主目标又当背景）；单元/目标二分子作业 context 取对侧事实 ≤8
-- 验证：python3 tests/run.py --test tests/test_ontology_build_batch_plan.py → 退出码 0（93/93）；ruff check 两新文件 → All checks passed；相邻回归 budget/semantic_units/batch_state 测试各 1/1 通过；batch_state 联调：5 个事件全部受理、validate_plan_doc 零错误、pending 清空、coverage_check ok
-- 下一步：待 Codex 独立验收 D04（不合并 main）；selector 子目标入状态机的协议扩层待 C 裁决；D09 接线时复核 pack_next 整批重估 O(n²) 开销
-- 依据/文档：workbench/ontology_build/batch_plan.py；tests/test_ontology_build_batch_plan.py；workbench/ontology_build/batch_contracts.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md
+- 决定：模型配置从扁平单表改为 ZCode 式三层结构：仓库内置目录 JSON + 供应商(模板继承/覆盖) + 模型规则(catalog 增量覆盖 | manual 全量)；默认项升级为 {providerId,modelId,reasoningLevel}，替代 models.default_provider_id；isDefault→defaultSelection 属破坏性接口变更需登记；api_type 支持 openai-chat-completions(P0) 与 anthropic-messages(P1)；不抄 OAuth 账号体系/openai-responses/map 表达式引擎，参数注入用按协议的固定映射枚举；迁移保持 provider_id 原值不变，密钥 AAD 不变零重加密；旧编排节点仅 providerId 的绑定回退该供应商默认模型；开放决策点待用户拍板：内置目录首版收录范围、/v1/models 拉取按钮、anthropic-messages 是否首版做
+- 验证：现状调研：Explore 子代理只读核实 llm_providers/flow_routes/llm_client/schema/前端设置页/接口文档04 全链路；ZCode 侧核实：本机 provider_config.json 实际结构、zcode-builtin.json(rev30) 模板与模型规则计数、开源仓库 provider.example.json 与 PROVIDER_CONFIG 文档；原型 HTML 标签配对与 JS 语法检查通过；文档不含任何真实密钥（provider_config.json 中的 Key 未复制）
+- 下一步：用户拍板 3 个开放决策点后冻结契约（开发计划 T0）；实施需用户按执行指令 §1 下达 worktree 创建指令；接口文档先行（T3）
+- 依据/文档：文档/需求/20260922_模型供应商与模型管理改版/需求说明.md；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md；文档/需求/20260922_模型供应商与模型管理改版/执行指令.md；文档/需求/20260922_模型供应商与模型管理改版/交互原型_v1.html
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
-### auto-build-output-v3/D10 · zcode · 已实施，待验收
+### assist-fill-production · zcode · 已实施，待验收
 
-时间：2026-09-22T10:32:03.794423+00:00；记录：`.collaboration/entries/000206-bdcb2618e958.json`
+时间：2026-09-22T15:21:05.739883+00:00；记录：`.collaboration/entries/000255-7512133e418a.json`
 
-D10 终态/lease/取消/旧版本守卫已实施：runner.py 纯追加 5 个守卫（finish_success_guarded 先跑 final_state_check，不过返回 (False, violations) 不改 run；resume_plan_guard 只读分 legacy_*/v2_*，未知版本 UNKNOWN_CHECKPOINT_SCHEMA 绝不删候选；plan_fingerprint_matches；resumable_jobs；claim_for_resume 进入即轮换 lease）。既有函数零改动（183 行全追加）。新测试 10 场景 93 断言全过（退出码 0），既有 8 套相关回归全绿。未提交 git（按指令，待协调者）。
+用户截图反馈：自动填写抽屉在生成中（「正在填写…」态）主按钮渲染成空框。定位为 CSS 特异性反吃——.assist-actions button(0,1,1) 只覆盖 background/border 声明，而裸 .assist-primary(0,1,0) 的 color:#fff 仍生效，按钮变白字白底（disabled 态 opacity:.5 时更明显）。修复：规则抬到 .assist-actions button.assist-primary（hover 同步 .assist-actions button.assist-primary:hover:not(:disabled) 压过 (0,3,1)），并在 DESIGN.md 共享语义类表登记该不变量与失败症状。加 3 项回归锁（tests/assist_panel.test.mjs ⑥a/⑥b/⑥c：必须用抬特异性的写法、hover 同款、不得再出现裸单类声明）。全仓同类反吃扫描（裸变体类 + 同父后代选择器覆盖）结果 0 处。前端 45/47（剩 2 个 main 既有债务）、构建过、18951 已重启。提交 eec8314。
 
-- 决定：finish_success_guarded 冻结 (ok, violations) 元组：拒绝时不写 failed+blocking、不动 run（任务书冻结口径），由 D16 决定后续；resumable_jobs 可续叶=queued/running/failed（§9 场景5 右子返回）；blocked 不返回（§6 须显式新计划）、superseded 不返回（§4.3）、成功叶不重做；begin_worker_scope(lease=None) 只读不轮换、不构成接管，故另立 claim_for_resume（复用 submit 的轮换语义，context manager，退出作废）；resume_plan_guard 防御码 RESUME_MODE_INVALID/RUN_NOT_FOUND/RESUME_GUARD_ERROR（fail-closed），在冻结返回形状内；runner.py 顶部追加 import json、batch_contracts（后者仅标准库依赖，无环）
-- 验证：python3 tests/run.py --test tests/test_ontology_build_budget_resume.py → 退出码 0（93/93）；python3 tests/run.py --test tests/test_ontology_build_finish_guard.py → 退出码 0；python3 tests/run.py --test tests/test_ontology_build_runner_isolation.py → 退出码 0（34/34）；附加回归退出码均 0：late_write、progress_log、batch_state、batch_accounting、budget_storage、test_ontology_build(HTTP e2e)；ruff check 两文件 All checks passed
-- 下一步：D16：resume 路由先调 resume_plan_guard；auto 用 plan_fingerprint_matches（期望指纹按冻结 parts 组装）不一致→422 BUDGET_PLAN_MISMATCH；abstract 按 v2_abstract 建新 epoch（候选清理+计划替换同事务）；D16：generate 收尾改调 finish_success_guarded（plan_doc 传 checkpoint 形态 {'generate': doc}），拒绝时不标 succeeded；协调者安排 git 提交（本轮未操作 git）
-- 依据/文档：workbench/ontology_build/runner.py；tests/test_ontology_build_budget_resume.py；workbench/ontology_build/batch_contracts.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md；文档/接口文档/08-从物料自动构建本体接口.md §14.5
+- 验证：修复后源码核对：.assist-actions button.assist-primary + hover 变体，无裸 .assist-primary 声明；tests/assist_panel.test.mjs 25/25（含新增 ⑥a/⑥b/⑥c 三项样式回归锁）；全仓扫描裸变体 + 同父按钮覆盖的潜在反吃：0 处；前端 47 套件 45 过（flow_test_workspace/legacy_graph_bridge 为 main 既有债务）；npm run build 过；18951 重启（PID 81880）
+- 下一步：待独立验收（交付 SHA 更新为 eec8314）；用户可在 18951 刷新页面确认按钮恢复蓝底白字
+- 依据/文档：DESIGN.md（共享语义类表新增 .assist-actions button.assist-primary 行）；frontend/src/assist/AssistPanel.vue:309-313；开发计划 §9
 
-### auto-build-output-v3/D12 · zcode · 已实施，待验收
+### 整表自动填写 T9 集成与对抗测试（tests/test_autofill_integration.py） · zcode · 已实施，待验收
 
-时间：2026-09-22T10:02:33.780153+00:00；记录：`.collaboration/entries/000205-a6d21e4f29e5.json`
+时间：2026-09-22T12:53:54.209685+00:00；记录：`.collaboration/entries/000253-68f101d5d5e7.json`
 
-D12 试验 SQLite 适配与隔离缓存已实施：新建 experiments/ontology_token_pilot/state.py（ExperimentState/open_state/candidate_id_for/CheckpointCapacityError；标准库 sqlite3，WAL+busy_timeout=5000，显式 BEGIN IMMEDIATE…COMMIT 异常回滚；复用 batch_state.apply_event/validate_plan_doc 推进与校验，不复制状态机；计划 doc 整体 JSON 列，候选结构化列+payload_json 全量列，candidate_id='c-'+jobId[:12]+'-'+局部键 幂等；每次落库前 contracts.checkpoint_fits 守卫超限抛本地 CheckpointCapacityError；冷缓存独立 KV 表 cache_get/cache_put 支持 ttl、跟 db_path 跨重跑共用）与 tests/test_ontology_token_pilot_state.py（10 场景 82 断言：往返/claim 先落库/commit_success 原子与注入候选表 drop 回滚/幂等/split 父子同事务且子可 claim/interrupted_unknown 聚合 unknownUsageCalls/501 候选分页无重无漏/超 1MiB 容量与 commit 路径注入上限回滚/冷缓存 ttl/双库隔离+零 workbench.storage 依赖）。
+交付 tests/test_autofill_integration.py（隔离临时根+自管端口 18941/18942 子进程服务与模型桩，python3 直跑 12 组断言块/130 处 check，实测 5.4s，退出码 0，测后自起进程全部停止）+ tests/fixtures/autofill_integration_seed.json（订单/供应商非储能种子）+ tests/run.py 一行登记 unit 组。覆盖 A09/A14 生命周期（迟到响应零写入、同 token 连轮、无模型 422、超时 504、空 operations→200 empty、截断 502）、A15 安全（伪造/篡改/畸形 token、跨用户、契约外字段与任意 JSON 路径→unresolved、XSS 原样、密钥与 trace 不泄漏）、A16 契约漂移、D1~D7、非储能全链路。生产缺陷 1 项按能力探测+阻塞登记（缺陷修好后自动改跑完整断言）。
 
-- 决定：commit_success 返回值口径：首次提交 True；重复回调（job/attempt 均已 succeeded）返回 False 跳过不写候选；attempt 非 started / job 非 running 一律 ValueError（晚结果拒绝、取消不复活）——已写入模块 docstring 供 D17 双适配器参数化对照；claim_job：queued→claimed+started；running（崩溃恢复续尝试）→直接追加 started；其余状态 ValueError；requestedMaxTokens 按 job.estimate（requestedMaxTokens/requestOutputTokens/expectedOutputTokens）→budgetProfile.requestOutputTokens→contracts 默认值派生；commit_split：在途 started 尝试按 attempt_succeeded+finishReason='length' 收口（usage 取 event_usage）；queued 父作业无在途直接拆分不记账；子作业合法性（覆盖守恒/深度/id 冲突）全部由 batch_state.job_split 校验；save_plan 守卫顺序：validate_plan_doc → checkpoint_fits（超限 CheckpointCapacityError 库内不变）→ 事务；同指纹重存幂等覆盖、异指纹 ValueError 拒绝串写；mark_interrupted_unknown：不存在/非 started id 跳过不抛，返回实际收口数；同一事务批量收口
-- 验证：python3 tests/run.py --test tests/test_ontology_token_pilot_state.py → 退出码 0（82/82 断言通过）；python3 tests/test_ontology_token_pilot_state.py 直跑退出码 0；~/Library/Python/3.9/bin/ruff check experiments tests/test_ontology_token_pilot_state.py → All checks passed；回归复跑：test_ontology_build_batch_state.py、test_ontology_build_batch_accounting.py、test_ontology_token_pilot_fixtures.py 均 0；场景 10 断言导入后 sys.modules 无 workbench.storage、state.py 源码无该 import 语句
-- 下一步：D17 组合时统一 CheckpointCapacityError 与双适配器参数化用例（含 commit_success 返回值口径核对）；D09/D14 使用本模块时按 docstring 的方法语义要点接线；Persistence 方法签名清单已在交付报告列出
-- 依据/文档：experiments/ontology_token_pilot/state.py；tests/test_ontology_token_pilot_state.py；workbench/ontology_build/batch_contracts.py（持久化接口节，D00 冻结）；workbench/ontology_build/batch_state.py（D07）；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §8 D12 行、§11
+- 决定：工作目录已有同名未提交半成品（上一位 agent 遗留）：在其上续接修正，未推倒重写。；修正该半成品两处测试自身缺陷（非生产缺陷）：identity 场景传空草稿，把 P1 分级候选的正确 fail-closed 行为误判为失败；已按 P1 语义改写并补「已选表则主键候选核验通过」正例。；零写入不变式改分段基线：原文把测试自身的管理写（发新版本、登提供方、升级项目引用）也算入，改为 D7 后重取基线，只断言纯生成段零写入。；连接密码改按接口文档 03 §3.4 经 /api/connection-secret 写 vault 播种；原半成品把明文 password 塞进项目 connections 草稿导致其随 /api/project-state 回显，属测试播种方式错误，非生产漏洞。；D1 等值回显前后端口径差异按「记录不裁定」处理，交协调者/独立验收决定。
+- 验证：python3 tests/test_autofill_integration.py → EXIT=0，全部通过（12 组断言块），5.44s。；python3 tests/run.py --test test_autofill_integration.py → 通过 1/1（5.4s）；--list 复核 unit 52 项、all 63 项各含本文件 1 次，组内无重复。；ruff check tests/test_autofill_integration.py tests/run.py → All checks passed。；未触碰 workbench/、contracts/、frontend/（含 dist）、.runtime/、data/、ontology/ 及 tests/ 下他人文件；find -mmin 复核零修改。18951 未停止未连接；18941/18942 已释放。；开场仅只读 git log/status 核对基线，无 git 写操作。
+- 下一步：生产缺陷待修：workbench/assist_schema.py:1042 `_fill_cell_summary` 读 cell['path']/cell['type']，而 workbench/assist_forms.py:703 `FormContract.list_def()` 返回 _normalize_leaf 归一结果（无 path/label）→ KeyError → server.py 兜底 400。复现：任取声明 lists 的契约（actionBinding、propertySource 的 database/redis/flow 变体）发 mode=fill 即 100% 400，4 变体全不可用。；D1 等值口径差异交独立验收：服务端 fill 不做等值过滤（原样下发 ok），等值不落盘靠前端 changed/topLevelChanges；模型只回显旧值时前端走 done+收起、appliedCount=0、状态条为空，不命中 AssistPanel.vue:182 的 empty 提示分支，与需求 §4.3/A14 有落差。；A01/A02/A18 与 A03~A08/A10~A13/A17 的浏览器呈现分支留 T10 独立验收；本文件头已列不覆盖清单。
+- 依据/文档：tests/test_autofill_integration.py；tests/fixtures/autofill_integration_seed.json；tests/run.py；workbench/assist_schema.py 与 workbench/assist_forms.py（缺陷位点）；文档/接口文档/04-编排与LLM接口.md 与 03-项目区接口.md §3.4
 
-### auto-build-output-v3/D13 · zcode · 已实施，待验收
+### 整表自动填写 T8（P1/P5/P6 三页接入，分支 codex/assist-fill-production） · zcode · 已实施，待验收
 
-时间：2026-09-22T09:58:32.990690+00:00；记录：`.collaboration/entries/000204-7c61d8e7a6ee.json`
+时间：2026-09-22T12:17:21.547743+00:00；记录：`.collaboration/entries/000252-f2e2b095ed47.json`
 
-D13 用量/质量评价与脱敏报告已实施：新建 experiments/ontology_token_pilot/evaluate.py（UsageLedger/evaluate_candidates/quality_gate/cost_compare/redact_report/scan_report/build_report，纯函数，仅依赖 batch_contracts）与 tests/test_ontology_token_pilot_metrics.py（11 场景 88 断言）+ experiments 两级空包标记。验证命令退出码 0（88/88），ruff 通过，D11 回归复跑仍 0。
+在上一位 agent 半成品上续接完成 T8：identityLinkBindings.ts / actionBindingAdapter.ts 补齐 restore 回写（统一 restoreSnap + cloneJson，宿主 undoRound 与引擎 restore 共用），核对 formId/contractInfo/codecs/applyDraft/snapshot/手改通知全覆盖；ObjectSources/LinkMappings/ActionBindings 三页改 T5/T6 范式——页头次要按钮「✦ 自动填写」（aria-expanded/aria-haspopup + trigger-id 反向接线）、默认无 AI 区、状态条+撤销+查看修改+手改通知，回填只改本地草稿（零 touch/changed/form-save/commit-now），旧建议卡/勾选/采纳 UI 全部移除。
 
-- 决定：Ledger 只吃 attempt 列表不去重不丢弃：父截断+子调用+格式修复+网络重试全入账（一次一记责任在执行器 content_tx）；token 口径逐字复用 contracts.usage_aggregate；reasoningTokens 只单列（已知求和，无已知为 None）绝不并入 completion；候选↔金样=机械归一化后精确身份匹配（camel→snake/小写/分隔符折叠；property 去 owner 前缀；ownerKey 参与身份），一对一消耗，不做模糊匹配；dataType/单位/枚举差异进 quality.fieldsMismatched 明细不改分母；同名异主体：一对一匹配天然不误判 matched，未匹配组进 mergeGroups，多余候选键=组 rawName 记 mergeSuspects；重复身份计 duplicateIdentity；link 悬空引用/空键/非法类型/rejectedRefs 进 structuralIssues；ownerKey 悬空仅调用方提供 allowed_owner_keys 时核验；cost_compare 中位数只用已知样本；任一臂有 unknown → savingsProvable=False 且 compactBenefitGate=None（无法判定≠False 通过）；-20% 为 G2 compact 收益门。quality_gate：三类金样缺失=0+冲突保留 100%+无结构问题+基线降≤2pp；'端点'以链接端点代替，HTTP 端点门归 D16/D17；redact：删 prompt/response 类键、掩密钥形键值/sk-/Bearer/长随机串，纯 hex≥40 按 hash 保留（goldenSha256 不误伤），脱敏幂等；build_report 输出全可 json.dumps 并防御性再脱敏
-- 验证：python3 tests/run.py --test tests/test_ontology_token_pilot_metrics.py → 退出码 0，通过 88/88（直跑同 0）；ruff check experiments/ tests/test_ontology_token_pilot_metrics.py → All checks passed；python3 tests/run.py --test tests/test_ontology_token_pilot_fixtures.py → 退出码 0（D11 不受影响）；4 份真实 D11 金样镜像候选全命中（precision=recall=1.0、冲突 covered==expected、质量门全过）——G2 关键金样 100% 路径可达成
-- 下一步：D14 CLI 接 evaluate：四臂跑分后用 quality_gate(arm_D, arm_A) 与 cost_compare(arm_A, arm_B) 出报告；D17 引用 scan_report 做脱敏证据；G2 真实样本精确率/召回率与 compact 收益门需 D18 真实试验数据，本轮只交付机制
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §8 D13/§12 G2；workbench/ontology_build/batch_contracts.py（HEAD c5eadc5：normalize_usage 幂等/attempts errorCode errorMessage）；tests/fixtures/ontology_token_pilot/golden/（f391679，D11）；experiments/ontology_token_pilot/evaluate.py
+- 决定：P1：registered 模式快照只含 {mode,note}（说明类可填，连接/表/主键 visibleWhen=false 不可见即不可填）；instances 登记实例清单永不出网、不批量生成、不凭 id 名称推断唯一性；mode 切换走组件既有 applyMode 守卫，被拒时同批数据库键一并丢弃。；P5：binding 以 targetId='<对象类型>.<关系id>' 绑定当前编辑的那一条映射行，applyDraft/restore 只写该行契约白名单键；relation/targetType/membership/legacy 等白名单外结构不进快照、不被回填、撤销不触碰（A13 零丢失）；两端字段值照建议原样提交，前端不做「字段同名＝业务等价」判断（服务端核验，不过即转 unresolved）。；P6：auth.* 按契约 ai.sensitive 前端 binding 直接拒绝写入并记入 refusals（快照绝无 auth 故永不出网；点路径 auth.credentialId 同样拒绝），状态条逐条显示原因；适配层与宿主无任何网络调用（测试用 networkCalls 计数断言），参数行只在本地草稿落位。；rowId 裁决：identity/linkMapping 契约 lists=[] 无行结构，仅组件键映射 primaryKey↔primary_key、note↔noteDraft；actionBinding actionParams（rowIdScope=local）由 actionParamRows codec 精确落行——row.update/remove 必须命中现有 rowId（未命中抛错→引擎记 failures 不中断其余操作），row.append 沿用服务端 localId（仅冲突时由 newParamId 补齐，保续轮定位稳定），未涉及行原样保留。；修复半成品实际缺陷：parametersCodec 原来按 v.op 判定入参三类，但引擎 row.append 传入 {localId,fields}（无 op 键）会被误判为「显式整组」抛错——改为先判 row.update/remove、再判 {localId|fields} 为 append、最后才是数组整组；valueIn 兼容契约键 property/valueType 与组件键 propertyId/type 双形态。另：SSR 下 setup 阶段 watch 不触发（实测 Vue 3.5.41），ActionBindings 另导出显式 assistTouched() 手改入口。
+- 验证：node --import ./tests/ts_hooks.mjs tests/assist_identity_link.test.mjs → 16/16 通过（重写为新交互：binding 工厂/登记模式说明回填且不批量生成实例/来源模式 connection·table·primaryKey 链路/上下文请求/直接回填无勾选/整轮撤销/手改禁撤销/续轮累计与一次撤销/显式保存 commitDesc 落盘/入口 aria 与抽屉）。；node --import ./tests/ts_hooks.mjs tests/assist_action_bindings.test.mjs → 16/16 通过（URL/方法/参数行回填、row.update·remove·append 精确落行、未命中行失败不中断、auth.* 拒绝且草稿 auth 不变、零网络调用、form-save/commit-now 零调用、撤销含 auth 与行 id 保真、显式保存含历史字段零丢失）。；cd frontend && npx vue-tsc --noEmit → 退出码 0（全仓 0 错，含 T7 并行文件）；npx eslint 我的 5 个文件 → 0 违规（顺带清掉 ActionBindings.vue 既有 no-unused-expressions）。；相邻套件回归：assist_object_workspace 14/14、assist_panel 22/22、assist_property_manager 74/74、assist_workflow 12/12，mapping_forms/object_sources/action_model/source_config_retention/ui_protection_independent 通过；python3 tests/run.py --test tests/test_autofill_contracts.py → 423 断言通过。
+- 下一步：停在待 Codex 独立验收：本轮未跑 npm run build（按任务边界只做 vue-tsc），也未起服务做浏览器实链路验收；页头入口/抽屉焦点/aria-expanded 回落/手改 watch 仅由组件级测试与源码断言覆盖。；浏览器验收建议确认：三页入口在窄屏(≤1100px)遮罩态、Esc 关闭焦点回落、done 自动收起后 aria-expanded 回落；ActionBindings 弹窗内状态条与参数表共存布局。；T7（propertySourceBinding/PropertySources）为并行改动，本轮未触碰；未做 git 提交（任务指令禁止），提交由协调者安排。
+- 依据/文档：文档/需求/20260922_整表自动填写交互/需求说明.md §3（P1/P5/P6）、§4.4、§4.5、A13；文档/接口文档/04-编排与LLM接口.md §6.6 前端行为契约；contracts/forms/identity.json、linkMapping.json、actionBinding.json；frontend/src/assist/ontologyBindings.ts（T5 createRoundMirror/undoRound 范式）；tests/assist_identity_link.test.mjs、tests/assist_action_bindings.test.mjs
 
-### auto-build-output-v3 D02 完整请求估算与反馈收缩 · zcode · 已实施，待验收
+### assist-fill-production T5 本体接入（O1/O3/O4/O5，分支 codex/assist-fill-production） · zcode · 已实施，待验收
 
-时间：2026-09-22T09:50:48.323039+00:00；记录：`.collaboration/entries/000203-092763936f2a.json`
+时间：2026-09-22T11:30:32.267073+00:00；记录：`.collaboration/entries/000251-f63ffe52c58a.json`
 
-在 worktree/auto_build（分支 codex/auto_build，基线含 3995586 D01 与契约 3 处注释级修订，HEAD c5eadc5）交付 D02：新建 workbench/ontology_build/budget.py 与 tests/test_ontology_build_budget.py。estimate_request/cold_output_estimate 从 batch_contracts 再导出（函数身份等同，未复制逻辑）；新增 unit_slots/target_slots（孤立1、adjacent_window或data无结构4、同身份去重）、bucket_key/update_bucket/calibrated_estimate 校准桶族（<20 max×1.25、≥20 P90×1.25 线性插值、截断拒绝、unknown usage 不记 0、滑窗有界 20）、expected_output（E=max(冷启动,校准) 永不低于冷启动、整 token 向上取整）、shrink_for_feedback（只缩不扩、无反馈保持原值、单单元放不下→0）、check_input_budget（I+L+reserve≤C 边界相等通过、超限中文可读原因）、snapshot_bounds（CALIBRATION_MAX_SAMPLES=20 有界化、保留 count/max、不改传入）。import 仅 stdlib+batch_contracts（sys.modules 验证零其他 workbench 导入）。
+整表自动填写 T5 交付：ontologyBindings.ts 重写为 autofill/1 对接面（formId/contractInfo 取 formContracts.gen 生成物指纹、codecs 空=identity 直写、applyDraft 合并零丢失、快照钩子=撤销单元起点），新增共享 createRoundMirror 宿主状态条镜像（已填 N 项/另有 M 项待补充/逐字段旧值→新值/手改禁撤销）与宿主 undoRound；workflowBindings.ts 镜像接入 rule/action；ObjectWorkspace 对象/链接编辑器、BusinessRuleLibrary、ActionLibrary 页头次要按钮「✦ 自动填写」（aria-expanded/aria-haspopup+trigger-id 反向接线）+表单上方状态条+手改通知+api 包装 observeFill；默认无 AI 区（A01），回填绝不触发表单保存，旧建议卡/勾选/采纳路径全部移除。binding 按 editor/draft 对象缓存保证引用稳定（镜像挂 binding 上，Vue3.5 computed 无订阅者重求值保不住恒定）。
 
-- 决定：update_bucket 增加 truncated=False 可选关键字（任务给定四参调用形式不变）：截断样本双保险拒绝，执行器对 finish_reason=length 必须传 True 或不调用；桶 samples 为最近 20 个比率的滑窗（裁最旧），count 为历史累计接受数——≥20 判定用 count，不受窗口裁剪影响；snapshot_bounds 对手工/遗留无界桶再做一次有界化；expected_output 返回整 token（向上取整，宁高估不低估）；calibration 参数兼容 None/数值/(buckets,key) 元组三种形式；显式 coldOutput 仍受契约 1024 下限收口；unit_slots 身份口径：优先 targetId，缺失回退 contracts.target_digest（factId+selector，与覆盖比对同口径）；未发现契约缺陷，无协议变更请求
-- 验证：python3 tests/run.py --test tests/test_ontology_build_budget.py → 退出码 0（93/93 通过）；python3 tests/test_ontology_build_budget.py 直跑 → 退出码 0；ruff check 两个新文件 → 退出码 0；导入隔离：import budget 后 sys.modules 无 batch_contracts/budget 之外的 workbench 模块；9 场景：utf8_proxy 逐字一致（中/英/多消息/空）/slots 口径与去重/冷启动边界（slots=0→1、下限1024、ceil 逐点）/校准桶 19→1250 与 ≥20→P90 插值1500（非max 3750）与截断/unknown拒绝与维度隔离与滑窗/E 永不低于冷启动/shrink 只缩不扩/输入预算边界156000相等通过超1拒绝/快照有界化保留count/max/零副作用（os.environ浅拷贝+传入对象不变）
-- 下一步：待 Codex 独立验收（P(D02) 命令）；不合并 main；D04 batch_plan.py 可按契约基于本模块开工
-- 依据/文档：workbench/ontology_build/batch_contracts.py（估算节，含 normalize_usage 幂等化等 3 处修订）；workbench/ontology_build/budget.py；tests/test_ontology_build_budget.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §4.2/§4.3/§8 D02
+- 决定：状态条为 binding 镜像而非引擎直读：T3 AssistPanel 只 expose 动作与 collapsed，不暴露 statusBarText/canUndo/roundSummary/undoRound，面板禁改；引擎 snapshot()/applyDraft 调用点=撤销单元边界与落回点，据此镜像；引擎仍是唯一权威，镜像只服务渲染与宿主撤销按钮；测试断言镜像与引擎 statusBarText 口径一致；待补充计数（另有 M 项）由组件 api 包装在 generate 返回后回传 binding.observeFill，按 formId+target+契约指纹过滤（切目标迟到响应/契约不符不计）；beginRound 不清 pendingCount（observeFill 先于引擎处理响应回传，清零会抹掉本响应待补数），empty/撤销时清零；宿主 undoRound 恢复本轮起点后调用 notifyDraftChanged 作废在途生成（撤销也是草稿变更 §4.5）；手改后快照作废，续轮落回不再产生可撤销快照（不覆盖用户改动）；binding 按 editor/draft 对象身份缓存，换编辑目标即换 binding，镜像随之重置
+- 验证：node --import ./tests/ts_hooks.mjs tests/assist_object_workspace.test.mjs → 14/14 通过（对接面/A01/上下文体/直接回填/撤销/手改禁撤销/续轮整轮撤销/切目标作废/契约指纹与 empty 零写入/链接同链路/显式保存不受影响）；node --import ./tests/ts_hooks.mjs tests/assist_workflow.test.mjs → 12/12 通过（rule/action 对接面、DEF-02 新建动作 targetId 空串、回填零保存零 changed、历史 output 不受影响、切目标与关闭）；cd frontend && npx vue-tsc --noEmit → 0 错误；npx eslint 五个改动 src 文件 → 0 违规；回归：assist_panel 22/22、test_autofill_state 69 项 0 失败、object_workspace 7/7、editor_head_consistency 19、list_controls 4/4、ont_list_unified 4/4、dependency_guard 22/22
+- 下一步：浏览器实链路归 T10：SSR 不覆盖模板 ref 通道（二次点击收起/展开、notify 经 ref）、Esc/遮罩/焦点圈闭、aria-expanded 随 done 自动收起回落；已知限制：cancel 后迟到响应被引擎代际丢弃，但已计入的待补充数短暂残留（手动改/新响应/撤销纠正）；面板未暴露 cancel 事件；宿主 undoRound 后引擎待补问题卡保留（引擎无对外复位接口），续答按已恢复草稿校验；字段定位（查看修改聚焦）未接：共享 Field 无锚点，不硬造；aria-controls 指向的抽屉 id 需 T3 给 AssistPanel 加 id prop 后补全（当前 trigger-id 反向接线，与 T6 同思路）；未做 git 提交（任务指令禁止），提交由协调者安排
+- 依据/文档：frontend/src/assist/ontologyBindings.ts；frontend/src/assist/workflowBindings.ts；frontend/src/ontology/ObjectWorkspace.vue；frontend/src/ontology/BusinessRuleLibrary.vue 与 ActionLibrary.vue；tests/assist_object_workspace.test.mjs 与 tests/assist_workflow.test.mjs；文档/接口文档/04-编排与LLM接口.md §6.6
 
-### auto-build-output-v3/D06_output_codec · zcode · 已实施，待验收
+### assist-fill-production T6 属性接入（O2 私有+共享属性，分支 codex/assist-fill-production） · zcode · 已实施，待验收
 
-时间：2026-09-22T08:52:26.710472+00:00；记录：`.collaboration/entries/000202-4bc4775e8b17.json`
+时间：2026-09-22T11:17:59.928416+00:00；记录：`.collaboration/entries/000250-3e428c824373.json`
 
-D06 交付：新建 workbench/ontology_build/output_codec.py（legacy-v1/compact-v1 编解码纯函数，冻结签名 encode_request/decode_response，净化与 llm._sanitize_candidates 同语义的独立实现，不 import llm/pipeline/storage/llm_client）与 tests/test_ontology_build_output_codec.py（11 场景 126 断言）。验证命令退出码 0，ruff 通过。按任务约束未操作 git，提交留协调者。
+三文件交付：propertyBinding.ts 重写为 autofill/1 对接面（契约业务枚举快照、五 codec、applyDraft 落位、typeCore 原子组、formatting 依赖序、只读 refusals）；PropertyManager.vue 页头「✦ 自动填写」+宿主状态条（已填 N 项/撤销/查看修改）+手改通知+只读 api 包装转 unresolved，旧建议卡 UI 移除；测试重写 74 项全过，vue-tsc 0 错误。
 
-- 决定：证据范围口径：两种 codec 的 evidence 只认 aliasMap 值=本次主目标事实；背景事实载荷不带 id、不可被引用（legacy 主目标给真实 factId，compact 只给 f0/f1 别名，aliasMap 两种 codec 都返回）；compact coverage 按 expected_unit_ids（=encode 的 unitIds=targetId）比对，缺任一 ok=False+COVERAGE_INCOMPLETE 且 candidates 恒空；多余未知单元只记 note；evidence 未知别名→整条丢候选+DANGLING_REFERENCE；conflicts 某侧别名未知→只丢该侧（不足两侧整条冲突丢弃，候选保留）；decode 对非 length 的其他非 stop finish_reason 返回 FORMAT_INVALID；未知 codec 编解码两侧抛 ValueError；compact 顶层 codecVersion 必填校验，legacy 不要求（现行结构兼容）；缺 definition/fields/ownerKey 输出空串/空 dict；evidenceStatus 缺失/未识别落 inferred，绝不默认 supported；selector 切片由调用方完成（内容经 target[fact] 或 entry snippet/data 传入）
-- 验证：python3 tests/run.py --test tests/test_ontology_build_output_codec.py → 退出码 0（通过 126/126）；ruff check 两文件 → All checks passed；冒烟：import 不加载任何 llm/pipeline/storage 模块；整合计划 §10 compact 示例形状解码 ok=True 且别名还原真实 factId
-- 下一步：待 Codex 独立验收（alias还原/缺字段不补造/截断拒绝/legacy兼容）；协调者留意：batch_contracts.py §编解码 注释的 encode_request 形参（plan_doc/job/targets_by_id/facts_by_id）与本次按任务指令实现的扁平纯函数签名不一致，建议协调者统一契约注释（该文件归 C，本任务未改动）
-- 依据/文档：workbench/ontology_build/output_codec.py；tests/test_ontology_build_output_codec.py；workbench/ontology_build/batch_contracts.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md
+- 决定：codec 只做枚举/结构校验+写扁平副本；真正落位统一在 applyDraft（唯一同时可见 dataType+obsType+formatting，保证原子组与依赖序）；formatting kind 与生效数据类型一致性放 applyDraft 拒绝（codec 时点看不到同轮 dataType 操作）；样式白名单/历史样式归后端 blocked+保存校验兜底；离开 timeSeries 须带显式 obsType 空串标记；缺清空标记的不完整离开组按矛盾组整组拒绝，不自动补清；状态条 N 按宿主 applyDraft 前后投影 diff 去重（含类型联动清理的 formatting，比引擎 copy 级计数如实）；引擎 snapshot() 调用点=新撤销单元边界，宿主据此对齐轮次；只读保护：binding 层 writable()+refusals 拒写为主；PM api 包装请求期只读时把 operations 转 unresolved 面板展示
+- 验证：tests/assist_property_manager.test.mjs 重写 74/74 通过（原子组成组/无半组/独立合法内容照填/撤销单元/续轮/手改禁撤销/保存计数不变/只读拒绝/非 assist 回归）；npx vue-tsc --noEmit 0 错误；assist_panel 22/22、test_autofill_state 68/68、dependency_guard 22/22、editor_head_consistency 19、object_workspace 7/7、global_interaction 7/7、undo_history 7/7、formatting_options 全过；npm run lint：本任务文件 0 违规（既有 6 处 no-unused-expressions 在 T7/T8 归属文件）
+- 下一步：assist_object_workspace.test.mjs 7/14 失败：该套件把 PropertyManager 桩为 render:null 且不引用 propertyBinding，失败在对象/链接编辑器流程（T5 归属文件），与 T6 无执行路径交集，待 T5 处理；AssistPanel 无 id prop，按钮 aria-controls 指向的 pm-assist-drawer 暂悬空（已用 trigger-id 反向接线），T3 加 id 支持后补全；浏览器验收与 Codex 独立验收待排；未做 git 提交（任务指令禁止 git 命令，提交由协调者安排）
+- 依据/文档：frontend/src/assist/propertyBinding.ts；frontend/src/ontology/PropertyManager.vue；tests/assist_property_manager.test.mjs；文档/接口文档/04-编排与LLM接口.md §6.6
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 整表自动填写 T4（autofill/1 后端串接）@worktree/assist-fill-production · zcode · 已实施，待验收
+
+时间：2026-09-22T11:10:38.864812+00:00；记录：`.collaboration/entries/000249-7b5397dda201.json`
+
+fill 分支完成：protocol=2 门禁、内存会话（TTL30min/LRU200，绑定 user+space+target+formId+digest）、答案归属校验与 unsure→unresolved、operations 引用核验、autofill/1 envelope；令牌签入契约 fv/fd（续轮不匹配 409）；新增 FILL_SYSTEM_PROMPT 与 build_fill_user_payload（敏感字段不出网）；FormContract 组节点 atomicGroup 展开为叶子全集；旧 fill 无 protocol→400，check/explain 零改动。新增 tests/test_autofill_http.py（13 组通过）；test_assist_api 7 处 fill 用例最小迁移、test_assist_context 1 处令牌键集断言补 fv/fd。待 Codex 验收。
+
+- 决定：会话为进程内存 OrderedDict（不落库），绑定键含 projectId（targetId 按项目隔离）；引用核验 provider 名→候选集映射收口在 assist_service._PROVIDER_REF_TYPES；identityTableFields 按草稿所选表目录字段核对；上下文未装配的提供方 fail-closed（候选不可用→unresolved）；答案先只读校验、模型成功后才提交会话变更（模型 502 不消费用户答案）；未答问题归属 roundId；valid_question_ids 取会话全部已签发 id（basis question 核验+换发避让）
+- 验证：python3 tests/test_autofill_http.py 全部通过（13 组，端口 18931/18932 自管自停）；python3 tests/run.py all 62/62 通过（含 test_assist_api/context/schema、test_autofill_contracts/patch/http）；~/Library/Python/3.9/bin/ruff check 交付 6 文件全部通过
+- 下一步：待 Codex 独立验收（不合并 main）；真实提供方联调另记
+- 依据/文档：文档/接口文档/04-编排与LLM接口.md §6；文档/需求/20260922_整表自动填写交互/需求说明.md；workbench/assist_service.py；workbench/assist_schema.py；tests/test_autofill_http.py
+
+### 整表自动填写 T3（前端状态机与抽屉） · zcode · 已实施，待验收
+
+时间：2026-09-22T10:26:47.900550+00:00；记录：`.collaboration/entries/000248-9391473b5096.json`
+
+新增 formAutofill.ts 通用填写引擎/宿主状态机：八态流转、请求代际计数（手改/切目标/关闭/重开作废在途）、autofill/1 会话 sessionId/roundId 透传、续轮握手（草稿漂移即先重取 context 再 generate）、整轮撤销单元（快照恢复/手改禁撤销）、applyOperations 契约点路径写入+codec 回调（identity 兜底）+applyDraft 整稿通道、绝不触达宿主保存通道。重写 useAssistPanel.ts 为新交互门面并保留 AssistApi/AssistHostBinding 导出名；AssistPanel.vue 重写为 420px 右侧抽屉（窄屏遮罩/Esc/焦点管理/补问卡/empty 文案/更多帮助只读）；types.ts 扩展 autofill/1 类型。旧勾选/建议卡交互移除。tests/test_autofill_state.mjs 新增 68 项、tests/assist_panel.test.mjs 重写 22 项，均绿；vue-tsc 0 错误。
+
+- 决定：撤销快照走 host.snapshot()/restore() 对称通道（draft() 可能是白名单投影，直接恢复会丢未投影字段）；写回优先 binding.applyDraft，无则退回旧 apply(顶层变更值) 过渡；续轮握手实现为生成前草稿漂移检测：漂移即先 assist-context 再 assist-generate，与 04 §6.2 等价；失败的生成不清上一轮撤销单元；statusBarText（已填 N 项/另有 M 项待补充，M=questions+unresolved）交宿主渲染状态条；面板内仅抽屉提示行；面板 done 自动收起不 emit close，仅用户主动关闭才 emit；G2/G3 建议保持面板挂载经 ref.toggle()/collapsed 接线；check/explain 收进 runHelp 次要入口，沿用旧响应结构只读渲染，无任何写入
+- 验证：node --import ./tests/ts_hooks.mjs --test tests/test_autofill_state.mjs → 68/68 通过 exit=0；node --import ./tests/ts_hooks.mjs tests/assist_panel.test.mjs → 22/22 通过 exit=0；cd frontend && npx vue-tsc --noEmit → 0 错误（含未改动的宿主组件与 6 个 binding 适配器）；npx eslint src/assist 四个文件 → 0 错误；未跑 npm run build、未起服务（任务边界）
+- 下一步：旧套件待 T5–T8 重写（可加载，失败均为旧勾选断言）：assist_object_workspace(2/9)、assist_property_manager(旧checked API崩)、assist_property_sources(5/12)、assist_identity_link(8/16)、assist_action_bindings(崩)、assist_workflow(2/11)；object_sources/mapping_forms/source_config_retention/ui_protection_independent 实测仍绿；T1 落地后各适配器注入 codecs/applyDraft/contractInfo；真实 codec 归 G2/G3；交付未提交（任务规定不执行 git），待协调者审阅提交
+- 依据/文档：frontend/src/assist/formAutofill.ts（引擎）；frontend/src/assist/useAssistPanel.ts（门面）；frontend/src/assist/AssistPanel.vue（抽屉）；tests/test_autofill_state.mjs / tests/assist_panel.test.mjs；文档/接口文档/04-编排与LLM接口.md §6；文档/需求/20260922_整表自动填写交互/
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 整表自动填写T1表单契约（assist-fill-production） · zcode · 已实施，待验收
+
+时间：2026-09-22T10:25:54.601255+00:00；记录：`.collaboration/entries/000247-e08943f14e6f.json`
+
+T1 交付：contracts/forms/ 10 份契约（propertySource 含 4 个 draft.kind variants）；workbench/assist_forms.py loader（严格语法校验、canonical SHA-256 digest、查询 API、check_consistency、T2 冻结的 FormContract 适配类）；workbench/assist_forms_gen.py 确定性生成 formContracts.gen.ts（生成物入库）；tests/test_autofill_contracts.py 423 项断言全过。未改 assist_fields/schema/routes/server 与 frontend/src/assist 其余文件。
+
+- 决定：契约字段 id 与 assist_fields 注册表键一一对应（点路径即契约路径）；property 的 dataType+obsType 为扁平 enum+atomicGroup typeCore，非嵌套组；dataType 取业务名枚举（六基础类型+timeSeries 特例，对齐 assist_schema._select_allowed），JSON-LD 转换交 codec dataTypeTransform；formatting 为 codec 托管组（group+formattingCodec，无内嵌 fields），requires dataType；可选说明类字段 nullable+clearable，其余不可清空；新增注册标识：codec 6 个（dataTypeTransform/formattingCodec/lookupMatchRows/redisKeyParams/flowInputBindings/actionParamRows）与 refProviders 候选提供方 13 个（见契约文件）；按 T2 assist_ops 冻结的 FormContract 接口补适配（规范化 field_def、list_def 归一、schema_version/digest 属性），T2 可由 FixtureContract 切到真 loader
+- 验证：python3 tests/test_autofill_contracts.py 退出码 0：423 项断言全过（加载+digest 幂等、生成器两次同字节、漂移检测、注册表双向覆盖 13 场景、语法拒绝、sensitive 边界、FormContract）；python3 -m workbench.assist_forms_gen 连续两次运行字节相同；formContracts.gen.ts 过 vue-tsc 0 错误（剩余 4 错属 T3 在改文件）；ruff check 三个新 py 文件全过；workbench/tests 全量仅剩他人文件既有 5 错
+- 下一步：T2 接 assist_ops 到 assist_forms.FormContract（propertySource 需传 draft_kind）；T4 按 refProviders 提供方名装配候选集；T3 消费 formContracts.gen.ts；协调者统一提交；本记录不构成验收
+- 依据/文档：contracts/forms/ 全部 10 份契约；workbench/assist_forms.py；workbench/assist_forms_gen.py；frontend/src/assist/formContracts.gen.ts；tests/test_autofill_contracts.py
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 20260922_整表自动填写交互-T2操作协议校验（assist-fill-production） · zcode · 已实施，待验收
+
+时间：2026-09-22T10:13:53.158447+00:00；记录：`.collaboration/entries/000246-92319e2316d5.json`
+
+T2 交付：新增 workbench/assist_ops.py（受限 operations 校验器，模块 docstring 冻结 FormContract loader 接口约定）；assist_schema.py 仅增不改地新增 parse_fill_output（autofill/1 解析、questions id 服务端换发、模型 unresolved 契约过滤、MAX_UNRESOLVED=12）；新增 tests/fixtures/autofill_contract_fixture.json（合成契约兼作 T1 loader 接口兼容样例）与 tests/test_autofill_patch.py（40 项）。未动 assist_fields/assist_context/assist_service/assist_routes/server.py/前端；按指令未执行 git 命令，提交留协调者。
+
+- 决定：同字段冲突落位：set/clear 按字段路径判定；行操作按行标识判定（同 localId 的 append、同 rowId 的 update/remove），同列表多条 row.append 合法（04 §6.3 服务端按内容去重即预期多条）；set 的 value=null 一律拒：置空必须走独立 clear（需求 §4.4，防绕过 nullable+clearable+basis 授权）；按 04 §6.1 权限语义实现 ai.fillable=false 与 ai.sensitive=true 字段拒写；结构级 502 口径：operations 非数组/元素非对象/未知 op/op 多余键/超12条；basis 形态违规按单操作无效转 unresolved；问题 id 换发 q_<n> 避让 valid_question_ids 防串号；响应级 unresolved 合并截断（≤12）归 T4 组装时执行
+- 验证：python3 tests/test_autofill_patch.py → 全部通过（40 项）；python3 tests/test_assist_schema.py → 全部通过（57 项，旧 parse_model_output 行为未动）；ruff check 三个 T2 文件 → All checks passed；全仓 ruff 另有 5 处既有报错，均在 test_assist_api/test_assist_context/test_assist_schema（本轮未改动，非 T2 引入）
+- 下一步：T1 对齐（重要）：assist_forms.py 已并行落地为模块函数接口（field_def(form_id,path) 抛 ContractError、list_def 返回原始 item、atomic_groups 登记组节点自身路径）——与 assist_ops docstring 冻结对象接口有 4 处差异；atomic_groups 若登记组节点路径而非组内叶子路径，assist_ops 会把该组永远判不完整，T9 集成须建适配对象（绑 form_id+draft_kind、ContractError→KeyError、归一 list item）或协调改 T1；T4：组装响应 unresolved 时按 MAX_UNRESOLVED=12 合并截断（invalid_operations＋模型自报 unresolved）；T9：把测试内 FixtureContract stub 切换为 assist_forms 真实 loader 复跑同批用例；协调者统一处理本轮 git 提交
+- 依据/文档：workbench/assist_ops.py；workbench/assist_schema.py；tests/test_autofill_patch.py；tests/fixtures/autofill_contract_fixture.json；文档/接口文档/04-编排与LLM接口.md §6
+
+### 整表自动填写需求四件套交付 · codex · 需求已交付
+
+时间：2026-09-22T08:59:33.062850+00:00；记录：`.collaboration/entries/000245-ab492bee9867.json`
+
+交付需求说明、开发计划、执行指令及已有两页原型。覆盖11场景、表单优先按需侧栏、自动填草稿、补问撤销及共享契约。未修改业务代码。
+
+- 验证：核对assist-fill-production@544f6c8及现有登记；独立子agent只读评审风险已纳入。；最新数据规则与旧数据根无损迁移及真实副本保留要求已写入。
+- 下一步：交harness在已有授权worktree实施，自测提交后独立验收，不合并main。
+- 依据/文档：文档/需求/20260922_整表自动填写交互/需求说明.md；文档/需求/20260922_整表自动填写交互/开发计划.md；文档/需求/20260922_整表自动填写交互/执行指令.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。

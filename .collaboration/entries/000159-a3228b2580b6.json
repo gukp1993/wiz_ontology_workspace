@@ -1,0 +1,34 @@
+{
+  "ticket": "441aa615cb0a42309027a58288def666",
+  "task": "assist-fill-production T2 模型输出schema与建议验证",
+  "status": "implemented",
+  "summary": "在已登记 worktree（codex/assist-fill-production）完成 T2：新建 workbench/assist_schema.py（ASSIST_SYSTEM_PROMPT、build_user_payload、parse_model_output、5 个复合组校验器）与 tests/test_assist_schema.py（57 项全过 exit 0）。只创建这两个文件，未改其他文件、无 git 写操作、未启服务、未连真实 LLM。",
+  "decisions": [
+    "失败分层按 04 §5.2『502 或丢弃该条』：整体非 JSON/顶层形态非法/条数超限 → ModelBadResponse；单条结构违规 → dropped；引用/行内/原子组 → blocked 可见禁选；依赖未答问题 → pending；等值 → 丢弃。任务书测试项2 与流水线 4a 对『未知 fieldKeys/键不齐/枚举错/超长』矛盾，取 4a 分层丢弃（文档允许）",
+    "formatting『未知参数键』复合组节写结构违规、测试节要求 blocked，取 blocked 与行级策略一致；parse_model_output 增可选第 7 参 mode='fill'（任务书要求 explanation 仅 explain 非 null 但签名无 mode）",
+    "dataType 放行 'timeSeries'（同 PropertyManager typeOptions）、obsType 放行 ''；离开 timeSeries 自动补 obsType:'' 并并入 fieldKeys；服务端重编 questionId 为 q_<n>、suggestion id 为 s_<n>，模型 state 忽略，blocked/pending 原因写 blockedReason/pendingReason",
+    "候选提取对齐 T1 实际形状：definitions 编码 connection（engine 在 hint）/source/property/flow；catalog {connection,table,fields}；flows outputs[].fields[].id；保留 sources/identity/parameters/actionInputs 扩展键与 candidates 覆盖钩子；候选缺失 fail-closed"
+  ],
+  "verification": [
+    "python3 tests/test_assist_schema.py → 57 项全过 exit 0（合法输出/重编、4 类整体超限、ref 幻觉、5 类复合组、原子组、ifQuestion 四态、等值、evidenceRefs、HTML 保留、注入仅数据、payload 裁剪、mode 语义、T1 形状对齐）",
+    "env -u WIZ_WORKBENCH_ROOT 直接 import 成功（无数据目录依赖）；py_compile 通过（Python 3.9.6）",
+    "git status 核对：仅新增本任务两文件；T1/T3 并行文件与 session_context.md 改动非本任务所改"
+  ],
+  "next": [
+    "T4 路由调用 parse_model_output 时传 mode 与 normalize_draft 的 draft_kind；行级身份表字段核对（params/lookup 的 identityField）需 T4 在 context 注入 identity:{table,fields} 或用 candidates 覆盖",
+    "交 Codex 独立验收；HTTP 层与真实模型联调属 T4/T11 范围未做"
+  ],
+  "references": [
+    "workbench/assist_schema.py",
+    "tests/test_assist_schema.py",
+    "workbench/assist_fields.py",
+    "文档/接口文档/04-编排与LLM接口.md §5",
+    "文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md §8.2"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T07:10:54.155870+00:00",
+  "sequence": 159,
+  "filename": "000159-a3228b2580b6.json",
+  "record_hash": "cacd1a88fc16ef2e3fe3279927a25677c5d68feba3e8ee73c00761d244e639ab",
+  "context_advanced": true
+}
