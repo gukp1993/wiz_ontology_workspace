@@ -115,7 +115,7 @@ DEFAULT_BUDGET = {
 def make_context(persistence, call_fn, profile, plan_doc, codec_version=contracts.CODEC_LEGACY,
                  facts_by_id=None, scope_payload=None, planner=None, clock=None, sleeper=None,
                  run_attempt=1, budget=None, task_key=None, lease_fn=None,
-                 resume_requeue_failed=False):
+                 resume_requeue_failed=False, candidate_transform=None, progress_fn=None):
     """组装执行上下文。
 
     persistence：OnlinePersistence 或 ExperimentState（自动适配）。
@@ -125,6 +125,11 @@ def make_context(persistence, call_fn, profile, plan_doc, codec_version=contract
     clock：单调秒表（默认 time.monotonic）；sleeper：退避睡眠（默认 time.sleep，测试注入）。
     resume_requeue_failed：显式 resume（run-resume 新 runAttempt）置 True——把 failed 叶
     重排队（failed→queued），只补未成功叶；blocked/superseded 不动（须新计划）。
+    candidate_transform(candidates, job_id) -> candidates：解码成功后、commit_success 前
+    的候选加工钩子（在线路径走 verify/命名空间化，与 legacy 批次同链路；缺省直通）。
+    返回列表即落库内容（可少不可多）；抛异常=该次不提交，原样上抛。
+    progress_fn(event, doc)：每个 step 后回调（在线路径推进 stage/进度；抛 Cancelled
+    会从 run_plan 原样上抛，用于取消）。
     """
     facade = persistence if isinstance(persistence, PersistenceFacade) \
         else PersistenceFacade(persistence, task_key=task_key, lease_fn=lease_fn)
@@ -145,6 +150,8 @@ def make_context(persistence, call_fn, profile, plan_doc, codec_version=contract
         'events': [],
         'resume_requeue_failed': bool(resume_requeue_failed),
         '_requeued': False,
+        'candidate_transform': candidate_transform,
+        'progress_fn': progress_fn,
     }
 
 
@@ -395,9 +402,13 @@ def _drive_job(context, job_id):
                                                alias_map or {}, unit_ids or [],
                                                finish_reason=finish)
         if decoded.get('ok'):
-            digest = _digest(decoded.get('candidates') or [])
+            to_commit = decoded.get('candidates') or []
+            transform = context.get('candidate_transform')
+            if callable(transform):
+                to_commit = transform(to_commit, job_id) or []
+            digest = _digest(to_commit)
             hit = context['persistence'].commit_success(
-                job_id, attempt_id, decoded.get('candidates') or [], usage, digest,
+                job_id, attempt_id, to_commit, usage, digest,
                 {'finishReason': finish, 'bytes': int(result.get('responseBytes') or 0),
                  'durationMs': duration_ms})
             if not hit:
@@ -407,12 +418,12 @@ def _drive_job(context, job_id):
                  'usage': usage, 'finishReason': finish,
                  'bytes': int(result.get('responseBytes') or 0), 'durationMs': duration_ms},
                 {'type': batch_state.EVENT_JOB_SUCCEEDED, 'jobId': job_id,
-                 'candidateCount': len(decoded.get('candidates') or []),
+                 'candidateCount': len(to_commit),
                  'resultDigest': digest}])
             _record(context, {'kind': 'job_succeeded', 'jobId': job_id,
-                              'candidates': len(decoded.get('candidates') or [])})
+                              'candidates': len(to_commit)})
             return {'kind': 'job_succeeded', 'jobId': job_id,
-                    'candidates': len(decoded.get('candidates') or [])}
+                    'candidates': len(to_commit)}
 
         errors = decoded.get('errors') or [{'code': contracts.FORMAT_INVALID, 'message': '解码失败'}]
         code = str(errors[0].get('code') or contracts.FORMAT_INVALID)
@@ -519,16 +530,41 @@ def _plan_more(context):
                                       plan_epoch=int(doc.get('planEpoch') or 1),
                                       scope_payload=context['scope_payload'])
     jobs = [job for job in ((result or {}).get('jobs') or []) if isinstance(job, dict)]
-    if not jobs:
-        if result.get('infeasible'):
-            return _block_run(context, contracts.OVERSIZED_ATOMIC_TARGET,
-                              '存在无法装箱的目标（需拆分或补充材料）：%d 个'
-                              % len(result['infeasible']))
-        return None
-    events = [{'type': batch_state.EVENT_JOB_CREATED, **job} for job in jobs]
-    _apply_persisted(context, events)
-    _record(context, {'kind': 'planned', 'jobs': len(jobs)})
-    return {'kind': 'planned', 'jobs': len(jobs)}
+    infeasible = list((result or {}).get('infeasible') or [])
+    if jobs:
+        events = [{'type': batch_state.EVENT_JOB_CREATED, **job} for job in jobs]
+        _apply_persisted(context, events)
+        _record(context, {'kind': 'planned', 'jobs': len(jobs)})
+        return {'kind': 'planned', 'jobs': len(jobs)}
+    if infeasible:
+        # 装箱放不下的目标先尝试拆分（硬输入超限 → 细分主目标，§5）；不可分才受阻。
+        targets = doc.get('targets') or {}
+        depth_cap = contracts.MAX_SPLIT_DEPTH
+        for tid in infeasible:
+            target = targets.get(tid)
+            if not target:
+                continue
+            decision = batch_plan.split_or_block(
+                [dict(target, targetId=tid)], context['facts_by_id'], 0,
+                profile=context['profile'],
+                plan_epoch=int(doc.get('planEpoch') or 1),
+                parent_job_id='', parent_split_path='root')
+            if decision.get('action') == 'split':
+                events = [{'type': batch_state.EVENT_JOB_CREATED, **child}
+                          for child in (decision.get('children') or [])]
+                if events:
+                    _apply_persisted(context, events)
+                    _record(context, {'kind': 'planned', 'jobs': len(events),
+                                      'fromSplit': tid})
+                    return {'kind': 'planned', 'jobs': len(events)}
+            if decision.get('action') == 'blocked' \
+                    and str(decision.get('code')) == contracts.SPLIT_DEPTH_EXCEEDED:
+                return _block_run(context, depth_cap and contracts.SPLIT_DEPTH_EXCEEDED,
+                                  str(decision.get('message') or '拆分深度超限'))
+        return _block_run(context, contracts.OVERSIZED_ATOMIC_TARGET,
+                          '存在无法装箱且不可拆分的目标（需补充材料或缩小任务）：%d 个'
+                          % len(infeasible))
+    return None
 
 
 # --- 步进与整跑 ---------------------------------------------------------------------
@@ -575,6 +611,9 @@ def run_plan(context):
         event = step(context)
         kind = event.get('kind')
         doc = context['doc']
+        progress = context.get('progress_fn')
+        if callable(progress):
+            progress(event, doc)   # Cancelled 等异常原样上抛（取消即中止）
         if kind == 'done':
             return _summary(context, 'succeeded', None)
         if kind == 'blocked' or kind == 'exhausted':

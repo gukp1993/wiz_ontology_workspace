@@ -31,17 +31,27 @@
   数量与说明），不做静默截断。
 """
 
+import hashlib
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 
 from workbench.ontology_build import alignment
+from workbench.ontology_build import batch_contracts
+from workbench.ontology_build import batch_execution
+from workbench.ontology_build import batch_plan
+from workbench.ontology_build import batch_state
+from workbench.ontology_build import budget_profile
 from workbench.ontology_build import llm
 from workbench.ontology_build import materials as material_store
 from workbench.ontology_build import protocol
 from workbench.ontology_build import retrieval
 from workbench.ontology_build import runner
+from workbench.ontology_build import semantic_units
+from workbench.ontology_build.batch_persistence import OnlinePersistence
 from workbench.ontology_build.parsers import parse_material
+from workbench import llm_client
 from workbench.storage import engine as sto
 from workbench.storage import ontology_build as store
 
@@ -1157,6 +1167,21 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
     owner_id = str(owner_user_id or '')
     if not isinstance(provider, dict) or not provider.get('endpoint') or not provider.get('model'):
         raise PipelineError('尚未配置可用的 LLM 提供方，请先到「更多工具 → LLM 配置」添加')
+    # 生成控输出 v3：自适应分批启用且 profile 校验通过 → schema2 目标计划路径（08 §14）。
+    # 配置不可用（缺值/非法/绑定不符）直接失败，不静默回退 legacy——掩盖误配比失败更糟；
+    # HTTP 入口已在状态变更前做同样预检（422），此处是 worker 侧防线（配置可在运行中途变更）。
+    v2_profile = budget_profile.build_profile()
+    if v2_profile.get('enabled'):
+        errors = budget_profile.request_budget_errors(v2_profile,
+                                                      str(provider.get('id') or ''),
+                                                      str(provider.get('model') or ''))
+        if errors:
+            raise PipelineError('自适应分批配置不可用（%s）：请修正 WIZ_BUILD_* 环境配置，'
+                                '或关闭 WIZ_BUILD_ADAPTIVE_BATCHING 后重试。'
+                                % '；'.join('%s: %s' % (code, field)
+                                            for code, field in errors))
+        return _run_generate_v2(owner_user_id, task_id, run_id, batch_id, provider,
+                                resume_mode, v2_profile)
     context = _tx(lambda conn: _generate_context(conn, owner_id, task_id, run_id))
     scope, facts, task = context['scope'], context['facts'], context['task']
     saved = (context['checkpoint'] or {}).get('generate') or {}
@@ -1565,7 +1590,270 @@ def _generate_context(conn, owner_id, task_id, run_id):
             'scope': store.get_scope(conn, task_id, owner_id),
             'facts': store.list_facts(conn, task_id, owner_id),
             'checkpoint': store._loads(run_row['checkpoint_json'] or '{}', {}),
-            'baseline': store._loads(run_row['baseline_json'] or '{}', {})}
+            'baseline': store._loads(run_row['baseline_json'] or '{}', {}),
+            'runAttempt': int(run_row['attempt'] or 1)}
+
+
+# --- 生成控输出 v3：schema2 目标计划路径（08 §14；WIZ_BUILD_ADAPTIVE_BATCHING=1 启用） ---
+
+
+def _v2_codec():
+    raw = str(os.environ.get(batch_contracts.OUTPUT_CODEC_ENV) or '').strip()
+    return raw if raw in batch_contracts.CODEC_VERSIONS else batch_contracts.CODEC_LEGACY
+
+
+def _v2_select_and_align(owner_id, run_id, facts, scope, task, notes):
+    """确定性阶段（retrieve/align）：与 legacy 同一套检索/分组/去重口径。
+
+    v2 不再持久化 schema1 的 plan.modelFactIds——选中的事实以 targets 表（factId）与
+    selectedFactsDigest 落在 schema2 计划里，续跑复用计划而非重放清单。
+    """
+    by_id = {fact['id']: fact for fact in facts}
+    runner.stage(owner_id, run_id, 'retrieve', protocol.GENERATE_STAGE_LABELS['retrieve'],
+                 {'done': 0, 'total': len(facts)})
+    index = retrieval.build_index(facts)
+    selection = retrieval.select_scope(facts, scope, index)
+    pool = [by_id[fact_id] for fact_id in selection['relevant'] + selection['related']
+            if fact_id in by_id]
+    if not pool:
+        raise PipelineError('没有可用于生成的事实：请先扫描材料并确认范围')
+    runner.stage(owner_id, run_id, 'retrieve', protocol.GENERATE_STAGE_LABELS['retrieve'],
+                 {'done': len(pool), 'total': len(pool),
+                  'relevant': len(selection['relevant']),
+                  'related': len(selection['related']),
+                  'excluded': len(selection['excluded'])})
+    runner.stage(owner_id, run_id, 'align', protocol.GENERATE_STAGE_LABELS['align'],
+                 {'done': 0, 'total': len(pool)})
+    grouped = alignment.group_evidence(facts, selection['relevant'] + selection['related'])
+    digest_keeper, model_facts, duplicate_of = {}, [], {}
+    for fact in pool:
+        digest = retrieval.snippet_digest(fact)
+        keeper_id = digest_keeper.get(digest)
+        if keeper_id is not None:
+            fact_id = str(fact.get('id') or '')
+            if fact_id:
+                duplicate_of[fact_id] = keeper_id
+            continue
+        digest_keeper[digest] = str(fact.get('id') or '')
+        model_facts.append(fact)
+    runner.stage(owner_id, run_id, 'align', protocol.GENERATE_STAGE_LABELS['align'],
+                 {'done': len(model_facts), 'total': len(model_facts),
+                  'groups': len(grouped['groups']), 'duplicates': len(duplicate_of)})
+    return model_facts
+
+
+def _v2_fingerprint_parts(scope, task, model_facts, provider, profile, codec):
+    """计划指纹（§6 冻结字段序）：任一变化 → auto 拒绝复用旧计划。密钥绝不进指纹。"""
+    facts_digest = hashlib.sha256('|'.join(
+        '%s:%s' % (fact.get('id'), retrieval.snippet_digest(fact))
+        for fact in model_facts).encode('utf-8')).hexdigest()[:32]
+    effective = profile.get('effective') or {}
+    return [str(scope.get('revision') or 0), str(int(task.get('materialRevision') or 0)),
+            facts_digest, str(provider.get('id') or ''), str(provider.get('model') or ''),
+            protocol.PROMPT_VERSION, batch_contracts.PLAN_PROMPT_VERSION,
+            batch_contracts.PLANNER_VERSION, codec,
+            'C%s:L%s:R%s' % (profile.get('contextTokens'),
+                             profile.get('outputLimitTokens'),
+                             profile.get('targetRatio')),
+            str(effective.get('outputCap') or '')]
+
+
+def _v2_job_namespace_position(job_id):
+    """jobId → 稳定命名空间序数（跨 resume 幂等；冲突概率 <512²/2/1e9 ≈ 0.013%）。"""
+    try:
+        return 1 + (int(job_id[2:18], 16) % 1000000000)
+    except ValueError:
+        return 1
+
+
+def _run_generate_v2(owner_user_id, task_id, run_id, batch_id, provider, resume_mode, profile):
+    """schema2 目标计划生成：targets/jobs/attempts 状态机 + 双预算自适应分批（§4–§6）。
+
+    终态口径：succeeded → finish_success_guarded（终态检查防线，D10）；
+    failed（可重试，成功叶保留）/ blocked（须新建计划，不自动重试）→ PipelineError
+    由 runner 记账；checkpoint 全程 schema2（不与旧批次字段混写）。
+    """
+    owner_id = str(owner_user_id or '')
+    context = _tx(lambda conn: _generate_context(conn, owner_id, task_id, run_id))
+    scope, facts, task = context['scope'], context['facts'], context['task']
+    baseline = context['baseline'] or {}
+    if baseline.get('scopeRevision') is not None and \
+            int(baseline.get('scopeRevision')) != int(scope.get('revision') or 0):
+        raise PipelineError('范围已在生成后修改（基线 revision %s，当前 %s）：修改范围属于重新生成，'
+                            '请重新确认范围生成新批次。'
+                            % (baseline.get('scopeRevision'), scope.get('revision')))
+    if baseline.get('materialRevision') is not None and task is not None and \
+            int(baseline.get('materialRevision')) != int(task.get('materialRevision') or 0):
+        raise PipelineError('材料已在生成后变化（基线修订 %s，当前 %s）：请重新确认范围生成新批次。'
+                            % (baseline.get('materialRevision'), task.get('materialRevision')))
+    notes = []
+    weak_fact_ids = {str(fact.get('id')) for fact in facts
+                     if str(fact.get('module') or '') == 'llm-fallback'}
+    codec = _v2_codec()
+    lease = runner.lease_of(owner_id, run_id)
+    persistence = OnlinePersistence(task_id, owner_id, run_id).with_lease(lease)
+    stored = persistence.load()
+
+    model_facts = _v2_select_and_align(owner_id, run_id, facts, scope, task, notes)
+    by_id = {fact['id']: fact for fact in model_facts}
+    fingerprint_parts = _v2_fingerprint_parts(scope, task, model_facts, provider, profile, codec)
+    fingerprint = batch_contracts.plan_fingerprint(fingerprint_parts)
+
+    doc = None
+    if stored is not None and int(stored.get('schemaVersion') or 0) == 2:
+        if resume_mode == 'abstract':
+            # 显式新 epoch：候选清理与计划替换的原子窗口——先删候选（同 batch 全部），
+            # 再落新计划；两步间崩溃的窗口里 batch 无候选且计划可再次 abstract 重建，
+            # 绝不出现「新计划 + 旧 epoch 候选」混写。
+            def _wipe(conn):
+                store.delete_candidates_of_batch(conn, task_id, owner_id, batch_id)
+            runner.content_tx(owner_id, run_id, _wipe)
+            doc = None
+            _note(notes, '已按「重新抽象」建立新计划代次（epoch %d）：旧候选已清理，'
+                         '旧调用用量保留在计划历史摘要。'
+                         % (int(stored.get('planEpoch') or 1) + 1))
+        else:
+            stored_fp = str(stored.get('fingerprint') or '')
+            if stored_fp and stored_fp != fingerprint:
+                raise PipelineError('自适应计划与当前输入不一致（事实/范围/材料/模型/预算/协议'
+                                    '指纹已变化）：请「重新生成」建立新计划，不能沿用旧计划重试。')
+            doc = stored
+            _note(notes, '复用已持久化的 schema2 计划（%d 目标 / %d 作业），只补未完成部分。'
+                         % (len(doc.get('targets') or {}), len(doc.get('jobs') or {})))
+
+    if doc is None:
+        if len(model_facts) > batch_contracts.MAX_PLAN_TARGETS:
+            raise PipelineError('入模目标 %d 超过计划上限 %d：请缩小范围或拆分任务后再生成'
+                                '（%s）。' % (len(model_facts),
+                                             batch_contracts.MAX_PLAN_TARGETS,
+                                             batch_contracts.TARGET_BUDGET_EXCEEDED))
+        built = semantic_units.build_targets(model_facts)
+        targets = built['targets']
+        if not targets:
+            raise PipelineError('没有可规划的目标事实：请先扫描材料并确认范围')
+        # planEpoch 种子 = batchId 派生（同任务跨 batch 重建计划时 jobId 不碰撞——
+        # 候选 id 由 jobId+局部键确定性派生，跨 batch 复用同一 jobId 会主键冲突）；
+        # 同一 run 内 abstract 重抽象在种子上 +1（新计划新作业，旧候选已清理）。
+        epoch_seed = int(hashlib.sha256(str(batch_id).encode('utf-8')).hexdigest()[:8], 16)
+        epoch = epoch_seed if stored is None else int(stored.get('planEpoch') or epoch_seed) + 1
+        doc = batch_state.create_plan(batch_id, int(scope.get('revision') or 0),
+                                      int(task.get('materialRevision') or 0) if task else 0,
+                                      targets, profile, codec, fingerprint_parts, plan_epoch=epoch)
+        doc['selectedFactsDigest'] = fingerprint_parts[2]
+        facts_by_id = by_id
+        # targets 表以 targetId 为键：重建时必须补回 targetId 键（pack_next 依赖它做稳定排序）
+        target_list = [dict(doc['targets'][tid], targetId=tid) for tid in doc['targets']]
+        packed = batch_plan.pack_next(target_list, target_list,
+                                      facts_by_id, profile,
+                                      plan_epoch=epoch, scope_payload=scope)
+        for job in packed.get('jobs') or []:
+            doc = batch_state.apply_event(doc, {'type': batch_state.EVENT_JOB_CREATED, **job})
+        if stored is None:
+            persistence.save_plan(doc)
+        else:
+            # abstract 重抽象：同一 run 上替换计划（save_plan 只用于初次建计划）——
+            # 校验 + lease 条件写同事务，旧计划被整体覆盖（旧候选已先行清理）。
+            batch_state.validate_plan_doc(doc)
+
+            def _replace(conn):
+                runner.check_cancelled(conn, run_id, owner_id)
+                hit = store.update_run(conn, run_id, owner_id,
+                                       checkpoint={'generate': doc},
+                                       lease=runner.lease_of(owner_id, run_id) or None)
+                if not hit:
+                    raise PipelineError('执行权已转移，计划替换被拒绝（晚结果丢弃）')
+            runner.content_tx(owner_id, run_id, _replace)
+        _note(notes, '计划已建立：%d 目标 / %d 作业（估算方式 %s，输出上限 %s token）。'
+                     % (len(doc.get('targets') or {}), len(doc.get('jobs') or {}),
+                        'UTF-8字节代理', (profile.get('effective') or {}).get('outputCap')))
+    else:
+        facts_by_id = by_id
+        if fingerprint and str(doc.get('fingerprint') or '') != fingerprint:
+            raise PipelineError('自适应计划与当前输入不一致（指纹已变化）：请「重新生成」建立新计划。')
+
+    facts_by_id = by_id
+
+    accumulated = []
+
+    def _transform(candidates, job_id):
+        verified, _report = verify_candidates(candidates, by_id.keys(),
+                                              weak_fact_ids=weak_fact_ids)
+        if verified:
+            verified = alignment.namespace_batch(
+                verified, _v2_job_namespace_position(job_id), existing=accumulated)
+        return verified
+
+    def _progress(_event, doc_snapshot):
+        coverage = doc_snapshot.get('coverage') or {}
+        runner.stage(owner_id, run_id, 'abstract', protocol.GENERATE_STAGE_LABELS['abstract'],
+                     {'done': int(coverage.get('targetCompleted') or 0),
+                      'total': int(coverage.get('targetTotal') or 0),
+                      'targets': int(coverage.get('targetTotal') or 0),
+                      'completed': int(coverage.get('targetCompleted') or 0)})
+
+    def _call(messages, max_tokens):
+        return llm_client.chat_once_result(
+            provider, messages, max_tokens=max_tokens,
+            timeout=_extract_call_timeout(provider, len(messages)))
+
+    exec_context = batch_execution.make_context(
+        persistence, _call, profile, doc, codec_version=codec,
+        facts_by_id=facts_by_id, scope_payload=scope,
+        clock=time.monotonic, sleeper=time.sleep,
+        run_attempt=int(context.get('runAttempt') or 1),
+        resume_requeue_failed=(resume_mode == 'auto'),
+        candidate_transform=_transform, progress_fn=_progress)
+
+    summary = batch_execution.run_plan(exec_context)
+    doc = summary['doc']
+
+    usage = _v2_usage_of(doc)
+    label = protocol.GENERATE_STAGE_LABELS['abstract']
+    if summary['state'] == 'succeeded':
+        runner.stage(owner_id, run_id, 'abstract', label,
+                     {'done': len(doc.get('targets') or {}),
+                      'total': len(doc.get('targets') or {}),
+                      'candidates': sum(int(j.get('candidateCount') or 0)
+                                        for j in (doc.get('jobs') or {}).values())})
+        # 终态防线（D10）：final_state_check 不过绝不允许成功收尾。
+        ok, violations = runner.finish_success_guarded(owner_user_id, run_id, usage,
+                                                       {'generate': doc})
+        if not ok:
+            raise PipelineError('生成计划终态检查未通过：%s'
+                                % '；'.join('%s(%s)' % (v['code'], v['message'])
+                                            for v in violations[:3]))
+        _note(notes, '自适应分批完成：%d 目标全部处理，候选 %d 个。'
+                     % (len(doc.get('targets') or {}),
+                        sum(int(j.get('candidateCount') or 0)
+                            for j in (doc.get('jobs') or {}).values())))
+        return {'usage': usage, 'notes': notes, 'planEpoch': summary['planEpoch'],
+                'mode': 'adaptive-v2'}
+
+    if summary['state'] == 'blocked':
+        blocking = summary.get('blocking') or {}
+        raise PipelineError('生成受阻（%s）：%s 已完成部分已保留；受阻需新建计划或补充材料，'
+                            '直接重试无法继续。' % (blocking.get('code'),
+                                                  blocking.get('message')))
+    raise PipelineError('生成未完成（%s）：已成功作业的结果已保留，可重试只补未成功部分。'
+                        % summary['state'])
+
+
+def _v2_usage_of(doc):
+    """schema2 计划 → Run.usage（legacy 字段 + token 统计；reasoning 不双加）。"""
+    attempts = doc.get('attempts') or {}
+    completion_bytes = duration_ms = 0
+    for attempt in attempts.values():
+        completion_bytes += int(attempt.get('bytes') or 0)   # bytes=响应字节（attempt_meta）
+        duration_ms += int(attempt.get('durationMs') or 0)
+    aggregate = batch_contracts.usage_aggregate(
+        [attempt.get('usage') for attempt in attempts.values()])
+    usage = {'calls': int(aggregate.get('calls') or 0),
+             'promptBytes': 0, 'completionBytes': completion_bytes,
+             'durationMs': duration_ms}
+    usage.update(batch_contracts.usage_view(aggregate, doc.get('planEpoch')))
+    return usage
+
+
 
 
 # --- 范围对话 ---------------------------------------------------------------------

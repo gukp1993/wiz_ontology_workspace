@@ -7,7 +7,10 @@
 
 契约：文档/接口文档/08-从物料自动构建本体接口.md。
 """
+import os
 
+from workbench.ontology_build import batch_contracts
+from workbench.ontology_build import budget_profile
 from workbench.ontology_build import delivery as delivery_domain
 from workbench.ontology_build import blacklist as blacklist_domain
 from workbench.ontology_build import materials as material_domain
@@ -19,6 +22,48 @@ from workbench.storage import engine as sto
 from workbench.storage import ontology_build as store
 
 _OPS = ('generate', 'scan', 'dialog')
+
+
+def _v2_codec():
+    raw = str(os.environ.get(batch_contracts.OUTPUT_CODEC_ENV) or '').strip()
+    return raw if raw in batch_contracts.CODEC_VERSIONS else batch_contracts.CODEC_LEGACY
+
+
+def _budget_issue(code, message):
+    """构造带 code/status 的 ValueError（server.py 映射为 422 + code）。"""
+    error = ValueError(message)
+    error.code = code
+    error.status = 422
+    return error
+
+
+def _v2_precheck_generate(provider):
+    """generate 类入口的同步预算预检（08 §14.2）：任何状态变更前调用；错误即 422。"""
+    profile = budget_profile.build_profile()
+    if not profile.get('enabled'):
+        return None
+    errors = budget_profile.request_budget_errors(profile, str(provider.get('id') or ''),
+                                                  str(provider.get('model') or ''))
+    if errors:
+        code, field = errors[0]
+        if code == batch_contracts.BUDGET_PROFILE_REQUIRED:
+            raise _budget_issue(code, '自适应分批配置不完整（%s）：请设置对应的 WIZ_BUILD_* '
+                                      '环境变量后重试。' % field)
+        if code == batch_contracts.BUDGET_PROFILE_MISMATCH:
+            raise _budget_issue(code, '请求的模型与自适应分批 profile 绑定不一致：请在 LLM 配置'
+                                      '选择绑定的提供方/模型，或更新 WIZ_BUILD_PROFILE_* 配置。')
+        raise _budget_issue(code, '自适应分批配置非法（%s）：请修正后重试。' % field)
+    return profile
+
+
+def _v2_count_guard(conn, owner_id, task_id, profile):
+    """有界轻量数量检查：入模事实超计划上限 → 422 BUDGET_PLAN_TOO_LARGE（零状态变更）。"""
+    count = store.count_facts(conn, task_id, owner_id)
+    if count > batch_contracts.MAX_PLAN_TARGETS:
+        raise _budget_issue(batch_contracts.BUDGET_PLAN_TOO_LARGE,
+                            '任务事实 %d 条超过计划目标上限 %d：请缩小范围或拆分任务后再生成。'
+                            % (count, batch_contracts.MAX_PLAN_TARGETS))
+    return count
 # provider 缺失时的统一可读文案（422 INVALID_STATE 的 message；对话端点写进 assistantError）
 NO_PROVIDER_MESSAGE = '尚未配置可用的 LLM 提供方：请到「更多工具 → LLM 配置」添加后再重试'
 
@@ -173,6 +218,9 @@ def get_capabilities(query):
         },
         # 结构化格式（08 §2.1/§12.7）：解析器支持矩阵，7 支持项 + 2 排除说明，静态数据
         'parserMatrix': _parser_matrix(),
+        # 生成控输出 v3（08 §14.4）：预算配置生效值展示（默认关闭；不给密钥/fact 清单）
+        'generationBudget': budget_profile.budget_view(
+            budget_profile.build_profile(), _v2_codec()),
         'provider': ref,
         'parserVersion': protocol.PARSER_VERSION,
         'promptVersion': protocol.PROMPT_VERSION,
@@ -230,6 +278,29 @@ def get_materials(query):
     return {'items': items, 'revision': int(row['material_revision'])}, 200
 
 
+def _v2_run_view(conn, run_row, view):
+    """schema2 运行的轮询摘要增强（08 §14.3）：
+
+    checkpoint.generate 换成 batch_contracts 冻结视图（jobs/coverage/budget/blocking，
+    不回全量 jobs/attempts/factIds/候选正文）；usage 并入可空 token 统计
+    （knownCompletionTokens/unknownUsageCalls，reasoning 不双加）。schema1 原样返回。
+    """
+    raw = store.run_checkpoint_doc(conn, str(run_row['run_id']), str(run_row['owner_user_id']))
+    if isinstance(raw, dict) and isinstance(raw.get('generate'), dict):
+        gen_doc = raw['generate']
+    else:
+        gen_doc = raw if isinstance(raw, dict) else {}
+    if gen_doc and int(gen_doc.get('schemaVersion') or 0) >= 2:
+        view['checkpoint'] = {'generate':
+                              batch_contracts.generate_checkpoint_view(gen_doc)}
+        aggregate = gen_doc.get('usageAggregate') if isinstance(gen_doc.get('usageAggregate'),
+                                                                dict) else {}
+        usage = dict(view.get('usage') or {})
+        usage.update(batch_contracts.usage_view(aggregate, gen_doc.get('planEpoch')))
+        view['usage'] = usage
+    return view
+
+
 def get_run(query):
     task_id = _query(query, 'taskId')
     run_id = _query(query, 'runId', required=False)
@@ -241,7 +312,9 @@ def get_run(query):
         run = store.get_run(conn, run_id, owner_id) if run_id else store.latest_run(conn, task_id, owner_id)
         if run is None:
             raise sto.NotFound('没有可用的运行记录')
-        return {'run': store.run_view(run), 'taskStatus': row['status']}, 200
+        view = store.run_view(run)
+        view = _v2_run_view(conn, run, view)
+        return {'run': view, 'taskStatus': row['status']}, 200
 
 
 def get_messages(query):
@@ -559,6 +632,39 @@ def post_run_resume(payload):
         raise ValueError('参数 resumeMode 只能是 auto 或 abstract')
     owner_id = _owner()
     from workbench.ontology_build import pipeline
+    # ── v2 预检（08 §14.2）：任何状态变更前完成——版本守卫/受阻/轻量指纹/配置校验。──
+    with sto.read_connection() as conn:
+        pre_row = store.require_task(conn, task_id, owner_id)
+        if pre_row is not None:
+            pre_run = store.get_run(conn, run_id, owner_id) if run_id else None
+            if pre_run is not None and pre_run['task_id'] == task_id                     and pre_run['kind'] == 'generate'                     and pre_run['state'] in ('failed', 'cancelled', 'interrupted'):
+                raw_doc = store.run_checkpoint_doc(conn, run_id, owner_id)
+                gen_doc = raw_doc.get('generate') if isinstance(raw_doc, dict) \
+                    and isinstance(raw_doc.get('generate'), dict) else raw_doc
+                if not isinstance(gen_doc, dict) or not gen_doc:
+                    gen_doc = None
+                if gen_doc is not None and int(gen_doc.get('schemaVersion') or 0) not in (1, 2):
+                    raise _budget_issue(batch_contracts.UNKNOWN_CHECKPOINT_SCHEMA,
+                                        '生成计划版本无法识别，拒绝恢复；原候选已保留。')
+                if gen_doc is not None and int(gen_doc.get('schemaVersion') or 0) == 2:
+                    if gen_doc.get('blocking'):
+                        raise _budget_issue('INVALID_STATE',
+                                            '上次运行已受阻（%s）：%s 受阻需新建生成计划或补充'
+                                            '材料，直接重试无法继续。'
+                                            % (gen_doc['blocking'].get('code'),
+                                               gen_doc['blocking'].get('message')))
+                    if resume_mode == 'auto':
+                        pre_scope = store.get_scope(conn, task_id, owner_id)
+                        if int(gen_doc.get('scopeRevision') or 0) != int(pre_scope.get('revision') or 0):
+                            raise _budget_issue(batch_contracts.BUDGET_PLAN_MISMATCH,
+                                                '自适应计划与当前范围不一致（指纹已变化）：'
+                                                '请重新生成建立新计划。')
+                        if int(gen_doc.get('materialRevision') or 0) != int(pre_row['material_revision']):
+                            raise _budget_issue(batch_contracts.BUDGET_PLAN_MISMATCH,
+                                                '自适应计划与当前材料不一致（指纹已变化）：'
+                                                '请重新生成建立新计划。')
+                provider = _provider_or_raise()
+                _v2_precheck_generate(provider)
     with sto.write_tx() as tx:
         def body(conn):
             row = store.require_task(conn, task_id, owner_id)
@@ -705,7 +811,14 @@ def post_scope_confirm(payload):
     provider = llm_providers.resolve(provider_id) if provider_id else llm_providers.default_provider()
     if not provider:
         raise _no_provider()
+    # 生成控输出 v3（08 §14.2）：预算预检在状态变更事务之前；422 拒绝时零状态变更。
+    _v2_precheck_generate(provider)
     with sto.write_tx() as tx:
+        def _preflight(conn):
+            _v2_count_guard(conn, owner_id, task_id,
+                            budget_profile.build_profile())
+            return None
+        tx.run(_preflight)
         try:
             batch_id, run_id, baseline, _lease = tx.run(
                 lambda conn: task_domain.confirm_scope(conn, task_id, revision, provider))
@@ -785,11 +898,14 @@ def post_regenerate(payload):
     owner_id = _owner()
     from workbench.ontology_build import pipeline
     provider = _provider_or_raise()
+    # 生成控输出 v3（08 §14.2）：预算预检在状态变更事务之前；422 拒绝时零状态变更。
+    _v2_precheck_generate(provider)
     with sto.write_tx() as tx:
         def body(conn):
             row = store.require_task(conn, task_id, owner_id)
             if row is None:
                 raise sto.NotFound('生成任务不存在')
+            _v2_count_guard(conn, owner_id, task_id, budget_profile.build_profile())
             scope = store.get_scope(conn, task_id, owner_id)
             if revision is not None and int(revision) != int(scope['revision']):
                 raise sto.RevisionConflict(current_revision=str(scope['revision']),
