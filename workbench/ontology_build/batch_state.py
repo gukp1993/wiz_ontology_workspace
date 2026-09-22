@@ -30,6 +30,21 @@ pendingTargetIds 语义（本模块冻结的实现口径）：
 对 normalize_usage 输出形状不幂等——本模块以 _raw_usage 适配输入复用同一实现，
 不复制聚合逻辑；建议 C 评估把 usage_aggregate 改为幂等。
 两者均为追加字段，不影响既有字段与任何读取方。
+
+拆分登记制（2026-09-22 D00 裁定，已并入 batch_contracts.py 正式协议：
+Target.expandedInto 可选字段 + final_state_check 按「有效叶目标集」比对覆盖，
+本模块为 batch_state 侧落地）：
+* job_split 的 children 项冻结形状扩为 {'jobId','orderedPrimaryTargetIds',
+  'contextFactIds','estimate','parentId','rootId','splitPath','splitSelectors'?,
+  'primaryTargets'?}；children 携带 'primaryTargets'（selector 子目标定义）时
+  apply_event 同步把这些 target 登记进 doc['targets']（'t-' 前缀、同 id 同内容
+  幂等、冲突 ValueError），并把父作业每个 primary target 标 'expandedInto' =
+  [本次新增子目标 id，按子目标定义顺序、factId+父选择器对应]；
+* selector 拆分的守恒按「有效叶」核验（_verify_expanding_split）：每个新增子目标
+  恰对应一个父主目标且恰被一个子作业认领，父主目标要么被展开要么被直接认领；
+  无 'primaryTargets'（单元级拆分，子作业复用既有目标）行为与现状完全一致；
+* 查询/校验配套：effective_leaf_target_ids（未展开目标 id，D09/D16 复用口径）、
+  validate_plan_doc 的 EXPANDED_* 错误码（悬空引用/展开链/成功叶直接覆盖已展开目标）。
 """
 import copy
 
@@ -44,6 +59,7 @@ EVENT_ATTEMPT_FAILED = 'attempt_failed'
 EVENT_ATTEMPT_UNKNOWN = 'attempt_unknown'
 EVENT_JOB_SUCCEEDED = 'job_succeeded'
 EVENT_JOB_FAILED = 'job_failed'
+EVENT_JOB_REQUEUED = 'job_requeued'
 EVENT_JOB_BLOCKED = 'job_blocked'
 EVENT_JOB_SPLIT = 'job_split'
 EVENT_JOB_SUPERSEDED = 'job_superseded'
@@ -476,6 +492,22 @@ def _event_job_failed(doc, event):
                                                bound_error(event.get('message'))))
 
 
+def _event_job_requeued(doc, event):
+    """显式 resume 重排队：failed → queued（D00 裁定，仅 run-resume 新 runAttempt 使用）。
+
+    blocked/superseded/succeeded 不动（受阻须新建计划，成功叶不重做）；
+    errorCode 保留为上次失败原因供界面追溯，重排队不改写 attempt 历史；
+    job 级尝试预算由执行器按「当前 runAttempt 内计数」执行（§6 失败预算不重置指 plan 级）。
+    """
+    job_id, job = _get_job(doc, event)
+    _require_transition(job_id, job, contracts.JOB_QUEUED)
+    _require_no_inflight(doc, job_id, job)
+    _require_int(event.get('runAttempt'), 'runAttempt', minimum=1)
+    job['state'] = contracts.JOB_QUEUED
+    _append_log(doc, '作业 %s 重试排队（resume 第 %d 次）'
+                % (job_id, int(event['runAttempt'])))
+
+
 def _event_job_blocked(doc, event):
     job_id, job = _get_job(doc, event)
     _require_transition(job_id, job, contracts.JOB_BLOCKED)
@@ -486,8 +518,130 @@ def _event_job_blocked(doc, event):
                                                bound_error(event.get('message'))))
 
 
+def _register_split_target(doc, raw, new_ids):
+    """selector 子目标登记（拆分登记制）：'t-' 前缀、同 id 同内容幂等、冲突 ValueError。
+
+    登记形状与计划 targets 表一致（factId/selector/subjectKey/kind 有界化；
+    materialId/groupingConfidence 属展示字段不入表）。selector 内容一致性按契约
+    唯一口径 canonical_selector 比对。新增 id 按子目标定义顺序记入 new_ids。
+    """
+    if not isinstance(raw, dict):
+        raise ValueError('primaryTargets 项必须是 dict')
+    targets = doc.get('targets')
+    if not isinstance(targets, dict):
+        raise ValueError('计划缺少 targets 表，无法登记拆分子目标')
+    target_id = str(raw.get('targetId') or '').strip()
+    fact_id = str(raw.get('factId') or '').strip()
+    if not target_id or not fact_id:
+        raise ValueError('primaryTargets 项缺少 targetId/factId')
+    normalized = {
+        'factId': bound_id(fact_id),
+        'selector': copy.deepcopy(raw.get('selector')) if isinstance(raw.get('selector'), dict)
+                    else {'type': 'whole'},
+        'subjectKey': bound_id(raw.get('subjectKey')),
+        'kind': bound_id(raw.get('kind')),
+    }
+    existing = targets.get(target_id)
+    if existing is None:
+        if not target_id.startswith('t-'):
+            raise ValueError('拆分子目标 %s 必须以 t- 开头（登记制派生 id）' % target_id)
+        targets[target_id] = normalized
+        new_ids.append(target_id)
+        return
+    same = (str(existing.get('factId') or '') == normalized['factId']
+            and contracts.canonical_selector(existing.get('selector'))
+            == contracts.canonical_selector(normalized['selector'])
+            and str(existing.get('subjectKey') or '') == normalized['subjectKey']
+            and str(existing.get('kind') or '') == normalized['kind'])
+    if not same:
+        raise ValueError('拆分子目标 %s 与现有目标内容冲突（同 id 不同内容拒绝）' % target_id)
+
+
+def _expanded_into_mapping(doc, parent_primaries, children, new_ids):
+    """父主目标 → 本次新增子目标 id 列表（子目标定义顺序；factId+父选择器对应）。
+
+    children 带 'splitSelectors'（父targetId→本子作业认领 selector 列表，D04 冻结
+    映射）时按认领 selector 精确对应；未携带时按「同 factId 且 selector 不同」宽松
+    对应（调用方应优先携带 splitSelectors）。只统计本次新增登记的 id（new_ids）。
+    """
+    targets = doc['targets']
+    parent_set = set(parent_primaries)
+    claims = {}
+    for child in children:
+        mapping = child.get('splitSelectors')
+        if not isinstance(mapping, dict):
+            continue
+        for parent_id, selectors in mapping.items():
+            parent_id = str(parent_id or '')
+            if parent_id not in parent_set:
+                continue
+            bucket = claims.setdefault(parent_id, set())
+            for selector in (selectors or []):
+                bucket.add(contracts.canonical_selector(selector))
+    result = {parent_id: [] for parent_id in parent_primaries}
+    for target_id in new_ids:
+        target = targets.get(target_id) or {}
+        fact_id = str(target.get('factId') or '')
+        selector_key = contracts.canonical_selector(target.get('selector'))
+        for parent_id in parent_primaries:
+            parent = targets.get(parent_id) or {}
+            if str(parent.get('factId') or '') != fact_id:
+                continue
+            claimed = claims.get(parent_id)
+            if claimed is not None:
+                if selector_key in claimed:
+                    result[parent_id].append(target_id)
+            elif selector_key != contracts.canonical_selector(parent.get('selector')):
+                result[parent_id].append(target_id)
+    return result
+
+
+def _verify_expanding_split(job_id, parent_primaries, covered, new_ids, mapping):
+    """selector 拆分（有新增子目标）的守恒核验：不重不漏、父子一一衔接。
+
+    * 子作业认领不重复、不超出（父主目标 ∪ 本次新增）；
+    * 每个新增子目标恰对应一个父主目标（展开映射恰好一次，防止拆分外新增覆盖）；
+    * 每个父主目标要么被展开（对应新增子目标非空）、要么被子作业直接认领，
+      不得两者兼有（兼有 → 终态有效叶覆盖重算）。
+    """
+    if len(set(covered)) != len(covered):
+        raise ValueError('拆分不守恒：子作业重复认领同一目标（父作业 %s）' % job_id)
+    claim_set = set(covered)
+    unclaimed = sorted(set(new_ids) - claim_set)
+    if unclaimed:
+        raise ValueError('拆分不守恒：新增子目标未被任何子作业认领：%s' % ', '.join(unclaimed))
+    extra = sorted(claim_set - set(new_ids) - set(parent_primaries))
+    if extra:
+        raise ValueError('拆分不守恒：子作业认领了非本拆分范围的目标：%s' % ', '.join(extra))
+    expansion_counts = {}
+    for kids in mapping.values():
+        for kid in kids:
+            expansion_counts[kid] = expansion_counts.get(kid, 0) + 1
+    for kid in new_ids:
+        count = expansion_counts.get(kid, 0)
+        if count != 1:
+            raise ValueError('拆分不守恒：新增子目标 %s 对应 %d 个父主目标（应恰为 1）'
+                             % (kid, count))
+    for parent_id in parent_primaries:
+        kids = mapping.get(parent_id) or []
+        claimed = parent_id in claim_set
+        if kids and claimed:
+            raise ValueError('拆分不守恒：目标 %s 同时被展开与被直接认领（父作业 %s）'
+                             % (parent_id, job_id))
+        if not kids and not claimed:
+            raise ValueError('拆分不守恒：父主目标 %s 未被展开也未被子作业认领（父作业 %s）'
+                             % (parent_id, job_id))
+
+
 def _event_job_split(doc, event):
-    """running|queued → split；子作业随同一事件入 jobs，目标不重不漏覆盖父目标。"""
+    """running|queued → split；子作业随同一事件入 jobs，目标不重不漏覆盖父目标。
+
+    拆分登记制（2026-09-22 D00 裁定）：children 项可携带 'primaryTargets'（selector
+    子目标定义，Target dict 列表）——先把这些 target 登记进 doc['targets']（_register_
+    split_target），再校验子作业主目标存在性，并把父作业每个 primary target 标
+    'expandedInto'（_expanded_into_mapping + _verify_expanding_split）。无
+    'primaryTargets'（单元级拆分，子作业复用既有目标）行为与现状一致（不登记不标）。
+    """
     job_id, job = _get_job(doc, event)
     _require_transition(job_id, job, contracts.JOB_SPLIT)
     _require_no_inflight(doc, job_id, job)
@@ -499,8 +653,8 @@ def _event_job_split(doc, event):
                          % (contracts.SPLIT_DEPTH_EXCEEDED, contracts.MAX_SPLIT_DEPTH))
     parent_primaries = [str(item) for item in (job.get('orderedPrimaryTargetIds') or [])]
     prepared = []
-    covered = []
     child_ids = set()
+    new_ids = []
     for child in children:
         if not isinstance(child, dict):
             raise ValueError('子作业定义必须是 dict')
@@ -510,21 +664,35 @@ def _event_job_split(doc, event):
         declared_parent = str(child.get('parentId') or '').strip()
         if declared_parent and declared_parent != job_id:
             raise ValueError('子作业 %s 的 parentId 必须是父作业 %s' % (child_id, job_id))
+        raw_targets = child.get('primaryTargets')
+        if isinstance(raw_targets, list):
+            for item in raw_targets:
+                _register_split_target(doc, item, new_ids)
+        child_ids.add(child_id)
+        prepared.append((child_id, child))
+    covered = []
+    with_primaries = []
+    for child_id, child in prepared:
         primaries = _normalize_target_ids(
             doc, child.get('orderedPrimaryTargetIds'), '子作业 %s 主目标' % child_id)
         if len(primaries) > contracts.MAX_PRIMARY_TARGETS_PER_JOB:
             raise ValueError('子作业 %s 主目标 %d 个超过单作业上限 %d'
                              % (child_id, len(primaries), contracts.MAX_PRIMARY_TARGETS_PER_JOB))
-        child_ids.add(child_id)
         covered.extend(primaries)
-        prepared.append((child_id, child, primaries))
-    # 覆盖守恒（契约 §5）：子目标集合 == 父目标集合，不重不漏；context 允许重叠不在此列。
-    if sorted(covered) != sorted(parent_primaries):
+        with_primaries.append((child_id, child, primaries))
+    if new_ids:
+        # selector 拆分：父目标标展开映射，守恒按「有效叶」核验（父目标可被子目标顶替）
+        mapping = _expanded_into_mapping(doc, parent_primaries, children, new_ids)
+        _verify_expanding_split(job_id, parent_primaries, covered, new_ids, mapping)
+        for parent_id, kids in mapping.items():
+            doc['targets'][parent_id]['expandedInto'] = list(kids)
+    elif sorted(covered) != sorted(parent_primaries):
+        # 覆盖守恒（契约 §5）：子目标集合 == 父目标集合，不重不漏；context 允许重叠不在此列。
         raise ValueError('拆分不守恒：子作业目标并集与父作业 %s 主目标不一致（重复或缺失）' % job_id)
     parent_root = str(job.get('rootId') or job_id)
     parent_split_path = str(job.get('splitPath') or 'root')
     created = []
-    for index, (child_id, child, primaries) in enumerate(prepared):
+    for index, (child_id, child, primaries) in enumerate(with_primaries):
         definition = dict(child)
         definition['orderedPrimaryTargetIds'] = primaries
         record = _new_job_record(doc, definition, child_id, job_id, parent_root,
@@ -587,6 +755,7 @@ _EVENT_HANDLERS = {
     EVENT_ATTEMPT_UNKNOWN: _event_attempt_unknown,
     EVENT_JOB_SUCCEEDED: _event_job_succeeded,
     EVENT_JOB_FAILED: _event_job_failed,
+    EVENT_JOB_REQUEUED: _event_job_requeued,
     EVENT_JOB_BLOCKED: _event_job_blocked,
     EVENT_JOB_SPLIT: _event_job_split,
     EVENT_JOB_SUPERSEDED: _event_job_superseded,
@@ -623,8 +792,25 @@ def effective_leaf_jobs(doc):
     return [job_id for job_id, job in jobs.items() if not (job.get('children') or [])]
 
 
+def effective_leaf_target_ids(doc):
+    """有效叶目标 id 列表（expandedInto 非空的目标不算叶；D09/D16 复用口径）。
+
+    与 contracts.final_state_check 的「有效叶目标集」同口径：拆分登记制下父目标
+    expandedInto 非空 → 由其子目标顶替，父目标自身不再参与叶覆盖比对。
+    """
+    if not isinstance(doc, dict):
+        return []
+    targets = doc.get('targets') if isinstance(doc.get('targets'), dict) else {}
+    return [target_id for target_id, target in targets.items()
+            if not (target.get('expandedInto') if isinstance(target, dict) else None)]
+
+
 def completed_target_digests(doc, targets=None):
-    """已 succeeded 叶作业覆盖目标的 digest 列表（复用 contracts.target_digest）。"""
+    """已 succeeded 叶作业覆盖目标的 digest 列表（复用 contracts.target_digest）。
+
+    拆分登记制下 expandedInto 目标若直接被成功叶作业覆盖属异常形态（validate_plan_doc
+    EXPANDED_LEAF_PRIMARY 拦截）；本函数按冻结口径只算成功叶作业主目标 digest，不改。
+    """
     if not isinstance(doc, dict):
         return []
     if not isinstance(targets, dict):
@@ -779,7 +965,8 @@ def validate_plan_doc(doc):
 
     覆盖：schemaVersion=2（未知版本拒绝恢复）、状态枚举、悬空 parentId/rootId/子作业/
     尝试引用、pendingTargetIds 与 targets/作业认领一致、拆分父子一致、终态作业无在途、
-    目标认领冲突、深度超限、coverage/usageAggregate 与重算一致、blocking 形状。
+    目标认领冲突、深度超限、expandedInto 拆分登记（悬空引用/展开链/成功叶直接覆盖
+    已展开目标）、coverage/usageAggregate 与重算一致、blocking 形状。
     """
     errors = []
     if not isinstance(doc, dict):
@@ -895,9 +1082,13 @@ def validate_plan_doc(doc):
                 _add_error(errors, 'JOB_ATTEMPT_DUPLICATE',
                            '作业 %s 尝试重复登记：%s' % (job_id, attempt_id))
             seen_attempt_ids.add(attempt_id)
-        if state == contracts.JOB_QUEUED and attempt_ids:
-            _add_error(errors, 'QUEUED_WITH_ATTEMPTS',
-                       '作业 %s 尚在 queued 却已有尝试' % job_id)
+        if state == contracts.JOB_QUEUED and any(
+                str((attempts.get(aid) or {}).get('state') or '') ==
+                contracts.ATTEMPT_STARTED for aid in attempt_ids):
+            # 重排队（显式 resume）的作业保留历史尝试（failed/interrupted_unknown）；
+            # queued 且仍有 started 在途尝试才是真损坏。
+            _add_error(errors, 'QUEUED_WITH_INFLIGHT_ATTEMPT',
+                       '作业 %s 尚在 queued 却有 started 在途尝试' % job_id)
         if state in _TERMINAL_JOB_STATES:
             for attempt_id in attempt_ids:
                 attempt = attempts.get(str(attempt_id)) or {}
@@ -913,6 +1104,45 @@ def validate_plan_doc(doc):
         if len(owner_ids) > 1 and not _owners_form_one_family(jobs, owner_ids):
             _add_error(errors, 'TARGET_OWNER_CONFLICT',
                        '目标 %s 被无父子关系的多个作业认领：%s' % (target_id, owner_ids))
+
+    # 拆分登记制（2026-09-22 D00 裁定）：expandedInto 引用存在、无展开链、
+    # 已展开目标不得同时是任何 succeeded 叶作业的 primary
+    expanded = {}
+    for target_id, target in targets.items():
+        refs = target.get('expandedInto') if isinstance(target, dict) else None
+        if refs is None:
+            continue
+        if not isinstance(refs, list):
+            _add_error(errors, 'EXPANDED_INVALID',
+                       '目标 %s 的 expandedInto 不是列表' % target_id)
+            continue
+        refs = [str(item or '') for item in refs]
+        seen_refs = set()
+        for ref in refs:
+            if ref not in targets:
+                _add_error(errors, 'EXPANDED_DANGLING',
+                           '目标 %s 的 expandedInto 引用不存在目标：%s' % (target_id, ref))
+            if ref in seen_refs:
+                _add_error(errors, 'EXPANDED_DUPLICATE',
+                           '目标 %s 的 expandedInto 重复引用：%s' % (target_id, ref))
+            seen_refs.add(ref)
+        if refs:
+            expanded[str(target_id)] = refs
+    for parent_id in sorted(expanded):
+        for ref in expanded[parent_id]:
+            if ref in expanded:
+                _add_error(errors, 'EXPANDED_CHAIN',
+                           '展开链不允许嵌套：%s 展开为 %s，而后者自身也带 expandedInto'
+                           % (parent_id, ref))
+    for job_id, job in jobs.items():
+        job = job if isinstance(job, dict) else {}
+        if str(job.get('state') or '') != contracts.JOB_SUCCEEDED or (job.get('children') or []):
+            continue
+        for target_id in job.get('orderedPrimaryTargetIds') or []:
+            target_id = str(target_id or '')
+            if target_id in expanded:
+                _add_error(errors, 'EXPANDED_LEAF_PRIMARY',
+                           '已展开目标 %s 被成功叶作业 %s 直接覆盖' % (target_id, job_id))
 
     # 逐尝试
     for attempt_id, attempt in attempts.items():

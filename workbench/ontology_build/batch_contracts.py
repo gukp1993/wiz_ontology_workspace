@@ -45,6 +45,7 @@ TARGET_BUDGET_EXCEEDED = 'TARGET_BUDGET_EXCEEDED'          # 目标数 > maxPlan
 JOB_BUDGET_EXCEEDED = 'JOB_BUDGET_EXCEEDED'                # 作业数 > maxPlanJobs
 ATTEMPT_BUDGET_EXCEEDED = 'ATTEMPT_BUDGET_EXCEEDED'        # 尝试数 > maxPlanAttempts
 WALL_TIME_BUDGET_EXCEEDED = 'WALL_TIME_BUDGET_EXCEEDED'    # 活跃耗时 > maxPlanWallSeconds
+COMPLETION_SOFT_LIMIT = 'COMPLETION_SOFT_LIMIT'            # 实验campaign已知completion软限达线（停派发）
 FINAL_CANDIDATES_EXCEEDED = 'FINAL_CANDIDATES_EXCEEDED'    # 最终候选 > 产品 500 上限 → 显式失败
 SPLIT_DEPTH_EXCEEDED = 'SPLIT_DEPTH_EXCEEDED'              # 拆分深度 > maxSplitDepth
 JOB_ATTEMPTS_EXHAUSTED = 'JOB_ATTEMPTS_EXHAUSTED'          # 单 job 3 次总额用尽
@@ -110,13 +111,15 @@ JOB_STATES = (JOB_QUEUED, JOB_RUNNING, JOB_SPLIT, JOB_SUCCEEDED, JOB_FAILED, JOB
 # 合法迁移（其余一律拒绝；apply_event 据此校验）：
 # queued → running | superseded | blocked（规划期即知不可容纳）
 # running → succeeded | failed | split | blocked
-# split/succeeded/failed/blocked/superseded → 终态，不再迁移
+# failed → queued（**仅显式 resume**：新 runAttempt 下「失败续跑只补未成功叶」§6；
+#           job 级尝试预算按当前 runAttempt 内计数，plan 级预算跨续跑不重置）
+# split/succeeded/blocked/superseded → 终态，不再迁移
 JOB_TRANSITIONS = {
     JOB_QUEUED: (JOB_RUNNING, JOB_SPLIT, JOB_SUPERSEDED, JOB_BLOCKED),
     JOB_RUNNING: (JOB_SUCCEEDED, JOB_FAILED, JOB_SPLIT, JOB_BLOCKED),
+    JOB_FAILED: (JOB_QUEUED,),
     JOB_SPLIT: (),
     JOB_SUCCEEDED: (),
-    JOB_FAILED: (),
     JOB_BLOCKED: (),
     JOB_SUPERSEDED: (),
 }
@@ -381,7 +384,11 @@ def validate_profile(profile, provider_id=None, model=None):
 #                                         # json_object / adjacent_window / single_fact
 #  'subjectKey': str,                     # 主体分组键（materialId+nodeId / 表 / 符号 / 章节 …）
 #  'materialId': str,
-#  'groupingConfidence': 'high'|'low'}
+#  'groupingConfidence': 'high'|'low',
+#  'expandedInto': [targetId]  （可选，仅拆分展开的父目标携带——D09 裁定：
+#      field/range selector 拆分在 commit_split 同事务把子目标登记进 targets 表并给父目标
+#      标 expandedInto；终态检查按「有效叶目标集」= 未展开原目标 ∪ 全部子目标 比对覆盖，
+#      expandedInto 非空的目标自身不算叶）}
 # 分组优先级：JSON-LD 按 materialId+nodeId；DDL 按 materialId+表；代码按 materialId+限定符号；
 # 文档按 materialId+章节；普通 JSON 按最近对象路径（数组下标保留）；缺定位 → 物料内相邻窗口，
 # groupingConfidence='low'。**每个范围内事实至少产生一个 target**：不因值短/像元数据删除事实。
@@ -554,6 +561,17 @@ def final_state_check(plan_doc):
     pending = generate.get('pendingTargetIds') or []
     if pending:
         violations.append({'code': 'PENDING_TARGETS', 'message': '仍有未处理目标 %d 个' % len(pending)})
+
+    def _digest_of(target_id):
+        target = targets.get(target_id) or {}
+        return target_digest({'factId': target.get('factId'), 'selector': target.get('selector')})
+
+    # 有效叶目标集 = 未被拆分展开的原目标 + 全部 selector 子目标（父 expandedInto 非空 → 不算叶）
+    effective = []
+    for target_id, target in targets.items():
+        if target.get('expandedInto'):
+            continue
+        effective.append(_digest_of(target_id))
     covered = []
     for job_id, job in jobs.items():
         state = str(job.get('state') or '')
@@ -564,19 +582,14 @@ def final_state_check(plan_doc):
                                    'message': '父作业 %s 状态为 %s 但存在子作业' % (job_id, state)})
             continue
         if state == JOB_SUCCEEDED:
-            covered.extend(job.get('orderedPrimaryTargetIds') or [])
+            covered.extend(_digest_of(tid) for tid in (job.get('orderedPrimaryTargetIds') or []))
         elif state in (JOB_QUEUED, JOB_RUNNING):
             violations.append({'code': 'ACTIVE_JOB_REMAINS', 'message': '作业 %s 仍在 %s'
                                % (job_id, state)})
         else:
             violations.append({'code': 'UNFINISHED_JOB', 'message': '作业 %s 状态 %s（%s）'
                                % (job_id, state, str(job.get('errorCode') or ''))})
-    check = coverage_check([target_digest({'factId': (targets.get(tid) or {}).get('factId'),
-                                           'selector': (targets.get(tid) or {}).get('selector')})
-                            for tid in targets],
-                           [target_digest({'factId': (targets.get(tid) or {}).get('factId'),
-                                           'selector': (targets.get(tid) or {}).get('selector')})
-                            for tid in covered])
+    check = coverage_check(effective, covered)
     if not check['ok']:
         violations.append({'code': 'COVERAGE_MISMATCH',
                            'message': '叶覆盖与计划不一致（缺 %d / 重 %d / 多 %d）'

@@ -24,6 +24,12 @@ workbench/ontology_build/batch_contracts.py，D00 冻结提交 87d1473）。
  9. 与 contracts 一致性：stable_job_id 派生作业 id 可用且确定、coverage_check 与
     completed_target_digests 组合、final_state_check 复用、plan_fingerprint 复用、
     checkpoint 软阈值复用（终态完成预留 16KiB+8KiB）。
+ 10. 拆分登记制（2026-09-22 D00 裁定落地，batch_state 侧）：job_split 携带
+     primaryTargets 时子目标登记（'t-' 前缀/幂等/冲突拒绝）、父目标 expandedInto
+     标记（子目标定义顺序、factId+splitSelectors 对应、只列本次新增）、selector
+     拆分有效叶守恒（未认领/漏认领/重复认领/既展开又认领拒绝）、validate_plan_doc
+     EXPANDED_*（悬空/展开链/成功叶直接覆盖已展开目标）、与
+     contracts.final_state_check 有效叶终态联测（父展开+双子成功 ok / 缺一不 ok）。
 
 隔离（AGENTS.md 测试铁律）：纯内存测试，不 import 存储层、不设 WIZ_WORKBENCH_ROOT、
 不访问网络、不写任何文件；全部数据为合成数据。
@@ -31,6 +37,7 @@ workbench/ontology_build/batch_contracts.py，D00 冻结提交 87d1473）。
 运行：python3 tests/test_ontology_build_batch_state.py
 """
 import copy
+import hashlib
 import sys
 import traceback
 from pathlib import Path
@@ -723,6 +730,189 @@ def scenario_supersede_and_block():
         '%s：replacedBy 引用不存在作业拒绝' % tag)
 
 
+# --- 场景 11：拆分登记制（job_split 携带 primaryTargets） --------------------------------
+
+
+def _derived_field_target(fact_id, field):
+    """按 D04/semantic_units 冻结公式派生 field selector 子目标（真实 D09 构造形态）。"""
+    selector = {'type': 'field', 'field': str(field)}
+    target_id = 't-' + hashlib.sha256(
+        (str(fact_id) + contracts.canonical_selector(selector)).encode('utf-8')).hexdigest()[:16]
+    return {'targetId': target_id, 'factId': str(fact_id), 'selector': selector,
+            'kind': 'jsonld_node', 'subjectKey': 'subject-' + str(fact_id),
+            'materialId': 'm-1', 'groupingConfidence': 'high'}
+
+
+def _split_child(job_id, target, parent_target_id):
+    """一个 selector 拆分子作业定义（D04 _field_split 形态：primaryTargets+splitSelectors）。"""
+    return {'jobId': job_id, 'orderedPrimaryTargetIds': [target['targetId']],
+            'primaryTargets': [target], 'contextFactIds': [],
+            'splitSelectors': {parent_target_id: [target['selector']]}}
+
+
+def scenario_split_registration():
+    tag = '场景11 拆分登记制'
+    # (1) job_split 携带 primaryTargets：子目标入 targets、父目标标 expandedInto
+    c_a = _derived_field_target('f-1', 'alpha')
+    c_b = _derived_field_target('f-1', 'beta')
+    doc = make_plan(1)
+    doc = batch_state.apply_event(doc, event_created('j-root', ['t-1'], splitPath='root'))
+    doc = batch_state.apply_event(doc, {'type': 'job_claimed', 'jobId': 'j-root',
+                                        'attemptId': 'a-0'})
+    doc = batch_state.apply_event(doc, event_started('a-0', 'j-root'))
+    doc = batch_state.apply_event(doc, {
+        'type': 'attempt_failed', 'attemptId': 'a-0', 'errorCode': contracts.OUTPUT_TRUNCATED,
+        'message': '输出超限触发字段拆分', 'finishReason': 'length', 'usage': {}})
+    doc = batch_state.apply_event(doc, {
+        'type': 'job_split', 'jobId': 'j-root',
+        'children': [_split_child('j-left', c_a, 't-1'), _split_child('j-right', c_b, 't-1')]})
+    check(c_a['targetId'] in doc['targets'] and c_b['targetId'] in doc['targets']
+          and doc['targets'][c_a['targetId']] == {
+              'factId': 'f-1', 'selector': c_a['selector'],
+              'subjectKey': 'subject-f-1', 'kind': 'jsonld_node'},
+          '%s：primaryTargets 子目标按冻结形状登记进 targets（materialId 等展示字段不入表）' % tag,
+          actual={key: doc['targets'].get(key) for key in (c_a['targetId'], c_b['targetId'])})
+    check(doc['targets']['t-1'].get('expandedInto') == [c_a['targetId'], c_b['targetId']],
+          '%s：父目标 t-1 标 expandedInto=本次新增子目标 id（按子目标定义顺序）' % tag,
+          actual=doc['targets']['t-1'].get('expandedInto'))
+    check(doc['jobs']['j-root']['state'] == 'split'
+          and doc['jobs']['j-left']['orderedPrimaryTargetIds'] == [c_a['targetId']]
+          and doc['jobs']['j-right']['parentId'] == 'j-root',
+          '%s：父 split、子作业按新派生 id 认领并挂父链' % tag,
+          actual={'parent': doc['jobs']['j-root']['state'],
+                  'left': doc['jobs']['j-left']['orderedPrimaryTargetIds']})
+    check(doc['pendingTargetIds'] == []
+          and doc['coverage'] == {'targetTotal': 3, 'targetCompleted': 0, 'targetPending': 3},
+          '%s：登记后 targetTotal=3，新增子目标由子作业认领不进 pending' % tag,
+          actual={'pending': doc['pendingTargetIds'], 'coverage': doc['coverage']})
+    check(batch_state.effective_leaf_target_ids(doc) == [c_a['targetId'], c_b['targetId']],
+          '%s：effective_leaf_target_ids=未展开子目标（父目标 expandedInto 非空不算叶）' % tag,
+          actual=batch_state.effective_leaf_target_ids(doc))
+    check(batch_state.validate_plan_doc(doc) == [],
+          '%s：登记拆分后结构校验零错误' % tag, actual=batch_state.validate_plan_doc(doc))
+    # (5) 终态联动：父展开 + 双子 succeeded → 契约 final_state_check ok；双子缺一 → 不 ok
+    full = finish_leaf(doc, 'j-left', 'a-1')
+    full = finish_leaf(full, 'j-right', 'a-2')
+    contracts_final = contracts.final_state_check({'generate': full})
+    wrapped = batch_state.final_check(full)
+    check(contracts_final.get('ok') is True and wrapped.get('ok') is True
+          and batch_state.validate_plan_doc(full) == [],
+          '%s：父展开+双子 succeeded → 契约 final_state_check ok（有效叶=双子目标）' % tag,
+          actual={'contracts': contracts_final, 'wrapped': wrapped,
+                  'errors': batch_state.validate_plan_doc(full)})
+    digests = batch_state.completed_target_digests(full, full['targets'])
+    planned = [contracts.target_digest(full['targets'][key])
+               for key in (c_a['targetId'], c_b['targetId'])]
+    check(sorted(digests) == sorted(planned)
+          and contracts.coverage_check(planned, digests).get('ok') is True,
+          '%s：completed_target_digests 与有效叶目标集合守恒（contracts.coverage_check ok）' % tag,
+          actual={'completed': digests, 'planned': planned})
+    half = finish_leaf(doc, 'j-left', 'a-1')
+    half_final = contracts.final_state_check({'generate': half})
+    check(half_final.get('ok') is False and 'ACTIVE_JOB_REMAINS' in violation_codes(half_final),
+          '%s：双子缺一（右子仍 queued）→ final_state_check 不 ok' % tag,
+          actual=violation_codes(half_final))
+    # (2) 幂等：同 id 同内容重复登记不报错、不重复登记、不进 expandedInto
+    doc2 = make_plan(2)
+    doc2 = batch_state.apply_event(doc2, event_created('j-1', ['t-1']))
+    doc2 = batch_state.apply_event(doc2, event_created('j-2', ['t-2']))
+    doc2 = batch_state.apply_event(doc2, {
+        'type': 'job_split', 'jobId': 'j-1',
+        'children': [_split_child('j-1a', c_a, 't-1'), _split_child('j-1b', c_b, 't-1')]})
+    c2_a = _derived_field_target('f-2', 'alpha')
+    c2_b = _derived_field_target('f-2', 'beta')
+    doc2 = batch_state.apply_event(doc2, {
+        'type': 'job_split', 'jobId': 'j-2',
+        'children': [dict(_split_child('j-2a', c2_a, 't-2'),
+                          primaryTargets=[c2_a, copy.deepcopy(c_a)]),
+                     _split_child('j-2b', c2_b, 't-2')]})
+    check(doc2['targets'][c_a['targetId']] == {
+              'factId': 'f-1', 'selector': c_a['selector'],
+              'subjectKey': 'subject-f-1', 'kind': 'jsonld_node'},
+          '%s：同 id 同内容重复登记幂等（仍只有一份原内容）' % tag,
+          actual=doc2['targets'][c_a['targetId']])
+    check(doc2['targets']['t-2'].get('expandedInto') == [c2_a['targetId'], c2_b['targetId']],
+          '%s：expandedInto 只列本次新增（幂等命中 id 与 factId 不对应的 id 均不进映射）' % tag,
+          actual=doc2['targets']['t-2'].get('expandedInto'))
+    check(len(doc2['targets']) == 6 and batch_state.validate_plan_doc(doc2) == [],
+          '%s：两次拆分登记共 6 目标、结构零错误' % tag,
+          actual={'targets': sorted(doc2['targets']),
+                  'errors': batch_state.validate_plan_doc(doc2)})
+    # (3) 冲突：同 id 不同内容 / 非 t- 前缀新 id → ValueError
+    doc3 = make_plan(2)
+    doc3 = batch_state.apply_event(doc3, event_created('j-3', ['t-1']))
+    doc3 = batch_state.apply_event(doc3, event_created('j-4', ['t-2']))
+    doc3 = batch_state.apply_event(doc3, {
+        'type': 'job_split', 'jobId': 'j-3',
+        'children': [_split_child('j-3a', c_a, 't-1')]})
+    conflicting = dict(c_a, selector={'type': 'field', 'field': 'override'})
+    check_raises(lambda: batch_state.apply_event(doc3, {
+        'type': 'job_split', 'jobId': 'j-4',
+        'children': [_split_child('j-4a', conflicting, 't-2')]}),
+        '%s：同 id 不同内容（selector 冲突）拒绝' % tag)
+    bad_prefix = dict(c_a, targetId='x-' + c_a['targetId'][2:])
+    check_raises(lambda: batch_state.apply_event(doc3, {
+        'type': 'job_split', 'jobId': 'j-4',
+        'children': [_split_child('j-4a', bad_prefix, 't-2')]}),
+        '%s：新增子目标非 t- 前缀拒绝' % tag)
+    # 守恒核验（selector 拆分的有效叶口径）
+    orphan = _derived_field_target('f-1', 'orphan')
+    check_raises(lambda: batch_state.apply_event(doc3, {
+        'type': 'job_split', 'jobId': 'j-4',
+        'children': [dict(_split_child('j-4a', c_b, 't-2'), primaryTargets=[c_b, orphan])]}),
+        '%s：新增子目标未被任何子作业认领拒绝' % tag)
+    unrelated = _derived_field_target('f-9', 'solo')
+    check_raises(lambda: batch_state.apply_event(doc3, {
+        'type': 'job_split', 'jobId': 'j-4',
+        'children': [_split_child('j-4a', unrelated, 't-2')]}),
+        '%s：父主目标未被展开也未被子作业认领（新增目标与父主目标无 factId 对应）拒绝' % tag)
+    check_raises(lambda: batch_state.apply_event(doc3, {
+        'type': 'job_split', 'jobId': 'j-4',
+        'children': [_split_child('j-4a', c_b, 't-2'), _split_child('j-4b', c_b, 't-2')]}),
+        '%s：两个子作业重复认领同一新增子目标拒绝' % tag)
+    check_raises(lambda: batch_state.apply_event(doc3, {
+        'type': 'job_split', 'jobId': 'j-4',
+        'children': [{'jobId': 'j-4a', 'orderedPrimaryTargetIds': ['t-2'],
+                      'primaryTargets': [c_b], 'contextFactIds': [],
+                      'splitSelectors': {'t-2': [c_b['selector']]}}]}),
+        '%s：目标既被展开（新增子目标对应）又被直接认领拒绝' % tag)
+    check('expandedInto' not in doc3['targets']['t-2']
+          and c_b['targetId'] not in doc3['targets'],
+          '%s：被拒事件不留副作用（深拷贝语义，未登记未标记）' % tag,
+          actual={'t-2': doc3['targets']['t-2'],
+                  'c_b_registered': c_b['targetId'] in doc3['targets']})
+    # (4) validate_plan_doc 扩展：悬空 / 展开链 / 成功叶直接覆盖 / 形状
+    dangling = make_plan(2)
+    dangling['targets']['t-1']['expandedInto'] = ['t-ghost']
+    errs = batch_state.validate_plan_doc(dangling)
+    check(len(errs) == 1 and errs[0]['code'] == 'EXPANDED_DANGLING',
+          '%s：expandedInto 悬空引用恰报一条 EXPANDED_DANGLING' % tag, actual=errs)
+    chain = make_plan(3)
+    chain['targets']['t-1']['expandedInto'] = ['t-2']
+    chain['targets']['t-2']['expandedInto'] = ['t-3']
+    errs = batch_state.validate_plan_doc(chain)
+    check(len(errs) == 1 and errs[0]['code'] == 'EXPANDED_CHAIN',
+          '%s：展开链（t-1→t-2→t-3）恰报一条 EXPANDED_CHAIN' % tag, actual=errs)
+    leaf_primary = run_leaf(make_plan(2), 'j-v', ['t-1'], 'a-1')
+    leaf_primary['targets']['t-1']['expandedInto'] = ['t-2']
+    errs = batch_state.validate_plan_doc(leaf_primary)
+    check(len(errs) == 1 and errs[0]['code'] == 'EXPANDED_LEAF_PRIMARY',
+          '%s：已展开目标被成功叶作业直接覆盖恰报一条 EXPANDED_LEAF_PRIMARY' % tag, actual=errs)
+    bad_shape = make_plan(1)
+    bad_shape['targets']['t-1']['expandedInto'] = 't-2'
+    errs = batch_state.validate_plan_doc(bad_shape)
+    check(len(errs) == 1 and errs[0]['code'] == 'EXPANDED_INVALID',
+          '%s：expandedInto 非列表恰报一条 EXPANDED_INVALID' % tag, actual=errs)
+    empty_ok = make_plan(2)
+    empty_ok['targets']['t-1']['expandedInto'] = []
+    check(batch_state.validate_plan_doc(empty_ok) == [],
+          '%s：expandedInto 空列表视为未展开、结构零错误' % tag,
+          actual=batch_state.validate_plan_doc(empty_ok))
+    check(batch_state.effective_leaf_target_ids(empty_ok) == ['t-1', 't-2'],
+          '%s：空 expandedInto 目标仍计入有效叶（contracts 口径 falsy）' % tag,
+          actual=batch_state.effective_leaf_target_ids(empty_ok))
+
+
 # --- 入口 -----------------------------------------------------------------------------
 
 SCENARIOS = [
@@ -737,6 +927,7 @@ SCENARIOS = [
     ('validate_plan_doc', scenario_validate_plan_doc),
     ('contracts_consistency', scenario_contracts_consistency),
     ('supersede_and_block', scenario_supersede_and_block),
+    ('split_registration', scenario_split_registration),
 ]
 
 
