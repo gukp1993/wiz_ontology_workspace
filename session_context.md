@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`72a89e28f6213b09`
+上下文版本：`543140f5162daafc`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### model_setting-环境创建 · zcode · 需求已交付
+
+时间：2026-09-22T16:00:40.560421+00:00；记录：`.collaboration/entries/000257-658879a5b43a.json`
+
+按用户指令从 main(5bfb605) 创建 model_setting 分支与 worktree/model_setting，仅建环境：端口 18971 实测空闲；数据根工作树自含（transfer backup WAL 快照 + 根密钥副本 0600 + ontology-build-blobs 随迁，登记含真实数据不可自动丢弃）。快照体检 integrity ok、副本根密钥推导 key_id 与库内凭据记录匹配、wb_model_configs 现存 2 行（GLM-5.3-Flash/minimax）。依赖未装、服务未启、未开发。登记 workbench-tasks/model_setting.json 与开发计划 §7 环境表。
+
+- 决定：分支名用用户指定的 model_setting（非 codex/ 前缀模板）；端口取 18971：18961/18913 被占，18951 有旧任务关联，选无关联空闲口
+- 验证：git worktree list 确认新树与 auto_build 并存、分支从 5bfb605 派生；transfer backup 输出 11382784B 与 main 库一致；sqlite immutable 只读体检 integrity=ok；key_id 匹配验证：副本根密钥 SHA256 前 16hex == wb_credentials.key_id（c26b32a0c13462a5），副本内加密凭据可解密
+- 下一步：待用户开发指令（执行指令.md §1 模板二）；T0 三决策点（目录范围//v1/models/anthropic-messages）未拍板前不冻结契约
+- 依据/文档：workbench-tasks/model_setting.json；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md（§7 环境登记）
 
 ### 模型供应商与模型管理改版-需求四件套交付 · zcode · 已确认决定
 
@@ -144,16 +155,4 @@ T2 交付：新增 workbench/assist_ops.py（受限 operations 校验器，模�
 - 验证：核对assist-fill-production@544f6c8及现有登记；独立子agent只读评审风险已纳入。；最新数据规则与旧数据根无损迁移及真实副本保留要求已写入。
 - 下一步：交harness在已有授权worktree实施，自测提交后独立验收，不合并main。
 - 依据/文档：文档/需求/20260922_整表自动填写交互/需求说明.md；文档/需求/20260922_整表自动填写交互/开发计划.md；文档/需求/20260922_整表自动填写交互/执行指令.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 样式与交互统一（codex/ui_fix）集成合并与环境清理 · codex · 已验证
-
-时间：2026-09-22T08:51:50.813130+00:00；记录：`.collaboration/entries/000244-0a06292e9445.json`
-
-按用户指令"合并到主干，然后删除当前worktree"完成集成。main 原为脏（他人 63 条未入库交接），经用户选择"先收纳再合并"：65bbe34 只收 .collaboration/entries/000174~000240 + render 汇总，不改写他人记录与序号。随后 main 又被 d08b96b 前进一条（000241），故不再是祖先关系，按三方合并出 d0d60b0（父 65bbe34 + 被验收树 064cf10），合入 26 提交/74 文件。唯一冲突是生成文件 session_context.md，按约定用 context.py render 重建、未手工拼接摘要。组合校验在合并后的 main 工作树执行并通过。数据副本处置经用户明确确认"随 worktree 一并删除"：分支内真实数据快照库、根密钥副本、验收资产与预0004回退产物一并销毁（不可逆）。按"本轮不更新，只合代码"未构建、未重启 18765，主工作台运行态仍是合并前 dist。
-
-- 决定：main 脏不 stash/reset：改为先把他人 in-flight 交接单独收纳为 docs(collaboration) 提交，再合并，保持记录原始内容与序号。；唯一冲突 session_context.md 属生成物，用 render 重建解决；不手工合并、不保留冲突标记。；worktree/ui_fix 数据副本（含真实数据快照+根密钥）按用户确认随工作树删除；其他两个 worktree、main 库、18765/18881/18912 不在范围内。；刻意不在 main 跑 vite build：18765 直接托管 frontend/dist，重建等于未授权改用户在用界面。前端校验只用无副作用的 vue-tsc --noEmit 与 eslint。
-- 验证：git diff 064cf10 -- frontend workbench tests 文档 DESIGN.md AGENTS.md 无输出：合并树业务代码/测试/文档与被浏览器逐项复测通过的开发树逐字节一致，差异仅共享上下文交接。；main 上 vue-tsc --noEmit 无输出；eslint src 0 问题；python3 tests/run.py quick 通过 3/3；unit 通过 45/45（含 test_save_iteration 8 步）。；package.json/package-lock/requirements 本次合并无变化，故复用 main 现有环境校验成立。；未覆盖：main 未执行 vite build、未重启 18765，因此无合并后的浏览器实测；运行态界面仍是被合并前的旧 bundle。
-- 下一步：待用户授权后 ./start.sh rebuild（构建成功才切服务）并重启主工作台，再做浏览器抽验；代码回退不等于数据回退。；序号 000187/000188 在两工作树各自计数下重号（文件名 hash 不同、无 Git 冲突），如需澄清按既有约定追加纠正记录，不改写历史。
-- 依据/文档：提交：收纳 65bbe34；合并 d0d60b0（父 65bbe34 + 064cf10）；合并前 main 基线 578acd7→d08b96b。；实施与复测记录：文档/需求/20260921_样式与交互统一/开发计划.md §9.13（第八轮 6 缺陷、12 行复测值表、未覆盖项）。；设计契约：DESIGN.md（时间唯一出口 shared/format.ts、fixed 表 min-width + overflow:auto 约定、空态需区分"未选择"与"一个也没有"）。
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
