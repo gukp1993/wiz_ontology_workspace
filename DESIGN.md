@@ -209,6 +209,7 @@ components:
 - `micro-label`（11px + letter-spacing 1px + 650）只用于 eyebrow / badge / 大写提示，不用于正文。
 - 代码与技术细节用等宽呈现并落在 `--paper-3` 底上；`pre` 必须 `white-space: pre-wrap; word-break: break-word`。
 - 长文本必须 `overflow-wrap: anywhere`（表格单元格、业务定义、来源路径），不允许撑破布局。
+- **日期时间显示唯一出口是 `shared/format.ts`**（`formatDateTime` 给列表/表格 `2026-09-22 14:12`，`formatDateTimeSec` 给调试与"刷新于"提示位点带秒）。禁止在页面或模块内再写一份 `formatTime`，也禁止用 `new Date(x).toLocaleString()` 渲染带日期的时间：`toLocaleString` 按浏览器 locale 输出 `2026/9/22 00:09:41` 这种形状，同一份数据在不同机器上宽度与分隔符都不同，与按字符数定的固定列宽直接打架。空值给 `—`，不可解析原样回显（便于排查脏数据，而不是静默变成 `Invalid Date`）。**登记的窄口径例外**：纯时刻（不含日期）允许 `toLocaleTimeString('zh-CN', { hour12: false })`，它在各 locale 下都稳定输出 `HH:MM:SS`，现存 `app/saveCoordinator.ts:65` 的"已保存"时刻与 `flow/FlowTestWorkspace.vue:261` 的结果提交时刻即用此写法，不并入 `shared/format`。
 
 ## Layout
 
@@ -219,6 +220,7 @@ components:
   - `.mapping-workspace` / `.definition-grid` / `.workspace` 为既有专用栅格，保留。
 - 表单：`.editor-field` 为标签+控件唯一写法；两列用 `.form-grid`（`repeat(2, minmax(0,1fr))`）；必填用 `.required-mark`，可选项标 `.optional-label`，字段说明用 `.field-help`，错误用 `.field-error`。
 - 统一表格用 `.ont-*`：表头列宽 40px 起、单元格 64px、`.ont-clip` 两行截断、`.ont-badge` 状态胶囊、`.ont-empty` 空态、`.ont-drawer` 480px 右侧抽屉 + `.ont-overlay` 遮罩、`.list-pager` 分页。
+- **`table-layout:fixed` 的表格必须同时声明 `min-width`（≥ 各列宽之和）并被 `overflow:auto` 容器包住**（既有做法：`.ont-table{min-width:620px}` 在 `.ont-scroll` 内、`.attribute-table`/`.ab-paramtable{min-width:900px}`）。fixed 布局先把声明了 px 的列分满、剩余空间才给未声明宽度的列，缺 `min-width` 时容器一变窄，那个"吃掉剩余"的列会被压到几像素（`flow/FlowList.vue` 的编排名称列曾被压到 25px、行高 157px），横滚也不会出现，因为表格本身没超出容器。窄列宽度按**实测内容宽 + 单元格左右内边距（各 10px）**定，不按肉眼估：状态胶囊 `.property-pill` 最长文案「待完善 · 3 个问题」实测 130px，列宽 110/140px 都会溢出；操作列三个 `.mini` 按钮 146px，列宽 148px 会让最后一个按钮溢出单元格右边界 8px。
 - 空间分配靠留白分组（`--r-*` + 12–24px 间距），不嵌套卡片。卡片只有一层：`.card` / `.detail-card`。
 - 响应式断点（以 `grep -rn "@media" frontend/src` 命中为准，legacyGraph 除外）：全局 `style.css` 用 1200 / 1150 / 1000 / 900 / 850 / 800 / 760 / 700 / 640 / 620 与一个 `min-width:761`（另有 `prefers-reduced-motion`）；组件级另有 1439 / 1100 / 1099 / 1050 / 1000 / 900 / 850 / 800 / 768 / 767 / 760 / 650 / 620 / 600。**这些数值全部是 main 既有值，本轮一条都没改**；把它们收敛到少数几档属于例外 6 的尺寸迁移，不在本轮范围。窄屏下双栏改为堆叠、rail 变横向、抽屉占满宽。
 
