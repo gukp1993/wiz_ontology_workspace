@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`259ca79fe04f29f6`
+上下文版本：`0bc574a4440bccc0`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### ui_fix 分支同步 main（主干→分支日常合并） · codex · 已实施，待验收
+
+时间：2026-09-22T05:59:17.335607+00:00；记录：`.collaboration/entries/000184-f005dbfd67a4.json`
+
+在 worktree/ui_fix 内将已提交 main 合并进 codex/ui_fix：merge 提交 ae4ce18 无冲突（三个 build 页面 ort 自动合并）；随后按分支 modal a11y 规范为 main 新增的 BuildMaterialsPage 两处弹窗补 tabindex=-1 与 @keydown.esc.stop（476cd28），render 重建 session_context（e75fa65）。验证：npm run build 通过、npm run lint 无告警、后端模块 import 通过；未启动服务、未跑 external 测试组。
+
+- 决定：冲突自动合并后逐处核对双方改动：main 功能结构全保留，分支 h2+font-weight:700 与弹窗 a11y 均在位；session_context.md 不手改，用 context.py render 重建
+- 验证：cd frontend && npm run build（vue-tsc+vite）通过；cd frontend && npm run lint 通过（无输出）；python3 -c import workbench.server,workbench.ontology_build.materials,workbench.ontology_build.llm 输出 IMPORT OK；git status 干净，分支 codex/ui_fix HEAD=e75fa65
+- 下一步：待用户决定后续浏览器验收或集成安排
 
 ### retrieve筛选优化-剖析与基准基建（codex/build-progress-log） · zcode · 已实施，待验收
 
@@ -139,13 +149,3 @@ V2-10 解析并发（线程池）六项任务全部完成：68adc85 契约先行
 - 验证：tests/test_ontology_build.py 244/244（新增 flow_parse_concurrency 18 项：等价指纹逐字节一致、峰值并发≥2、取消后 facts 稳定、超时迟到结果丢弃、env 覆盖/回退）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；vue-tsc 0 错误、npm run build 通过；ruff 本组改动文件全过；G25f：1200 小文件串行 3.33–5.04s vs 并发8 3.45–3.93s（小文本 GIL 主导无显著加速，含一组负载离群值；详见开发计划 §12.4）
 - 下一步：待测试 agent 独立验收（G25a–f）；工作树内存在另一并行任务（结构化格式解析 v1）的未提交文件（parsers/ 7 个新文件 + __init__/protocol/blacklist/pipeline 未提交修改）——非本任务范围，未代为提交/修改；本任务回归已在其当前状态下 244/244 通过；tests/test_ontology_build_task_purge.py:115 基线即有 F841 维持未动
 - 依据/文档：worktree/build-governance 分支 codex/build-governance：68adc85/feebad2/a766747/3731593/cb65d4f/494f8fd；文档/接口文档/08-从物料自动构建本体接口.md §2.1/§4；文档/需求/20260920_从物料自动构建本体/开发计划.md §12.4
-
-### 自动化构建本体方法论交付（用户指令，综合 OpenSPG+semantica） · zcode · 已实施，待验收
-
-时间：2026-09-21T13:34:49.885309+00:00；记录：`.collaboration/entries/000177-d5a21dfc0072.json`
-
-按用户「结合openspg给我一套自动化构建本体的方法论」指令交付 文档/需求/20260920_从物料自动构建本体/自动化构建本体方法论_20260921.md。综合三家：OpenSPG 调研（codex 交付，schema 约束+保守对齐+规则推理补全）、semantica 源码调研（本侧，确定性优先+质检零 LLM）、需求 v1 已确认产品原则。结构：总纲一句话哲学+四立场表；三线分流（结构化零LLM/非结构化LLM/代码线）+双生命周期+执行模型；S1-S8 八阶段流水线（每阶段两库做法→方法论裁定→三种合法失败行为，禁静默）；九道闸准确性总表；六条设计原则；七条工程执行要点；六条反模式（含两家文档失实样本）；§7 映射——v1 已覆盖清单 + 七条候选增量按 P0-P2 排列（schema 注入/多轮小调用/频率门/冲突仲裁/滞留留痕/断点续跑/质量门），明确标注待用户拍板不构成实施授权。文中声明不向讨论线白名单新增议题，A1/D1/画像关闭条件不受影响。评审 README 关联文档节同步登记。
-
-- 验证：方法论所有机制均标注来源（OpenSPG 调研/semantica 调研带文件:行号/v1 需求条款），无未溯源的新断言；§7.3 边界声明与限制令核对一致（未新增白名单议题）；README 相对链接有效；纯文档交付未改代码
-- 下一步：候选增量七项待用户逐项拍板后才可进入需求线排期；正式 semantica 技术画像仍归 W11/储能fdev，本侧两份调研为其输入
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/自动化构建本体方法论_20260921.md；文档/需求/20260920_从物料自动构建本体/OpenSPG自动化图谱构建机制调研_20260921.md；文档/本体自动化构建评审_20260921/semantica源码调研_自动化图谱构建机制_20260921.md
