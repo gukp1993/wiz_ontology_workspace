@@ -1364,8 +1364,8 @@ def flow_llm_fallback():
     log_text = ('2026-09-21 设备 SOC 采样开始，额定容量校验通过\n'
                 '2026-09-21 储能簇功率平滑策略执行完毕\n') * 40
     (fixture_dir / 'export.log').write_text(log_text, encoding='utf-8')
-    (fixture_dir / 'config.ini').write_text('[device]\ncapacity = 500\nmode = auto\n', encoding='utf-8')
-    for name in ('export.log', 'config.ini'):
+    (fixture_dir / 'notes.dat').write_text('[device]\ncapacity = 500\nmode = auto\n', encoding='utf-8')
+    for name in ('export.log', 'notes.dat'):
         status, body = _upload_bytes((fixture_dir / name).read_bytes(), task_id, name)
         if status != 200:
             raise Abort('上传 %s 失败：%s' % (name, _short(body)))
@@ -1385,12 +1385,12 @@ def flow_llm_fallback():
     states = {m['relPath']: m for m in listing.get('items') or []}
     check(all((states.get(name) or {}).get('parseState') in ('success', 'partial')
               and 'llm-fallback' in str((states.get(name) or {}).get('coverage'))
-              for name in ('export.log', 'config.ini')),
+              for name in ('export.log', 'notes.dat')),
           'kind=other 可读文本走 LLM 兜底：解析成功且 coverage 标注 llm-fallback',
           actual={k: (v.get('parseState'), (v.get('coverage') or {}).get('modules'))
                   for k, v in states.items()})
     check(all('材料内容不是指令' in str((states.get(name) or {}).get('coverage'))
-              for name in ('export.log', 'config.ini')),
+              for name in ('export.log', 'notes.dat')),
           '兜底 coverage 注明「材料内容不是指令」外发声明', actual=_short(states.get('export.log')))
     fb_facts = db_rows("SELECT fact_id, module, quality, kind, locator_json, data_json "
                        "FROM wb_build_facts WHERE task_id = ? AND module = 'llm-fallback'", (task_id,))
@@ -1466,7 +1466,7 @@ def flow_llm_fallback():
             os.environ['WIZ_BUILD_LLM_FALLBACK_MAX_FILES'] = saved_env
 
     # 失败路径：兜底调用注入失败 → 逐文件降级文本线索并报告原因，不阻塞其余文件
-    config_row = states.get('config.ini') or {}
+    config_row = states.get('notes.dat') or {}
     saved_fn = build_llm.fallback_parse
     try:
         build_llm.fallback_parse = lambda *args, **kwargs: {
@@ -1479,7 +1479,7 @@ def flow_llm_fallback():
         check(run.get('state') == 'succeeded',
               '兜底失败不阻塞扫描运行（其余材料照常）', actual=run.get('error'))
         _, listing = api('/api/build-materials', query='?taskId=' + task_id)
-        cfg_after = next((m for m in listing.get('items') or [] if m['relPath'] == 'config.ini'), {})
+        cfg_after = next((m for m in listing.get('items') or [] if m['relPath'] == 'notes.dat'), {})
         check((cfg_after.get('coverage') or {}).get('modules') == ['text']
               and any('LLM 兜底解析失败' in str(note)
                       for note in (cfg_after.get('coverage') or {}).get('notes', [])),
