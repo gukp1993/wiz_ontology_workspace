@@ -993,7 +993,7 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
                      and all(item in by_id for item in plan_ids))
     if plan_reusable:
         if resume_mode == 'abstract':
-            _note(notes, '从 abstract 阶段重试：复用上次运行持久化的筛选/对齐产物'
+            _note(notes, '从「抽象本体定义」阶段重试：复用上次运行持久化的筛选/对齐产物'
                          '（%d 条事实，确定性阶段未重算），重跑全部 %d 个抽象批次。'
                          % (len(saved_plan.get('modelFactIds') or []),
                             -(-len(saved_plan.get('modelFactIds') or []) // protocol.LLM_BATCH_FACTS)))

@@ -14,7 +14,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppError from '../../shared/AppError.vue'
 import { cancelRun, errorMessage, fetchRun, resumeRun } from './api'
 import {
-  RUN_STATE_LABELS, STAGE_LABELS, formatBytes, labelOf, runErrorRetryable, runErrorText,
+  RUN_STATE_LABELS, STAGE_LABELS, TASK_STATUS_LABELS, formatBytes, labelOf, runErrorRetryable, runErrorText,
 } from './types'
 import type { BuildRun, RunStage } from './types'
 
@@ -243,7 +243,7 @@ async function onResume(resumeMode: 'auto' | 'abstract' = 'auto') {
     // 重试是服务端行为：本地只回到「排队中」，attempt、阶段与错误都以轮询返回的服务端值为准。
     run.value = { ...run.value, state: 'queued', error: null }
     actionNote.value = resumeMode === 'abstract'
-      ? '已提交「从 abstract 阶段重试」：筛选/对齐产物复用，全部抽象批次重新执行。'
+      ? `已从「${STAGE_LABELS.abstract}」重新生成：沿用上次筛选与对齐的结果，所有抽象批次重新执行。`
       : (failedBatches.value.length
         ? '已提交「重试失败批次」：只重跑失败的批次，成功批次候选保留。'
         : '已提交重试：已完成阶段的结果保留，运行从匹配到的检查点继续。')
@@ -331,7 +331,7 @@ onUnmounted(() => {
         <p class="bp-progress-line">
           <strong>{{ progressText }}</strong>
           <span v-if="run.attempt > 1" class="muted"> · 第 {{ run.attempt }} 次尝试</span>
-          <span v-if="taskStatus" class="muted"> · 任务阶段：{{ taskStatus }}</span>
+          <span v-if="taskStatus" class="muted"> · 任务阶段：{{ labelOf(TASK_STATUS_LABELS, taskStatus, taskStatus) }}</span>
         </p>
         <div v-if="progressPercent !== null" class="bp-bar" role="progressbar" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100">
           <span :style="{ width: progressPercent + '%' }"></span>
@@ -369,7 +369,7 @@ onUnmounted(() => {
       </div>
 
       <div v-if="run && run.kind === 'generate' && failedBatches.length" class="bp-checkpoint">
-        <span class="eyebrow">批次检查点（V2-8）</span>
+        <span class="eyebrow">批次检查点</span>
         <span class="muted">
           共 {{ batchTotal }} 批 · 已完成 {{ run.checkpoint?.generate?.batches.done.length ?? 0 }} 批 ·
           失败 {{ failedBatches.length }} 批（第
@@ -391,8 +391,9 @@ onUnmounted(() => {
         <button
           v-if="run && isTerminal(run.state) && run.state !== 'succeeded' && failedBatches.length"
           type="button" :disabled="resuming" @click="onResume('abstract')"
+          :title="`沿用已完成的筛选与对齐，只重新执行「${STAGE_LABELS.abstract}」阶段`"
         >
-          从 abstract 阶段重试
+          从「{{ STAGE_LABELS.abstract }}」重新生成
         </button>
         <button v-if="run && run.state === 'succeeded'" type="button" class="primary" @click="emit('review')">评审初稿 →</button>
       </div>
