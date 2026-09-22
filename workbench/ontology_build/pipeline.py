@@ -51,15 +51,31 @@ MAX_MODEL_FACTS = protocol.LLM_BATCH_FACTS * 25   # 单次生成最多发给模�
 
 # 批次并发的落库等待预算：单批正常 30–90 秒（推理开销），provider timeout 之上留缓冲；
 # 超时只标记该批失败（迟到结果丢弃，与 V2-10 迟到丢弃同一原则），不阻塞其余批次。
-_BATCH_WAIT_SLACK_SECONDS = 60
+# 抽取调用的超时**按批大小动态计算**（2026-09-22 实测）：
+# 输出规模随事实条数增长，模型耗时随之上升且受 provider 负载波动影响很大——
+# 同一批 20 条事实实测 27.7 秒（健康）到 185 秒（负载高）不等，而 provider
+# 配置超时（MiniMax 120s / GLM 60s）是为短请求设的，会在波动时误杀整个批次
+# （真实复现：3 批全部「无法连接接口」失败）。这里给出**下限**，取
+# max(provider 配置超时, 60 + 10×条数)，上限 900 秒；provider 配更长时用更长的。
+_EXTRACT_TIMEOUT_BASE_SECONDS = 60
+_EXTRACT_TIMEOUT_PER_FACT_SECONDS = 10
+_EXTRACT_TIMEOUT_CAP_SECONDS = 900
+_BATCH_WAIT_SLACK_SECONDS = 180
 
 
-def _batch_wait_timeout(provider):
+def _extract_call_timeout(provider, fact_count):
+    """单次抽取调用的超时（秒）：按事实条数给下限，尊重更长的 provider 配置。"""
     try:
-        base = int((provider or {}).get('timeout') or 60)
+        configured = int((provider or {}).get('timeout') or 60)
     except (TypeError, ValueError):
-        base = 60
-    return max(30, base) + _BATCH_WAIT_SLACK_SECONDS
+        configured = 60
+    needed = _EXTRACT_TIMEOUT_BASE_SECONDS + _EXTRACT_TIMEOUT_PER_FACT_SECONDS * max(0, int(fact_count or 0))
+    return min(_EXTRACT_TIMEOUT_CAP_SECONDS, max(configured, needed))
+
+
+def _batch_wait_timeout(provider, fact_count=0):
+    """批次等待预算：拆批后子批串行执行，按 2×单次超时 + slack 估算。"""
+    return 2 * _extract_call_timeout(provider, fact_count) + _BATCH_WAIT_SLACK_SECONDS
 
 
 def _merge_usage(left, right):
@@ -72,13 +88,45 @@ def _merge_usage(left, right):
     return merged
 
 
+def _is_transient_llm_error(error):
+    """瞬态错误判定：只含**连接类**故障与限流（可重试）。
+
+    真实复现：并发多路大请求时 provider 偶发「无法连接接口/超时」，串行时同一
+    模型连通正常（独立探测 1.2 秒）——这类重试即可。
+
+    刻意**不含** HTTP 5xx：服务端 5xx 与业务错误在测试里都是确定性失败桩，
+    重试只会浪费时间与调用额度（实测：把 500 当瞬态导致抽取调用数翻倍、既有
+    断言失败）。5xx 是否可重试交由上层「重试失败批次」决定。
+    """
+    text = str(error or '')
+    return ('无法连接接口' in text or 'HTTP 429' in text or 'timed out' in text.lower())
+
+
+def _rate_limited(error):
+    """429 限流：额度级限流需要更长退避（实测 1s/3s 扛不住，账号级限流窗口更长）。"""
+    return 'HTTP 429' in str(error or '')
+
+
 def _extract_batch_with_split(provider, scope, batch, depth=0):
-    """抽取一批候选；输出被截断（超 max_tokens）时自动对半拆批重试（最多 2 层）。
+    """抽取一批候选；截断自动拆批（≤2 层），瞬态网络/限流错误有限重试。
 
     真实复现：40 条/批时模型为每条事实产出候选 JSON，输出必然超预算 → 整批失败；
-    拆小后单次输出量减半。两条子批都失败才判该批失败（错误取其一并注明已拆批）。
+    拆小后单次输出量减半。瞬态错误（连接失败/5xx/429/超时）退避重试 2 次
+    （并发场景 provider 偶发拒绝；实测并发 3 批大请求时出现过）。
+    两条子批都失败才判该批失败（错误取其一并注明已拆批）。
     """
-    result = llm.extract_candidates(provider, scope, batch)
+    result = None
+    call_timeout = _extract_call_timeout(provider, len(batch))
+    for attempt in range(3):
+        result = llm.extract_candidates(provider, scope, batch, timeout=call_timeout)
+        if result.get('ok') or not _is_transient_llm_error(result.get('error')):
+            break
+        if attempt < 2:
+            # 退避：限流用长退避（5s/15s，等额度窗口恢复），连接类用短退避（1s/3s）
+            if _rate_limited(result.get('error')):
+                time.sleep(5 + 10 * attempt)
+            else:
+                time.sleep(1 + 2 * attempt)
     if result.get('ok'):
         return result
     error = str(result.get('error') or '')
@@ -1127,7 +1175,8 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
     try:
         for position, _batch in pending_batches:
             try:
-                result = extract_futures[position].result(timeout=_batch_wait_timeout(provider))
+                result = extract_futures[position].result(
+                    timeout=_batch_wait_timeout(provider, len(_batch)))
             except FutureTimeoutError:
                 # 迟到结果丢弃（与 V2-10 同一原则）：该批按失败处理，不等待、不落库
                 result = {'ok': False, 'candidates': [],
