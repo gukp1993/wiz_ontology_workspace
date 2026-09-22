@@ -26,10 +26,12 @@
   `begin_worker_scope()` 显式进入。
 """
 import contextlib
+import json
 import threading
 import traceback
 
 from workbench import auth
+from workbench.ontology_build import batch_contracts
 from workbench.ontology_build import protocol
 from workbench.storage import engine as sto
 from workbench.storage import ontology_build as store
@@ -415,3 +417,184 @@ def active_runs():
     with _pool_lock:
         pairs = {(str(record['user']), str(record['run'])) for record in _workers.values()}
     return sorted(pairs)
+
+
+# --- v2 计划收尾/恢复守卫（D10，2026-09-22 追加）-------------------------------------
+#
+# 契约来源：batch_contracts.py（D00 冻结）「终态检查」节、整合计划 v3 §6「持久化、
+# 用量与恢复协议」、接口文档 08 §14.5「恢复与版本语义」。任务表 §8 D10 行：晚结果拒绝、
+# auto/abstract 区分、未知版本无删除。既有函数（submit/stage/finish_success/_finish/
+# check_cancelled/content_tx/begin_worker_scope 等）一概不改，本节只追加。
+
+# resumable_jobs 的可续叶状态：失败只补未成功叶（成功叶绝不重做）；running 叶是崩溃
+# 残留（尝试由恢复方 mark_interrupted_unknown 收口后重新派发）。blocked（预算受阻，
+# 续跑须显式新计划，§6：不能用重试无限追加额度）、superseded（§4.3 已被替换，目标由
+# 替代作业认领）不是可续叶；split 父作业不是叶。
+_RESUMABLE_LEAF_STATES = (batch_contracts.JOB_QUEUED, batch_contracts.JOB_RUNNING,
+                          batch_contracts.JOB_FAILED)
+
+
+def _plan_schema_version(value):
+    """checkpoint.generate.schemaVersion 安全解析：缺失 → None；非法/非整数 → -1。
+
+    -1 与 ≥3 一样归入「未知版本拒绝恢复」；绝不猜 0/1 把未知计划当旧批次放行。
+    """
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
+
+
+def finish_success_guarded(user_id, run_id, usage=None, plan_doc=None):
+    """v2 计划成功收尾防线（整合计划 §6：「runner.finish_success 对 v2 增加防线，防调用方漏检」）。
+
+    在既有 finish_success 的核对（归属/lease/取消/当前状态，见 finish_success docstring）
+    **之前**先跑 batch_contracts.final_state_check(plan_doc)：
+    * 终态检查不过（仍有 failed/blocked/active 叶、pendingTargetIds 未清、叶覆盖与计划
+      不一致、blocking 未清）→ **冻结语义：返回 (False, violations)，不改 run 状态**——
+      终态检查不过绝不能标 succeeded；
+    * plan_doc=None → 退化为既有 finish_success 语义（schema1 旧批次兼容路径），
+      返回 (True, [])（拒绝情形与既有一致：静默不动状态，见 finish_success）；
+    * 终态检查通过 → 委派既有 finish_success 完成收尾（标 succeeded + generate 任务
+      推进「评审初稿」），返回 (True, [])。
+
+    plan_doc 是 checkpoint 形态 {'generate': doc}（与 contracts.final_state_check 入参
+    一致，即 update_run(checkpoint=...) 写库的那一份）；直接传 generate doc 会被
+    final_state_check 以「缺少 schemaVersion=2 计划」拒绝——守卫宁拒勿放。
+
+    边界说明：终态核对与收尾是两个相邻步骤而非同一事务；两者受同一 lease 条件保护，
+    持有当前 lease 的写入方只有当前 worker 自己（旧 worker 的写入在 update_run 的
+    lease 条件处被拒），中间不存在可插入的第三方写点。
+    返回 (bool, violations)：violations 为 final_state_check 的 [{'code','message'}]。
+    """
+    if plan_doc is None:
+        finish_success(user_id, run_id, usage)
+        return True, []
+    check = batch_contracts.final_state_check(plan_doc)
+    if not check.get('ok'):
+        return False, list(check.get('violations') or [])
+    finish_success(user_id, run_id, usage)
+    return True, []
+
+
+def resume_plan_guard(user_id, task_id, run_id, resume_mode):
+    """恢复前版本语义守卫（08 §14.5 / 整合计划 §6 冻结口径）。**只读**：不改 run/
+    checkpoint/候选/任务；epoch 推进与候选清理由调用方负责。
+
+    规则（冻结）：
+    a) run 无 checkpoint.generate、或 schemaVersion 缺失/=1 → legacy 路径：auto 保持
+       原冻结批次路径、abstract 维持「全部抽象重跑」——绝不把旧批号伪装为 v2 叶状态；
+    b) schemaVersion=2 → v2 路径：auto=按计划续跑（计划指纹一致性由调用方用
+       plan_fingerprint_matches 比对后处理，不匹配 422 BUDGET_PLAN_MISMATCH）；
+       abstract=显式新 epoch 语义（候选清理与计划替换同事务、旧调用用量保留有界历史
+       摘要，由调用方执行；本守卫不拦合法新 epoch，见场景9）；
+    c) schemaVersion 为其他值（≥3 或非法）→ ok=False + UNKNOWN_CHECKPOINT_SCHEMA：
+       **拒绝恢复，绝不删候选兜底**；
+    另有防御性拒绝（冻结返回形状内的附加码）：resumeMode 非法、运行不存在/不属于该
+    任务、读库异常——一律 fail-closed（宁可拒绝恢复，不放行未知状态）。
+
+    返回 {'ok': True, 'mode': 'v2_auto'|'v2_abstract'|'legacy_auto'|'legacy_abstract'}
+    或 {'ok': False, 'code': str, 'message': str}。
+    """
+    if resume_mode not in ('auto', 'abstract'):
+        return {'ok': False, 'code': 'RESUME_MODE_INVALID',
+                'message': 'resumeMode 只能是 auto 或 abstract：%r' % (resume_mode,)}
+    try:
+        with sto.read_connection() as conn:
+            row = store.get_run(conn, run_id, user_id)
+    except Exception as exc:  # 读库失败按拒绝处理（fail-closed），不猜测版本
+        return {'ok': False, 'code': 'RESUME_GUARD_ERROR',
+                'message': '读取运行失败：%s' % str(exc or type(exc).__name__)[:200]}
+    if row is None or str(row['task_id'] or '') != str(task_id or ''):
+        return {'ok': False, 'code': 'RUN_NOT_FOUND', 'message': '运行不存在或不属于该任务'}
+    try:
+        checkpoint = json.loads(row['checkpoint_json']) if row['checkpoint_json'] else {}
+    except (TypeError, ValueError):
+        checkpoint = {}
+    generate = checkpoint.get('generate') if isinstance(checkpoint, dict) else None
+    version = _plan_schema_version(
+        generate.get('schemaVersion') if isinstance(generate, dict) else None)
+    if version in (None, 1):
+        return {'ok': True, 'mode': 'legacy_' + str(resume_mode)}
+    if version == batch_contracts.CHECKPOINT_SCHEMA_VERSION:
+        return {'ok': True, 'mode': 'v2_' + str(resume_mode)}
+    raw = generate.get('schemaVersion') if isinstance(generate, dict) else None
+    return {'ok': False, 'code': batch_contracts.UNKNOWN_CHECKPOINT_SCHEMA,
+            'message': '未知 checkpoint.generate.schemaVersion=%r，拒绝恢复（候选保留，'
+                       '绝不删候选兜底）' % (raw,)}
+
+
+def plan_fingerprint_matches(checkpoint, expected_fingerprint):
+    """auto 恢复的计划指纹一致性辅助（D16 按冻结 parts 组装并计算期望指纹后传入比对）。
+
+    checkpoint 接受完整 checkpoint dict（含 'generate' 键）或 generate doc 本身。
+    存储指纹缺失/为空、或期望指纹为空 → False（与 batch_state.fingerprint_mismatch
+    同一口径：不一致即拒绝，绝不放行空指纹）。纯函数，零副作用。
+    """
+    doc = checkpoint if isinstance(checkpoint, dict) else {}
+    generate = doc.get('generate')
+    if not isinstance(generate, dict):
+        generate = doc
+    stored = str(generate.get('fingerprint') or '')
+    expected = str(expected_fingerprint or '')
+    return bool(stored) and bool(expected) and stored == expected
+
+
+def resumable_jobs(plan_doc):
+    """v2 计划的待续叶作业清单（D10 冻结辅助：成功叶不重做，失败只补未成功叶）。
+
+    返回叶作业（无 children）id 列表（按计划内登记序），状态 ∈ {queued, running, failed}：
+    * succeeded 不返回——成功叶不重做（候选与完成标记已在库，绝不双写，§6）；
+    * blocked 不返回——预算受阻属终态，续跑必须显式新计划（§6 不能用重试追加额度）；
+    * superseded 不返回——已被替换，目标由替代作业认领（§4.3 旧作业不可再派发）；
+    * split 父作业不是叶；失败叶返回（重做方式——重派发/重打包——由调用方定）。
+    plan_doc 接受 checkpoint 形态 {'generate': doc} 或 generate doc 本身；
+    非 dict / 非 schemaVersion=2 → []（legacy 计划没有 v2 叶状态可列）。
+    """
+    doc = plan_doc if isinstance(plan_doc, dict) else {}
+    generate = doc.get('generate')
+    if isinstance(generate, dict):
+        doc = generate
+    if not doc or _plan_schema_version(doc.get('schemaVersion')) != \
+            batch_contracts.CHECKPOINT_SCHEMA_VERSION:
+        return []
+    jobs = doc.get('jobs') if isinstance(doc.get('jobs'), dict) else {}
+    resumable = []
+    for job_id, job in jobs.items():
+        job = job if isinstance(job, dict) else {}
+        if job.get('children'):
+            continue
+        if str(job.get('state') or '') in _RESUMABLE_LEAF_STATES:
+            resumable.append(str(job_id))
+    return resumable
+
+
+@contextlib.contextmanager
+def claim_for_resume(user_id, run_id):
+    """直调 pipeline 前**显式接管**执行权（恢复入口/测试用；不经 submit 的同步路径）。
+
+    复用 submit() 的轮换语义：进入时短写事务 `store.rotate_run_lease`（旧 worker 手里
+    的执行权从此失配，晚结果在 update_run 的 lease 条件处被拒），并给**当前线程**登记
+    专属 worker token——作用域内 `lease_of()` 解析到本次新 lease，stage/finish/content_tx
+    全部按新执行权（带条件）生效；yield 出持有的 lease。与 begin_worker_scope(lease=None)
+    的差别：后者进入时只**读取**当前 DB lease、不轮换（旧 worker 若仍持有同一 lease，
+    其写入在新作用域内不会被拦）；claim_for_resume 进入即轮换，是真正的「接管」。
+    退出语义与 begin_worker_scope 相同：只弹自己的登记；DB lease 仍是本次这一份才轮换
+    作废（已被更新接管则不动继任者）。运行不存在时轮换返回 ''：作用域内不启用 lease
+    条件写（后续 get_run 自会拒绝），退出时无需作废。
+    """
+    token = _new_worker_token()
+    lease = _rotate_lease(user_id, run_id)
+    with _pool_lock:
+        _workers[token] = {'user': user_id, 'run': run_id, 'lease': lease}
+    previous = _push_token(token)
+    try:
+        yield lease
+    finally:
+        _pop_token(previous)
+        with _pool_lock:
+            _workers.pop(token, None)
+        if lease:
+            _retire_lease(user_id, run_id, lease)
