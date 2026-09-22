@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`4c1ae4e9b0275512`
+上下文版本：`918f3a6c211d312f`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 整表自动填写需求四件套交付 · codex · 需求已交付
+
+时间：2026-09-22T08:59:33.062850+00:00；记录：`.collaboration/entries/000245-ab492bee9867.json`
+
+交付需求说明、开发计划、执行指令及已有两页原型。覆盖11场景、表单优先按需侧栏、自动填草稿、补问撤销及共享契约。未修改业务代码。
+
+- 验证：核对assist-fill-production@544f6c8及现有登记；独立子agent只读评审风险已纳入。；最新数据规则与旧数据根无损迁移及真实副本保留要求已写入。
+- 下一步：交harness在已有授权worktree实施，自测提交后独立验收，不合并main。
+- 依据/文档：文档/需求/20260922_整表自动填写交互/需求说明.md；文档/需求/20260922_整表自动填写交互/开发计划.md；文档/需求/20260922_整表自动填写交互/执行指令.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### 样式与交互统一（codex/ui_fix）集成合并与环境清理 · codex · 已验证
 
@@ -142,14 +153,3 @@
 - 验证：git worktree list --porcelain 逐块解析：main↔主目录、assist-fill-production↔codex/assist-fill-production、build-governance↔codex/build-progress-log、ui_fix↔codex/ui_fix；仓库外无 progress 相关目录。；git rev-parse 964493a^ = d6ed223；git merge-base codex/build-governance codex/build-progress-log = 964493a；reflog：governance 尖 78cf7df(11:30) 前为 964493a(11:16:41)，progress-log 首条 964493a(11:16:46) branch: Created from HEAD。；rollout sess_c54f2cdc 的 toolCalls[0] 命令原文：git add pipeline.py/retrieval.py/BuildProgressPage.vue/types.ts → commit 964493a → git checkout -b codex/build-progress-log；下一条回显 Switched to a new branch。；db.sqlite session 表：sess_c54f2cdc.parent_id=sess_65cdf0e3-...、task_type=fork、slug=...-fork-muc2cx3w、time_created=1790044636316=10:37:16。；input_history：fork 会话 10:39:30 起有用户输入（进度黑盒/拆分重试），11:13:02「评审通过，开始开发-测试循环」，11:16 执行提交与切分支。
 - 下一步：待用户明确授权集成时由集成负责人一并处理：合 codex/build-progress-log（含 964493a 中归属检索优化的 retrieval.py 内容）+ 78cf7df 文档提交，并决定 progress-log 分支收尾（切回 build-governance 或转正）。；进度页前端两文件仍未提交；fork 会话最后活动 12:23:53，改动前须确认其不再写入，避免再次捆包提交。
 - 依据/文档：分支名≠目录名：目录 worktree/build-governance 现检出 codex/build-progress-log @ d3bf0be；证据：git worktree list --porcelain；git reflog show 两分支；~/.zcode/cli/rollout/model-io-sess_c54f2cdc-*.jsonl；~/.zcode/cli/db/db.sqlite(session/input_history)；关联记录：000233-37a7690672ae（分支现状澄清）、000229/000232（捆包事故记载）
-
-### 分支现状澄清：worktree/build-governance 为何检出在 codex/build-progress-log（用户问询） · zcode · 已确认决定
-
-时间：2026-09-22T04:27:27.128689+00:00；记录：`.collaboration/entries/000233-37a7690672ae.json`
-
-用户问「不是在 build-governance 这个 worktree，怎么又是在 build-progress-log」。用 reflog 查清：2026-09-22 11:16:46 本共享工作树目录执行过一次 checkout（moving from codex/build-governance to codex/build-progress-log），codex/build-progress-log 就在那一刻由 HEAD 创建；工作树目录同一时刻只能检出一个分支，此后所有并行线在同一目录的提交（06723a3/cb64855/dccad00/9d2e39a/debbf63/0c473a7/d3bf0be）全部落在该分支。经逐项核实纠正此前交接（000229/000232）中「retrieve 优化双分支需解缠」的表述：两分支 retrieval.py 逐字节一致（964493a 为共同基线，实现已在两侧），codex/build-governance 仅比 progress-log 多 1 个纯文档提交 78cf7df（开发计划 +39 行），不存在代码重复。另：进度页前端 BuildProgressPage.vue/types.ts 至今未提交（只在工作树 + 11:29 构建的 dist），属进度可观测线。
-
-- 决定：纠正：不存在「retrieve 优化双分支需解缠」——两分支 retrieval.py 一致，governance 仅多一个纯文档提交 78cf7df；集成实际只需合并 codex/build-progress-log 的 7 个提交 + 78cf7df，无冲突、无需解缠。
-- 验证：git reflog show --all 全仓只有 1 条 checkout 记录：worktrees/build-governance/HEAD@{2026-09-22 11:16:46} moving from codex/build-governance to codex/build-progress-log。；git reflog show codex/build-progress-log 首条：964493a branch: Created from HEAD（11:16:46）；此前全部提交在 codex/build-governance。；git log codex/build-progress-log..codex/build-governance = 仅 78cf7df；git show --stat 78cf7df = 只改开发计划.md(+39/-0)。；git diff codex/build-governance codex/build-progress-log -- workbench/ontology_build/retrieval.py 为空（完全一致）。；git diff --stat 两分支 = pipeline.py/protocol.py/server.py/storage/ontology_build.py/tests+entries，无前端文件 → 进度页前端改动只在工作区未提交。
-- 下一步：集成阶段：合 codex/build-progress-log（含我这条线的 9d2e39a/0c473a7/06723a3 与 RST 修复 debbf63）+ 取 78cf7df 的文档提交即可，无代码冲突。；进度页前端两文件需由其 owner 提交或集成时一并收纳（当前 dist 已含、源码未入库）。；本轮不动分支指针：共享目录有他人在途未提交文件（BuildProgressPage.vue/types.ts），抢占式切换会打断并行线；解缠/切回仍留集成负责人。
-- 依据/文档：证据命令：git reflog show --all / git reflog show codex/build-progress-log / git show 78cf7df / git diff codex/build-governance codex/build-progress-log；worktree 路径：worktree/build-governance（物理目录）↔ 检出分支 codex/build-progress-log @ d3bf0be
