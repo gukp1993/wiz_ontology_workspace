@@ -1,0 +1,35 @@
+{
+  "ticket": "61438b1ed3bf4323a2b83b8613528960",
+  "task": "ui_fix 第八轮第二批：未选择态空态断言与标签页标题去重",
+  "status": "implemented",
+  "summary": "第八轮继续深点时发现第二类缺陷：本轮开头实测到「账号已有 2 个本体、但当前未选择」的状态（rail 显示未选择本体，同一屏 body 文本同时含「尚未创建本体」「创建第一个本体」与两条已有本体的「打开」按钮），顶栏状态位、本体区落地卡标题/正文和 document.title 都把「没选中」断言成「一个也没有」。修法只改文案分支与标题拼接、不加交互不写数据：App.vue 新增 ontologyNoneAtAll 与 noOntologyLabel 两个 computed，顶栏按列表长度出「未选择本体/尚未创建本体」，落地卡未选态改为「打开一个已有本体，或新建一个」；retryProjectContext 提示与 ProjectHome 空态标题按 projects.length 同判据分支；document.title 不再拼成「本体工作台 · 本体工作台」。这正是 App.vue:58 注释承认过的自相矛盾空态类——上一轮治加载竞态闪帧，本轮治状态语义。已提交 aba80a1（fix）与 f0851b1（docs），未合并 main、未重启主工作台。",
+  "decisions": [
+    "未为此注册临时账号、也不删除任何用户资产来复现「有本体但未选择」态：修复后本账号选择已持久化（reload 后仍恢复 验收本体，localStorage 里没有 wiz-last-ontology 键，指针在服务端用户设置侧），UI 也无「取消选择」项。因此四处措辞的未选态分支只标到代码层（build+lint 通过），不写成浏览器已验收。",
+    "标题恒取当前本体名（App.vue:1019 是唯一 document.title 赋值点），函数编排/项目概览页也显示本体名——是否按空间或视图命名属产品口径，列入待决清单，本轮不自行改。",
+    "DESIGN.md 交互态硬性要求补第 8 条：空态断言判据是列表长度而非「当前有没有选中」，两种情形各自给正确动作指引，并禁掉标题两侧都填应用名占位的拼法。"
+  ],
+  "verification": [
+    "npm run build（含 vue-tsc 严格）与 npm run lint 均通过；被验包 index-BdNw5-IO.js。",
+    "6 视图冒烟（o-home/objects/p-home/f-home/tools/settings-models）：各 1 个 h1.topbar-title、.topbar-status 文案正常、document.title 稳定为「验收本体 · 本体工作台」、控制台 0 条消息。",
+    "缺陷状态实测原文（修复前）：rail=「当前本体 | ＋ 新建 | 未选择本体」，body 同屏含「尚未创建本体」「创建第一个本体」「体验测试本体 | 打开」「验收本体 | 打开」；list_pages 标题为「本体工作台 · 本体工作台」。",
+    "未做：未选态分支的浏览器复测（原因见 decisions 第 1 条）；设置中心两页未纳入本轮溢出扫描。"
+  ],
+  "next": [
+    "用户如需坐实未选态四处文案：可用一个尚无本体的新账号登录分支实例（18882）观察落地卡与顶栏，或在带数据的验收账号下临时取消选择。",
+    "§9.10 末待决清单继续保留，本轮另加「标题按空间/视图命名」一项。",
+    "合并 main 与重启主工作台仍需用户明确指令，本轮未做。"
+  ],
+  "references": [
+    "worktree/ui_fix/frontend/src/App.vue:126-129（ontologyNoneAtAll / noOntologyLabel）",
+    "worktree/ui_fix/frontend/src/App.vue:1024（标题拼接）、:1081（顶栏状态位）、:796（项目提示分支）、:1156（落地卡标题与正文）",
+    "worktree/ui_fix/frontend/src/project/ProjectHome.vue:165-168",
+    "worktree/ui_fix/DESIGN.md 交互态硬性要求第 8 条",
+    "worktree/ui_fix/文档/需求/20260921_样式与交互统一/开发计划.md §9.13（含 D-8.1…D-8.6 计数与验证边界）"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-22T08:12:47.032036+00:00",
+  "sequence": 188,
+  "filename": "000188-693572d751ba.json",
+  "record_hash": "ffbec561948b83630da6cf29c9e57fab8431e0ff64c8ac6e2ee0fd47d7624806",
+  "context_advanced": false
+}

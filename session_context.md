@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`8aa825eaf2ca69bc`
+上下文版本：`03867f1a77567e30`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### ui_fix 第八轮第二批：未选择态空态断言与标签页标题去重 · codex · 已实施，待验收
+
+时间：2026-09-22T08:12:47.032036+00:00；记录：`.collaboration/entries/000188-693572d751ba.json`
+
+第八轮继续深点时发现第二类缺陷：本轮开头实测到「账号已有 2 个本体、但当前未选择」的状态（rail 显示未选择本体，同一屏 body 文本同时含「尚未创建本体」「创建第一个本体」与两条已有本体的「打开」按钮），顶栏状态位、本体区落地卡标题/正文和 document.title 都把「没选中」断言成「一个也没有」。修法只改文案分支与标题拼接、不加交互不写数据：App.vue 新增 ontologyNoneAtAll 与 noOntologyLabel 两个 computed，顶栏按列表长度出「未选择本体/尚未创建本体」，落地卡未选态改为「打开一个已有本体，或新建一个」；retryProjectContext 提示与 ProjectHome 空态标题按 projects.length 同判据分支；document.title 不再拼成「本体工作台 · 本体工作台」。这正是 App.vue:58 注释承认过的自相矛盾空态类——上一轮治加载竞态闪帧，本轮治状态语义。已提交 aba80a1（fix）与 f0851b1（docs），未合并 main、未重启主工作台。
+
+- 决定：未为此注册临时账号、也不删除任何用户资产来复现「有本体但未选择」态：修复后本账号选择已持久化（reload 后仍恢复 验收本体，localStorage 里没有 wiz-last-ontology 键，指针在服务端用户设置侧），UI 也无「取消选择」项。因此四处措辞的未选态分支只标到代码层（build+lint 通过），不写成浏览器已验收。；标题恒取当前本体名（App.vue:1019 是唯一 document.title 赋值点），函数编排/项目概览页也显示本体名——是否按空间或视图命名属产品口径，列入待决清单，本轮不自行改。；DESIGN.md 交互态硬性要求补第 8 条：空态断言判据是列表长度而非「当前有没有选中」，两种情形各自给正确动作指引，并禁掉标题两侧都填应用名占位的拼法。
+- 验证：npm run build（含 vue-tsc 严格）与 npm run lint 均通过；被验包 index-BdNw5-IO.js。；6 视图冒烟（o-home/objects/p-home/f-home/tools/settings-models）：各 1 个 h1.topbar-title、.topbar-status 文案正常、document.title 稳定为「验收本体 · 本体工作台」、控制台 0 条消息。；缺陷状态实测原文（修复前）：rail=「当前本体 | ＋ 新建 | 未选择本体」，body 同屏含「尚未创建本体」「创建第一个本体」「体验测试本体 | 打开」「验收本体 | 打开」；list_pages 标题为「本体工作台 · 本体工作台」。；未做：未选态分支的浏览器复测（原因见 decisions 第 1 条）；设置中心两页未纳入本轮溢出扫描。
+- 下一步：用户如需坐实未选态四处文案：可用一个尚无本体的新账号登录分支实例（18882）观察落地卡与顶栏，或在带数据的验收账号下临时取消选择。；§9.10 末待决清单继续保留，本轮另加「标题按空间/视图命名」一项。；合并 main 与重启主工作台仍需用户明确指令，本轮未做。
+- 依据/文档：worktree/ui_fix/frontend/src/App.vue:126-129（ontologyNoneAtAll / noOntologyLabel）；worktree/ui_fix/frontend/src/App.vue:1024（标题拼接）、:1081（顶栏状态位）、:796（项目提示分支）、:1156（落地卡标题与正文）；worktree/ui_fix/frontend/src/project/ProjectHome.vue:165-168；worktree/ui_fix/DESIGN.md 交互态硬性要求第 8 条；worktree/ui_fix/文档/需求/20260921_样式与交互统一/开发计划.md §9.13（含 D-8.1…D-8.6 计数与验证边界）
 
 ### ui_fix 第八轮：编排列表列宽塌陷与时间显示收口 · codex · 已实施，待验收
 
@@ -139,14 +150,3 @@ V2-10 整改复测通过：三项整改全部闭合，无新问题。方式=/tmp
 - 验证：grep 校验文档标题结构完整（0-7章+附录，无断节）；4.7 编号瑕疵已修正；§7.1 九行对照全部依据上轮已核实代码事实（含 llm.py:43-45/414-423、alignment.py:12-13 行号）；候选增量均标待拍板；7.3 边界声明与限制令核对一致，未新增白名单议题
 - 下一步：候选增量八项待用户逐项拍板后才进需求线排期；P0 三项与生成实测失败根因直接相关，拍板后可与三项管理增量同分支排期
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/自动化构建本体方法论_20260921.md；https://www.palantir.com/docs/foundry/ontology/ontology-best-practices/
-
-### ontology-build-v2-10-r2（V2-10 测试第一轮整改，worktree/build-governance） · zcode · 已实施，待验收
-
-时间：2026-09-22T01:58:40.631818+00:00；记录：`.collaboration/entries/000179-c93d4abcce14.json`
-
-测试第一轮 3 项（1 严重+2 一般）全部修复，单一提交 3dc51dc：严重#1 _collect_pool_result.future.result() 超时分支之外补 except Exception（不含 BaseException）——worker 内异常（注入失败、适配器契约外返回值在后处理段触发的 AttributeError）转该文件 failed+异常摘要+清空事实（与超时同口径），继续收集下一文件、不再杀死整个 run（新增 _scan_write_pool_failure/_pool_failure_message）；同提交把「0.5s 短片边界取消即时生效」注释改为如实描述（0.5s 轮询只保证主线程及时回到取消检查点，实际取消生效时间由当前文件解析速度决定，最坏 ≤120s）。一般#2 README 变更记录补 V2-10 一行（git diff --cached 复核仅 1 行新增）。测试新增 6 项断言覆盖两条复现路径（RuntimeError 注入 + 猴补 REGISTRY 适配器返回 None 触发 parse_material 后处理 AttributeError，未改 parsers 源文件），均断言 run succeeded、崩溃文件 failed 且原因含异常类名、事实清空、其余文件 success。
-
-- 决定：异常隔离在 pipeline 侧实现（parsers/__init__.py 属另一任务线，未触碰）；落库口径与超时路径一致（failed + 清空既有事实 + failedSegments 记异常类名）；未夹带其他改动：偶发 ECONNRESET 属基线既有缺陷（探针量化见 verification），本轮仅报告不修改以守「不夹带」纪律
-- 验证：tests/test_ontology_build.py 250/250（连续 2 次全绿 v210_r1/r2 + cr_2/cr_3 共 4 次；本轮共 7 次运行）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；偶发失败定性（预存缺陷，非本轮引入）：约 1/3 运行在「未登录 POST」分支（main() 第 2262 行）报 ConnectionResetError。机制：server.py:313 鉴权门在未登录时不读取请求体即返回 401 并关连接，客户端读响应体时撞 OS 级 RST。定向探针（200 轮未登录 POST，两树同机对比）：当前树 60/200 ECONNRESET、基线树 c482547 66/200（同为 ~30%）——同量级；另有 V2-10 之前 R6 轮日志 /tmp/obt.log 同址复现佐证；vue-tsc 0 错误、npm run build 通过（本轮前端零改动）；ruff 改动文件全过
-- 下一步：待测试 agent 第二轮复验（G25c 两条复现路径 + README 行）；建请协调者裁定：偶发 ECONNRESET 是否安排单独修复（建议方案：测试客户端对「未登录 401」响应体读取失败容忍为重试一次，或服务端在 401 前 drain 请求体——影响面小但均属本轮范围外，未擅自实施）
-- 依据/文档：worktree/build-governance 分支 codex/build-governance：3dc51dc（本轮单一提交）；workbench/ontology_build/pipeline.py _collect_pool_result/_scan_write_pool_failure；探针脚本 /tmp/rst_probe.py（临时，未入库）
