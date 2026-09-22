@@ -201,13 +201,23 @@ class ExperimentState(object):
             raise ValueError('计划不存在：%r' % (task_key,))
         return json.loads(row[0])
 
-    def _persist_doc(self, task_key, doc, inflight_calls=0):
-        """容量守卫 + 结构校验 + 整体落库（必须在写事务内调用；失败抛出不假成功）。"""
-        if not contracts.checkpoint_fits({'generate': doc}, inflight_calls):
+    def _persist_doc(self, task_key, doc, inflight_calls=None):
+        """写入守卫（与在线同口径）+ 结构校验 + 整体落库（必须在写事务内调用；失败抛出不假成功）。
+
+        inflight_calls 缺省 None = 按文档内实际 started 在途数计算（与在线 _ensure_fits 同源）；
+        显式传入时以传入值为准（历史调用兼容）。无在途时允许终态预留区（1MiB−8KiB，硬上限内）。
+        """
+        if inflight_calls is None:
+            inflight_calls = sum(
+                1 for item in (doc.get('attempts') or {}).values()
+                if str((item or {}).get('state') or '') == contracts.ATTEMPT_STARTED)
+        size = contracts._serialized_size({'generate': doc})
+        limit = min(contracts.checkpoint_write_limit_bytes(inflight_calls),
+                    contracts.MAX_CHECKPOINT_BYTES)
+        if size > limit:
             raise CheckpointCapacityError(
-                'checkpoint 超过软阈值（inflight=%d，上限 %d 字节）：task=%r'
-                % (inflight_calls, contracts.checkpoint_soft_limit_bytes(inflight_calls),
-                   task_key))
+                'checkpoint 超过写入上限（%d 字节，inflight=%d，上限 %d）：task=%r'
+                % (size, inflight_calls, limit, task_key))
         errors = batch_state.validate_plan_doc(doc)
         if errors:
             raise ValueError('计划结构校验失败：%s' % ';'.join(
@@ -239,10 +249,13 @@ class ExperimentState(object):
         if errors:
             raise ValueError('计划结构校验失败：%s' % ';'.join(
                 '%s: %s' % (item.get('code'), item.get('message')) for item in errors[:3]))
-        if not contracts.checkpoint_fits({'generate': plan_doc}, 0):
+        size = contracts._serialized_size({'generate': plan_doc})
+        limit = min(contracts.checkpoint_write_limit_bytes(0),
+                    contracts.MAX_CHECKPOINT_BYTES)
+        if size > limit:
             raise CheckpointCapacityError(
-                'checkpoint 超过软阈值（inflight=0，上限 %d 字节）：task=%r'
-                % (contracts.checkpoint_soft_limit_bytes(0), task_key))
+                'checkpoint 超过写入上限（%d 字节，inflight=0，上限 %d）：task=%r'
+                % (size, limit, task_key))
         fingerprint = str(plan_doc.get('fingerprint') or '')
         with self._write_tx():
             row = self._conn.execute(
@@ -268,10 +281,13 @@ class ExperimentState(object):
         if errors:
             raise ValueError('计划结构校验失败：%s' % ';'.join(
                 '%s: %s' % (item.get('code'), item.get('message')) for item in errors[:3]))
-        if not contracts.checkpoint_fits({'generate': plan_doc}, 0):
+        size = contracts._serialized_size({'generate': plan_doc})
+        limit = min(contracts.checkpoint_write_limit_bytes(0),
+                    contracts.MAX_CHECKPOINT_BYTES)
+        if size > limit:
             raise CheckpointCapacityError(
-                'checkpoint 超过软阈值（inflight=0，上限 %d 字节）：task=%r'
-                % (contracts.checkpoint_soft_limit_bytes(0), task_key))
+                'checkpoint 超过写入上限（%d 字节，inflight=0，上限 %d）：task=%r'
+                % (size, limit, task_key))
         with self._write_tx():
             row = self._conn.execute(
                 'SELECT task_key FROM pilot_plans WHERE task_key = ?',
@@ -430,7 +446,14 @@ class ExperimentState(object):
         return True
 
     def commit_failure(self, task_key, job_id, attempt_id, error_code, message, usage):
-        """同事务：attempt failed（errorCode/message/usage）+ job failed。"""
+        """同事务：attempt failed（errorCode/message/usage）+ job failed。
+
+        返回 True = 本次新提交；重复失败回调（job 已 failed 且 attempt 已 failed）→ False
+        （幂等跳过，不抛不改写，与 OnlinePersistence 冻结语义一致）。
+        已知差异（如实登记，未对齐）：跨终态回调（job 已 succeeded 又收到 failure）本实现
+        抛 ValueError（"无执行权"），在线侧返回 False 跳过——两者都不改写终态，行为等价性
+        仅限"拒绝写入"；调用方（执行器）在拿到 False/异常时都终止该 job 的推进。
+        """
         job_id = _non_empty_str(job_id, 'job_id')
         attempt_id = _non_empty_str(attempt_id, 'attempt_id')
         error_code = _non_empty_str(error_code, 'error_code')
@@ -446,6 +469,11 @@ class ExperimentState(object):
                                  % (job_id, attempt_id))
             if str(attempt.get('jobId') or '') != job_id:
                 raise ValueError('尝试 %s 不属于作业 %s' % (attempt_id, job_id))
+            # 幂等早退（冻结语义 True=新提交/False=幂等跳过，与 OnlinePersistence 一致）：
+            # 同一失败的重复回调（job 已 failed 且 attempt 已 failed）→ False，不抛不改写。
+            if str(job.get('state') or '') == contracts.JOB_FAILED \
+                    and str(attempt.get('state') or '') == contracts.ATTEMPT_FAILED:
+                return False
             if str(attempt.get('state') or '') != contracts.ATTEMPT_STARTED:
                 raise ValueError('尝试 %s 状态 %s，非 started（晚结果拒绝）'
                                  % (attempt_id, attempt.get('state')))

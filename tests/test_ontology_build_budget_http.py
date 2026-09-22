@@ -4,7 +4,8 @@
 1. capabilities.generationBudget 生效值展示（默认关 → 开）。
 2. scope-confirm 预检：profile 绑定不符 → 422 BUDGET_PROFILE_MISMATCH，task/run 零状态变更。
 3. 全链路 v2 生成：schema2 轮询摘要（jobs/coverage/budget）、usage token 统计、候选落库。
-4. resume 守卫：未知 schemaVersion → 422 拒绝且候选不删；blocked → 422 需新建计划。
+4. resume 守卫：未知 schemaVersion → 422 拒绝且候选不删；blocked → 422 需新建计划；
+   损坏的非整数版本（'x'/'2.5'）同样 422 不裸抛 500，合法 schema2 仍 200 受理。
 5. abstract 重抽象：新 epoch 且再次成功。
 
 隔离：WIZ_WORKBENCH_ROOT/WIZ_DATABASE_URL 指向临时目录；端口动态；假 LLM 在 127.0.0.1。
@@ -338,6 +339,81 @@ def main():
           status == 422 and '新建' in json.dumps(rejected, ensure_ascii=False),
           (status, rejected), 422)
 
+    # 5.1) P2-3 修复回归：损坏的非整数 schemaVersion（'x'/'2.5'）必须按「未知版本」安全拒绝
+    #      → 422 UNKNOWN_CHECKPOINT_SCHEMA，绝不裸抛 ValueError（HTTP 500）；候选保留、
+    #      run 状态不变。合法 schema2 与未知整数 99 的既有行为不得回归。
+    def _inject_checkpoint(run_id, version, blocking=None, pending=None):
+        """覆写 checkpoint.generate.schemaVersion 并置 run=failed（其余计划字段不动）。"""
+        with sto.write_tx() as tx:
+            def body(conn):
+                row = ob_store.get_run(conn, run_id, USER_ID)
+                assert row is not None
+                doc = json.loads(row['checkpoint_json'] or '{}')
+                gen_doc = doc.get('generate') or {}
+                gen_doc['schemaVersion'] = version
+                if blocking is None:
+                    gen_doc.pop('blocking', None)
+                else:
+                    gen_doc['blocking'] = blocking
+                gen_doc['pendingTargetIds'] = list(pending or [])
+                doc['generate'] = gen_doc
+                ob_store.update_run(conn, run_id, USER_ID, state='failed',
+                                    error='注入 schemaVersion=%r' % (version,),
+                                    retryable=True, checkpoint=doc)
+            tx.run(body)
+
+    status, cands_before = api('/api/build-candidates', query='?taskId=%s&batch=%s'
+                               % (task_id, confirmed['batchId']))
+    count_before = cands_before.get('total') or 0
+    check('注入前候选基线可见（>=1）', status == 200 and count_before >= 1,
+          (status, count_before), '>=1')
+
+    _inject_checkpoint(confirmed['runId'], 'x')
+    status, rejected = api('/api/build-run-resume', {'taskId': task_id,
+                                                     'runId': confirmed['runId'],
+                                                     'resumeMode': 'auto'})
+    check("损坏版本 'x' → 422 UNKNOWN_CHECKPOINT_SCHEMA（不是 500）",
+          status == 422 and rejected.get('code') == 'UNKNOWN_CHECKPOINT_SCHEMA',
+          (status, rejected), 422)
+    status, cands_after = api('/api/build-candidates', query='?taskId=%s&batch=%s'
+                              % (task_id, confirmed['batchId']))
+    check("'x' 拒绝后候选仍保留（数量与注入前一致）",
+          status == 200 and (cands_after.get('total') or 0) == count_before,
+          (status, cands_after.get('total')), count_before)
+    # 直接读库核对 run 状态（不经 GET /api/build-run：该轮询视图自身对损坏版本仍会裸抛
+    # int()，属另一处问题、不在本次 resume 预检修复范围内，避免测试耦合到它）。
+    with sto.read_connection() as conn:
+        _run_row = ob_store.get_run(conn, confirmed['runId'], USER_ID)
+    check("'x' 拒绝后 run 仍为 failed（状态未变、未入队）",
+          _run_row is not None and str(_run_row['state']) == 'failed',
+          None if _run_row is None else _run_row['state'], 'failed')
+
+    _inject_checkpoint(confirmed['runId'], '2.5')
+    status, rejected = api('/api/build-run-resume', {'taskId': task_id,
+                                                     'runId': confirmed['runId'],
+                                                     'resumeMode': 'auto'})
+    check("损坏版本 '2.5' → 422 UNKNOWN_CHECKPOINT_SCHEMA（不是 500）",
+          status == 422 and rejected.get('code') == 'UNKNOWN_CHECKPOINT_SCHEMA',
+          (status, rejected), 422)
+
+    _inject_checkpoint(confirmed['runId'], 99)
+    status, rejected = api('/api/build-run-resume', {'taskId': task_id,
+                                                     'runId': confirmed['runId'],
+                                                     'resumeMode': 'auto'})
+    check('未知整数版本 99 → 仍 422 UNKNOWN_CHECKPOINT_SCHEMA（既有行为不回归）',
+          status == 422 and rejected.get('code') == 'UNKNOWN_CHECKPOINT_SCHEMA',
+          (status, rejected), 422)
+
+    # 合法 schema2 计划（无 blocking、无 pending）→ resume 照常受理 200（既有行为不回归）
+    _inject_checkpoint(confirmed['runId'], 2)
+    status, accepted = api('/api/build-run-resume', {'taskId': task_id,
+                                                     'runId': confirmed['runId'],
+                                                     'resumeMode': 'auto'})
+    check('schemaVersion=2 干净计划 → 200 受理（既有行为不回归）',
+          status == 200 and accepted.get('runId') == confirmed['runId'],
+          (status, accepted), 200)
+    poll_run(task_id, confirmed['runId'])   # 等终态，避免与后续 regenerate 并发
+
     # 6) abstract 重抽象：新 epoch 成功
     # 恢复一个干净的成功 checkpoint（直接再跑一次 scope-confirm 生成新 batch 更简单——
     # 这里用 regenerate 触发全新计划）
@@ -380,6 +456,38 @@ def main():
           status == 200, (status, resumed_l), 200)
     check('legacy resume 执行完成', poll_run(task2, conf2['runId']).get('state') == 'succeeded',
           poll_run(task2, conf2['runId']).get('state'), 'succeeded')
+    # 追加（P2-3）：空串 schemaVersion 与「缺失」同义 → 仍走 legacy 受理（安全解析不得
+    # 把 '' 当成未知版本；'x'/'2.5' 等才按未知版本 422）。
+    with sto.write_tx() as tx:
+        def _blank_version(conn):
+            row = ob_store.get_run(conn, conf2['runId'], USER_ID)
+            doc = json.loads(row['checkpoint_json'] or '{}')
+            doc['generate']['schemaVersion'] = ''
+            ob_store.update_run(conn, conf2['runId'], USER_ID, state='failed',
+                                error='注入空串版本', retryable=True, checkpoint=doc)
+        tx.run(_blank_version)
+    status, resumed_blank = api('/api/build-run-resume',
+                                {'taskId': task2, 'runId': conf2['runId'],
+                                 'resumeMode': 'auto'})
+    check("schemaVersion=''（空串=缺省）→ 仍走 legacy 受理 200",
+          status == 200, (status, resumed_blank), 200)
+    poll_run(task2, conf2['runId'])
+
+    # 追加（P2-3 同源修复）：损坏 schemaVersion 的轮询视图不得裸抛（原按 schema1 原样返回）
+    with sto.write_tx() as tx:
+        def _broken_poll(conn):
+            row = ob_store.get_run(conn, conf2['runId'], USER_ID)
+            doc = json.loads(row['checkpoint_json'] or '{}')
+            doc['generate']['schemaVersion'] = 'x'
+            ob_store.update_run(conn, conf2['runId'], USER_ID, checkpoint=doc)
+        tx.run(_broken_poll)
+    status, view_broken = api('/api/build-run', query='?taskId=%s&runId=%s'
+                              % (task2, conf2['runId']))
+    check('损坏 schemaVersion 的轮询视图不裸抛（200 原样返回）',
+          status == 200, (status, str(view_broken)[:160]), 200)
+    status, detail_broken = api('/api/build-task', query='?taskId=' + task2)
+    check('损坏 schemaVersion 的任务详情同样不裸抛', status == 200,
+          (status, str(detail_broken)[:160]), 200)
 
     print('========== 汇总 ==========')
     print('通过 %d / %d' % (len(PASSED), len(PASSED) + len(FAILED)))

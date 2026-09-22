@@ -75,6 +75,7 @@ MAX_PLAN_ATTEMPTS = 1024
 MAX_CHECKPOINT_BYTES = 1024 * 1024      # UTF-8 序列化后 1MiB
 CHECKPOINT_TERMINAL_RESERVE_BYTES = 16 * 1024   # 终态写入预留区
 CHECKPOINT_ATTEMPT_RESERVE_BYTES = 8 * 1024     # 每个在途调用的完成摘要预留
+CHECKPOINT_CLAIM_RESERVE_BYTES = 2 * 1024       # 派发守卫再预留：单次 claim 的文档增量上界
 MAX_SPLIT_DEPTH = 8
 MAX_JOB_ATTEMPTS = 3                    # 首调+网络重试+格式修复共享总额（格式修复最多 1 次）
 MAX_JOB_NETWORK_RETRIES = 2             # 网络重试上限（含在 3 次总额内）
@@ -515,9 +516,17 @@ def coverage_check(planned_digests, completed_digests):
 #   'usageAggregate': {usage_aggregate 输出},
 #   'blocking': {'code': str, 'message': str} | None,
 #   'log': [str], 'notes': [str]}
-# 容量闭环（D07 守卫 / D08 持久化前检查）：
-#   软阈值 = 1MiB − 16KiB − 8KiB×(在途调用数+1)；不足 → 停止派发并记
-#   CHECKPOINT_BUDGET_EXCEEDED；在途响应仍可原子保存候选与安全 usage。
+# 容量闭环（D07 守卫 / D08 持久化前检查；2026-09-22 验收修复冻结口径）：
+#   soft(n) = 1MiB − 16KiB − 8KiB×(n+1)，n = 写入后文档内的 started 在途尝试数。
+#   * 派发守卫（dispatch）：拟派发一个新调用 → 判定上限 = soft(在途+1) − CLAIM_RESERVE
+#     （再预留单次 claim 的文档增量上界，保证「守卫放行 ⇒ claim 不因容量拒绝」）；
+#     不足 → 不派发、记 CHECKPOINT_BUDGET_EXCEEDED（受阻落库，见下）。
+#   * 写入守卫（write）：无在途（含受阻/终态收口）允许使用终态写入预留区，
+#     上限 = soft(0) + 16KiB = 1MiB − 8KiB（仍 ≤ 1MiB 硬上限）；仍有在途时上限 = soft(n)。
+#   * 硬上限：序列化 > 1MiB 一律整体拒绝（任何路径不得写入超限文档，库内状态不变）。
+#   * 「容量触发的受阻必须能落库」：终态/受阻写入走 write 通道（预留区保证可持久化）；
+#     兜底保险丝：claim 若因容量抛出（口径漂移）→ 执行器按 CHECKPOINT_BUDGET_EXCEEDED 受阻收口。
+#   * 在途响应仍可原子保存候选与安全 usage。
 
 
 def checkpoint_soft_limit_bytes(inflight_calls):
@@ -529,6 +538,35 @@ def checkpoint_fits(checkpoint, inflight_calls):
     """序列化后对照软阈值；超限返回 False（调用方停止派发，不截数据）。"""
     size = len(json.dumps(checkpoint, ensure_ascii=False, default=str).encode('utf-8'))
     return size <= checkpoint_soft_limit_bytes(inflight_calls)
+
+
+def checkpoint_dispatch_limit_bytes(inflight_calls):
+    """派发守卫上限：按「拟派发一个调用」（在途+1）的软阈值再减单次 claim 增量预留。"""
+    return (checkpoint_soft_limit_bytes(int(inflight_calls or 0) + 1)
+            - CHECKPOINT_CLAIM_RESERVE_BYTES)
+
+
+def checkpoint_dispatch_fits(plan_doc, inflight_calls):
+    """派发守卫判定（plan_doc 为 checkpoint['generate'] 内层文档）。"""
+    return _serialized_size({'generate': plan_doc}) <= \
+        checkpoint_dispatch_limit_bytes(inflight_calls)
+
+
+def checkpoint_write_limit_bytes(inflight_calls):
+    """写入守卫上限：无在途用终态预留区（soft(0)+16KiB=1MiB−8KiB）；有在途用 soft(n)。"""
+    if int(inflight_calls or 0) <= 0:
+        return checkpoint_soft_limit_bytes(0) + CHECKPOINT_TERMINAL_RESERVE_BYTES
+    return checkpoint_soft_limit_bytes(int(inflight_calls or 0))
+
+
+def checkpoint_write_fits(plan_doc, inflight_calls):
+    """写入守卫判定（含终态/受阻收口的预留区宽限；>1MiB 硬上限仍整体拒绝）。"""
+    return _serialized_size({'generate': plan_doc}) <= \
+        checkpoint_write_limit_bytes(inflight_calls)
+
+
+def _serialized_size(checkpoint):
+    return len(json.dumps(checkpoint, ensure_ascii=False, default=str).encode('utf-8'))
 
 
 def new_attempt_id():

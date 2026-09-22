@@ -657,6 +657,90 @@ def scenario_isolation_and_no_storage_import():
             st_b.close()
 
 
+# --- 场景 11：commit_failure 幂等（P1-1 验收修复回归）---------------------------------
+
+
+def scenario_commit_failure_idempotent():
+    """同一失败重复回调：首次 True、重复 False，且库内无重复写入（与在线侧一致）。"""
+    tag = '场景11 commit_failure 幂等'
+    with tempfile.TemporaryDirectory() as tmp:
+        st = pilot_state.open_state(str(Path(tmp) / 'pilot.sqlite3'))
+        try:
+            seed_plan(st, 'task-1', 'j-1', 3)
+            attempt_id = claim(st)
+            first = st.commit_failure('task-1', 'j-1', attempt_id,
+                                      'NETWORK_RETRYABLE', '超时', None)
+            check(first is True, '%s：首次 commit_failure 返回 True' % tag)
+            before = json.dumps(st.load('task-1'), sort_keys=True, ensure_ascii=False)
+            second = st.commit_failure('task-1', 'j-1', attempt_id,
+                                       'NETWORK_RETRYABLE', '超时', None)
+            check(second is False, '%s：重复 commit_failure 幂等跳过返回 False' % tag)
+            after = json.dumps(st.load('task-1'), sort_keys=True, ensure_ascii=False)
+            check(before == after, '%s：重复回调不改写任何状态（库内逐字节一致）' % tag)
+            attempts = (st.load('task-1') or {}).get('attempts') or {}
+            check(len(attempts) == 1 and str(attempts[attempt_id]['state']) == 'failed',
+                  '%s：无重复 attempt 写入、状态保持 failed' % tag)
+        finally:
+            st.close()
+
+
+# --- 场景 12：容量最终口径（P1-2 验收修复，实验侧）------------------------------------
+
+
+def scenario_capacity_write_reserve():
+    """写入通道允许终态预留区（1MiB−8KiB 内），派发通道更严；>1MiB 硬拒绝。"""
+    tag = '场景12 容量终态宽限'
+    with tempfile.TemporaryDirectory() as tmp:
+        st = pilot_state.open_state(str(Path(tmp) / 'pilot.sqlite3'))
+        try:
+            doc = make_plan(1)
+            doc = batch_state.apply_event(doc, event_created('j-1', ['t-1']))
+            # 填充到 soft(1) 与 write(0) 之间
+            # 精确填充到 soft(0)+4KiB（在 soft(0) 与 write(0)=soft(0)+16KiB 之间）：
+            # 先量基尺寸，再按 (目标−基尺寸)/行净增 计算行数，最后逐行微调。
+            target = contracts.checkpoint_soft_limit_bytes(0) + 4096
+            base_size = contracts._serialized_size({'generate': doc})
+            doc['log'] = ['z' * 512] * max(0, (target - base_size) // 517)
+            size = contracts._serialized_size({'generate': doc})
+            while size < target and len(doc['log']) < 100000:
+                doc['log'].append('z' * 512)
+                size = contracts._serialized_size({'generate': doc})
+            check(size > contracts.checkpoint_soft_limit_bytes(0)
+                  and size <= contracts.checkpoint_write_limit_bytes(0),
+                  '%s：构造尺寸落在 write 通道宽限内（>soft(0) 且 ≤write(0)，实际 %d）'
+                  % (tag, size), size)
+            st.save_plan('task-1', doc)   # 无在途：写入通道允许（终态预留区生效）
+            check(st.load('task-1') is not None, '%s：无在途写入经终态预留区成功' % tag)
+            # 建 in-checkpoint 受阻收口（blocking amend）也能落库
+            doc2 = batch_state.apply_event(st.load('task-1'), {
+                'type': batch_state.EVENT_JOB_CLAIMED, 'jobId': 'j-1', 'attemptId': 'a-cap-x'})
+            doc2 = batch_state.apply_event(doc2, {
+                'type': batch_state.EVENT_ATTEMPT_STARTED, 'jobId': 'j-1',
+                'attemptId': 'a-cap-x', 'sequence': 0, 'runAttempt': 1,
+                'requestedMaxTokens': 1000, 'requestFingerprint': ''})
+            doc2 = batch_state.apply_event(doc2, {
+                'type': batch_state.EVENT_ATTEMPT_SUCCEEDED, 'attemptId': 'a-cap-x',
+                'usage': contracts.empty_usage(), 'finishReason': 'length'})
+            doc2 = batch_state.apply_event(doc2, {
+                'type': batch_state.EVENT_JOB_BLOCKED, 'jobId': 'j-1',
+                'code': contracts.CHECKPOINT_BUDGET_EXCEEDED, 'message': '容量不足'})
+            doc2 = batch_state.apply_event(doc2, {
+                'type': batch_state.EVENT_BLOCKING_SET,
+                'code': contracts.CHECKPOINT_BUDGET_EXCEEDED, 'message': '容量不足，需新建计划'})
+            st.amend_plan('task-1', doc2)
+            blocked = (st.load('task-1').get('blocking') or {}).get('code')
+            check(blocked == contracts.CHECKPOINT_BUDGET_EXCEEDED,
+                  '%s：受阻收口（blocking）经写入通道落库' % tag, blocked)
+            # > 1MiB 仍拒
+            huge = make_plan(1)
+            huge['log'] = ['x' * 1024] * 1100
+            check_raises(lambda: st.amend_plan('task-1', huge),
+                         '%s：>1MiB 写入仍整体拒绝（硬上限不放松）' % tag,
+                         expected_type=pilot_state.CheckpointCapacityError)
+        finally:
+            st.close()
+
+
 SCENARIOS = [
     ('save_load_roundtrip', scenario_save_load_roundtrip),
     ('claim_job_persists_first', scenario_claim_job_persists_first),
@@ -668,6 +752,8 @@ SCENARIOS = [
     ('checkpoint_capacity', scenario_checkpoint_capacity),
     ('cache_roundtrip_and_ttl', scenario_cache_roundtrip_and_ttl),
     ('isolation_and_no_storage_import', scenario_isolation_and_no_storage_import),
+    ('commit_failure_idempotent', scenario_commit_failure_idempotent),
+    ('capacity_write_reserve', scenario_capacity_write_reserve),
 ]
 
 

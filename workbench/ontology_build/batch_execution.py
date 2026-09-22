@@ -205,9 +205,16 @@ def _plan_guard(context):
                 '已知 completion 累计 %d 达软限 %d，停止派发' % (known, int(soft))
     if len(doc.get('jobs') or {}) >= int(budget['maxJobs']):
         return contracts.JOB_BUDGET_EXCEEDED, '作业数已达上限 %d' % int(budget['maxJobs'])
-    if not contracts.checkpoint_fits(doc, 0):
+    # 容量派发守卫（冻结口径 2026-09-22）：按「拟派发一个调用」（在途+1）判定并预留
+    # 单次 claim 增量——保证「守卫放行 ⇒ claim 不因容量抛出」；超限不派发、受阻可落库
+    # （写入通道允许终态预留区，见 batch_contracts 容量闭环注释）。
+    inflight = sum(1 for item in (doc.get('attempts') or {}).values()
+                   if str((item or {}).get('state') or '') == contracts.ATTEMPT_STARTED)
+    if not contracts.checkpoint_dispatch_fits(doc, inflight):
         return contracts.CHECKPOINT_BUDGET_EXCEEDED, \
-            'checkpoint 序列化超过软阈值，停止派发（在途响应仍可原子保存）'
+            'checkpoint 接近容量上限（在途 %d，派发上限 %d 字节）：停止派发，' \
+            '已成功结果保留；需新建计划（或缩小范围）继续' % (
+                inflight, contracts.checkpoint_dispatch_limit_bytes(inflight))
     return None
 
 
@@ -336,7 +343,15 @@ def _drive_job(context, job_id):
         if not attempt_id:
             # ① 先持久化 started（claim 内部：核验 lease/取消 → attempt started → job running）
             pre_claim_sequence = _job_total_attempts(context['doc'], job_id)
-            claimed = context['persistence'].claim(job_id, context['run_attempt'])
+            try:
+                claimed = context['persistence'].claim(job_id, context['run_attempt'])
+            except Exception as exc:   # noqa: BLE001 - 保险丝：容量类异常转受阻收口
+                if 'CheckpointCapacityError' in type(exc).__name__ or '容量' in str(exc) \
+                        or '超过' in str(exc):
+                    return _block_run(context, contracts.CHECKPOINT_BUDGET_EXCEEDED,
+                                      'checkpoint 容量不足，无法继续派发：%s（已成功结果保留，'
+                                      '需新建计划继续）' % str(exc)[:200])
+                raise
             attempt_id = str(claimed.get('attemptId') or '')
             max_tokens = int(claimed.get('requestedMaxTokens') or max_tokens)
             _mirror(context, [

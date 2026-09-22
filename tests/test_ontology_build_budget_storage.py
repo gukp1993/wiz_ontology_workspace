@@ -16,7 +16,7 @@ iterate_candidates_page（只追加，既有函数未改）。
  5. mark_interrupted_unknown：started→interrupted_unknown，usageAggregate
     unknownUsageCalls=1（真实计费未知不计 0）；重复扫描幂等返回 0。
  6. commit_split：父作业在途尝试记账 + 父 split + 子 job 同事务落库；重复回调幂等
-    返回 True；子 job 可再 claim（queued→running）。
+    跳过返回 False（True=新提交）；子 job 可再 claim（queued→running）。
  7. iterate_candidates：直插 501 候选，keyset 分页迭代读满 501 无重无漏；
     all_candidates(limit=500) 恰 500（证明便利函数不再当全量）。
  8. checkpoint 容量：>1MiB 计划 save_plan 抛 CheckpointCapacityError 且库内状态不变；
@@ -436,6 +436,117 @@ def scenario_checkpoint_capacity():
           (doc or {}).get('attempts'))
 
 
+def scenario_capacity_terminal_reserve():
+    """场景11（P1-2 验收修复）：容量口径——dispatch 守卫、终态预留可落库、硬上限不松。
+
+    1) ≈ soft(1)−ε：claim 正常（守卫放行 ⇒ claim 不因容量拒绝）；
+    2) ∈ (soft(1), write(0)]：写入通道允许（终态/受阻收口可持久化），dispatch 判定拒绝；
+    3) > 1MiB：save/claim 仍整体拒绝且库内不变（既有行为不回归）。
+    """
+    new_isolated_root('s11')
+    task_id, batch_id, run_id, lease = seed_task_run()
+    p = batch_persistence.OnlinePersistence(task_id, UID, run_id)
+
+    def sized_plan(fill_bytes):
+        doc = make_plan(batch_id, target_count=1)
+        base = len(json.dumps({'generate': doc}, ensure_ascii=False, default=str).encode('utf-8'))
+        need = max(0, int(fill_bytes) - base)
+        # log 行不参与结构校验：每行 1KiB + 列表开销约 3 字节
+        lines = max(0, need // 1027)
+        doc['log'] = ['z' * 1024] * lines
+        return doc, base, lines
+
+    # 1) ≈ soft(1)−ε（留 4KiB 余量）：save+claim 均通过
+    target = contracts.checkpoint_soft_limit_bytes(1) - 4096
+    doc1, _, _ = sized_plan(target)
+    size1 = len(json.dumps({'generate': doc1}, ensure_ascii=False, default=str).encode('utf-8'))
+    check(contracts.checkpoint_fits({'generate': doc1}, 0),
+          '场景11 计划尺寸在 soft(0) 内（前置成立）', size1)
+    p.save_plan(doc1, lease)
+    claimed = p.claim_job(lease, 'j-root', 1)
+    check(bool(claimed.get('attemptId')), '场景11 ≈soft(1)−ε：claim 正常（守卫口径一致）',
+          claimed.get('attemptId'))
+
+    # 2) ∈ (soft(1), write(0)]：写入通道允许、dispatch 判定拒绝
+    new_isolated_root('s11b')
+    task_id, batch_id, run_id, lease = seed_task_run()
+    p2 = batch_persistence.OnlinePersistence(task_id, UID, run_id)
+    target2 = contracts.checkpoint_soft_limit_bytes(1) + 4096   # 超 soft(1) 但在 write(0) 内
+    doc2, _, _ = sized_plan(target2)
+    size2 = len(json.dumps({'generate': doc2}, ensure_ascii=False, default=str).encode('utf-8'))
+    check(size2 > contracts.checkpoint_soft_limit_bytes(1)
+          and size2 <= contracts.checkpoint_write_limit_bytes(0),
+          '场景11 构造尺寸落入 (soft(1), write(0)] 区间', size2)
+    # 写入通道（无在途=终态收口场景）：允许
+    p2.save_plan(doc2, lease)
+    check(True, '场景11 (soft(1), write(0)]：写入通道允许（终态预留区生效）')
+    # 派发通道：拒绝（含拟派发一个调用的口径 + claim 增量预留）
+    check(not contracts.checkpoint_dispatch_fits(doc2, 0),
+          '场景11 (soft(1), write(0)]：dispatch 判定拒绝（守卫先于 claim）')
+    # 终态/受阻 amend 可落库（blocking 写入不被容量阻挡）
+    doc_blocked = json.loads(json.dumps(doc2))
+    doc_blocked = batch_state.apply_event(doc_blocked, {
+        'type': batch_state.EVENT_JOB_CLAIMED, 'jobId': 'j-root', 'attemptId': 'a-cap-1'})
+    doc_blocked = batch_state.apply_event(doc_blocked, {
+        'type': batch_state.EVENT_ATTEMPT_STARTED, 'jobId': 'j-root', 'attemptId': 'a-cap-1',
+        'sequence': 0, 'runAttempt': 1, 'requestedMaxTokens': 1000,
+        'requestFingerprint': ''})
+    doc_blocked = batch_state.apply_event(doc_blocked, {
+        'type': batch_state.EVENT_ATTEMPT_SUCCEEDED, 'attemptId': 'a-cap-1',
+        'usage': contracts.empty_usage(), 'finishReason': 'length'})
+    doc_blocked = batch_state.apply_event(doc_blocked, {
+        'type': batch_state.EVENT_JOB_BLOCKED, 'jobId': 'j-root',
+        'code': contracts.CHECKPOINT_BUDGET_EXCEEDED, 'message': '容量不足'})
+    doc_blocked = batch_state.apply_event(doc_blocked, {
+        'type': batch_state.EVENT_BLOCKING_SET, 'code': contracts.CHECKPOINT_BUDGET_EXCEEDED,
+        'message': '容量不足，需新建计划'})
+    p2.amend_plan(doc_blocked, lease)
+    final = read_generate_doc(run_id)
+    check((final.get('blocking') or {}).get('code') == contracts.CHECKPOINT_BUDGET_EXCEEDED,
+          '场景11 受阻收口（blocking）经写入通道落库成功', final.get('blocking'))
+
+    # 3) > 1MiB：仍整体拒绝且库内不变
+    new_isolated_root('s11c')
+    task_id, batch_id, run_id, lease = seed_task_run()
+    p3 = batch_persistence.OnlinePersistence(task_id, UID, run_id)
+    oversize, _, _ = sized_plan(contracts.MAX_CHECKPOINT_BYTES + 10240)
+    check(not contracts.checkpoint_write_fits(oversize, 0),
+          '场景11 >1MiB：write 通道同样拒绝（硬上限不放松）')
+    check_raises(lambda: p3.save_plan(oversize, lease),
+                 batch_persistence.CheckpointCapacityError,
+                 '场景11 >1MiB：save_plan 仍抛 CheckpointCapacityError')
+    check(read_generate_doc(run_id) is None, '场景11 >1MiB：save 失败库内无计划（状态不变）')
+
+
+
+def scenario_facade_initial_create_via_save():
+    """场景12（P2-1 验收修复）：在线 amend_plan 拒绝初建 + facade 兜底经 save_plan 初建。
+
+    - amend_plan 对无计划 run 必须抛（文案含「不存在」，与实验侧一致）；
+    - PersistenceFacade.save 的兜底路径（先 amend 失败再 save_plan）此前从未被真实走到，
+      本场景首次覆盖：facade 对无计划 run 的 save → 经 save_plan 初建成功。
+    """
+    from workbench.ontology_build import batch_execution
+
+    new_isolated_root('s12')
+    task_id, batch_id, run_id, lease = seed_task_run()
+    plan = make_plan(batch_id, target_count=2)
+    p = batch_persistence.OnlinePersistence(task_id, UID, run_id)
+    # amend 拒初建
+    check_raises(lambda: p.amend_plan(plan, lease), batch_persistence.PersistenceError,
+                 '场景12 amend_plan 对无计划 run 抛 PersistenceError（拒绝初建）')
+    check(read_generate_doc(run_id) is None, '场景12 amend 被拒后库内仍无计划')
+    # facade 兜底：先 amend（拒）→ 再 save_plan（初建）
+    facade = batch_execution.PersistenceFacade(p, lease_fn=lambda: lease)
+    facade.save(plan)
+    stored = read_generate_doc(run_id)
+    check(isinstance(stored, dict) and int(stored.get('schemaVersion') or 0) == 2,
+          '场景12 facade.save 经兜底路径完成初建（schemaVersion=2）',
+          (stored or {}).get('schemaVersion'))
+    # 已建后 amend 正常（修正通道）
+    p.amend_plan(stored, lease)
+    check(True, '场景12 计划已存在时 amend_plan 正常（修正通道）')
+
 def scenario_commit_success_idempotent():
     """场景9：重复 commit_success 幂等；候选 id 确定性、origin 追加、usage 聚合正确。"""
     new_isolated_root('s9')
@@ -495,6 +606,10 @@ SCENARIOS = (
     ('commit_split', scenario_commit_split),
     ('iterate_candidates_pages', scenario_iterate_candidates_pages),
     ('checkpoint_capacity', scenario_checkpoint_capacity),
+    ('capacity_terminal_reserve', scenario_capacity_terminal_reserve),
+    ('facade_initial_create_via_save', scenario_facade_initial_create_via_save),
+    ('capacity_terminal_reserve', scenario_capacity_terminal_reserve),
+    ('facade_initial_create_via_save', scenario_facade_initial_create_via_save),
     ('commit_success_idempotent', scenario_commit_success_idempotent),
 )
 

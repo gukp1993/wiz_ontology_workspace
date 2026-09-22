@@ -19,9 +19,9 @@
 幂等约定（契约 §持久化接口）：
 * 候选 id 确定性派生：'bc-' + jobId[2:14] + '-' + sha256(局部键)[:10]；同 job 重放
   生成同 id，事务回滚后重试不会产生第二份候选；
-* job 已 succeeded 的重复 commit_success 幂等跳过返回 True；已 split 的重复
-  commit_split 同理；已 failed 的重复 commit_failure 同理；
-* 作业处于其他终态（如 succeeded 后又收到 failure 回调）→ 拒绝返回 False，绝不改写。
+* 返回值冻结语义：True = 本次新提交；False = 未新提交（重复回调幂等跳过／lease 失配／
+  取消／作业已终态）。job 已 succeeded 的重复 commit_success、已 split 的重复 commit_split、
+  已 failed 的重复 commit_failure 一律幂等跳过返回 False；绝不改写终态。
 
 候选 origin 追加 {'planEpoch': int, 'jobId': str}（既有 origin 键保留，不破坏语义）。
 
@@ -137,14 +137,20 @@ class OnlinePersistence(object):
 
     @staticmethod
     def _ensure_fits(doc):
-        """容量守卫：超软阈值抛 CheckpointCapacityError（不截数据，写入不发生）。"""
+        """写入守卫（冻结口径 2026-09-22）：无在途时允许终态预留区（soft(0)+16KiB=1MiB−8KiB），
+        有在途时按 soft(n)；序列化 > 1MiB 一律拒绝。超限抛 CheckpointCapacityError（不截数据）。
+
+        为什么需要终态宽限：受阻断的收口（blocking/blocked）必须能写入——否则"容量触发受阻"
+        无法落库，run 会以未捕获异常 failed 收尾，resume 也会重复同样失败。预留区 16KiB 正是
+        为此设计（仍严格 ≤ 1MiB 硬上限）。
+        """
         inflight = _started_attempts(doc)
-        if not contracts.checkpoint_fits({'generate': doc}, inflight):
+        size = contracts._serialized_size({'generate': doc})
+        limit = contracts.checkpoint_write_limit_bytes(inflight)
+        if size > min(limit, contracts.MAX_CHECKPOINT_BYTES):
             raise CheckpointCapacityError(
-                'checkpoint 序列化超过软阈值（%d 字节，在途 %d，软限 %d）；停止派发而非截数据'
-                % (len(json.dumps({'generate': doc}, ensure_ascii=False, default=str)
-                       .encode('utf-8')),
-                   inflight, contracts.checkpoint_soft_limit_bytes(inflight)))
+                'checkpoint 序列化超过写入上限（%d 字节，在途 %d，上限 %d）；停止派发而非截数据'
+                % (size, inflight, min(limit, contracts.MAX_CHECKPOINT_BYTES)))
 
     @staticmethod
     def _candidate_payload(candidate, job_id, plan_epoch, index):
@@ -192,7 +198,7 @@ class OnlinePersistence(object):
         errors = batch_state.validate_plan_doc(plan_doc)
         if errors:
             raise PersistenceError('计划结构校验未通过：%s' % errors[0].get('message'))
-        self._ensure_fits(plan_doc)
+        self._ensure_fits(plan_doc)   # write 通道（无在途允许终态预留区，硬上限 1MiB）
 
         def body(conn):
             row = store.get_run(conn, self._run_id, self._owner)
@@ -204,6 +210,7 @@ class OnlinePersistence(object):
             if _generate_doc_of(row) is not None:
                 raise PersistenceError('schema2 计划已存在（save_plan 只用于初次建计划，'
                                        '重排/重建须新建运行）')
+            self._ensure_fits(plan_doc)
             self._update_checkpoint(conn, plan_doc, expected_lease)
 
         with sto.write_tx() as tx:
@@ -231,6 +238,10 @@ class OnlinePersistence(object):
             reason = self._reject_reason(row, expected_lease)
             if reason:
                 self._raise_for_reason(reason)
+            if _generate_doc_of(row) is None:
+                # P2-1（验收修复）：与 ExperimentState 一致——amend 只用于已建计划内的修正，
+                # 初建必须走 save_plan；文案含「不存在」供 facade 兜底判别。
+                raise PersistenceError('schema2 计划不存在：amend_plan 不允许初建（用 save_plan）')
             self._update_checkpoint(conn, plan_doc, expected_lease)
 
         with sto.write_tx() as tx:
@@ -278,8 +289,8 @@ class OnlinePersistence(object):
                        result_digest, attempt_meta=None):
         """同事务：候选（幂等 id）+ attempt succeeded/usage + job succeeded + 摘要。
 
-        拒绝（lease 失配/取消/终态/状态冲突）返回 False；重复回调（job 已 succeeded）
-        幂等跳过返回 True；持久化失败抛 PersistenceError，绝不返回假 ok。
+        返回值冻结语义：True = 本次新提交；False = 未新提交（重复回调幂等跳过／
+        lease 失配／取消／作业已终态）。持久化失败抛 PersistenceError，绝不返回假 ok。
         """
         expected_lease = self._resolve_lease(expected_lease)
         items = [item for item in (candidates or []) if isinstance(item, dict)]

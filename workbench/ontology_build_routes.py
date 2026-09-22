@@ -295,7 +295,10 @@ def _v2_run_view(conn, run_row, view):
         gen_doc = raw['generate']
     else:
         gen_doc = raw if isinstance(raw, dict) else {}
-    if gen_doc and int(gen_doc.get('schemaVersion') or 0) >= 2:
+    # 损坏版本安全解析（P2-3 同源修复）：非整数/未知值按 schema1 原样返回，
+    # 绝不裸抛（否则轮询 GET /api/build-run 会对损坏 checkpoint 报 400/500）。
+    version = _safe_schema_version(gen_doc.get('schemaVersion')) if gen_doc else None
+    if gen_doc and isinstance(version, int) and version >= 2:
         view['checkpoint'] = {'generate':
                               batch_contracts.generate_checkpoint_view(gen_doc)}
         aggregate = gen_doc.get('usageAggregate') if isinstance(gen_doc.get('usageAggregate'),
@@ -625,6 +628,29 @@ def post_run_cancel(payload):
         return {'run': _v2_run_view(conn, run, store.run_view(run))}, 200
 
 
+def _safe_schema_version(raw):
+    """resume 预检的 checkpoint.generate.schemaVersion 安全解析（非整数绝不裸抛）。
+
+    判据与 runner._plan_schema_version 一致（未知版本一律拒绝，绝不猜 0/1 放行）：
+    缺失/空串 → None（按缺省走 legacy 路径）；bool 与不可解析值（'x'、'2.5'、仅空白、
+    对象/数组等）→ -1（未知版本，fail-closed）；其余整数（含 '2' 这类整数字符串）→ 原值。
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        if raw == '':
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return -1
+    if isinstance(raw, bool):
+        return -1
+    if isinstance(raw, int):
+        return raw
+    return -1
+
+
 def post_run_resume(payload):
     task_id = _text(payload, 'taskId')
     run_id = _text(payload, 'runId')
@@ -648,12 +674,15 @@ def post_run_resume(payload):
                     and isinstance(raw_doc.get('generate'), dict) else raw_doc
                 if not isinstance(gen_doc, dict) or not gen_doc:
                     gen_doc = None
-                raw_version = gen_doc.get('schemaVersion') if gen_doc is not None else None
-                has_version = raw_version not in (None, '')
-                if has_version and int(raw_version or 0) not in (1, 2):
+                # 版本解析走安全辅助：损坏值（'x'/'2.5'/对象等）按未知版本 → 422，
+                # 绝不裸抛 int() 的 ValueError（曾把校验失败降级为 400 参数错误并泄露异常
+                # 文本）；缺失/空串仍走缺省 legacy 路径。
+                version = _safe_schema_version(
+                    gen_doc.get('schemaVersion') if gen_doc is not None else None)
+                if version is not None and version not in (1, 2):
                     raise _budget_issue(batch_contracts.UNKNOWN_CHECKPOINT_SCHEMA,
                                         '生成计划版本无法识别，拒绝恢复；原候选已保留。')
-                if gen_doc is not None and int(gen_doc.get('schemaVersion') or 0) == 2:
+                if version == 2:
                     if gen_doc.get('blocking'):
                         raise _budget_issue('INVALID_STATE',
                                             '上次运行已受阻（%s）：%s 受阻需新建生成计划或补充'
@@ -672,7 +701,7 @@ def post_run_resume(payload):
                                                 '请重新生成建立新计划。')
                 # 仅 schema2 计划才做 v2 预算预检：legacy 运行沿用既有语义（provider 缺失在
                     # 执行侧按 §2.1 处理，不得被前置拦截——否则破坏 legacy resume 行为）。
-                if isinstance(gen_doc, dict) and int(gen_doc.get('schemaVersion') or 0) == 2:
+                if version == 2:
                     provider = _provider_or_raise()
                     _v2_precheck_generate(provider)
     with sto.write_tx() as tx:

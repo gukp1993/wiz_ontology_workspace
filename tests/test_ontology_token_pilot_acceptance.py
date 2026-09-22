@@ -180,6 +180,10 @@ class OnlineAdapter(object):
         return self.persistence.commit_split(self.lease, job_id, children, usage,
                                              finish_reason='length')
 
+    def commit_failure(self, job_id, attempt_id, error_code, message, usage):
+        return self.persistence.commit_failure(self.lease, job_id, attempt_id, error_code,
+                                               message, usage)
+
     def mark_unknown(self, attempt_ids):
         return self.persistence.mark_interrupted_unknown(attempt_ids)
 
@@ -244,6 +248,10 @@ class ExperimentAdapter(object):
 
     def commit_split(self, job_id, children, usage):
         return self.state.commit_split(self.TASK, job_id, children, usage)
+
+    def commit_failure(self, job_id, attempt_id, error_code, message, usage):
+        return self.state.commit_failure(self.TASK, job_id, attempt_id, error_code,
+                                         message, usage)
 
     def mark_unknown(self, attempt_ids):
         return self.state.mark_interrupted_unknown(self.TASK, attempt_ids)
@@ -375,6 +383,26 @@ def contract_4_commit_split_children_and_coverage(a):
             '子 job 新 attempt 应挂到子作业')
 
 
+def contract_35_commit_failure_idempotent(a):
+    """P1-1 验收修复：commit_failure 首次 True / 重复 False，双适配器一致。
+
+    （本契约的漏网原因即脚本B 原先只覆盖 commit_success 幂等；补上 failure 侧防复发。）
+    """
+    a.save(make_plan(2))
+    attempt_id = a.claim()
+    first = a.commit_failure('j-root', attempt_id, 'NETWORK_RETRYABLE', '网络超时', USAGE_OK)
+    require(first is True, '首次 commit_failure 应返回 True（%s）' % a.name)
+    doc_before = json.dumps(a.load(), sort_keys=True, ensure_ascii=False)
+    repeat = a.commit_failure('j-root', attempt_id, 'NETWORK_RETRYABLE', '网络超时', USAGE_OK)
+    require(repeat is False,
+            '重复 commit_failure 应幂等跳过返回 False（%s，实际 %r）' % (a.name, repeat))
+    doc_after = json.dumps(a.load(), sort_keys=True, ensure_ascii=False)
+    require(doc_before == doc_after, '重复 commit_failure 不得改写任何状态（%s）' % a.name)
+    require(len(a.candidates()) == 0, 'commit_failure 不产生候选（%s）' % a.name)
+    require((a.load()['jobs']['j-root']).get('state') == contracts.JOB_FAILED,
+            'job 保持 failed（%s）' % a.name)
+
+
 def contract_5_checkpoint_capacity(a):
     huge = make_plan(1)
     huge['log'] = ['x' * 1024] * 1100   # 约 1.13MiB 合法填充（log 不参与结构校验）
@@ -478,6 +506,8 @@ CONTRACTS = (
      lambda a: contract_2_crash_mark_unknown(a)),
     (3, 'commit_success 重复回调幂等（候选不重复）',
      lambda a: contract_3_commit_success_idempotent(a)),
+    (35, 'commit_failure 重复回调幂等（首次 True/重复 False，双适配器）',
+     lambda a: contract_35_commit_failure_idempotent(a)),
     (4, 'commit_split 子 job 可 claim / 父 split / 覆盖计数不漂移',
      lambda a: contract_4_commit_split_children_and_coverage(a)),
     (5, 'checkpoint 容量超限拒绝且旧状态不变',
