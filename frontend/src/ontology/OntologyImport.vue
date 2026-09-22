@@ -194,7 +194,7 @@ function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) 
 async function requestClose() {
   if (saving.value) return
   if (saving.value || (plan.value && !done.value && counts.value.importable > 0)) {
-    if (!(await appConfirm({ message: '关闭将放弃本次检查结果（不会改动已保存的草稿）。继续关闭？' }))) return
+    if (!(await appConfirm({ message: '关闭将放弃本次检查结果（不会改动已保存的草稿）。继续关闭？', danger: true }))) return
   }
   emit('close')
 }
@@ -203,7 +203,7 @@ void nextTick
 </script>
 
 <template>
-<div class="modal-backdrop imp-backdrop" @click.self="requestClose" @keydown.esc="onKeydown">
+<div class="modal-backdrop imp-backdrop" @click.self="requestClose" @keydown.esc.stop="onKeydown">
   <section class="modal-card imp-modal" role="dialog" aria-modal="true" aria-label="导入本体内容">
     <header class="imp-head">
       <div><h2>导入本体内容</h2><p class="muted">导入到：<strong>{{ ontologyName }} · 当前草稿</strong></p></div>

@@ -4,6 +4,7 @@
 // property=null 时为仅成员预览（链接映射页使用）。
 import { computed, onBeforeUnmount, ref } from 'vue'
 import AppSelect from '../shared/AppSelect.vue'
+import { formatDateTimeSec } from '../shared/format'
 import { loadProjectStateRaw, projectPropertyPreview } from './api'
 const props = defineProps<{
   projectState: any
@@ -32,7 +33,7 @@ async function run() {
     })
     if (seq !== sequence) return
     result.value = d
-    evaluatedAt.value = d.evaluatedAt ? new Date(d.evaluatedAt).toLocaleString('zh-CN', { hour12: false }) : ''
+    evaluatedAt.value = d.evaluatedAt ? formatDateTimeSec(d.evaluatedAt) : ''
   } catch (e: any) {
     if (seq === sequence) error.value = e?.message || String(e)
   } finally {

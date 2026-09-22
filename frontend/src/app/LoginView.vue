@@ -78,13 +78,15 @@ async function submit() {
 <style scoped>
 /* 居中卡片：沿用工作台视觉（浅灰底、白色面板、蓝色主操作），独立于业务布局。 */
 .login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px}
-.login-card{width:min(420px,100%);background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);padding:28px;box-shadow:0 1px 2px rgba(24,44,62,.06)}
+.login-card{width:min(420px,100%);background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);padding:28px;box-shadow:var(--shadow-1)}
 .login-brand{display:flex;gap:12px;align-items:flex-start;margin-bottom:20px}
 .login-brand h1{font-size:18px;margin:0 0 4px}
 .login-brand p{margin:0;font-size:13px;line-height:1.7}
 .login-mark{width:34px;height:34px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:inline-flex;align-items:center;justify-content:center;font-size:17px;flex:none}
 .login-form .editor-field{margin:0 0 14px}
 .login-actions{display:flex;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap}
-.login-actions .primary{min-width:120px;height:38px}
+/* 主按钮高度走全局 button 规格（padding 6px 13px → 36px）；此前本地写死 38px，
+   与全站唯一的实心主按钮差 2px。只留宽度这条登录页特有的诉求。 */
+.login-actions .primary{min-width:120px}
 .login-hint{margin:18px 0 0;font-size:12px;line-height:1.7}
 </style>

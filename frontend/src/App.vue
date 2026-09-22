@@ -21,6 +21,7 @@ import OntologyDiscover from './tools/OntologyDiscover.vue'
 import KnowledgeExplorer from './tools/KnowledgeExplorer.vue'
 import InstanceExplorer from './tools/InstanceExplorer.vue'
 import AppSelect from './shared/AppSelect.vue'
+import { installModalA11y } from './shared/modalFocus'
 import AppError from './shared/AppError.vue'
 import FunctionManager from './ontology/FunctionManager.vue'
 import ActionLibrary from './ontology/ActionLibrary.vue'
@@ -122,6 +123,10 @@ const versionList = ref<any[]>([]), releases = ref<any[]>([]), preview = ref<any
 const ontologySaveErrors = ref<string[]>([])
 const showOntologyDialog = ref(false)
 const hasOntology = computed(() => ontologyList.value.some(o => o.id === ontologyId))
+// 「没有选中本体」与「一个本体也没有」是两件事：账号里已有本体时，顶栏与本体区落地卡都不得
+// 断言「尚未创建本体 / 创建第一个本体」——同一屏下方就列着已有本体，属自相矛盾的空态。
+const ontologyNoneAtAll = computed(() => !ontologyList.value.length)
+const noOntologyLabel = computed(() => ontologyNoneAtAll.value ? '尚未创建本体' : '未选择本体')
 
 // --- 项目区 Saver：load GET /api/project-state，submit POST /api/project-save（剥 bindings.catalogs） ---
 const projects = ref<any[]>([]), projectId = ref(''), refState = ref<any>(null), projectReport = ref<any>(null), migrationTodos = ref<any[]>([])
@@ -219,16 +224,10 @@ function requestLeave(): Promise<boolean> {
 }
 function keepEditing() { leaveResolver?.(false) }
 function discardEditing() { leaveResolver?.(true) }
-// 模态（离开确认/新建本体）打开时：topbar/rail/shell 三块根界面 inert，焦点移入弹窗。
+// 模态（离开确认/新建本体）打开时：topbar/rail/shell 三块根界面 inert。
+// 焦点移入/Tab 圈禁/关闭归还由 shared/modalFocus.ts 统一负责（这里原先有一段
+// "取 DOM 末尾的 .modal-card 再 focus 第一个控件"的重复实现，已删）。
 const modalOpen = computed(() => leaveDialog.value || showOntologyDialog.value)
-watch(modalOpen, open => {
-  if (!open) return
-  void nextTick(() => {
-    const cards = document.querySelectorAll<HTMLElement>('.modal-backdrop .modal-card')
-    const card = cards.length ? cards[cards.length - 1] : null // 取 DOM 末尾的卡（最上层弹窗）
-    card?.querySelector<HTMLElement>('button, input')?.focus()
-  })
-})
 // D05/P06：发布前必须确认「保存确实完成」。既有 FormGuardAPI 之外只加一个只读查询，
 // 类型两端局部声明（不改 app/formGuard.ts），仍然只经 provide/inject，不新增全局状态库。
 type FormGuardWithSaveProbe = FormGuardAPI & { projectSaveStatus: () => SaveStatus }
@@ -794,7 +793,7 @@ async function retryProjectContext() {
   if (!(await ensureProjectList())) return notify('项目列表加载失败：' + projectListError.value, true)
   if (!projectState.value) {
     const ok = await ensureProjectContext()
-    if (!ok) notify(projectLoadError.value ? '项目加载失败：' + projectLoadError.value : '还没有项目，可在项目概览中新建。', !!projectLoadError.value)
+    if (!ok) notify(projectLoadError.value ? '项目加载失败：' + projectLoadError.value : (projects.value.length ? '未选择项目，可在左侧「当前项目」下拉中切换，或在项目概览中新建。' : '还没有项目，可在项目概览中新建。'), !!projectLoadError.value)
   }
 }
 // 返回项目引用版本的已发布本体定义（只读校验/绑定用）；返回 null 表示读取失败。
@@ -968,10 +967,10 @@ const saveState = computed<{ kind: string; text: string; hint: string }>(() => {
   if (formEditing.value) return { kind: 'editing', text: '编辑表单 · 草稿已保存', hint: '表单已打开但没有修改；草稿内容已保存' }
   return { kind: 'saved', text: '已保存', hint: '当前草稿已保存' }
 })
-watch(() => activeSaver.value.status.value, s => {
+watch(() => activeSaver.value?.status.value, s => {
   if (saveSlowTimer) { clearTimeout(saveSlowTimer); saveSlowTimer = null }
   saveSlow.value = false
-  if (s === 'saving') saveSlowTimer = setTimeout(() => { if (activeSaver.value.status.value === 'saving') saveSlow.value = true }, SAVE_SLOW_MS)
+  if (s === 'saving') saveSlowTimer = setTimeout(() => { if (activeSaver.value?.status.value === 'saving') saveSlow.value = true }, SAVE_SLOW_MS)
 })
 async function retrySave() { try { await activeSaver.value.retry() } catch (e) { notify((e as Error).message, true) } }
 async function discardReload() { if (!(await appConfirm({ message: '放弃本地修改，重新加载服务端最新草稿？', danger: true, confirmLabel: '放弃重载' }))) return; try { await activeSaver.value.reload(); notify('已重新加载服务端草稿') } catch (e) { notify((e as Error).message, true) } }
@@ -990,6 +989,7 @@ function unloadGuard(e: BeforeUnloadEvent) { if (dirtyGuards().length) { e.preve
 
 onMounted(async () => {
   bindGlobals()
+  installModalA11y() // 全站弹窗焦点兜底（Tab 圈禁/移入/归还），详见 shared/modalFocus.ts
   document.addEventListener('click', onDocClickUserMenu)
   window.addEventListener('resize', onUserMenuViewport)
   await loadOntologyData()
@@ -1020,7 +1020,8 @@ async function loadOntologyData() {
     const failed = [draft, list].find(r => r.status === 'rejected') as PromiseRejectedResult | undefined
     const hit = ontologyList.value.find(o => o.id === ontologyId)
     ontologyName.value = hit?.name || ''
-    document.title = (ontologyName.value || '本体工作台') + ' · 本体工作台'
+    // 未选本体时不要拼成「本体工作台 · 本体工作台」：应用名单独出现一次即可。
+    document.title = ontologyName.value ? ontologyName.value + ' · 本体工作台' : '本体工作台'
     if (failed) {
       const e: any = failed.reason
       ontologyLoad.value = 'error'
@@ -1069,7 +1070,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <template>
 <div class="topbar" :class="{mini: railMini}" :inert="modalOpen"><div class="topbar-crumb"><span class="crumb-path">{{crumbPath}}</span><h1 class="topbar-title">{{pages[view]}}</h1></div><div class="topbar-status">
 <template v-if="booting||ontologyLoad==='loading'"><span class="save-pill">{{ontologySlow?'仍在加载，请稍候…':'加载中…'}}</span></template>
-<template v-else-if="(space==='project'&&((projectState||(flowViews.includes(view)&&flowState))))||(space==='ontology'&&hasOntology&&ontologyLoad==='ready')">
+<template v-else-if="(space==='project'&&((projectState||(flowViews.includes(view)&&flowState))))||(space==='ontology'&&hasOntology&&ontologyLoad==='ready')||(onGlobalView&&ontologyLoad!=='error')">
 <!-- G3：状态由真实 guard dirty + Saver 状态派生；摘要文案，完整错误在页面内持续可见 -->
 <span class="save-pill" :class="saveState.kind" :title="saveState.hint"><template v-if="saveState.kind==='form'">✎ </template>{{saveState.text}}<template v-if="saveState.kind==='saved'&&!onGlobalView&&activeSaver!.lastSavedAt.value"> · {{activeSaver!.lastSavedAt.value}}</template></span>
 <button v-if="saveState.kind==='saved'&&!onGlobalView&&activeErrors.length" class="save-issues" :title="activeErrors.join('；')" @click="navigate(activeReleaseView)">{{activeErrors.length}} 项待完善</button>
@@ -1077,7 +1078,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <button v-if="saveState.kind==='error'&&!onGlobalView" @click="retrySave">{{activeSaver.unknownOutcome.value?'重试保存':'重试'}}</button>
 <template v-if="saveState.kind==='conflict'&&!onGlobalView"><button @click="discardReload" title="放弃本地修改，重新加载服务端最新草稿">放弃本地并重新加载</button><button @click="retryLocal" title="以当前屏幕内容覆盖服务端较新草稿">以当前内容重试</button></template>
 </template>
-<template v-else><span v-if="ontologyLoad==='error'" class="save-pill error" :title="ontologyLoadError">本体读取失败</span><span v-else-if="space==='ontology'">尚未创建本体</span><span v-else-if="flowViews.includes(view)">未选择编排</span><span v-else>未选择项目</span></template>
+<template v-else><span v-if="ontologyLoad==='error'" class="save-pill error" :title="ontologyLoadError">本体读取失败</span><span v-else-if="space==='ontology'">{{noOntologyLabel}}</span><span v-else-if="flowViews.includes(view)">未选择编排</span><span v-else>未选择项目</span></template>
 </div><div class="topbar-actions">
 <template v-if="isEditableView(view)&&!onGlobalView"><button :disabled="!canUndo" :title="canUndo?('撤销：'+undoLabel):undoDisabledReason" :aria-label="canUndo?('撤销：'+undoLabel):'撤销（当前页面没有可撤销的操作）'" @click="undo">撤销</button><button :disabled="!canRedo" :title="canRedo?('重做：'+redoLabel):undoDisabledReason" :aria-label="canRedo?('重做：'+redoLabel):'重做（当前页面没有可重做的操作）'" @click="redo">重做</button></template>
 </div></div>
@@ -1096,8 +1097,8 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 </template>
 <!-- 业务形态：原有两区侧栏 -->
 <template v-else>
-  <div class="brand">◇ <span>本体工作台</span><small>ONTOLOGY WORKSPACE</small></div><div class="ws-tabs" role="tablist" aria-label="切换工作区"><button role="tab" :class="{active:space==='ontology'}" :aria-selected="space==='ontology'" @click="switchSpace('ontology')">本体</button><button role="tab" :class="{active:space==='project'}" :aria-selected="space==='project'" @click="switchSpace('project')">项目</button></div><button type="button" class="rail-toggle" :title="railMini?'展开侧栏':'收起侧栏'" :aria-label="railMini?'展开侧栏':'收起侧栏'" @click="toggleRail">{{railMini?'»':'«'}}<span>{{railMini?'':'收起侧栏'}}</span></button><div class="space"><template v-if="booting"><div class="space-head"><div class="skeleton" style="height:13px;width:56px;margin:0"></div></div><div class="skeleton" style="height:42px"></div></template><template v-else-if="space==='ontology'"><div class="space-head"><label>当前本体</label><button type="button" class="space-new" @click="showOntologyDialog=true">＋ 新建</button></div><AppSelect :model-value="hasOntology?ontologyId:''" placeholder="未选择本体" :options="ontologyList.map(o=>({value:o.id,label:o.name}))" :disabled="busy||!ontologyList.length" aria-label="切换本体" @update:model-value="switchOntology"/></template>
-<template v-else><div class="space-head"><label>当前项目</label><button v-if="projectListState==='error'" type="button" class="space-new" @click="retryProjectContext">重试</button><button v-else type="button" class="space-new" :disabled="projectListState!=='ready'" title="新建项目" @click="newProjectFromSidebar">＋ 新建</button></div><p v-if="projectListState==='error'" class="space-error" role="alert">项目列表加载失败</p><template v-else-if="projectListState!=='ready'||(projectLoading&&!projectState)"><div class="skeleton" style="height:42px"></div><p class="space-note">正在加载项目…</p></template><AppSelect v-else :model-value="projectState?.projectId||''" placeholder="未选择项目" :options="projectOptions" :disabled="busy" aria-label="切换项目" @update:model-value="$event&&loadProject($event)"/></template></div><nav aria-label="工作台导航"><template v-if="booting"><div v-for="n in 5" :key="n" class="nav-boot"><div class="skeleton" style="height:13px;width:64%"></div></div></template><template v-else-if="space==='ontology'"><template v-if="hasOntology"><button v-for="(label,key) in menuOntology" :key="key" :title="label" :aria-current="view===key?'page':undefined" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><button :aria-current="view==='tools'?'page':undefined" :title="'更多工具'" :class="{active:view==='tools'}" @click="navigate('tools')"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons.tools||navIcons._default"/></svg>更多工具</button></template></template><template v-else><button v-for="(label,key) in menuProject" :aria-current="view===key?'page':undefined" :key="key" :title="label" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><p v-if="!projectState" class="rail-hint">选择或新建项目后，可进行对象映射与项目校验；函数编排不依赖项目。</p></template></nav>
+  <div class="brand">◇ <span>本体工作台</span><small>ONTOLOGY WORKSPACE</small></div><div class="ws-tabs" role="tablist" aria-label="切换工作区"><button role="tab" :class="{active:space==='ontology'}" :aria-selected="space==='ontology'" @click="switchSpace('ontology')">本体</button><button role="tab" :class="{active:space==='project'}" :aria-selected="space==='project'" @click="switchSpace('project')">项目</button></div><button type="button" class="rail-toggle" :title="railMini?'展开侧栏':'收起侧栏'" :aria-label="railMini?'展开侧栏':'收起侧栏'" @click="toggleRail">{{railMini?'»':'«'}}<span>{{railMini?'':'收起侧栏'}}</span></button><div class="space"><template v-if="booting"><div class="space-head"><div class="skeleton sk-label"></div></div><div class="skeleton sk-row"></div></template><template v-else-if="space==='ontology'"><div class="space-head"><label>当前本体</label><button type="button" class="space-new" @click="showOntologyDialog=true">＋ 新建</button></div><AppSelect :model-value="hasOntology?ontologyId:''" placeholder="未选择本体" :options="ontologyList.map(o=>({value:o.id,label:o.name}))" :disabled="busy||!ontologyList.length" aria-label="切换本体" @update:model-value="switchOntology"/></template>
+<template v-else><div class="space-head"><label>当前项目</label><button v-if="projectListState==='error'" type="button" class="space-new" @click="retryProjectContext">重试</button><button v-else type="button" class="space-new" :disabled="projectListState!=='ready'" title="新建项目" @click="newProjectFromSidebar">＋ 新建</button></div><p v-if="projectListState==='error'" class="space-error" role="alert">项目列表加载失败</p><template v-else-if="projectListState!=='ready'||(projectLoading&&!projectState)"><div class="skeleton sk-row"></div><p class="space-note">正在加载项目…</p></template><AppSelect v-else :model-value="projectState?.projectId||''" placeholder="未选择项目" :options="projectOptions" :disabled="busy" aria-label="切换项目" @update:model-value="$event&&loadProject($event)"/></template></div><nav aria-label="工作台导航"><template v-if="booting"><div v-for="n in 5" :key="n" class="nav-boot"><div class="skeleton sk-nav"></div></div></template><template v-else-if="space==='ontology'"><template v-if="hasOntology"><button v-for="(label,key) in menuOntology" :key="key" :title="label" :aria-current="view===key?'page':undefined" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><button :aria-current="view==='tools'?'page':undefined" :title="'更多工具'" :class="{active:view==='tools'}" @click="navigate('tools')"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons.tools||navIcons._default"/></svg>更多工具</button></template></template><template v-else><button v-for="(label,key) in menuProject" :aria-current="view===key?'page':undefined" :key="key" :title="label" :class="{active:view===key}" @click="navigate(key)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[key]||navIcons._default"/></svg>{{label}}</button><p v-if="!projectState" class="rail-hint">选择或新建项目后，可进行对象映射与项目校验；函数编排不依赖项目。</p></template></nav>
 </template>
 <!-- 底部固定用户区：头像+用户名（用户菜单触发）与独立齿轮（设置），两种形态都显示 -->
 <div class="rail-user">
@@ -1141,7 +1142,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <BuildReviewPage v-else-if="buildStage==='review'" :task-id="buildTaskId" @back="goBuildStage('progress')" @saved="onBuildReviewSaved"/>
 <BuildSavePage v-else-if="buildStage==='save'" :task-id="buildTaskId" @back="onBuildSaveBack" @saved="onBuildDelivered"/>
 </main>
-<main v-else-if="booting||ontologyLoad==='loading'"><section class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:92%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:96%"></div><div class="skeleton" style="height:14px;margin:12px 0;width:78%"></div></section><p v-if="ontologySlow" class="muted" role="status">仍在加载，请稍候…（超过 {{ Math.round(READ_TIMEOUT_MS/1000) }} 秒仍未返回会给出重试入口）</p></main>
+<main v-else-if="booting||ontologyLoad==='loading'"><section class="card"><div class="skeleton sk-title"></div><div class="skeleton sk-text"></div><div class="skeleton sk-text sk-w92"></div><div class="skeleton sk-text sk-w96"></div><div class="skeleton sk-text sk-w78"></div></section><p v-if="ontologySlow" class="muted" role="status">仍在加载，请稍候…（超过 {{ Math.round(READ_TIMEOUT_MS/1000) }} 秒仍未返回会给出重试入口）</p></main>
 <!-- G1/G2：本体必要读取失败——给出状态与恢复入口，不能渲染成「没有本体」 -->
 <main v-else-if="!state">
 <AppError :title="ontologyLoadFailure==='timeout'?'读取本体数据超时':'读取本体数据失败'" :reason="ontologyLoadError" :hint="ontologyFailureHint" retry-label="重试读取" :details="ontologyFailureDetails" @retry="retryOntologyLoad"/>
@@ -1150,9 +1151,9 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <!-- G2：本体数据重新读取失败（已展示的是上一次成功读取的内容） -->
 <AppError v-if="ontologyLoad==='error'" compact title="本体数据重新读取失败" :reason="ontologyLoadError" hint="当前显示的是上一次成功读取的内容；已保存的草稿不受影响，可重试读取。" retry-label="重试读取" @retry="retryOntologyLoad"/>
 <!-- 项目区加载中/失败（R2）：与「还没有项目」区分，等待或失败时都可返回本体 -->
-<section v-if="projectAreaWaiting" class="card"><div class="skeleton" style="height:18px;width:200px;margin:0 0 18px"></div><div class="skeleton" style="height:14px;margin:12px 0"></div><div class="skeleton" style="height:14px;margin:12px 0;width:88%"></div></section>
+<section v-if="projectAreaWaiting" class="card"><div class="skeleton sk-title"></div><div class="skeleton sk-text"></div><div class="skeleton sk-text sk-w88"></div></section>
 <AppError v-else-if="projectAreaFailed" :title="projectFailureTitle" :reason="projectListError||projectLoadError" :hint="projectOriginBlocked?'':'项目数据加载失败，本体建模可继续使用。修正后重试，或先回到本体区继续工作。'" :fix-href="projectOriginBlocked?localAccess:''" retry-label="重试" secondary-label="返回本体" @retry="retryProjectContext" @secondary="switchSpace('ontology')"/>
-<section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div><button type="button" class="dl-template" @click="downloadTemplate">下载 Excel 模板</button></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button><button type="button" :disabled="busy" @click="navigate('build')">从物料生成</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
+<section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>{{ontologyNoneAtAll?'创建第一个本体':'打开一个已有本体，或新建一个'}}</h2><p class="muted">{{ontologyNoneAtAll?'本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。':'从下方列表选择一个已有本体继续建模；也可以新建一个——项目不依赖本体，绑定本体可随时在项目信息中补选。'}}</p></div><button type="button" class="dl-template" @click="downloadTemplate">下载 Excel 模板</button></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button><button type="button" :disabled="busy" @click="navigate('build')">从物料生成</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>
 <!-- 生成来源回链（G13）：这份本体由生成任务创建时，在对象建模页给出返回该任务的入口；
      只做导航，不写入本体草稿，也不改变现有页面行为。 -->
@@ -1179,7 +1180,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <ActionLibrary v-if="view==='actions'" :state="state" :focus-id="definitionFocusId" :focus-origin="definitionOrigin" :canvas-return="canvasReturn?.nodeId || ''" :edit-focus="editFocusFlag" :return-to="definitionReturn" @before-change="pushUndo" @changed="changed" @navigate="navigate"/>
 <ValueTypeManager v-if="view==='valuetypes'" :state="state" @properties="openProperties" @before-change="pushUndo" @changed="changed"/>
 <section v-if="view==='learning' && !state.learning" class="card empty">此本体暂无导入或教学材料。</section><section v-if="view==='learning' && state.learning"><div class="card"><div class="badge">LEARNING PATH · 储能业务示例</div><h2>{{state.learning.title}}</h2><p>先理解“是什么”，再定义“怎么算”，最后绑定“数据在哪里”。你不需要先参与现场审核。</p><ol><li v-for="step in state.learning.steps" :key="step">{{step}}</li></ol><div class="tools"><button class="primary" @click="navigate('objects')">① 看对象建模</button><button @click="navigate('contracts')">② 看SOC规则</button><button @click="navigate('instances')">③ 看70%结果</button></div></div><div class="card"><h2>旧图42个节点，哪些属于本体？</h2><p class="muted">对象类型才是默认画布节点。属性挂在对象上；观测、指标与算法有各自的定义文件。</p><div class="scroll"><table><thead><tr><th>原节点</th><th>归类</th><th>新表达</th><th>为什么</th></tr></thead><tbody><tr v-for="item in state.learning.classification" :key="item.source_id"><td>{{item.original_name}}</td><td><strong>{{item.category}}</strong></td><td>{{item.name}}</td><td>{{item.reason}}</td></tr></tbody></table></div></div><div class="card"><h2>教学假设</h2><ul><li v-for="a in state.learning.assumptions" :key="a">{{a}}</li></ul><p class="muted">这些假设让例子可理解、可验证；不代表现场数据已经核实。</p></div></section>
-<section v-if="view==='instances'"><div v-if="!preview" class="card"><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div><div class="skeleton" style="height:14px;margin:10px 0"></div></div><div v-else-if="preview.errors.length" class="card">{{preview.errors.join('；')}}</div><template v-else><div class="columns"><div class="card"><h2>南区储能系统 SOC</h2><div class="result">{{preview.result.value??'—'}}<small> %</small></div><p>{{preview.result.reason||'质量有效 · 模拟快照'}}</p><p class="muted">2026-09-08 10:00 +08:00</p></div><div class="card"><h2>计算血缘</h2><p v-for="(r, ri) in preview.result.lineage" :key="ri">{{r.object_id}}<br>{{r.soc_pct}}% × {{r.capacity_basis_kwh}} kWh<br><small class="muted">{{r.sampled_at}} · {{r.source_table}}</small></p></div></div><div class="card scroll"><h2>项目实例</h2><table><thead><tr><th>名称</th><th>类型</th><th>归属</th></tr></thead><tbody><tr v-for="(o, oi) in preview.objects" :key="oi"><td>{{o.display_name||o.properties.name}}</td><td>{{o.type}}</td><td>{{Object.values(o.parents).join(', ')||'—'}}</td></tr></tbody></table></div></template></section>
+<section v-if="view==='instances'"><div v-if="!preview" class="card"><div class="skeleton sk-line"></div><div class="skeleton sk-line"></div><div class="skeleton sk-line"></div><div class="skeleton sk-line"></div><div class="skeleton sk-line"></div><div class="skeleton sk-line"></div></div><div v-else-if="preview.errors.length" class="card">{{preview.errors.join('；')}}</div><template v-else><div class="columns"><div class="card"><h2>南区储能系统 SOC</h2><div class="result">{{preview.result.value??'—'}}<small> %</small></div><p>{{preview.result.reason||'质量有效 · 模拟快照'}}</p><p class="muted">2026-09-08 10:00 +08:00</p></div><div class="card"><h2>计算血缘</h2><p v-for="(r, ri) in preview.result.lineage" :key="ri">{{r.object_id}}<br>{{r.soc_pct}}% × {{r.capacity_basis_kwh}} kWh<br><small class="muted">{{r.sampled_at}} · {{r.source_table}}</small></p></div></div><div class="card scroll"><h2>项目实例</h2><table><thead><tr><th>名称</th><th>类型</th><th>归属</th></tr></thead><tbody><tr v-for="(o, oi) in preview.objects" :key="oi"><td>{{o.display_name||o.properties.name}}</td><td>{{o.type}}</td><td>{{Object.values(o.parents).join(', ')||'—'}}</td></tr></tbody></table></div></template></section>
 </template>
 </main></div>
 <div v-if="leaveDialog" class="modal-backdrop" @click.self="keepEditing"><section class="modal-card" role="dialog" aria-modal="true" aria-label="未保存的表单修改"><h2>当前表单还有未保存的修改</h2><p class="field-help">工作区已有草稿不会丢失。离开只会放弃本次表单修改。</p><div class="dialogtools"><button @click="discardEditing">放弃本次修改并离开</button><button class="primary" @click="keepEditing">继续编辑</button></div></section></div>

@@ -163,7 +163,9 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
 <section class="card">
   <div class="empty-state">
     <div class="empty-state-ico">◇</div>
-    <p>还没有项目。</p>
+    <!-- 「没有选中项目」不等于「一个项目也没有」：已有项目时不得断言「还没有项目」，
+         下面同一张卡就写着请在左侧下拉切换。 -->
+    <p>{{projects.length?'未选择项目。':'还没有项目。'}}</p>
     <button class="primary" @click="openCreateDialog">新建项目</button>
   </div>
   <p class="muted">项目标识自动生成；不复制本体定义，升级由项目主动发起。已有项目请在左侧「当前项目」下拉中切换。</p>
@@ -201,11 +203,11 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
   <div class="tools"><button @click="paramsEdit?closeParams():openParams()">{{paramsEdit?'取消维护':'维护参数'}}</button></div></div>
   <template v-if="paramsEdit">
     <p class="muted">在下方直接编辑参数取值；保存一次生效，取消放弃本次修改。空参数也可以在这里新增第一项。</p>
-    <div class="scroll"><table><thead><tr><th style="width:34%">参数名</th><th>取值</th><th style="width:90px"></th></tr></thead>
+    <div class="scroll"><table><thead><tr><th class="param-col-key">参数名</th><th>取值</th><th class="param-col-ops"></th></tr></thead>
     <tbody><tr v-for="(row,i) in paramRows" :key="i"><td><input v-model="row.key" maxlength="120" placeholder="例如 soc_max_age_seconds" aria-label="参数名"></td>
     <td><input v-model="row.value" placeholder="例如 300" aria-label="参数取值"></td>
     <td><button :disabled="parameterReferenced(row.key.trim())" :title="parameterReferenced(row.key.trim())?'该参数正被属性来源匹配条件引用，不能删除':''" @click="removeParamRow(i)">移除</button></td></tr></tbody></table></div>
-    <div class="row"><label>新增参数名<input v-model="newParamKey" placeholder="例如 soc_max_age_seconds"></label><label>取值<input v-model="newParamValue" placeholder="例如 300"></label><button type="button" style="flex:0 0 auto" :disabled="!newParamKey.trim()" @click="addParamRow">添加一行</button></div>
+    <div class="row"><label>新增参数名<input v-model="newParamKey" placeholder="例如 soc_max_age_seconds"></label><label>取值<input v-model="newParamValue" placeholder="例如 300"></label><button type="button" class="param-add" :disabled="!newParamKey.trim()" @click="addParamRow">添加一行</button></div>
     <p class="field-help">已有参数的原有类型（数值、布尔等）在未修改时保持不变；删除被来源匹配条件引用的参数会被阻止。</p>
     <div class="tools"><button class="primary" :disabled="paramBusy" @click="saveParams">{{paramBusy?'保存中…':'保存参数'}}</button><button :disabled="paramBusy" @click="closeParams">取消</button></div>
   </template>
@@ -222,9 +224,9 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
 </template>
 <p v-if="message" class="inline-error" role="status">{{message}}</p>
 
-<!-- 新建项目弹窗：与「新建本体」同一套 modal-card 交互（Esc/背板/取消关闭） -->
-<div v-if="showCreateDialog" class="modal-backdrop" @click.self="showCreateDialog=false" @keydown.esc.stop="showCreateDialog=false">
-  <form class="modal-card" role="dialog" aria-modal="true" aria-label="新建项目" @submit.prevent="createProjectFromDialog">
+<!-- 新建项目弹窗：与「新建本体」同一套 modal-card 交互（Esc/背板/取消关闭）；Escape 统一挂在卡片上 -->
+<div v-if="showCreateDialog" class="modal-backdrop" @click.self="showCreateDialog=false">
+  <form class="modal-card" role="dialog" aria-modal="true" aria-label="新建项目" tabindex="-1" @submit.prevent="createProjectFromDialog" @keydown.esc.stop="showCreateDialog=false">
     <h2>新建项目</h2>
     <p class="field-help">创建空白项目；可以先配置数据连接，之后再绑定已发布本体版本。项目标识自动生成，不复制本体定义。</p>
     <label>项目名称<input v-model="newName" required maxlength="80" placeholder="例如：园区三期"></label>
@@ -237,6 +239,8 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
 </div></template>
 
 <style scoped>
+/* 参数表列宽与按钮固有宽度（原为逐行内联 style） */
+.param-col-key{width:34%}.param-col-ops{width:90px}.param-add{flex:0 0 auto}
 .guide-step{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}
 .guide-step:last-child{border-bottom:0;padding-bottom:2px}
 .step-no{flex:none;width:26px;height:26px;border-radius:50%;background:var(--blue-soft);color:var(--blue);font-size:13px;font-weight:650;display:flex;align-items:center;justify-content:center;margin-top:2px}

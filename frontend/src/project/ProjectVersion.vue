@@ -156,7 +156,7 @@ watch(()=>[props.projectState?.projectId,props.projectState?.ontologyId,props.pr
     </div>
     <div v-else class="sample-panel">
       <p><strong>目标：</strong>{{ontoName(selectedOntology)}} {{selectedVersion}}　<strong>分类：</strong>{{changeTypePill[report.data.classification]||report.data.classification}}　<strong>受影响配置：</strong>{{report.data.impacts.length}} 项（阻断 {{report.data.blocking.length}}）</p>
-      <div v-if="report.data.impacts.length" class="scroll"><table><thead><tr><th style="width:120px">范围</th><th>影响</th><th style="width:90px">级别</th></tr></thead>
+      <div v-if="report.data.impacts.length" class="scroll"><table><thead><tr><th class="impact-col-scope">范围</th><th>影响</th><th class="impact-col-level">级别</th></tr></thead>
       <tbody><tr v-for="(i,idx) in report.data.impacts" :key="idx"><td>{{areaLabels[i.area]||i.area}}</td><td>{{i.text}}</td><td>{{severityLabel(i.severity)}}</td></tr></tbody></table></div>
       <p v-else class="muted">未发现受当前项目配置影响的差异。</p>
       <details v-if="report.data.reasons?.length" class="reason-details"><summary>分类依据（{{report.data.reasons.length}}）</summary>
@@ -170,6 +170,8 @@ watch(()=>[props.projectState?.projectId,props.projectState?.ontologyId,props.pr
 </div></template>
 
 <style scoped>
+/* 影响表列宽（原为逐行内联 style） */
+.impact-col-scope{width:120px}.impact-col-level{width:90px}
 .readonly-line{padding:9px 12px;background:var(--bg);border:1px solid var(--line);border-radius:7px;overflow-wrap:anywhere;font-size:13px;color:var(--ink-2);margin-bottom:16px}
 .compare-foot{border-top:1px solid var(--line);margin-top:18px;padding-top:14px}
 .reason-details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}

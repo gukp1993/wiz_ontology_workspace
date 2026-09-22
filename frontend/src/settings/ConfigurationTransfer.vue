@@ -442,7 +442,7 @@ function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) 
       <div v-if="awaitingReceipt" class="ct-confirm-banner">
         有一次导入的结果待确认（文件 {{ awaitingReceipt.fileName }}，{{ awaitingReceipt.savedAt.slice(0, 19).replace('T', ' ') }}）。
         请先核对，不要重复导入。
-        <div class="tools" style="margin-top:8px">
+        <div class="tools tools-below">
           <button type="button" class="primary" @click="verifyRecovered">核对导入结果</button>
           <button type="button" @click="dismissRecovered">忽略</button>
         </div>
@@ -506,7 +506,8 @@ function formatSize(n: number) { return n < 1024 * 1024 ? (n / 1024).toFixed(1) 
 .ct-head h2{margin:0 0 4px}
 .ct-tabs{display:flex;gap:8px}
 .ct-tabs button{padding:7px 16px}
-.ct-tabs button.active{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
+.ct-tabs button.active{border-color:var(--blue-line);color:var(--blue-ink);background:var(--blue-soft)}
+.tools-below{margin-top:8px}
 .ct-card{padding:20px 22px}
 .ct-pickhead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
 .ct-search{max-width:280px}
