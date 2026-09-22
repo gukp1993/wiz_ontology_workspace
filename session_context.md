@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`52f017bd92f36abd`
+上下文版本：`b16786b0645b1500`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### ui_fix 第七轮复测补充：合并后后端 quick 回归边界 · codex · 需求已交付
+
+时间：2026-09-22T06:34:51.131101+00:00；记录：`.collaboration/entries/000186-f96f95a10997.json`
+
+补 000185 一项证据：在合并后的 codex/ui_fix 上跑 tests/run.py quick（env 剥除 WIZ_DATABASE_URL/ROOT/PORT，测试自持临时根）→ 通过 2/3。唯一失败 test_save_iteration.py 是环境缺输入而非代码回归：它从 REPO/ontology/ 播种 storage 版本（tests/test_save_iteration.py:130-147），而 ontology/ 已退出 git 跟踪、任何新建 worktree 都不带该树（main 有、分支无），合并前即在 worktree 跑不起来。未为此复制 main 真实 ontology/ 进分支。其余 quick 通过；http/unit 全量与需本机 MySQL 的 external 未跑。结论仍是本轮新缺陷 0。
+
+- 决定：不改测试也不搬数据来让该项在 worktree 变绿：把 ontology/ 复制进分支等于搬运真实用户数据，超出样式统一任务边界；把该失败记为验证边界并写入 §9.12，避免后续把它误读成合并回归
+- 验证：命令：env -u WIZ_DATABASE_URL -u WIZ_WORKBENCH_ROOT -u WIZ_WORKBENCH_PORT python3 tests/run.py quick（在 worktree/ui_fix 内），结果 通过 2/3、失败 test_save_iteration.py，临时根由脚本自建于 /var/folders/.../wiz_save_iteration_*；ls 对照：worktree/ui_fix 无 ontology/ 目录，main 仓库根有 catalogs/drafts/projects/releases/vault/workspaces
+- 下一步：如需分支上跑该项，请明确授权把 main 的 ontology/ 只读种子放入分支（或改测试用合成夹具），两者都不属本轮范围
+- 依据/文档：文档/需求/20260921_样式与交互统一/开发计划.md §9.12『合并后的后端边界（补测）』；上一轮交接：000185
 
 ### ui_fix 第七轮体验复测（合并 main 后，零新缺陷） · codex · 需求已交付
 
@@ -139,13 +150,3 @@ V2-10 整改复测通过：三项整改全部闭合，无新问题。方式=/tmp
 - 验证：git worktree list 确认 worktree/ui_fix @ codex/ui_fix @ 4714e8a；git -C worktree/ui_fix status 干净；主仓库 git status 无 worktree 泄漏（.gitignore 第24行 /worktree/ 生效）；快照只读校验：alembic_version=20260920_0003，pragma integrity_check=ok，30 张 wb_ 表有数据（wb_users 2、wb_build_materials 58、wb_build_facts 4024、wb_snapshots 365）；落位文件权限：data/ keys/ 0700，workbench.sqlite3 与 wb-root.key 0600，.runtime/task.env 0600；本轮未运行 npm build、未跑测试、未启动服务（仅环境创建与登记）；context.py record 需 read 返回的 ticket 且各列表字段≤5 项、单条≤400 字，超限报『交接列表格式无效』
 - 下一步：等用户下达 ui_fix 的具体修复范围与任务；开发前在 worktree/ui_fix 内准备依赖并启动 18882 实例。；若修复涉及前端，需先 ./start.sh setup 或建分支 venv，并 npm ci && npm run build 后由分支后端托管自身 dist。；集成合并与清理仍需用户明确指令；本环境含真实数据副本，删除前必须经用户确认。
 - 依据/文档：/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/ui_fix；.git/workbench-tasks/ui_fix.json；worktree/ui_fix/.runtime/task.env
-
-### build-governance V2-10 解析并发（G25）测试agent独立验收 第一轮 · zcode · 受阻
-
-时间：2026-09-22T01:49:11.197507+00:00；记录：`.collaboration/entries/000178-bd63e5fd19ea.json`
-
-V2-10（G25 a-f）独立验收完成，结论不通过（1 严重）。在 /tmp/v2_10_verify 干净导出树（e03257d）内验收，未触碰工作区他人未提交改动。G25a 符合（rowid 物理序补验顺序维度，内容与顺序双一致）；G25b 符合（峰值并发4、6.04→2.42s、env 7 形态回退、实例 1/8/回退8）；G25d 符合（取消保留已完成+迟到不补写+重扫 reused=2；cb65d4f 修复生效 reused=5/parsed=1）；G25e 符合（0 锁错误；写事务全来自 build-run-*，解析线程 0 写）；G25f 符合（serial 3.44/3.98 vs parallel 4.05/4.08；CPU 竞争 5.60/6.11 佐证 13.67 离群成因；纯解析仅占 3%，GIL+落库串行致小文件无加速）。G25c 部分符合：超时/迟到完全符合（超时落库 t+1.01s、worker 完成 t+3.01s、之后 facts 不变）；worker 异常路径不符合——future.result() 仅捕 FutureTimeoutError（pipeline.py:471-476），异常杀死整个 run、其余材料停 pending/running，与注释承诺矛盾；两条复现（注入 RuntimeError；适配器返回 None 触发后处理 AttributeError，parsers/__init__:127-135 后处理在 try 外）。一般#2 README 未登记 V2-10；一般#3 取消注释称 0.5s 生效，实测延迟=当前文件剩余时长。回归 244/244、95/95、17/17、60/60、34/34、27/27、vue-tsc 0 错。报告 /tmp/v2_test_report_v2_10.md
-
-- 验证：G25a：独立脚本 g25_equiv.py 双实例对比——内容集合 21 条逐字段一致 + rowid 物理插入序逐元素一致 + 落库序==材料登记序；G25b/G25c/G25d/G25e：g25_whitebox.py 11/12（唯一失败=异常隔离缺陷）；超时时序证据 timeout@1.01s < worker_done@3.01s 且 facts 不变；write_tx 线程追踪 parsers 0 写；G25f：基准复跑 2 轮（3.44/4.05、3.98/4.08）+ CPU 竞争轮（5.60/6.11）；重解析对照 200×5000行 3.44 vs 3.78、xlsx 2.30 vs 2.34；回归：test_ontology_build 244/244、parsers 95/95、purge 17/17、storage_contract 60/60、runner_isolation 34/34、finish_guard 27/27、vue-tsc exit 0；缺陷复现：注入 RuntimeError 与畸形适配器 None 返回均致 run failed 且其余材料 pending/running（G25c 违反）
-- 下一步：开发修复严重#1：_collect_pool_result 把 future.result() 的异常纳入隔离（该文件 failed 继续下一个），并评估 parse_material 后处理段纳入 except 或返回值类型校验；修复后按两条复现路径+全量回归交回复测；补登记 README 变更记录 V2-10 一行（capabilities.limits.parseConcurrency）；修正 _collect_pool_result 取消注释（0.5s 短片边界→当前文件收集完成后生效，最坏≤120s）；观察项不阻塞：并发在当前文件构成下无加速（GIL+落库串行占比97%）；基准脚本 concurrency 形参未用；同路径重传生成第二行材料（既有行为）
-- 依据/文档：/tmp/v2_test_report_v2_10.md；worktree build-governance@e03257d（V2-10 七提交）；workbench/ontology_build/pipeline.py:454-488（_collect_pool_result）；workbench/ontology_build/parsers/__init__.py:127-141（parse_material 后处理在 try 外）
