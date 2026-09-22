@@ -123,6 +123,10 @@ const versionList = ref<any[]>([]), releases = ref<any[]>([]), preview = ref<any
 const ontologySaveErrors = ref<string[]>([])
 const showOntologyDialog = ref(false)
 const hasOntology = computed(() => ontologyList.value.some(o => o.id === ontologyId))
+// 「没有选中本体」与「一个本体也没有」是两件事：账号里已有本体时，顶栏与本体区落地卡都不得
+// 断言「尚未创建本体 / 创建第一个本体」——同一屏下方就列着已有本体，属自相矛盾的空态。
+const ontologyNoneAtAll = computed(() => !ontologyList.value.length)
+const noOntologyLabel = computed(() => ontologyNoneAtAll.value ? '尚未创建本体' : '未选择本体')
 
 // --- 项目区 Saver：load GET /api/project-state，submit POST /api/project-save（剥 bindings.catalogs） ---
 const projects = ref<any[]>([]), projectId = ref(''), refState = ref<any>(null), projectReport = ref<any>(null), migrationTodos = ref<any[]>([])
@@ -789,7 +793,7 @@ async function retryProjectContext() {
   if (!(await ensureProjectList())) return notify('项目列表加载失败：' + projectListError.value, true)
   if (!projectState.value) {
     const ok = await ensureProjectContext()
-    if (!ok) notify(projectLoadError.value ? '项目加载失败：' + projectLoadError.value : '还没有项目，可在项目概览中新建。', !!projectLoadError.value)
+    if (!ok) notify(projectLoadError.value ? '项目加载失败：' + projectLoadError.value : (projects.value.length ? '未选择项目，可在左侧「当前项目」下拉中切换，或在项目概览中新建。' : '还没有项目，可在项目概览中新建。'), !!projectLoadError.value)
   }
 }
 // 返回项目引用版本的已发布本体定义（只读校验/绑定用）；返回 null 表示读取失败。
@@ -1016,7 +1020,8 @@ async function loadOntologyData() {
     const failed = [draft, list].find(r => r.status === 'rejected') as PromiseRejectedResult | undefined
     const hit = ontologyList.value.find(o => o.id === ontologyId)
     ontologyName.value = hit?.name || ''
-    document.title = (ontologyName.value || '本体工作台') + ' · 本体工作台'
+    // 未选本体时不要拼成「本体工作台 · 本体工作台」：应用名单独出现一次即可。
+    document.title = ontologyName.value ? ontologyName.value + ' · 本体工作台' : '本体工作台'
     if (failed) {
       const e: any = failed.reason
       ontologyLoad.value = 'error'
@@ -1073,7 +1078,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <button v-if="saveState.kind==='error'&&!onGlobalView" @click="retrySave">{{activeSaver.unknownOutcome.value?'重试保存':'重试'}}</button>
 <template v-if="saveState.kind==='conflict'&&!onGlobalView"><button @click="discardReload" title="放弃本地修改，重新加载服务端最新草稿">放弃本地并重新加载</button><button @click="retryLocal" title="以当前屏幕内容覆盖服务端较新草稿">以当前内容重试</button></template>
 </template>
-<template v-else><span v-if="ontologyLoad==='error'" class="save-pill error" :title="ontologyLoadError">本体读取失败</span><span v-else-if="space==='ontology'">尚未创建本体</span><span v-else-if="flowViews.includes(view)">未选择编排</span><span v-else>未选择项目</span></template>
+<template v-else><span v-if="ontologyLoad==='error'" class="save-pill error" :title="ontologyLoadError">本体读取失败</span><span v-else-if="space==='ontology'">{{noOntologyLabel}}</span><span v-else-if="flowViews.includes(view)">未选择编排</span><span v-else>未选择项目</span></template>
 </div><div class="topbar-actions">
 <template v-if="isEditableView(view)&&!onGlobalView"><button :disabled="!canUndo" :title="canUndo?('撤销：'+undoLabel):undoDisabledReason" :aria-label="canUndo?('撤销：'+undoLabel):'撤销（当前页面没有可撤销的操作）'" @click="undo">撤销</button><button :disabled="!canRedo" :title="canRedo?('重做：'+redoLabel):undoDisabledReason" :aria-label="canRedo?('重做：'+redoLabel):'重做（当前页面没有可重做的操作）'" @click="redo">重做</button></template>
 </div></div>
@@ -1148,7 +1153,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <!-- 项目区加载中/失败（R2）：与「还没有项目」区分，等待或失败时都可返回本体 -->
 <section v-if="projectAreaWaiting" class="card"><div class="skeleton sk-title"></div><div class="skeleton sk-text"></div><div class="skeleton sk-text sk-w88"></div></section>
 <AppError v-else-if="projectAreaFailed" :title="projectFailureTitle" :reason="projectListError||projectLoadError" :hint="projectOriginBlocked?'':'项目数据加载失败，本体建模可继续使用。修正后重试，或先回到本体区继续工作。'" :fix-href="projectOriginBlocked?localAccess:''" retry-label="重试" secondary-label="返回本体" @retry="retryProjectContext" @secondary="switchSpace('ontology')"/>
-<section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>创建第一个本体</h2><p class="muted">本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。</p></div><button type="button" class="dl-template" @click="downloadTemplate">下载 Excel 模板</button></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button><button type="button" :disabled="busy" @click="navigate('build')">从物料生成</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
+<section v-else-if="!hasOntology&&area==='ontology'" class="card"><div class="panelhead"><div><h2>{{ontologyNoneAtAll?'创建第一个本体':'打开一个已有本体，或新建一个'}}</h2><p class="muted">{{ontologyNoneAtAll?'本体建模需要先有本体。也可以并行地先创建项目——项目不依赖本体，绑定本体可随时在项目信息中补选。':'从下方列表选择一个已有本体继续建模；也可以新建一个——项目不依赖本体，绑定本体可随时在项目信息中补选。'}}</p></div><button type="button" class="dl-template" @click="downloadTemplate">下载 Excel 模板</button></div><form class="sample-panel" @submit.prevent="createOntology"><label>本体名称 *<input v-model="newOntologyName" required maxlength="80" placeholder="例如：储能本体"></label><p class="muted">从空白开始，不复制任何已有内容。导入 Excel 需要先选择或新建本体。</p><div class="tools"><button type="submit" class="primary" :disabled="busy||!newOntologyName.trim()">创建本体</button><button type="button" :disabled="busy" @click="navigate('build')">从物料生成</button></div></form><div v-if="ontologyList.length" class="ontology-list"><div v-for="o in ontologyList" :key="o.id" class="panelhead"><strong>{{o.name}}</strong><button :disabled="busy" @click="switchOntology(o.id)">打开</button></div></div></section>
 <template v-else>
 <!-- 生成来源回链（G13）：这份本体由生成任务创建时，在对象建模页给出返回该任务的入口；
      只做导航，不写入本体草稿，也不改变现有页面行为。 -->

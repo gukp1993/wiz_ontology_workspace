@@ -163,7 +163,9 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
 <section class="card">
   <div class="empty-state">
     <div class="empty-state-ico">◇</div>
-    <p>还没有项目。</p>
+    <!-- 「没有选中项目」不等于「一个项目也没有」：已有项目时不得断言「还没有项目」，
+         下面同一张卡就写着请在左侧下拉切换。 -->
+    <p>{{projects.length?'未选择项目。':'还没有项目。'}}</p>
     <button class="primary" @click="openCreateDialog">新建项目</button>
   </div>
   <p class="muted">项目标识自动生成；不复制本体定义，升级由项目主动发起。已有项目请在左侧「当前项目」下拉中切换。</p>
