@@ -184,8 +184,8 @@ function normalizeMembershipDraft(){
 watch(registeredInstances,()=>{if(editingMembership.value)normalizeMembershipDraft()})
 function closeEditor(){draft.value=null;editIndex.value=-1;editingIsNew.value=false;message.value='';switchMsg.value='';saving.value=false;assistOpen.value=false}
 const SWITCH_CONFIRM='当前链接映射有未保存的修改，切换后将放弃这些修改。继续吗？（确定=放弃并切换，取消=继续编辑）'
-async function edit(index:number){if(dirty()&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;openEditor(index as number)}
-async function addLink(r:any){if(!r)return;if(dirty()&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;openNew(r)}
+async function edit(index:number){if(dirty()&&!(await appConfirm({ message: SWITCH_CONFIRM, danger: true })))return;openEditor(index as number)}
+async function addLink(r:any){if(!r)return;if(dirty()&&!(await appConfirm({ message: SWITCH_CONFIRM, danger: true })))return;openNew(r)}
 async function removeLink(i:number){
   if(!(await appConfirm({ message: '移除此链接映射？', danger: true })))return
   const r=await submit(()=>props.b.relations.splice(i as number,1))
@@ -391,7 +391,7 @@ defineExpose({dirty,discard:closeEditor})
 <input :value="condValueText(c)" :aria-label="'条件值 '+rule.sourceInstance" placeholder="比较值（属于列表用逗号分隔）" @input="setCondValue(c,($event.target as HTMLInputElement).value)">
 </template>
 <span v-else class="muted lm-cond-null">—</span>
-<button class="danger-ghost" @click="rmCond(rule,ci)">×</button>
+<button class="danger-btn" :aria-label="`删除实例 ${rule.sourceInstance} 的第 ${ci + 1} 条成员条件`" :title="`删除实例 ${rule.sourceInstance} 的第 ${ci + 1} 条成员条件`" @click="rmCond(rule,ci)">×</button>
 </div>
 <button @click="addCond(rule)">＋ 添加条件</button>
 </template>

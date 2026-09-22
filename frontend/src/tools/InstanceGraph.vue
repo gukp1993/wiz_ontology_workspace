@@ -4,18 +4,18 @@ import cytoscape from 'cytoscape'
 import type {Core,CollectionReturnValue} from 'cytoscape'
 import type {ExplorerObject,ExplorerLink} from './explorerTypes'
 import AppSelect from '../shared/AppSelect.vue'
+import {INSTANCE_GRAPH, instanceNodeColor} from '../shared/graphStyle'
 
 const props=defineProps<{objects:ExplorerObject[];links:ExplorerLink[];selectedId?:string}>()
 const emit=defineEmits<{select:[id:string]}>()
 const canvas=ref<HTMLElement>(),layout=ref('breadthfirst'),selection=ref(''),neighborsOnly=ref(false)
-const palette=['#3978d5','#149b8e','#9561ca','#d78a31','#cc6485','#537c95']
 const typeIds=computed(()=>[...new Set(props.objects.map(o=>o.type))].sort((a,b)=>a.localeCompare(b)))
 const legend=computed(()=>typeIds.value.map(id=>({id,name:props.objects.find(o=>o.type===id)?.typeName||id,color:color(id)})))
 const selected=computed(()=>props.objects.find(o=>o.id===selection.value))
 const validLinks=computed(()=>{const ids=new Set(props.objects.map(o=>o.id));return props.links.filter(l=>ids.has(l.source)&&ids.has(l.target))})
 const omitted=computed(()=>props.links.length-validLinks.value.length)
 let cy:Core|undefined,observer:ResizeObserver|undefined
-function color(id:string){const index=typeIds.value.indexOf(id);return index<palette.length?palette[Math.max(0,index)]:`hsl(${(index*137.508)%360}, 55%, 45%)`}
+function color(id:string){return instanceNodeColor(typeIds.value.indexOf(id))}
 // Prefix separate identifier namespaces; never interpolate business IDs into selectors.
 function nodeId(id:string){return 'object:'+id}
 function arrange(){
@@ -53,7 +53,7 @@ function update(){
   if(selection.value&&!seen.has(selection.value))select('')
   applySelection();arrange()
 }
-function exportPng(){if(!cy||!props.objects.length)return;const a=document.createElement('a');a.href=cy.png({full:true,bg:'#ffffff',scale:2,maxWidth:4096,maxHeight:4096});a.download='储能对象关系图.png';a.click()}
+function exportPng(){if(!cy||!props.objects.length)return;const a=document.createElement('a');a.href=cy.png({full:true,bg:INSTANCE_GRAPH.exportBg,scale:2,maxWidth:4096,maxHeight:4096});a.download='储能对象关系图.png';a.click()}
 function keydown(e:KeyboardEvent){if(e.target!==canvas.value||e.ctrlKey||e.metaKey||e.altKey)return;if(e.key.toLowerCase()==='f'){e.preventDefault();e.stopPropagation();focus()}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();neighborsOnly.value=false;select('')}}
 function text(value:unknown){if(value==null)return '—';return typeof value==='object'?JSON.stringify(value,null,2):String(value)}
 watch(()=>[props.objects,props.links],update,{deep:true})
@@ -62,9 +62,9 @@ watch(neighborsOnly,()=>{applySelection();fit()})
 watch(layout,arrange)
 onMounted(()=>{
   cy=cytoscape({container:canvas.value,elements:[],minZoom:.08,maxZoom:3,wheelSensitivity:.2,boxSelectionEnabled:false,autounselectify:true,style:[
-    {selector:'node',style:{'background-color':'data(color)',label:'data(label)',width:42,height:42,'font-size':12,'text-valign':'bottom','text-margin-y':9,'text-wrap':'wrap','text-max-width':'145px',color:'#243b55','border-width':3,'border-color':'#fff'}},
-    {selector:'edge',style:{width:1.6,'line-color':'#aabbd0','target-arrow-color':'#aabbd0','target-arrow-shape':'triangle','curve-style':'bezier',label:'data(label)','font-size':11,color:'#63768c','text-background-color':'#fff','text-background-opacity':.9,'text-background-padding':'3px','text-rotation':'autorotate'}},
-    {selector:'.focused',style:{'border-color':'#123f82','border-width':5}},
+    {selector:'node',style:{'background-color':'data(color)',label:'data(label)',width:42,height:42,'font-size':12,'text-valign':'bottom','text-margin-y':9,'text-wrap':'wrap','text-max-width':'145px',color:INSTANCE_GRAPH.nodeText,'border-width':3,'border-color':INSTANCE_GRAPH.nodeBorder}},
+    {selector:'edge',style:{width:1.6,'line-color':INSTANCE_GRAPH.edgeLine,'target-arrow-color':INSTANCE_GRAPH.edgeLine,'target-arrow-shape':'triangle','curve-style':'bezier',label:'data(label)','font-size':11,color:INSTANCE_GRAPH.edgeLabel,'text-background-color':INSTANCE_GRAPH.labelBg,'text-background-opacity':.9,'text-background-padding':'3px','text-rotation':'autorotate'}},
+    {selector:'.focused',style:{'border-color':INSTANCE_GRAPH.focused,'border-width':5}},
     {selector:'.faded',style:{opacity:.18}}
   ]})
   cy.on('tap','node',e=>{canvas.value?.focus({preventScroll:true});select(e.target.data('objectId'))})
@@ -87,7 +87,7 @@ onBeforeUnmount(()=>{observer?.disconnect();cy?.destroy();cy=undefined})
     <div class="graph-legend"><span v-for="item in legend" :key="item.id"><i :style="{background:item.color}"></i>{{item.name}}</span><span class="graph-count">{{objects.length}} 个对象 · {{validLinks.length}} 条关联</span></div>
     <p v-if="omitted" class="graph-notice">{{omitted}} 条关联的端点不在当前结果内，因此未展示。</p>
     <div class="graph-body">
-      <div class="graph-stage"><div ref="canvas" class="graph-canvas" tabindex="0" aria-label="只读对象关系图。点击对象查看详情，F 聚焦，Escape 清除选择" @keydown="keydown"></div><div v-if="!objects.length" class="graph-empty">暂无符合条件的对象，请调整上方筛选条件。</div><div class="graph-hint">拖动画布平移 · 滚轮缩放 · 聚焦画布后 F 聚焦，Esc 清除选择</div></div>
+      <div class="graph-stage"><div ref="canvas" class="graph-canvas" tabindex="0" aria-label="只读对象关系图。点击对象查看详情，F 聚焦，Escape 清除选择" @keydown="keydown"></div><div v-if="!objects.length" class="graph-empty">暂无符合条件的对象，请调整上方筛选条件。</div><div class="canvas-hint">拖动画布平移 · 滚轮缩放 · 聚焦画布后 F 聚焦，Esc 清除选择</div></div>
       <aside v-if="selected" class="graph-details" aria-label="所选对象详情">
         <div class="detail-heading"><div><small>{{selected.typeName}}</small><h3>{{selected.name}}</h3></div><button type="button" aria-label="关闭对象详情" @click="select('')">×</button></div>
         <p class="object-id">{{selected.id}}</p>
@@ -100,5 +100,5 @@ onBeforeUnmount(()=>{observer?.disconnect();cy?.destroy();cy=undefined})
 </template>
 
 <style scoped>
-.instance-graph{background:var(--paper);border:1px solid var(--line);border-radius:10px;overflow:hidden;color:#243b55}.graph-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px;border-bottom:1px solid var(--line)}.graph-toolbar button,.detail-heading button{border:1px solid var(--line);background:var(--paper);border-radius:6px;padding:8px 12px;color:var(--ink-2);cursor:pointer;font:inherit;font-size:13px}.graph-toolbar button:hover:not(:disabled){background:var(--blue-soft);border-color:#a8c2e9}.graph-toolbar button:disabled{opacity:.45;cursor:default}.layout-select{width:155px}.layout-select :deep(.app-select){margin-top:0}.neighbor-toggle{display:flex;align-items:center;gap:6px;font-size:13px;margin:0 5px}.neighbor-toggle input{width:auto;margin:0}.graph-legend{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 16px;font-size:12px;color:var(--muted)}.graph-legend span{display:flex;gap:7px;align-items:center}.graph-legend i{width:10px;height:10px;border-radius:50%}.graph-count{margin-left:auto}.graph-notice{margin:0;padding:8px 16px;background:var(--warn-soft);font-size:12px;color:var(--warn)}.graph-body{display:flex;min-height:480px}.graph-stage{position:relative;flex:1;min-width:0}.graph-canvas{height:520px;width:100%;background:radial-gradient(var(--grid) 1px,transparent 1px);background-size:18px 18px}.graph-canvas:focus-visible{outline:2px solid #6798da;outline-offset:-2px}.graph-hint{position:absolute;bottom:10px;left:12px;padding:5px 8px;border-radius:5px;background:#ffffffdd;color:var(--faint);font-size:11px;pointer-events:none}.graph-empty{position:absolute;inset:0;display:grid;place-items:center;color:#789;pointer-events:none}.graph-details{width:290px;flex-shrink:0;padding:18px;border-left:1px solid var(--line);max-height:520px;overflow:auto;box-sizing:border-box}.detail-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}.detail-heading small{color:var(--muted)}.detail-heading h3{margin:7px 0;font-size:17px;overflow-wrap:anywhere}.detail-heading button{padding:2px 8px;font-size:20px}.object-id,.detail-source{font-size:12px;color:var(--faint);overflow-wrap:anywhere}.graph-details dl{margin:20px 0 0}.graph-details dt{font-size:12px;color:var(--muted);margin-top:14px}.graph-details dd{font-size:13px;margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}@media(max-width:900px){.graph-body{flex-direction:column}.graph-details{width:auto;max-height:340px;border-left:0;border-top:1px solid var(--line)}.graph-canvas{height:420px}.graph-count{margin-left:0}}
+.instance-graph{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;color:var(--ink)}.graph-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px;border-bottom:1px solid var(--line)}.graph-toolbar button{padding:7px 10px;font-size:13px}.layout-select{width:155px}.layout-select :deep(.app-select){margin-top:0}.neighbor-toggle{display:flex;align-items:center;gap:6px;font-size:13px;margin:0 5px}.neighbor-toggle input{width:auto;margin:0}.graph-legend{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 16px;font-size:12px;color:var(--muted)}.graph-legend span{display:flex;gap:7px;align-items:center}.graph-legend i{width:10px;height:10px;border-radius:50%}.graph-count{margin-left:auto}.graph-notice{margin:0;padding:8px 16px;background:var(--warn-soft);font-size:12px;color:var(--warn)}.graph-body{display:flex;min-height:480px}.graph-stage{position:relative;flex:1;min-width:0}.graph-canvas{height:520px;width:100%;background:radial-gradient(var(--grid) 1px,transparent 1px);background-size:18px 18px}.graph-canvas:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}.canvas-hint{bottom:10px;left:12px;font-size:11px}.graph-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);pointer-events:none}.graph-details{width:290px;flex-shrink:0;padding:18px;border-left:1px solid var(--line);max-height:520px;overflow:auto;box-sizing:border-box}.detail-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}.detail-heading small{color:var(--muted)}.detail-heading h3{margin:7px 0;font-size:17px;overflow-wrap:anywhere}.detail-heading button{padding:2px 8px;font-size:20px}.object-id,.detail-source{font-size:12px;color:var(--faint);overflow-wrap:anywhere}.graph-details dl{margin:20px 0 0}.graph-details dt{font-size:12px;color:var(--muted);margin-top:14px}.graph-details dd{font-size:13px;margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}@media(max-width:900px){.graph-body{flex-direction:column}.graph-details{width:auto;max-height:340px;border-left:0;border-top:1px solid var(--line)}.graph-canvas{height:420px}.graph-count{margin-left:0}}
 </style>

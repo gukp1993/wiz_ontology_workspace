@@ -1,0 +1,28 @@
+{
+  "ticket": "6e0e7b65081c4eb9878a83e7465d6543",
+  "task": "retrieve 筛选算法优化需求 v1 复审（B1/S1-S4 闭合核对）",
+  "status": "decision",
+  "summary": "复审结论：通过。上轮 1 阻塞+4 建议全部核实闭合：B1——O1 遍内清单已补『弱词/hints 命中探测与理由文本生成（同一遍内完成，按 factId 暂存理由串或命中词表）文本随后即弃』，第三循环退化为按序赋已暂存理由，『桶保留文本已弃』限定为依赖扩展阶段并注明其只需桶与归类结果——单遍融合现可按字面实现且保持逐字节等价（no-hit 大多数只需常量串，内存收益保留）；S1——O2 明确合并正则仅作早停探测、reasons 必须按原词表顺序+原 term in text 成员判定复算补齐、不得直接以 findall 结果拼 reasons；S2——交集表述扩为 pipeline.py 两拨改动（c55d94a+573e51a）且 tests/test_ontology_build.py 亦被改，基线 SHA 以实施时 HEAD 为准；S3——§7 补 V2-8 复用探针桩须同步覆盖新融合入口，另含 O0 with_tokens=False 返回键缺省 docstring 注明要求；S4——§4 改 v2 §14.1+方法论 §7.2 双引用。6 个修复标记各命中一次，R1-R7 与 §6 未被扰动，retrieval.py 自 3dc51dc 零变化（关联行基线钉仍有效，与 §7 HEAD 口径自洽）。O1/O2/O3 三者机制描述互相一致。未发现新问题。",
+  "decisions": [
+    "复审通过，文档可冻结交实施。遗留 1 条非阻塞 polish：§6 行 76 『向量召回（需求说明_v2 §14 已列）』仍为 v2 §14 单引用（S4 只改了实质所在的 §4），建议实施时顺手统一为双引用，不阻塞。"
+  ],
+  "verification": [
+    "6 个修复标记 grep 各命中 1 次；R1-R7/§6 区域与上轮读取一致未被扰动。",
+    "O1 修复技术复核：暂存『理由串或命中词表』对 no-hit 多数仅常量串/None，内存收益保留；依赖扩展优先于第三循环，claimed 检查保证已暂存理由只在未归类时使用——逐字节等价可达。",
+    "retrieval.py 自 3dc51dc 零 diff，关联行基线钉有效；探针桩行号引用 1377-1398 与当前 HEAD 实读一致。"
+  ],
+  "next": [
+    "文档定稿，建议按一个 docs commit 提交并附两轮评审结论。",
+    "实施按 §7 约束：以实施时 HEAD 复核 pipeline.py 归属、探针桩同步覆盖融合入口、先 R1 剖析报告后动手；需用户明确开发指令。"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/需求说明_retrieve筛选算法优化_v1.md",
+    ".collaboration/entries/000222-ca984ed49ce4.json（第一轮评审）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T02:52:15.935173+00:00",
+  "sequence": 224,
+  "filename": "000224-809732a657c6.json",
+  "record_hash": "6679b6852ede5394577c3eb044029d9b86c07e17176634daf44e7bc79fee80fe",
+  "context_advanced": true
+}

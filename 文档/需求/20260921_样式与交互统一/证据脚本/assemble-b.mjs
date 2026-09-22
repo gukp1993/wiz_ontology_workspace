@@ -1,0 +1,50 @@
+import { fileURLToPath } from 'node:url';
+const OUT = fileURLToPath(new URL('./out', import.meta.url));
+// Assemble 附表 B (resolved-value delta register) as markdown tables from vd2.json.
+import { readFileSync, writeFileSync } from 'node:fs';
+const d = JSON.parse(readFileSync(OUT + '/vd2.json', 'utf8'));
+const e = readFileSync(OUT + '/appendixE.md', 'utf8');
+const L = [];
+L.push('**令牌级 `:root` 差异（37 个令牌，值改动 0；仅一对新增/删除）**');
+d.token.forEach((t) => L.push(`- ${t}`));
+L.push('');
+L.push(`#### B-1 同一「文件 · 选择器 · 属性」两侧都有声明、决议值确实改变：${d.changed.length} 行 / ${new Set(d.changed.map((r) => r.f)).size} 文件`);
+L.push('');
+L.push('| 文件 | 选择器 | 属性 | 基线 ⇒ HEAD（原值） | 决议值 ⇒ 决议值 |');
+L.push('|---|---|---|---|---|');
+for (const r of d.changed) L.push(`| ${r.f} | \`${r.sel}\` | \`${r.p}\` | \`${r.av}\` ⇒ \`${r.bv}\` | ${r.ar} ⇒ ${r.br} |`);
+L.push('');
+L.push(e.trim());
+L.push('');
+L.push(`#### B-3 HEAD 在该选择器新增声明（基线无）：${d.added.length} 行`);
+L.push('');
+L.push('| 文件 | 选择器 | 属性 | HEAD 值 | 决议值 |');
+L.push('|---|---|---|---|---|');
+for (const r of d.added) L.push(`| ${r.f} | \`${r.sel}\` | \`${r.p}\` | \`${r.bv}\` | ${r.br} |`);
+L.push('');
+const B4 = {
+  'flow/FlowEditor.vue|.list-btn.boundary|border-left': '**值中性**：基线 `--purple` 在 `:root` 中**从未定义**（base 与 HEAD 的 `style.css` 均 grep 不到 `--purple`），因此 `var(--purple,#8464d8)` 走 fallback 渲染为 `#8464d8`；HEAD 的 `FLOW_CATEGORY.boundary.border` 同为 `#8464d8`（`shared/graphStyle.ts:138`）。渲染逐字相同，改挂只为让画布分类调色板单点定义（DESIGN.md 例外 3）。',
+  'tools/KnowledgeCanvas.vue|.kc-solid,.kc-dashed|border-top': '**值中性**：`KNOWLEDGE_CANVAS.edgeLine = \'#8b9db6\'`（`shared/graphStyle.ts:163`）逐字等于基线字面值。注意 `INSTANCE_GRAPH.edgeLine = \'#aabbd0\'` 是**另一个**常数，只出现在 cytoscape JS 样式表（`tools/InstanceGraph.vue:66`），与本行无关。'
+};
+L.push(`#### B-4 含 v-bind() 无法静态解析：${d.unresolved.length} 行（图形渲染参数，见 DESIGN.md 例外 3）`);
+L.push('');
+L.push('| 文件 | 选择器 | 属性 | 基线 ⇒ HEAD | 人工核对结论 |');
+L.push('|---|---|---|---|---|');
+for (const r of d.unresolved) L.push(`| ${r.f} | \`${r.sel}\` | \`${r.p}\` | \`${r.av ?? '(absent)'}\` ⇒ \`${r.bv ?? '(absent)'}\` | ${B4[`${r.f}|${r.sel}|${r.p}`] ?? '待核对'} |`);
+L.push('');
+const KIND = { 'new-value': '**new-value 真实变化**', 'move-decl': 'move-decl 声明改挂', 'move-inline': 'move-inline 内联收进类', 'move-pres': 'move-pres 呈现属性改挂' };
+const cnt = (want) => d.newSel.filter((r) => r.kind === want).length;
+L.push(`#### B-5 基线**完全没有**这个选择器（HEAD 新增规则）：${new Set(d.newSel.map((r) => `${r.f}|${r.sel}`)).size} 个选择器 / ${d.newSel.length} 条声明 —— 其中 **new-value 真实视觉变化 ${cnt('new-value')} 条**、由基线 \`<style>\` 声明改挂 ${cnt('move-decl')} 条、由基线模板内联 \`style=\` 收进类 ${cnt('move-inline')} 条、由 SVG 呈现属性改挂 ${cnt('move-pres')} 条`);
+L.push('');
+L.push('B-1～B-4 按**基线**的选择器遍历，因此"整条新规则"结构性地看不见——B-5 专为补这个盲区。');
+L.push('"性质"列由脚本判定：拿该声明的**决议值**回查基线的三条通道（\`<style>\` 声明 / 模板 \`style="\` / SVG \`fill=\`\`stroke=\` 呈现属性）。回查命中即值中性迁移；未命中即 `new-value`，必须逐条给出理由。注意同一选择器可能**混合**两种性质（如 \`.sk-title\` 的 `height` 与 App.vue 基线内联同值、`width` 则相对 OntologyHome 的 220px 是真实收窄）。');
+L.push('');
+L.push('| 文件 | 选择器 | 性质 | 属性 | 原值 → 决议值 | 基线同值出处 |');
+L.push('|---|---|---|---|---|---|');
+const ORD = { 'new-value': 0, 'move-pres': 1, 'move-inline': 2, 'move-decl': 3 };
+const sorted = [...d.newSel].sort((x, y) => (ORD[x.kind] - ORD[y.kind]) || x.f.localeCompare(y.f) || x.sel.localeCompare(y.sel) || x.p.localeCompare(y.p));
+for (const r of sorted) L.push(`| ${r.f} | \`${r.sel}\` | ${KIND[r.kind]} | \`${r.p}\` | \`${r.bv}\` → ${r.br} | ${r.where} |`);
+L.push('');
+const md = L.join('\n');
+writeFileSync(OUT + '/appendixB.md', md);
+console.error(`changed=${d.changed.length} dropped=${d.dropped.length} added=${d.added.length} unresolved=${d.unresolved.length} bytes=${md.length}`);

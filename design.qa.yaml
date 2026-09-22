@@ -1,0 +1,84 @@
+project:
+  name: wiz-kq-builder-workbench
+  baseUrl: http://127.0.0.1:18882
+  outputDir: .design-qa
+
+design:
+  designMd: DESIGN.md
+
+screens:
+  - name: ontology-home
+    mode: conformance
+    app:
+      url: /#o-home
+      viewport: { width: 1440, height: 900 }
+      fullPage: false
+      waitUntil: networkidle
+      waitForSelector: main
+  - name: object-workspace
+    mode: conformance
+    app:
+      url: /#objects
+      viewport: { width: 1440, height: 900 }
+      fullPage: false
+      waitUntil: networkidle
+      waitForSelector: main
+  - name: project-home
+    mode: conformance
+    app:
+      url: /#p-home
+      viewport: { width: 1440, height: 900 }
+      fullPage: false
+      waitUntil: networkidle
+      waitForSelector: main
+
+uiAlignment:
+  runVisualComparison: false
+  runComponentAudit: true
+  runDebtAudit: true
+  runA11yAudit: false
+  measurementTolerancePx: 1
+
+code:
+  include:
+    - frontend/src/**/*.{ts,tsx,js,jsx,css,vue}
+  exclude:
+    - frontend/node_modules/**
+    - frontend/dist/**
+    - frontend/src/ontology/legacyGraph/**
+    # DESIGN.md 登记例外 3：域分类调色板的唯一合法定义处就是这里，
+    # 排除后 maxHardCodedColors:0 才表示"页面与样式里零硬编码色"，而不是把规则调松。
+    - frontend/src/shared/graphStyle.ts
+    - .design-qa/**
+
+components:
+  libraryImportPatterns:
+    - '@/shared'
+    - '../shared'
+    - './shared'
+  # 设计系统决策（DESIGN.md 登记例外 5）：本项目 Button/Input/Textarea/Dialog 的
+  # 设计系统机制是「原生语义元素 + style.css 全局令牌样式 + 语义类」，不额外包一层组件。
+  # 只有 AppSelect（31 处已用）与 RowMenu/OntDrawer/ListPager/SearchField/EditorField 等
+  # 承载行为的复合件必须复用，因此仅对 select 要求设计系统组件。
+  rawElementPolicy:
+    button: allow-raw
+    input: allow-raw
+    textarea: allow-raw
+    select: prefer-design-system
+  allowedRawElementFiles:
+    - '**/src/shared/**'
+    - '**/src/ontology/legacyGraph/**'
+
+a11y:
+  disabledRules: []
+  excludeSelectors:
+    - '[data-a11y-ignore]'
+
+debt:
+  maxHardCodedColors: 0
+  maxArbitraryTailwindValues: 5
+  maxInlineStyles: 0
+  allowedColorValues:
+    - '#000'
+    - '#fff'
+    - transparent

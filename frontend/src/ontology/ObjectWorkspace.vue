@@ -538,7 +538,7 @@ async function confirmPick(ids: string[]) {
 async function removeAssociation(actionId: string) {
   if (!current.value) return
   const actionName = actionById.value.get(actionId)?.name || '此动作'
-  if (!(await appConfirm({ message: '删除「' + actionName + '」在当前对象上的关联？动作定义保留，其他对象的关联不受影响；项目里已有的绑定会显示关联失效并保留配置。' }))) return
+  if (!(await appConfirm({ message: '删除「' + actionName + '」在当前对象上的关联？动作定义保留，其他对象的关联不受影响；项目里已有的绑定会显示关联失效并保留配置。', danger: true }))) return
   const typeId = current.value['@id']
   const r = await formSave.submitForm('ontology', () => {
     commitAssociations(props.state, associationsOf(props.state).filter(a => !(a.actionId === actionId && (a.objectTypeId === typeId || a.objectTypeId === 'mg:' + typeId.replace(/^mg:/, '')))))
@@ -669,7 +669,8 @@ async function removeNode(id: string, label: string, confirmText?: string) {
     const refs = graphReferences(props.state, id)
     if (refs.length) { message.value = '暂不能删除：请先处理引用（' + refs.join('、') + '）。'; return }
   }
-  if (!(await appConfirm({ message: confirmText || '删除「' + (label || id) + '」？可通过撤销恢复。' }))) return
+  // 删除/移除引用（对象、属性、链接）都走这里，统一按破坏性确认渲染实心红边按钮
+  if (!(await appConfirm({ message: confirmText || '删除「' + (label || id) + '」？可通过撤销恢复。', danger: true }))) return
   emit('before-change', { actionLabel: '删除「' + (label || id) + '」', target: { kind: 'object', id } })
   props.state.ontology['@graph'] = graph.value.filter((n: any) => n['@id'] !== id)
   emit('changed')
@@ -799,7 +800,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
                 <!-- R3：删除等破坏性操作收进「更多操作」，避免与常用动作并列误点 -->
                 <div ref="moreWrap" class="ow-more" @keydown="moreKeydown">
                   <button ref="moreTrigger" type="button" class="ow-more-trigger" aria-haspopup="menu" :aria-expanded="moreOpen" aria-label="更多操作" @click="moreOpen ? closeMoreMenu(true) : openMoreMenu()">更多操作 ⌄</button>
-                  <div v-if="moreOpen" class="ow-more-menu" role="menu" aria-label="对象更多操作" @keydown.tab="closeMoreMenu(false)">
+                  <div v-if="moreOpen" class="row-menu-list" role="menu" aria-label="对象更多操作" @keydown.tab="closeMoreMenu(false)">
                     <button type="button" role="menuitem" class="danger" @click="moreRemove">删除对象</button>
                   </div>
                 </div>
@@ -1016,9 +1017,6 @@ async function removeNode(id: string, label: string, confirmText?: string) {
 /* 对象详情页签内的统一表格：ld-detail 整体滚动，表头不再单独吸顶（避免钻到页签下面）；
    复用方式筛选沿用紧凑分段按钮（§4）。 */
 .ld-body :deep(.ont-table th){position:static}
-.ont-filters{display:flex;gap:6px;flex-wrap:wrap}
-.ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
-.ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
 .ow-sub-tabs{max-width:360px}
 .ow-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .ow-toolbar .ow-mode-tabs{display:flex;gap:6px;margin-bottom:0}
@@ -1050,13 +1048,8 @@ async function removeNode(id: string, label: string, confirmText?: string) {
 .ow-head-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .ow-head-row .ow-h2-name{margin:0}
 .ow-h2-def{margin:6px 0 0}
-.ow-head-side .danger{margin:0}
 /* 更多操作（R3）：删除对象收进菜单，触发器与菜单项均可键盘操作 */
 .ow-more{position:relative;display:inline-block}
-.ow-more-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:20;min-width:150px;background:var(--paper);border:1px solid var(--line-2);border-radius:var(--r-sm);box-shadow:var(--shadow-2);padding:4px;display:flex;flex-direction:column}
-.ow-more-menu button{border:0;background:none;text-align:left;padding:8px 10px;border-radius:var(--r-sm);font-size:13px}
-.ow-more-menu button:hover{background:var(--paper-2)}
-.ow-more-menu .danger{color:var(--danger)}
 .relation-sentence{margin:18px 0 0}
 /* 辅助填写（T5）：入口按钮紧贴表单头一行；面板为表单内一张卡片，不挤压既有版式 */
 .ow-assist-row{display:flex;margin:-6px 0 12px}

@@ -1,0 +1,25 @@
+{
+  "ticket": "969036a9cd1c4f4987aac321c45e7387",
+  "task": "接线冻结收官：零写入确认，三缺口已转接线归属方（worktree entry 000176）",
+  "status": "in_progress",
+  "summary": "冻结的本会话接线 agent 报告已到：全程零写入（未调用 Edit/Write、无 pycache、计划测试未创建），无内容丢失；四处接线及解析器文件、08 分册均为另一会话（结构化解析线）完整成果，经其独立复算全部正确（kind 注册/映射一对一/matrix 9 行/DEDICATED_KINDS/blacklist 与需求一致）。发现三个展示层小缺口（accept 缺 .tsv/.jsonid；BuildReviewPage 本地映射漏六新 kind 显示原名；alignment subject_key 通用分支）已追加至 worktree 共享上下文 000176 供接线归属线提交前处理。口径澄清：.env 按需求硬黑名单处理正确（任务书笔误勿改）。V2-10 开发 agent 仍在收尾（基准第二组+最终回归，top commit cb65d4f），完成通知后转测试 agent 验收。",
+  "decisions": [
+    "三缺口归属接线线处理，本会话不碰；本会话待 V2-10 收尾转测试循环"
+  ],
+  "verification": [
+    "冻结 agent 独立复算结果（包导入/登记/detect_kind/matrix/blacklist/08 契约先行）全部通过；worktree 现状 top=cb65d4f、28 项未跟踪+修改（接线线在途）"
+  ],
+  "next": [
+    "V2-10 完成→测试 agent（G25 a-f）→循环直至通过→最终交付汇报"
+  ],
+  "references": [
+    "worktree/build-governance entry 000174/000176",
+    "workbench/ontology_build/protocol.py"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T01:31:56.527911+00:00",
+  "sequence": 214,
+  "filename": "000214-552cb9fdbf95.json",
+  "record_hash": "e9118994cc76b8e6e2d794ac14ee87caa5c6a0eb567a1b1fe4cd329dac4f679e",
+  "context_advanced": false
+}

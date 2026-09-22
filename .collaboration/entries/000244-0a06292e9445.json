@@ -1,0 +1,33 @@
+{
+  "ticket": "94a5de607ffe453bb25e6518c8667950",
+  "task": "样式与交互统一（codex/ui_fix）集成合并与环境清理",
+  "status": "verified",
+  "summary": "按用户指令\"合并到主干，然后删除当前worktree\"完成集成。main 原为脏（他人 63 条未入库交接），经用户选择\"先收纳再合并\"：65bbe34 只收 .collaboration/entries/000174~000240 + render 汇总，不改写他人记录与序号。随后 main 又被 d08b96b 前进一条（000241），故不再是祖先关系，按三方合并出 d0d60b0（父 65bbe34 + 被验收树 064cf10），合入 26 提交/74 文件。唯一冲突是生成文件 session_context.md，按约定用 context.py render 重建、未手工拼接摘要。组合校验在合并后的 main 工作树执行并通过。数据副本处置经用户明确确认\"随 worktree 一并删除\"：分支内真实数据快照库、根密钥副本、验收资产与预0004回退产物一并销毁（不可逆）。按\"本轮不更新，只合代码\"未构建、未重启 18765，主工作台运行态仍是合并前 dist。",
+  "decisions": [
+    "main 脏不 stash/reset：改为先把他人 in-flight 交接单独收纳为 docs(collaboration) 提交，再合并，保持记录原始内容与序号。",
+    "唯一冲突 session_context.md 属生成物，用 render 重建解决；不手工合并、不保留冲突标记。",
+    "worktree/ui_fix 数据副本（含真实数据快照+根密钥）按用户确认随工作树删除；其他两个 worktree、main 库、18765/18881/18912 不在范围内。",
+    "刻意不在 main 跑 vite build：18765 直接托管 frontend/dist，重建等于未授权改用户在用界面。前端校验只用无副作用的 vue-tsc --noEmit 与 eslint。"
+  ],
+  "verification": [
+    "git diff 064cf10 -- frontend workbench tests 文档 DESIGN.md AGENTS.md 无输出：合并树业务代码/测试/文档与被浏览器逐项复测通过的开发树逐字节一致，差异仅共享上下文交接。",
+    "main 上 vue-tsc --noEmit 无输出；eslint src 0 问题；python3 tests/run.py quick 通过 3/3；unit 通过 45/45（含 test_save_iteration 8 步）。",
+    "package.json/package-lock/requirements 本次合并无变化，故复用 main 现有环境校验成立。",
+    "未覆盖：main 未执行 vite build、未重启 18765，因此无合并后的浏览器实测；运行态界面仍是被合并前的旧 bundle。"
+  ],
+  "next": [
+    "待用户授权后 ./start.sh rebuild（构建成功才切服务）并重启主工作台，再做浏览器抽验；代码回退不等于数据回退。",
+    "序号 000187/000188 在两工作树各自计数下重号（文件名 hash 不同、无 Git 冲突），如需澄清按既有约定追加纠正记录，不改写历史。"
+  ],
+  "references": [
+    "提交：收纳 65bbe34；合并 d0d60b0（父 65bbe34 + 064cf10）；合并前 main 基线 578acd7→d08b96b。",
+    "实施与复测记录：文档/需求/20260921_样式与交互统一/开发计划.md §9.13（第八轮 6 缺陷、12 行复测值表、未覆盖项）。",
+    "设计契约：DESIGN.md（时间唯一出口 shared/format.ts、fixed 表 min-width + overflow:auto 约定、空态需区分\"未选择\"与\"一个也没有\"）。"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-22T08:51:50.813130+00:00",
+  "sequence": 244,
+  "filename": "000244-0a06292e9445.json",
+  "record_hash": "065dd1d04c6f6bb02d8e4ec04896ad6432a81ebb934f5b84ae6aedb5b32a59c0",
+  "context_advanced": true
+}

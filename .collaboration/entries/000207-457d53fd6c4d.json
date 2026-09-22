@@ -1,0 +1,28 @@
+{
+  "ticket": "6735352c8a154be4bd1a2620c316c891",
+  "task": "结构化格式解析：与 V2-10 冲突评估 + 错峰执行启动",
+  "status": "implemented",
+  "summary": "用户要求评估与 V2-10 解析并发（其他 agent 在途）是否冲突，不冲突则执行开发测试循环。评估结论：语义互补无冲突（V2-10=扫描执行层并发调度；本任务=三级分派第①层扩容，新解析器天然被并发调度调用）；但同工作树存在文件级执行冲突（V2-10 开发 agent 在途未提交，protocol.py/get_capabilities/前端为双方重叠点）。处置：错峰执行——已后台派发实现 agent 只新建零交集文件（六个结构化格式解析器 json/yaml/properties/csv/ini/toml + 共享树遍历器 structwalk + 测试），protocol.py kind 映射、registry 接线、路由矩阵、前端标签留待 V2-10 落定提交后统一接线集成。",
+  "decisions": [
+    "错峰执行：解析器实现（新文件零交集）先行；protocol.py MATERIAL_KINDS 扩容、registry 注册、get_capabilities 矩阵、前端标签四处接线等 V2-10 落定后统一做，避免同文件同时编辑踩踏。",
+    "解析器测试直调函数验证（不经 detect_kind），接线前即可完成功能验证。"
+  ],
+  "verification": [
+    "工作树实测：HEAD=c482547、V2-10 无任何代码落盘（grep WIZ_BUILD_PARSE_CONCURRENCY/ThreadPool 零命中）、未提交仅协作自动文件——评估基于实测非推测。",
+    "实现 agent 硬性范围约束：只允许新建 8 个指定文件，绝不修改既有文件。"
+  ],
+  "next": [
+    "实现 agent 完成→校验测试；等 V2-10 提交落定→做四处接线（protocol/registry/routes/前端）→全量回归→重启 18881 验证→提交。",
+    "若 V2-10 循环先打回修复，接线继续顺延直至其落定。"
+  ],
+  "references": [
+    "需求口径：文档/需求/20260920_从物料自动构建本体/需求说明_结构化格式解析支持_v1.md（v1.1 评审通过）",
+    "V2-10 在途：entry 000205（开发 agent 已派发，复用上一轮代理）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T01:04:46.628656+00:00",
+  "sequence": 207,
+  "filename": "000207-457d53fd6c4d.json",
+  "record_hash": "f8b5bf8e445e41ee3904e4eb98b9b94f7263c9a7faca1ca61d34dfee2d430409",
+  "context_advanced": false
+}

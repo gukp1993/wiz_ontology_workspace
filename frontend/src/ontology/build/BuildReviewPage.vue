@@ -16,6 +16,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { appConfirm } from '../../shared/appConfirm'
+import AppSelect from '../../shared/AppSelect.vue'
 import { getJson, postJson, SaveRequestError } from '../../app/http'
 import type { Candidate } from './types'
 import { DECISION_LABELS, EVIDENCE_STATUS_LABELS, TYPE_LABELS } from './types'
@@ -158,6 +159,12 @@ const ONE_MANY_OPTIONS = [
   { value: 'one', label: '一（one）' },
   { value: 'many', label: '多（many）' },
 ]
+// 下拉选项表：空值项即原来的「全部 / 未确定」首项，标签仍走上面的文案映射。
+const TYPE_FILTER_OPTIONS = [{ value: '', label: '全部类型' }, ...TYPE_KEYS.map(key => ({ value: key, label: typeLabel(key) }))]
+const DECISION_FILTER_OPTIONS = [{ value: '', label: '全部决定' }, ...Object.keys(DECISION_FALLBACK).map(key => ({ value: key, label: decisionLabel(key) }))]
+const STATUS_FILTER_OPTIONS = [{ value: '', label: '全部证据状态' }, ...STATUS_FILTERS.map(key => ({ value: key, label: statusLabel(key) }))]
+const DATA_TYPE_SELECT_OPTIONS = [{ value: '', label: '未确定（需依据）' }, ...DATA_TYPE_OPTIONS]
+const VALUE_TYPE_SELECT_OPTIONS = [{ value: '', label: '请选择观测值类型' }, ...VALUE_TYPE_OPTIONS]
 
 // ── 视图模型 ─────────────────────────────────────────────────────────────────
 interface IssueView { code: string; message: string; field: string }
@@ -1080,20 +1087,9 @@ async function resolveDiff(candidateId: string, choice: 'keepManual' | 'acceptNe
       <h3>候选定义</h3>
       <input v-model="search" type="search" placeholder="搜索名称或定义" aria-label="搜索候选名称或定义" @keydown.enter="applyFilters">
       <div class="br-filters">
-        <select v-model="typeFilter" aria-label="类型筛选" @change="applyFilters">
-          <option value="">全部类型</option>
-          <option v-for="key in TYPE_KEYS" :key="key" :value="key">{{ typeLabel(key) }}</option>
-        </select>
-        <select v-model="decisionFilter" aria-label="决定状态筛选" @change="applyFilters">
-          <option value="">全部决定</option>
-          <option value="include">拟纳入</option>
-          <option value="defer">暂缓</option>
-          <option value="exclude">已排除</option>
-        </select>
-        <select v-model="statusFilter" aria-label="证据状态筛选" @change="applyFilters">
-          <option value="">全部证据状态</option>
-          <option v-for="key in STATUS_FILTERS" :key="key" :value="key">{{ statusLabel(key) }}</option>
-        </select>
+        <AppSelect :model-value="typeFilter" :options="TYPE_FILTER_OPTIONS" aria-label="类型筛选" @update:model-value="typeFilter = $event; applyFilters()" />
+        <AppSelect :model-value="decisionFilter" :options="DECISION_FILTER_OPTIONS" aria-label="决定状态筛选" @update:model-value="decisionFilter = $event; applyFilters()" />
+        <AppSelect :model-value="statusFilter" :options="STATUS_FILTER_OPTIONS" aria-label="证据状态筛选" @update:model-value="statusFilter = $event; applyFilters()" />
       </div>
       <div class="list-count">已载入 {{ rows.length }} / {{ total }} 项<span v-if="batchId">本页按当前批次过滤</span></div>
       <p v-if="listError" class="inline-error">{{ listError }}</p>
@@ -1174,17 +1170,11 @@ async function resolveDiff(candidateId: string, choice: 'keepManual' | 'acceptNe
         <template v-if="current.type === 'property'">
           <label class="editor-field">
             <span class="field-title">数据类型</span>
-            <select v-model="draft.dataType" aria-label="数据类型">
-              <option value="">未确定（需依据）</option>
-              <option v-for="option in DATA_TYPE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
+            <AppSelect v-model="draft.dataType" :options="DATA_TYPE_SELECT_OPTIONS" aria-label="数据类型" />
           </label>
           <label v-if="draft.dataType === 'timeSeries'" class="editor-field">
             <span class="field-title">观测值类型 <b class="required-mark">*</b></span>
-            <select v-model="draft.valueType" aria-label="观测值类型">
-              <option value="">请选择观测值类型</option>
-              <option v-for="option in VALUE_TYPE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
+            <AppSelect v-model="draft.valueType" :options="VALUE_TYPE_SELECT_OPTIONS" aria-label="观测值类型" />
             <small class="field-help">时间序列必须明确观测值类型；未确认时先暂缓，不按字段名或单位推测。</small>
           </label>
         </template>
@@ -1198,15 +1188,11 @@ async function resolveDiff(candidateId: string, choice: 'keepManual' | 'acceptNe
           <div class="br-cardinality">
             <label class="editor-field">
               <span class="field-title">起点数量关系</span>
-              <select v-model="draft.cardSource" aria-label="起点数量关系">
-                <option v-for="option in ONE_MANY_OPTIONS" :key="'s' + option.value" :value="option.value">{{ option.label }}</option>
-              </select>
+              <AppSelect v-model="draft.cardSource" :options="ONE_MANY_OPTIONS" aria-label="起点数量关系" />
             </label>
             <label class="editor-field">
               <span class="field-title">终点数量关系</span>
-              <select v-model="draft.cardTarget" aria-label="终点数量关系">
-                <option v-for="option in ONE_MANY_OPTIONS" :key="'t' + option.value" :value="option.value">{{ option.label }}</option>
-              </select>
+              <AppSelect v-model="draft.cardTarget" :options="ONE_MANY_OPTIONS" aria-label="终点数量关系" />
             </label>
           </div>
           <p v-if="!draft.cardSource || !draft.cardTarget" class="notice br-banner br-banner-warn">

@@ -1,0 +1,38 @@
+{
+  "ticket": "688566db7b8e45458df5737800e64688",
+  "task": "ui_fix 第八轮：编排列表列宽塌陷与时间显示收口",
+  "status": "implemented",
+  "summary": "按用户截图定位「函数编排」列表页三处根因并修复：①FlowList.vue 是全仓唯一 table-layout:fixed 而无 min-width 的表，fixed 先把 84/150/110/148 四个 px 列分满，未声明宽度的名称列在 517px 容器里被压到 25px（行高 157px），且表总宽小于容器所以不出横滚；按 .ont-table/.attribute-table 既有约定补 min-width:756px，并把配置状态列 110→156（最长胶囊实测 130px）、操作列 148→168（三个 .mini 实测 146px，原宽度让删除按钮溢出单元格 8px）。②同一 updatedAt 在编排页显示 2026/9/22 00:09:41、在生成任务页显示 2026-09-22 14:12：删除 flowModel.ts 与 build/types.ts 两份各自 formatTime，新增 shared/format.ts 作唯一出口，替换 5 个文件共 6 处调用点。构建、lint 与被验包 index-SZgrLazQ.js 逐列复测通过，另扫 19 页面 + 编辑器两视图溢出命中 0。已提交 4a1ae75 与 5122ceb，未合并 main、未重启主工作台。",
+  "decisions": [
+    "纯时刻保留 toLocaleTimeString('zh-CN',{hour12:false})：saveCoordinator.ts:65 与 FlowTestWorkspace.vue:261 各 locale 均稳定输出 HH:MM:SS，前者行为由 tests/saveQueue.test.mjs 锁定，不为此重开回归面；该窄口径例外已写进 DESIGN.md。",
+    ".ftw-field-name 显示裸 UUID 经 /api/flow-state 查实不是渲染缺陷：该测试编排节点入参 name/label 在库里就是空串，UI 按 ID 兜底是既有约定，属测试物料数据形态，不改前端。",
+    "flow-canvas 实测 role/aria-label/tabindex 全 null（InstanceGraph 的 .graph-canvas 三者皆有）：差异属画布键盘可达性专项，补 tabindex 只会造一个不动的焦点站，本轮不当样式漂移顺手加。",
+    "截图通道返回 NATIVE_BROWSER_VIEWPORT_UNAVAILABLE（页面后台），本轮视觉证据一律用 DOM 实测数值与结构快照，未附截图。"
+  ],
+  "verification": [
+    "被验包 index-SZgrLazQ.js（视口 831×848，.scroll 容器实宽 517）：名称列 25→198px、行高 157→50px、时间单元格 w:150 单行显示 2026-09-22 00:09。",
+    "状态列内容区 136px ≥ 胶囊 130px；操作列末按钮右边界落在 padding 盒内 2px、距单元格右边界 −12px；容器 scrollLeft 可达 239（=756−517），滚到底按钮完整可见。",
+    "溢出判据（有直接文本或 td/th/button 且 scrollWidth>容器宽+1，排除 ellipsis/auto 滚动件）扫 19 页面 + 编排编辑器画布与测试调试视图 + 编排列表页：命中 0。设置中心两页未纳入。",
+    "无可访问名控件判据只在 #f-editor 画布视图跑了一次命中 0；符号命名按钮判据跑 6 视图命中 0（覆盖面限制已写进 §9.13，未写成全量结论）。",
+    "npm run build（含 vue-tsc 严格）两次通过、npm run lint 干净；分支库改动仅 frontend/src 8 文件 + DESIGN.md + 开发计划，工作树已干净。"
+  ],
+  "next": [
+    "等用户在 http://127.0.0.1:18882 自己点一遍编排列表与生成任务页确认时间显示、列宽观感。",
+    "§9.10 末清单原样待决：日期/时间芯片口径、backdrop mousedown 关闭语义、ObjectWorkspace:539 缺确认、FlowTestWorkspace role=tab 与 WCAG 2.5.3、B7' 重名对象、约 2744 处 px 魔法数字、画布键盘可达性。",
+    "如需坐实 D1 剩余项（FlowTestWorkspace sr-only 空文本勾选、FlowCanvas aria 命名），需一条带 text 型入参且未绑定的编排数据；写真实数据副本需用户点头。",
+    "合并 main 与重启主工作台仍需用户明确指令，本轮未做。"
+  ],
+  "references": [
+    "worktree/ui_fix/frontend/src/shared/format.ts（新增唯一出口）",
+    "worktree/ui_fix/frontend/src/flow/FlowList.vue:113-131（列宽与 min-width）",
+    "worktree/ui_fix/DESIGN.md Typography 末条 + Layout fixed 表条",
+    "worktree/ui_fix/文档/需求/20260921_样式与交互统一/开发计划.md §9.13",
+    "提交 4a1ae75（fix）与 5122ceb（docs），分支 codex/ui_fix，未合并"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-22T07:53:40.110894+00:00",
+  "sequence": 187,
+  "filename": "000187-1175aa7ea373.json",
+  "record_hash": "5c9b7da3b744bc94cb325ca525669051b084ef02104876b4ed8f8b63f0e96643",
+  "context_advanced": false
+}

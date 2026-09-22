@@ -1,0 +1,24 @@
+{
+  "ticket": "f00ea2f05c5547dca90bb6e0ddd903e2",
+  "task": "RST 缺陷已修复（debbf63）：200次探测零RST",
+  "status": "implemented",
+  "summary": "按用户指令修复 RST 缺陷。根因=鉴权门 401 在未读请求体时关连接（内核缓冲有未读入站数据→RST）。修复=401 前排空请求体（上限2MB，与既有限制一致）。实证：200次未登录POST→0 RST（修复前双树探针57.3%/33%）。提交 debbf63 在 codex/build-progress-log（worktree检出当前分支）。回归 test_ontology_build 250/250 不回归。",
+  "decisions": [
+    "修复最小化：只加排空逻辑，不改返回结构/状态码/close语义"
+  ],
+  "verification": [
+    "200/200 探测零 RST；import+回归250/250通过"
+  ],
+  "next": [
+    "等剖析报告→O1决策→测试验收→收官"
+  ],
+  "references": [
+    "worktree/build-governance/workbench/server.py:313-318"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T04:08:15.954047+00:00",
+  "sequence": 231,
+  "filename": "000231-e2c1e052b34b.json",
+  "record_hash": "01a07ab6f3bcf3cbecf49787067197cd4925fb98f1e5c8ad582066bad410027b",
+  "context_advanced": false
+}

@@ -139,7 +139,7 @@ function openEdit(id: string) {
 async function openConvert(id: string) {
   const a: any = actionById(id)
   if (!a) return
-  if (!(await appConfirm({ message: '将此历史动作转换为新格式编辑？保存后旧格式的适用对象、输入参数、提交条件、权限与验收字段会被新结构替代并移除，且需重新发布后项目引用才会更新。继续吗？' }))) return
+  if (!(await appConfirm({ message: '将此历史动作转换为新格式编辑？保存后旧格式的适用对象、输入参数、提交条件、权限与验收字段会被新结构替代并移除，且需重新发布后项目引用才会更新。继续吗？', danger: true }))) return
   editId.value = id
   draft.value = { name: a.name ?? '', description: a.description ?? '', effect: a.effect ?? '' }
   baseline = JSON.stringify(draft.value)
@@ -366,9 +366,6 @@ function setField(key: 'name' | 'description' | 'effect', value: string) { draft
 </OntDrawer>
 </template>
 <style scoped>
-.ont-filters{display:flex;gap:6px;flex-wrap:wrap}
-.ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
-.ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
 .ont-ref-row small{color:var(--muted);font-size:12px;font-weight:400}
 .blocked-deps{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:6px 0 0}
 .technical-section p{margin:8px 0;line-height:1.7}

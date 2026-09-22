@@ -49,24 +49,40 @@ function toggle(id: string, checked: boolean) {
   else next.delete(id)
   chosen.value = [...next]
 }
+// closing：一次关闭只走一遍。Esc 连按（长按会连续触发 keydown）或「Esc + 点背板」
+// 会在「放弃已勾选」确认框之上再排第二个确认框。
+let closing = false
 async function requestClose() {
-  if (multi.value && chosen.value.length && !(await appConfirm({
-    title: '放弃已勾选的内容？', message: '已勾选的内容尚未添加，关闭将放弃这些勾选。', danger: false,
-  }))) return
-  emit('close')
+  if (closing) return
+  closing = true
+  try {
+    if (multi.value && chosen.value.length && !(await appConfirm({
+      title: '放弃已勾选的内容？', message: '已勾选的内容尚未添加，关闭将放弃这些勾选。', danger: false,
+    }))) return
+    emit('close')
+  } finally {
+    closing = false
+  }
 }
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') { event.stopPropagation(); requestClose() }
 }
 onMounted(() => nextTick(() => card.value?.focus()))
+// Esc 听在 document 冒泡阶段而不是卡片上：点击卡片内非可聚焦区域（标题、行文字）后 activeElement
+// 退回 body，冒泡到不了卡片，实测就是「Esc 失效」。与 shared/OntDrawer 同一口径。
+// 上层 appConfirm 在捕获阶段就 stopPropagation，套在本弹窗上的确认框不会把本弹窗一起关掉。
+onMounted(() => document.addEventListener('keydown', onKeydown))
 let previousFocus: HTMLElement | null = null
 onMounted(() => { previousFocus = document.activeElement as HTMLElement | null })
-onBeforeUnmount(() => previousFocus?.focus?.())
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKeydown)
+  previousFocus?.focus?.()
+})
 </script>
 <template>
 <div class="modal-backdrop" @click.self="requestClose">
   <section ref="card" class="modal-card dialog-md picker-card" role="dialog" aria-modal="true"
-           :aria-label="title" tabindex="-1" @keydown="onKeydown">
+           :aria-label="title" tabindex="-1">
     <h2>{{ title }}</h2>
     <p v-if="hint" class="field-help picker-hint">{{ hint }}</p>
     <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
@@ -92,7 +108,7 @@ onBeforeUnmount(() => previousFocus?.focus?.())
           </span>
           <span class="picker-row-actions">
             <button v-for="action in (row.actions || [])" :key="action.value" type="button"
-                    :class="{ danger: action.danger }" :disabled="action.disabled || row.disabled"
+                    :class="{ 'danger-btn': action.danger }" :disabled="action.disabled || row.disabled"
                     @click="emit('action', row.id, action.value)">{{ action.label }}</button>
           </span>
         </div>
@@ -124,5 +140,4 @@ onBeforeUnmount(() => previousFocus?.focus?.())
 .picker-row-main small{display:block;font-size:12px;margin-top:3px;overflow-wrap:anywhere}
 .picker-row-actions{display:flex;gap:8px;flex:none;flex-wrap:wrap}
 .picker-row-actions button{font-size:12px;padding:4px 10px}
-.picker-row-actions button.danger{color:var(--danger)}
 </style>

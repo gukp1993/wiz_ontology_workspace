@@ -4,10 +4,11 @@
      边界（与需求一致）：本页只做任务与物料入口，不生成项目映射、不覆盖已有本体、不自动发布。 -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { formatDateTime } from '../../shared/format'
 import { cancelRun, createTask, deleteTask, errorMessage, fetchCapabilities, fetchRun, fetchTask, listTasks } from './api'
 import type { BuildTaskDetail } from './api'
 import {
-  TASK_STATUS_LABELS, TASK_STATUS_TONE, formatBytes, formatTime, labelOf, taskStatusLabel, toneOf,
+  TASK_STATUS_LABELS, TASK_STATUS_TONE, formatBytes, labelOf, taskStatusLabel, toneOf,
   type BuildCapabilities, type BuildTask, type ParserMatrixItem, type Tone,
 } from './types'
 
@@ -226,7 +227,7 @@ async function submitDelete() {
 <section class="bt-page">
   <div class="bt-intro">
     <div>
-      <h1>从物料生成本体</h1>
+      <h2>从物料生成本体</h2>
       <p class="muted">从已有系统（代码、表结构、需求文档）中提取业务概念，先得到一份有依据的初稿，再由你裁剪。</p>
     </div>
     <div class="bt-intro-tools">
@@ -330,7 +331,7 @@ async function submitDelete() {
               <template v-if="row.detail">{{ row.detail.materialCount }} 份</template>
               <span v-else class="muted" :title="detailsLoading ? '正在读取该任务的材料数量' : '未能读取该任务的详情'">{{ detailsLoading ? '读取中…' : '—' }}</span>
             </td>
-            <td>{{ formatTime(row.task.updatedAt) }}</td>
+            <td>{{ formatDateTime(row.task.updatedAt) }}</td>
             <td class="bt-ops">
               <button type="button" class="row-link" @click="emit('open-task', row.task.id)">{{ row.task.status === 'delivered' ? '查看任务' : '继续' }}</button>
               <!-- 08 §12.3：任务级停止——对最近一次运行调用取消，后端同事务把任务回退到「确定范围」 -->
@@ -349,7 +350,7 @@ async function submitDelete() {
 
   <!-- 新建任务 -->
   <div v-if="newOpen" class="modal-backdrop" @click.self="closeNew">
-    <section class="modal-card" role="dialog" aria-modal="true" aria-label="新建生成任务">
+    <section class="modal-card" role="dialog" aria-modal="true" aria-label="新建生成任务" tabindex="-1" @keydown.esc.stop="closeNew">
       <h2>新建生成任务</h2>
       <p class="muted">任务只组织材料与范围，尚未创建本体；物料和范围稍后在任务内维护。</p>
       <label>任务名称
@@ -366,7 +367,8 @@ async function submitDelete() {
 
   <!-- 删除任务：必须输入任务名（服务端同样校验 confirmName） -->
   <div v-if="delTarget" class="modal-backdrop" @click.self="closeDelete">
-    <section class="modal-card" role="dialog" aria-modal="true" aria-label="删除生成任务">
+    <!-- Escape 与「取消」同义：删除确认不接受背板/Esc 的隐式确认 -->
+    <section class="modal-card" role="dialog" aria-modal="true" aria-label="删除生成任务" tabindex="-1" @keydown.esc.stop="closeDelete">
       <h2>删除生成任务</h2>
       <p>将物理删除任务「{{ delTarget.name }}」及其全部关联数据：
         <template v-if="details[delTarget.id]">物料 {{ details[delTarget.id].materialCount }} 份、</template>
@@ -379,7 +381,7 @@ async function submitDelete() {
       <p v-if="delError" class="inline-error" role="alert">{{ delError }}</p>
       <div class="dialogtools">
         <button type="button" :disabled="deleting" @click="closeDelete">取消</button>
-        <button type="button" class="danger bt-danger-btn" :disabled="!delReady || deleting" @click="submitDelete">{{ deleting ? '删除中…' : '删除任务' }}</button>
+        <button type="button" class="danger-btn" :disabled="!delReady || deleting" @click="submitDelete">{{ deleting ? '删除中…' : '删除任务' }}</button>
       </div>
     </section>
   </div>
@@ -390,7 +392,9 @@ async function submitDelete() {
 /* 局部样式，只借用全局令牌与通用类（.card/.panelhead/.muted/.status-pill/.modal-*），不新增全局规则 */
 .bt-page{display:block}
 .bt-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-.bt-intro h1{font-size:22px;margin:0 0 4px}
+/* 页内标题降为 h2（顶栏已有页面级 h1）：字号/行距/字重逐值保持原 h1 的渲染结果，
+   font-weight 显式写 700 是因为全局 h2 规则会把 UA 的 bold 拉到 650 */
+.bt-intro h2{font-size:22px;font-weight:700;margin:0 0 4px}
 .bt-intro p{margin:0}
 .bt-intro-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .bt-limits{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 18px;margin:0}
@@ -426,7 +430,4 @@ async function submitDelete() {
 .bt-pill-bad{background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)}
 .bt-pill-info{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink)}
 /* 弹窗里的危险按钮：全局 .danger 是行内文字样式，这里拉回按钮外观 */
-.bt-danger-btn{color:var(--danger);border-color:var(--danger-line);background:var(--paper)}
-.bt-danger-btn:hover:not(:disabled){background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
-.bt-danger-btn:disabled{opacity:.5;cursor:not-allowed}
 </style>

@@ -1,0 +1,29 @@
+{
+  "ticket": "3af205341bf04ca9a5eacd90562fb8f2",
+  "task": "20260920_从物料自动构建本体 v2文档+原型 复审（第一轮意见闭合核对）",
+  "status": "decision",
+  "summary": "复审结论：通过。第一轮 2 项阻塞（B1 文档配套行/§15 指向 v1 原型、B2 原型帮助面板引 v1 文档）与建议中声明修复的 S1/S2含④/S3/S4/S5/S6/S8 全部核实闭合；S7 按上轮判定维持不改。逐项实测：ensureMats 按 suffixList 过滤（.md 过滤 keep=9=登记9，空过滤 160=160）；OCR 叙事统一为已启用 tesseract（PDF 4 成功+2 失败逐文件注记、12 png 全走 OCR、能力面板/阻断问题/缺口文案三处一致）；mat-retry 捕获 was 后失败态重试保持失败；三个兜底候选证据全部改指 Service_01.java 第12/27/31/44 行并带 LLM 兜底解析标注；§5.5 补默认 200 个/50MB；§7.1 改引 §7 末段；PDF 行改逐文件（PDF 内逐页）。node --check 通过、标签配对平衡、零外部依赖、主流程回归全过。",
+  "decisions": [
+    "复审通过，无阻塞。遗留 2 条非阻塞建议：①原型阻断问题选项『纳入并等待 OCR 配置』（resolve-q 结果文案同）与修复后『OCR 已启用、识别失败』叙事不匹配，建议改为『纳入并标注缺口/待重试』；②需求说明_v2.md §7.1 引号内『复用中间结果必须匹配输入基线』在 §7 末段已无原文（v2 改写时该句移入 §7.1-4 与 G23），引号暗示逐字引用，建议恢复该句到 §7 末段或改转述。"
+  ],
+  "verification": [
+    "node --check 通过；9 个 diff 块与修复清单一一对应，无夹带改动；标签配对平衡（含字符串拼接感知统计）、零外部依赖。",
+    "DOM 桩实测：S1 过滤登记一致；S2 状态分布 PDF{ocr_success:4,failed:2}/png{ocr_success:12}、能力面板含已启用（tesseract）且无『不可用』、阻断问题与 2 个失败 PDF 数量吻合；S2④ 失败 PDF 与失败 java 重试结果均为 failed；S3 三候选证据文件全部=energy-backend/src/device/Service_01.java 且带兜底标注；B2 tagline 引需求说明_v2.md（最新）与 v1 存档。",
+    "回归：scope 确认→run 失败注入→retry-failed→全部批次完成→弱证据无依据纳入拦截→同名 409，全过。"
+  ],
+  "next": [
+    "两文件尚未提交（工作区修改态），建议按一个 docs commit 提交并附本轮复审结论。",
+    "2 条遗留建议不阻塞，可随下次迭代处理；评审关闭，实施仍需用户明确创建 worktree 指令。"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/需求说明_v2.md",
+    "文档/需求/20260920_从物料自动构建本体/交互原型_v2.html",
+    ".collaboration/entries/000189-6977ba137a5b.json（第一轮评审）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T16:57:43.432665+00:00",
+  "sequence": 192,
+  "filename": "000192-5b7863ecc435.json",
+  "record_hash": "369d9bc303f5818ab4b968f5ab645345ec95600d1209018af8dbb27ae4f580ed",
+  "context_advanced": false
+}

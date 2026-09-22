@@ -508,7 +508,7 @@ const blockedReason = computed(() => {
 <section class="bt-page">
   <div class="bt-intro">
     <div>
-      <h1>添加物料</h1>
+      <h2>添加物料</h2>
       <p class="muted">材料可以覆盖多个业务。先扫描识别内容，再通过对话确定本次范围。</p>
     </div>
     <button type="button" @click="emit('back')">← 生成任务</button>
@@ -549,7 +549,7 @@ const blockedReason = computed(() => {
 
     <!-- V2-6（G21）大文件夹软引导层：不硬阻断，「仍要直接上传」原样入队 -->
     <div v-if="pendingGuide" class="modal-backdrop" @click.self="confirmDirectUpload">
-      <section class="modal-card bt-guide" role="dialog" aria-modal="true" aria-label="大文件夹上传建议">
+      <section class="modal-card bt-guide" role="dialog" aria-modal="true" aria-label="大文件夹上传建议" tabindex="-1" @keydown.esc.stop="confirmDirectUpload">
         <h2>检测到 {{ guideCount }} 个待上传文件 <span class="muted">（按后缀过滤后计数）</span></h2>
         <p class="bt-sub">数量较多，建议压缩为单个 zip 后上传：一次上传更稳定；服务端安全展开后，
           逐文件解析报告、过滤规则与直接上传完全一致。</p>
@@ -751,7 +751,7 @@ const blockedReason = computed(() => {
 
   <!-- 文件夹详情（分页）：具体文件的上传与解析情况在这里看 -->
   <div v-if="detailFolder !== null" class="modal-backdrop" @click.self="closeDetail">
-    <section class="modal-card bt-detail" role="dialog" aria-modal="true" :aria-label="'文件夹详情：' + detailFolderLabel">
+    <section class="modal-card bt-detail" role="dialog" aria-modal="true" :aria-label="'文件夹详情：' + detailFolderLabel" tabindex="-1" @keydown.esc.stop="closeDetail">
       <h2>{{ detailFolderLabel }} <span class="muted">{{ detailTotal }} 个文件</span></h2>
       <p v-if="detailLoading" class="muted">读取中…</p>
       <div v-else class="bt-tablewrap">
@@ -825,7 +825,9 @@ const blockedReason = computed(() => {
    其余为局部 scoped 样式，不新增全局规则 */
 .bt-page{display:block}
 .bt-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:12px}
-.bt-intro h1{font-size:22px;margin:0 0 4px}
+/* 页内标题降为 h2（顶栏已有页面级 h1）：字号/字重/行距逐值保持原 h1 渲染结果，
+   font-weight 显式写 700 是因为全局 h2 规则会把 UA 的 bold 拉到 650 */
+.bt-intro h2{font-size:22px;font-weight:700;margin:0 0 4px}
 .bt-intro p{margin:0}
 .bt-sub{display:block;font-size:12px;color:var(--muted);margin-top:4px}
 .bt-note{padding:11px 14px;border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);font-size:13px;color:var(--ink-2);margin:12px 0}

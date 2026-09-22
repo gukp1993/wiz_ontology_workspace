@@ -449,14 +449,8 @@ export function formatBytes(size: number): string {
   return text + ' ' + units[unit]
 }
 
-/** ISO 时间 → 本地 YYYY-MM-DD HH:mm（不可解析时原样回显，便于排查）。 */
-export function formatTime(value: string): string {
-  if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return value
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
+// 时间显示统一走 shared/format（见该文件注释）；此处不再自带一份实现，
+// 否则同一时间戳会在不同页面长出 `2026-09-22 14:12` 与 `2026/9/22 14:12:07` 两种形状。
 
 // ── §6 范围对话 ───────────────────────────────────────────────────────────
 export type MessageRole = 'user' | 'assistant'

@@ -1,0 +1,26 @@
+{
+  "ticket": "61775ef13421456181727a6da3ee7b48",
+  "task": "retrieve 算法优化需求文档交付 + 评审循环启动",
+  "status": "in_progress",
+  "summary": "按用户指令起草 retrieve 筛选算法优化需求并启动评审循环（评审→修复→复审直至通过→交用户）。文档：文档/需求/20260920_从物料自动构建本体/需求说明_retrieve筛选算法优化_v1.md（未提交，评审通过后随结论提交）。归因基于源码逐段核对：P1 死工作（build_index tokens 桶生成路径零消费，全仓grep无读取方）/P2 逐词子串扫描主导（普通goal即35+弱gram×27.6万未命中事实）/P3 双遍构建+texts全量驻留数百MB/P4 逐词收集无早停。方案四项（全部行为保持）：O0 with_tokens=False消除死工作/O1单遍融合（searchable_text算一次+文本分类后即弃）/O2合并正则单趟匹配（re.escape，命中事实按原词表顺序补齐reasons保持逐字一致）/O3早停定级。等价性硬约束=selection三列表+reasons逐字节一致（金样对比测试）。明确不做=向量化/第三方合匹配库/进程池/改裁决语义/改API。验收R1-R7（R1剖析报告先行对应实测热点/R2金样逐字节一致/R3目标≤5分钟工程预算/R4死工作消除断言/R5内存水位记录/R6回归+正则边界用例/R7基准脚本入库）。已派同一评审代理（后台）。",
+  "decisions": [
+    "R3 性能目标设为「≤5分钟（基线40分钟）」工程预算而非倍数承诺，与「不预设倍数」原则同型",
+    "文档未提交（评审通过后随结论一并提交）；实施交执行方待用户指令"
+  ],
+  "verification": [
+    "P1 归因经全仓 grep 验证（tokens 零消费）；P2 归因经弱词规模实测（35 gram/普通句）；文档九项决定未违反（待评审代理复核）"
+  ],
+  "next": [
+    "评审结论：通过→提交并交用户；不通过→修复→复审循环"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/需求说明_retrieve筛选算法优化_v1.md",
+    "worktree/build-governance/workbench/ontology_build/retrieval.py"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T02:38:41.688136+00:00",
+  "sequence": 220,
+  "filename": "000220-1d64b772c3b1.json",
+  "record_hash": "8f0823d0f00296d63d012a8ee1ab5bcb525028b99a5c5ab4937a6a23e45bca22",
+  "context_advanced": false
+}

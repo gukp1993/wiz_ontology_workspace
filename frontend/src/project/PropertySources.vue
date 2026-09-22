@@ -79,8 +79,8 @@ const aggregateLinkOptions=computed(()=>graph.value.filter((n:any)=>{
   return {value:n['@id'].slice(3),label:String(n['rdfs:label']||n['@id'].slice(3))+(dir==='in'?'（入向）':''),tid,ok,reason,dir}
 }))
 const _aggregateUsable=computed(()=>aggregateLinkOptions.value.filter((o:any)=>o.ok))
-async function _gotoSetupTarget(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;emit('setup-end',tid)}
-async function _gotoTargetProperties(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM })))return;emit('goto-properties',tid)}
+async function _gotoSetupTarget(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM, danger: true })))return;emit('setup-end',tid)}
+async function _gotoTargetProperties(tid:string){if(draftDirty.value&&!(await appConfirm({ message: SWITCH_CONFIRM, danger: true })))return;emit('goto-properties',tid)}
 function _gotoLinksTab(){emit('go-tab','links')}
 // 成员属性：成员端对象数值属性且已映射为身份表直接字段（字符串/field 直连；严格性由后端校验兜底）
 function _memberPropertyOptions(relationId:string){
@@ -459,8 +459,8 @@ function openEditor(api:string){
 function closeEditor(){closeAssist();resetSaveState();configuring.value=false;selectedApi.value='';draft.value=null;editError.value='';switchMsg.value='';refreshMessage.value='';noteDraft.value='';noteBaseline.value=''}
 // 返回属性清单前的确认保护；底部「取消」是明确的放弃动作，不二次确认。
 const SWITCH_CONFIRM='当前属性有未保存的修改，继续编辑或放弃？'
-async function requestClose(){if(!draftDirty.value||await appConfirm({ message: SWITCH_CONFIRM }))closeEditor()}
-async function openProperty(api:string){if(!draftDirty.value||await appConfirm({ message: SWITCH_CONFIRM }))openEditor(api)}
+async function requestClose(){if(!draftDirty.value||await appConfirm({ message: SWITCH_CONFIRM, danger: true }))closeEditor()}
+async function openProperty(api:string){if(!draftDirty.value||await appConfirm({ message: SWITCH_CONFIRM, danger: true }))openEditor(api)}
 // ---------- T00 表单守卫：表单打开注册、关闭注销；保存走 form-save ----------
 const formGuard=inject<FormGuardAPI|null>('form-guard',null)
 const formSave=inject<FormSaveAPI|null>('form-save',null)
@@ -984,7 +984,7 @@ if(psPendingOf(props.b.object_type)){
 <p class="ps-lede">每个属性配置一种生效来源</p>
 <p class="fill-hint">支持读取数据源或函数编排。点「配置／修改」在同一页完成填写并保存。列表状态仅代表配置校验，未执行取值验证。</p>
 <div class="scroll"><table class="source-table ps-table">
-<thead><tr><th style="width:26%">属性</th><th style="width:34%">项目说明</th><th style="width:22%">状态</th><th style="width:18%">操作</th></tr></thead>
+<thead><tr><th class="ps-col-attr">属性</th><th class="ps-col-note">项目说明</th><th class="ps-col-status">状态</th><th class="ps-col-ops">操作</th></tr></thead>
 <tbody>
 <template v-for="r in rows" :key="r.api">
 <tr>
@@ -1278,6 +1278,8 @@ if(psPendingOf(props.b.object_type)){
 </div>
 </div></template>
 <style scoped>
+/* 属性绑定表列宽（原为逐行内联 style） */
+.ps-col-attr{width:26%}.ps-col-note{width:34%}.ps-col-status{width:22%}.ps-col-ops{width:18%}
 /* 列表态 */
 .ps-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;font-size:13px}
 .ps-src{display:block;margin-top:4px}
@@ -1335,13 +1337,13 @@ if(psPendingOf(props.b.object_type)){
 .ps-advanced{margin:16px 0 0}
 .ps-advanced summary{cursor:pointer;font-size:13px;color:var(--muted);padding:5px 0}
 .ps-summary{background:var(--blue-soft);border:1px solid var(--blue-line);border-left:3px solid var(--blue);border-radius:6px;padding:12px 16px;margin:16px 0 0}
-.ps-summary strong{font-size:13px;color:#2c4a86}
-.ps-summary p{margin:6px 0 0;font-size:13px;color:#33517f;overflow-wrap:anywhere}
+.ps-summary strong{font-size:13px;color:var(--blue-ink)}
+.ps-summary p{margin:6px 0 0;font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
 .ps-impl-inputs{border:1px solid var(--line);border-radius:8px;background:var(--paper-2);margin:10px 0}
 .ps-impl-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .ps-impl-row:last-child{border-bottom:0}
 .ps-impl-row small{display:block;margin-top:2px}
-.ps-impl-binding{font-size:13px;color:#33517f;overflow-wrap:anywhere}
+.ps-impl-binding{font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
 .ps-inline-link{background:transparent;border-color:transparent;color:var(--blue);padding:0 2px;font-size:12px}
 .ps-inline-link:hover{color:var(--blue-deep);border-color:transparent}
 /* 底部按钮行：取消居左，保存居右 */

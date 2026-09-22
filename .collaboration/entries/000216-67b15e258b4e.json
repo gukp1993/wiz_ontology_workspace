@@ -1,0 +1,34 @@
+{
+  "ticket": "f060282ba53248eba0b8eca05f805219",
+  "task": "结构化格式解析支持：四线程并行实施完成并提交",
+  "status": "implemented",
+  "summary": "按用户指令「拆分任务、尽可能多子agent并行」执行：四线程并行（解析器实现/后端接线/前端接线/端到端回归，文件集互斥）+ 协调者串行收口。新增六种结构化格式专用解析器（JSON/JSON-LD/JSONL、YAML、Properties、CSV/TSV、INI/CONF、TOML 最小子集），零新增第三方依赖。提交 c55d94a（后端+契约+三套测试）、361df10（前端）。真实样本实测：储能 source.jsonId 93KB → 802 条 quality=high 事实 + 782 JSON-LD 语义节点（旧路径 1741 条 low 文本线索）；存量 .json 材料重扫由 partial/354 low → success/110 high。18881 已重启加载，parserVersion=v2、parserMatrix 9 项、前端含矩阵展示。",
+  "decisions": [
+    "并行度=4（解析器实现/后端接线/前端接线/端到端回归），文件集互斥零交集；协调者做冲突裁决（DEDICATED_KINDS 缺口）、组合回归、提交与验收。",
+    "补 .jsonId 映射：用户真实样本后缀非标准（≠.jsonld），需求文档 §2 漏列——已纳入 json kind 后缀集并加断言。",
+    "扫描期按实际内容重新检测 kind（_scan_plan 读文件头 + 后缀）：kind 是上传时缓存，不重检测则升级前材料无法受益（实测发现并修复）。",
+    "PARSER_VERSION v1→v2（解析行为变化，批次基线可据此区分）；pipeline.DEDICATED_KINDS 追加六 kind（否则新 kind 会绕过专用解析走 LLM 兜底）。"
+  ],
+  "verification": [
+    "三套新测试：parser_wiring 97/97、struct_parsers 143/143、struct_e2e 87/87（真实 HTTP 上传→扫描→结构化事实断言，含坏文件失败路径与既有格式回归）。",
+    "test_ontology_build 244/244；ruff 干净；全量 run.py all 49/54（5 项失败经 main 对照证实为环境性——新工作树缺 ontology/ 目录，与改动无关）。",
+    "真实端到端：用户「测试」任务重扫后 parseState=success、110 条事实全 high（原 354 条 low）；18881 capabilities 实测 parserVersion=v2、parserMatrix 9 条目、前端 bundle 含「解析器支持矩阵」。"
+  ],
+  "next": [
+    "页面验收：登录 18881 → 本体区「从物料生成」→ 上传 .json/.yaml/.csv 等物料 → 扫描，物料清单显示新类型标签、能力页可见解析器支持矩阵。",
+    "待用户明确授权后由集成负责人合并 main（本分支另有 V2-10 六项增量的验收状态需一并核对）。",
+    "存量材料说明：升级前上传且 parseState=success 的材料需在物料页「重试解析」（force）或改材料清单触发重解析才能切到新解析器。"
+  ],
+  "references": [
+    "提交：c55d94a（后端+契约+解析器+三套测试）、361df10（前端接线）；分支 codex/build-governance",
+    "需求：文档/需求/20260920_从物料自动构建本体/需求说明_结构化格式解析支持_v1.md v1.1（评审通过）",
+    "契约：文档/接口文档/08-从物料自动构建本体接口.md §2.1（parserMatrix）/§12.7（增量节）",
+    "测试：tests/test_ontology_build_{parser_wiring,struct_parsers,struct_e2e}.py"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T01:40:13.014788+00:00",
+  "sequence": 216,
+  "filename": "000216-67b15e258b4e.json",
+  "record_hash": "2befcea48b34adcfedba216c64910eaf3a09671b948c207cd0734cb3327086a3",
+  "context_advanced": false
+}

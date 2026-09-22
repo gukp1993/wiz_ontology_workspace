@@ -22,3 +22,6 @@ wb-root.key
 
 # Task and integration worktrees live beneath the main repository.
 /worktree/
+
+# Design Review 插件的扫描报告产物（可由 design.qa.yaml 重新生成，不入库）
+.design-qa/

@@ -1,0 +1,26 @@
+{
+  "ticket": "8767e6684b09440e8a04e07d72cdab08",
+  "task": "retrieve 优化并行化：剖析/基准基建 agent 已派发（第二线程）",
+  "status": "in_progress",
+  "summary": "按用户指令将 retrieve 优化开发任务并行化。已派「剖析与基准基建 agent」（后台，新代理当前模型）：T1 合成事实夹具生成器 tests/retrieve_fixture.py（≥20万条对齐创智源规模，确定性/混合分布）；T2 现状剖析（git show HEAD 基线快照上跑 cProfile，归因 tokenize/子串/内存占比+tracemalloc 峰值，分批抽样或全量注明方法）写 retrieve优化剖析报告_v1.md；T3 基准脚本 tests/benchmark_retrieve.py（可重复/支持并发占位/profile 开关）。写入范围限三新文件，绝不修改 retrieval.py/pipeline.py/protocol.py/test_ontology_build.py（retrieval.py 归在途开发agent，pipeline.py 归他人在途调优）。已协调在途开发agent：R1 剖析移交专项agent，其专注 O0/O2/O3+金样，O1 决策等剖析报告。并行格局：线1=在途开发agent（O0/O2/O3+金样）；线2=剖析/基准基建agent（新派）；两线产出在收口时合并（O1 决策+接线+转测试验收）。",
+  "decisions": [
+    "R1 剖析移交专项agent并行做，开发agent专注 O0/O2/O3+金样（避免同机双份40分钟级CPU跑批互扰与重复劳动）",
+    "剖析在基线快照上跑（不受在途编辑影响）"
+  ],
+  "verification": [
+    "派发前 worktree 状态确认：retrieval.py 295 行未变（剖析基线有效）"
+  ],
+  "next": [
+    "剖析报告到达→转发开发agent做 O1 决策并收尾；开发完成→测试agent验收循环"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/需求说明_retrieve筛选算法优化_v1.md",
+    "worktree/build-governance/workbench/ontology_build/retrieval.py"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T03:18:00.370947+00:00",
+  "sequence": 228,
+  "filename": "000228-3ea1abde4f55.json",
+  "record_hash": "614cd6e1a7635f1f383a746dd64f3fdc7f066393f8e610055c624a0081ce01f4",
+  "context_advanced": false
+}

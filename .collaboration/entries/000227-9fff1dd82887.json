@@ -1,0 +1,28 @@
+{
+  "ticket": "5844085bb2c141deb07c1c23c3a01f99",
+  "task": "生成进度实时可观测需求 v1.1：第一轮评审意见已全部并入，复审中",
+  "status": "implemented",
+  "summary": "第一轮评审不通过（1 阻塞：B1 notes 归因失实——notes 从未落库，原方案读不存在的列）。已彻底重写为 v1.1：日志行写入 checkpoint_json.generate.log 数组（每次 _checkpoint() + update_run 同事务追加，利用已有的 checkpoint_json 列与 run_view 透传，零新增列/表/接口）；notes 也随每批 checkpoint extra 传入使运行中可见。发回同一评审代理复审中。",
+  "decisions": [
+    "B1 根因：notes 列表仅在 Python 内存积累，runner.submit 丢弃返回值，从未写入数据库——原需求 C1 读不存在的 notes_json 列不可实现。修正：日志行写入 checkpoint_json.generate.log（随每批 _checkpoint 同事务追加，利用已有列与已有持久化机制）。",
+    "S2 scan 侧逐材料日志移出第一批（scan 已有 runner.stage 逐材料推进，暂不再加逐材料日志行）。"
+  ],
+  "verification": [
+    "源码核实：wb_build_runs 无 notes_json 列（storage/schema.py）；notes 仅在 pipeline.py 内存积累并在 summary 返回值中被 runner.submit 丢弃；run_view 已含 checkpoint（line 618）但 checkpoint 中无 log/notes 数组。",
+    "文档 v1.1 已按第一轮 1 阻塞+5 建议逐条修正（B1 数据载体重设计/S1 删冗余/S2 移出第一批/S3 措辞/S4 写库时机/S5 引用修正）。"
+  ],
+  "next": [
+    "复审结论到达：通过→提交需求文档并汇报；不通过→继续修复循环。",
+    "评审通过后进入开发待用户指令。"
+  ],
+  "references": [
+    "需求文档：文档/需求/20260920_从物料自动构建本体/需求说明_生成进度实时可观测_v1.md（v1.1）",
+    "第一轮评审：1 阻塞（notes 从未落库/归因失实）+ 5 建议（S1 冗余透传/S2 scan 日志/S3 P3 措辞/S4 写库时机/S5 引用修正）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T03:11:02.493887+00:00",
+  "sequence": 227,
+  "filename": "000227-9fff1dd82887.json",
+  "record_hash": "d57cf1b721d3806d4acaeb259149a7d27251b25617a5bebe37ad676b104d592f",
+  "context_advanced": true
+}

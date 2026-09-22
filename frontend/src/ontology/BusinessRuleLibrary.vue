@@ -142,7 +142,7 @@ function openEdit(id = '') {
 function closeEditor() { mode.value = 'list'; draft.value = null; assistOpen.value = false } // 辅助面板随编辑器收起（binding 置空由 watch 兜底）
 function onField(key: string, value: string) { if (draft.value) { draft.value[key] = value; assistTouched() } }
 async function cancelEdit() {
-  if (dirty.value && !(await appConfirm({ message: '放弃尚未保存的修改？' }))) return
+  if (dirty.value && !(await appConfirm({ message: '放弃尚未保存的修改？', danger: true }))) return
   closeEditor()
 }
 // 保存后回到列表并定位该行
@@ -293,7 +293,7 @@ async function removeRule(id: string) {
       <td class="ont-ops"><button type="button" class="row-link" @click="openEdit(row.id)">编辑</button><button type="button" class="row-link danger" @click="removeRule(row.id)">删除</button></td>
     </tr>
   </OntologyList>
-  <p v-if="message" :class="message.startsWith('规则已保存') ? 'inline-success' : 'inline-error'" role="alert" style="margin-top:12px">{{ message }}</p>
+  <p v-if="message" :class="message.startsWith('规则已保存') ? 'inline-success' : 'inline-error'" role="alert" class="rule-feedback">{{ message }}</p>
 </section>
 
 <!-- 名称 → 只读详情抽屉（§7）：完整定义展示，不做保存；编辑走原四字段表单。 -->
@@ -366,10 +366,7 @@ async function removeRule(id: string) {
 </template>
 
 <style scoped>
-/* 引用情况筛选：紧凑分段按钮（§4；.ont-filters 全局未提供，沿用对象建模页签内同款局部样式）。 */
-.ont-filters{display:flex;gap:6px;flex-wrap:wrap}
-.ont-filters button{font-size:12px;padding:4px 9px;border-radius:var(--r-pill)}
-.ont-filters button.active{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue-ink);font-weight:600}
+.rule-feedback{margin-top:12px}
 /* 引用对象抽屉行：名称居左、动作居右（骨架走全局 .ont-ref-row）。 */
 .ont-ref-go{flex:none;margin-left:auto;color:var(--blue);font-size:12px;font-weight:500}
 /* 外部依赖行（S4）：名称下的原因副标题 */
