@@ -1,0 +1,35 @@
+{
+  "formId": "rule",
+  "schemaVersion": 1,
+  "title": "业务规则",
+  "space": "ontology",
+  "fields": [
+    {
+      "id": "name",
+      "label": "规则名称",
+      "type": "text",
+      "required": true,
+      "maxLength": 120,
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "description",
+      "label": "业务定义",
+      "type": "textarea",
+      "required": true,
+      "maxLength": 2000,
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "content",
+      "label": "规则内容",
+      "type": "textarea",
+      "maxLength": 4000,
+      "nullable": true,
+      "ai": {"fillable": true, "clearable": true, "sensitive": false}
+    }
+  ],
+  "lists": [],
+  "codecs": [],
+  "refProviders": {}
+}

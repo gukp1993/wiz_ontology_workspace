@@ -1,0 +1,58 @@
+{
+  "formId": "link",
+  "schemaVersion": 1,
+  "title": "链接定义",
+  "space": "ontology",
+  "fields": [
+    {
+      "id": "label",
+      "label": "正向名称",
+      "type": "text",
+      "required": true,
+      "maxLength": 120,
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "from",
+      "label": "起点对象",
+      "type": "ref",
+      "required": true,
+      "refProvider": "object",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "to",
+      "label": "终点对象",
+      "type": "ref",
+      "required": true,
+      "refProvider": "object",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "cardinality",
+      "label": "数量关系",
+      "type": "enum",
+      "required": true,
+      "enum": ["one-to-one", "one-to-many", "many-to-one", "many-to-many"],
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "reverseLabel",
+      "label": "反向名称",
+      "type": "text",
+      "maxLength": 120,
+      "nullable": true,
+      "ai": {"fillable": true, "clearable": true, "sensitive": false}
+    },
+    {
+      "id": "comment",
+      "label": "业务定义",
+      "type": "textarea",
+      "maxLength": 2000,
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    }
+  ],
+  "lists": [],
+  "codecs": [],
+  "refProviders": {"object": "ontologyObjects"}
+}

@@ -1,0 +1,55 @@
+{
+  "formId": "property",
+  "schemaVersion": 1,
+  "title": "属性定义",
+  "space": "ontology",
+  "fields": [
+    {
+      "id": "label",
+      "label": "属性名称",
+      "type": "text",
+      "required": true,
+      "maxLength": 120,
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "comment",
+      "label": "业务定义",
+      "type": "textarea",
+      "required": true,
+      "maxLength": 2000,
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "dataType",
+      "label": "数据类型",
+      "type": "enum",
+      "required": true,
+      "enum": ["string", "double", "boolean", "dateTime", "array", "struct", "timeSeries"],
+      "atomicGroup": "typeCore",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "obsType",
+      "label": "观测值类型",
+      "type": "enum",
+      "enum": ["string", "double", "boolean", "dateTime"],
+      "atomicGroup": "typeCore",
+      "visibleWhen": {"field": "dataType", "op": "eq", "value": "timeSeries"},
+      "requires": "dataType",
+      "ai": {"fillable": true, "clearable": false, "sensitive": false}
+    },
+    {
+      "id": "formatting",
+      "label": "显示格式",
+      "type": "group",
+      "codec": "formattingCodec",
+      "requires": "dataType",
+      "nullable": true,
+      "ai": {"fillable": true, "clearable": true, "sensitive": false}
+    }
+  ],
+  "lists": [],
+  "codecs": ["dataTypeTransform", "formattingCodec"],
+  "refProviders": {}
+}
