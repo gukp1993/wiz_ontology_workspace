@@ -31,6 +31,10 @@
   数量与说明），不做静默截断。
 """
 
+import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
+
 from workbench.ontology_build import alignment
 from workbench.ontology_build import llm
 from workbench.ontology_build import materials as material_store
@@ -44,6 +48,210 @@ from workbench.storage import ontology_build as store
 DIALOG_STAGE = 'dialog'
 DIALOG_STAGE_LABEL = '范围对话'
 MAX_MODEL_FACTS = protocol.LLM_BATCH_FACTS * 25   # 单次生成最多发给模型的事实数
+
+# 生成进度日志上限（2026-09-22 生成进度实时可观测）：批次日志行随每批 checkpoint 落库，
+# 超限移除最早（轮询响应体不随超长运行无界膨胀）。
+GENERATE_LOG_LIMIT = 500
+
+# 批次并发的落库等待预算：单批正常 30–90 秒（推理开销），provider timeout 之上留缓冲；
+# 超时只标记该批失败（迟到结果丢弃，与 V2-10 迟到丢弃同一原则），不阻塞其余批次。
+# 抽取调用的超时**按批大小动态计算**（2026-09-22 实测）：
+# 输出规模随事实条数增长，模型耗时随之上升且受 provider 负载波动影响很大——
+# 同一批 20 条事实实测 27.7 秒（健康）到 185 秒（负载高）不等，而 provider
+# 配置超时（MiniMax 120s / GLM 60s）是为短请求设的，会在波动时误杀整个批次
+# （真实复现：3 批全部「无法连接接口」失败）。这里给出**下限**，取
+# max(provider 配置超时, 60 + 10×条数)，上限 900 秒；provider 配更长时用更长的。
+_EXTRACT_TIMEOUT_BASE_SECONDS = 60
+_EXTRACT_TIMEOUT_PER_FACT_SECONDS = 10
+_EXTRACT_TIMEOUT_CAP_SECONDS = 900
+_BATCH_WAIT_SLACK_SECONDS = 180
+
+
+def _extract_call_timeout(provider, fact_count):
+    """单次抽取调用的超时（秒）：按事实条数给下限，尊重更长的 provider 配置。"""
+    try:
+        configured = int((provider or {}).get('timeout') or 60)
+    except (TypeError, ValueError):
+        configured = 60
+    needed = _EXTRACT_TIMEOUT_BASE_SECONDS + _EXTRACT_TIMEOUT_PER_FACT_SECONDS * max(0, int(fact_count or 0))
+    return min(_EXTRACT_TIMEOUT_CAP_SECONDS, max(configured, needed))
+
+
+def _batch_wait_timeout(provider, fact_count=0):
+    """批次等待预算：拆批后子批串行执行，按 2×单次超时 + slack 估算。"""
+    return 2 * _extract_call_timeout(provider, fact_count) + _BATCH_WAIT_SLACK_SECONDS
+
+
+def _merge_usage(left, right):
+    """合并两次调用的 usage（拆批重试后仍需如实累计调用次数与字节量）。"""
+    merged = {}
+    for key in ('calls', 'promptBytes', 'completionBytes', 'durationMs'):
+        total = int((left or {}).get(key) or 0) + int((right or {}).get(key) or 0)
+        if total:
+            merged[key] = total
+    return merged
+
+
+def _is_transient_llm_error(error):
+    """瞬态错误判定：只含**连接类**故障与限流（可重试）。
+
+    真实复现：并发多路大请求时 provider 偶发「无法连接接口/超时」，串行时同一
+    模型连通正常（独立探测 1.2 秒）——这类重试即可。
+
+    刻意**不含** HTTP 5xx：服务端 5xx 与业务错误在测试里都是确定性失败桩，
+    重试只会浪费时间与调用额度（实测：把 500 当瞬态导致抽取调用数翻倍、既有
+    断言失败）。5xx 是否可重试交由上层「重试失败批次」决定。
+    """
+    text = str(error or '')
+    return ('无法连接接口' in text or 'HTTP 429' in text or 'timed out' in text.lower())
+
+
+def _rate_limited(error):
+    """429 限流：额度级限流需要更长退避（实测 1s/3s 扛不住，账号级限流窗口更长）。"""
+    return 'HTTP 429' in str(error or '')
+
+
+ADAPTIVE_MIN_WORKERS = 1
+ADAPTIVE_MAX_WORKERS = 8
+_ADAPTIVE_429_COOLDOWN_SECONDS = 20   # 撞限流后的冷却（等 RPM 窗口滚动）
+_HEARTBEAT_SECONDS = 15
+
+
+def _run_batches_adaptive(owner_id, run_id, label, batches, pending, provider, scope,
+                          done_positions, accumulated, model_facts, on_result=None):
+    """批次抽取调度：自适应并发 + 心跳 + **完成即按前缀顺序回调落库**。
+
+    on_result(position, result)：批次完成后立即回调（调用方校验证据 + 同事务落库 +
+    写检查点）。**不能等全部批次跑完再落库**——池运行可能持续数分钟，中途取消或
+    服务被杀会让已成功批次的结果全部丢失（实测：438 秒仍 candidates=0、done 为空，
+    恢复要全量重跑），违反 V2-8「已完成批次候选各自提交」承诺。
+    回调按**前缀顺序**触发（1,2,3… 连续完成才推进），落库顺序仍等于串行版。
+
+    为什么自适应：实测 GLM-5.3-Flash 账号并发 2 稳定、4 路零星 429、16 路多数失败
+    （并发能力上限 50 与账号 RPM 限流是两件事）；固定并发要么浪费要么大批失败。
+    连续成功升一路（至上限），撞 429 降一路并冷却 20 秒。
+
+    为什么按序返回：候选落库顺序决定定义顺序，必须与串行版一致
+    （与 V2-10「解析并发、落库串行」同一确定性原则）。
+    心跳：等待期间每 15 秒写 waitingPosition/waitingCount，页面据此显示真实等待
+    （用户实测反馈「抽象本体定义只有处理中」）。
+    """
+    if not pending:
+        return {}
+    cap = max(ADAPTIVE_MIN_WORKERS, min(ADAPTIVE_MAX_WORKERS, int(protocol.LLM_CONCURRENCY)))
+    pool = ThreadPoolExecutor(max_workers=cap, thread_name_prefix='build-extract')
+    results = {}
+    next_flush = min((pos for pos, _batch in pending), default=1)   # 前缀刷写游标
+    queued = list(pending)
+    running = {}
+    workers_wanted = min(cap, len(queued))
+    last_heartbeat = time.monotonic()
+    cooldown_until = 0.0
+    success_streak = 0
+    try:
+        while queued or running:
+            while queued and len(running) < max(1, workers_wanted) and time.monotonic() >= cooldown_until:
+                position, batch = queued[0]
+                running[position] = pool.submit(_extract_batch_with_split, provider, scope, batch)
+                queued.pop(0)
+            finished = [pos for pos, future in running.items() if future.done()]
+            for position in finished:
+                future = running.pop(position)
+                try:
+                    result = future.result()
+                except Exception as exc:  # noqa: BLE001 - 单批异常不影响其余批次
+                    result = {'ok': False, 'candidates': [],
+                              'error': '批次执行异常：%s' % type(exc).__name__}
+                results[position] = result
+                if on_result is not None:
+                    # 前缀刷写：只推进连续完成的位置，保证落库顺序 = 串行版
+                    while next_flush in results:
+                        flush_result = results.pop(next_flush)
+                        try:
+                            on_result(next_flush, flush_result)
+                        except runner.Cancelled:
+                            raise
+                        except Exception:  # noqa: BLE001 - 单批落库失败不拖垮其余批次
+                            pass
+                        next_flush += 1
+                if result.get('ok'):
+                    success_streak += 1
+                    if success_streak >= 2 and workers_wanted < cap:
+                        workers_wanted += 1
+                        success_streak = 0
+                if _rate_limited(result.get('error')):
+                    workers_wanted = max(ADAPTIVE_MIN_WORKERS, workers_wanted - 1)
+                    success_streak = 0
+                    cooldown_until = time.monotonic() + _ADAPTIVE_429_COOLDOWN_SECONDS
+            if not finished:
+                now = time.monotonic()
+                if now - last_heartbeat >= _HEARTBEAT_SECONDS and running:
+                    last_heartbeat = now
+                    try:
+                        runner.stage(owner_id, run_id, 'abstract', label,
+                                     {'done': len(done_positions),
+                                      'total': len(batches), 'facts': len(model_facts),
+                                      'candidates': len(accumulated),
+                                      'waitingPosition': min(running),
+                                      'waitingCount': len(running) + len(queued)})
+                    except runner.Cancelled:
+                        raise
+                    except Exception:  # noqa: BLE001 - 心跳失败不影响抽取
+                        pass
+                time.sleep(0.5)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    return results
+
+
+def _extract_batch_with_split(provider, scope, batch, depth=0):
+    """抽取一批候选；截断自动拆批（≤2 层），瞬态网络/限流错误有限重试。
+
+    真实复现：40 条/批时模型为每条事实产出候选 JSON，输出必然超预算 → 整批失败；
+    拆小后单次输出量减半。瞬态错误（连接失败/5xx/429/超时）退避重试 2 次
+    （并发场景 provider 偶发拒绝；实测并发 3 批大请求时出现过）。
+    两条子批都失败才判该批失败（错误取其一并注明已拆批）。
+    """
+    result = None
+    call_timeout = _extract_call_timeout(provider, len(batch))
+    # 连接类错误（含挂起超时）只重试 1 次，且**下一次用减半超时**：
+    # 实测挂住的请求会吃满整个超时（3 次重试 = 3×260 = 787 秒，用户体感「卡死」），
+    # 而正常请求只要 17–60 秒——重试一次足以避开偶发挂起，不必无限等。
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        result = llm.extract_candidates(provider, scope, batch, timeout=call_timeout)
+        if result.get('ok') or not _is_transient_llm_error(result.get('error')):
+            break
+        # 429 是账号级 RPM 限流（实测：并发 2 稳定、4+ 开始 429、16 路多数失败）——
+        # 单批内重试会继续撞限流窗口，改为**立即返回**让批次调度器降挡重排。
+        if _rate_limited(result.get('error')):
+            return result
+        if attempt + 1 < max_attempts:
+            call_timeout = max(60, call_timeout // 2)   # 重试用减半超时
+            time.sleep(1)
+    if result.get('ok'):
+        return result
+    error = str(result.get('error') or '')
+    if depth >= 2 or len(batch) <= 1 or '截断' not in error:
+        return result
+    middle = max(1, len(batch) // 2)
+    left = _extract_batch_with_split(provider, scope, batch[:middle], depth + 1)
+    right = _extract_batch_with_split(provider, scope, batch[middle:], depth + 1)
+    usage = _merge_usage(left.get('usage'), right.get('usage'))
+    if not left.get('ok') and not right.get('ok'):
+        merged = {'ok': False, 'candidates': [], 'usage': usage,
+                  'error': '截断后拆批重试仍失败：%s' % (left.get('error') or right.get('error') or '')}
+    else:
+        merged = {'ok': True,
+                  'candidates': list(left.get('candidates') or []) + list(right.get('candidates') or []),
+                  'usage': usage,
+                  'rejectedRefs': int(left.get('rejectedRefs') or 0) + int(right.get('rejectedRefs') or 0),
+                  'notes': list(left.get('notes') or []) + list(right.get('notes') or [])}
+    # 拆批信息只在最外层（depth=0）随结果上抛：批次日志据此记「已自动拆批重试」行。
+    if depth == 0:
+        merged['split'] = {'from': len(batch), 'halves': [middle, len(batch) - middle]}
+    return merged
+
 # 人工排除决定回放的有效窗口（D04）：store.list_batches 默认只取最近 20 批，直接用默认值会
 # 把更早批次里的人工否决静默丢掉（保护再次失效）。这里放宽到任务级不设限的实用上限
 # （单个任务要超过 1000 个生成批次才可能落到窗口之外）。
@@ -68,6 +276,12 @@ _USAGE_KEYS = ('calls', 'promptBytes', 'completionBytes', 'durationMs')
 # 枚举大小写规范化（模型常写成 timeseries/supported 等；只做大小写规范化，不新增取值）
 _DATA_TYPES = {value.casefold(): value for value in protocol.PROPERTY_DATA_TYPES}
 _VALUE_TYPES = {value.casefold(): value for value in protocol.VALUE_TYPES}
+# V2-3 解析三级分派：这些 kind 有专用解析器（第①级）；其余（other）先走 LLM 兜底（第②级），
+# 兜底不可用/失败/超限再降级文本线索（第③级）。zip 在上传展开期已拆分，不会进入扫描解析。
+# 结构化格式（2026-09-22，需求《结构化格式解析支持_v1》§3/S6）同属第①级：进池内并行解析，
+# 不走 _parse_with_dispatch 的 LLM 兜底/文本线索降级（坏文件由其解析器显式失败）。
+DEDICATED_KINDS = frozenset({'code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'image',
+                             'json', 'yaml', 'properties', 'csv', 'ini', 'toml'})
 
 
 class PipelineError(Exception):
@@ -139,14 +353,23 @@ def _counts(items, key):
 
 # --- 扫描：解析材料 → 事实 --------------------------------------------------------
 
-def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
+def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False, provider=None):
     """解析任务内未排除材料并写入事实；单材料失败不阻塞其余材料。
 
     * 已成功解析且内容未变的材料复用既有事实（不重复解析）；material_ids 可限定子集
       （单材料重试用），缺省为全部未排除材料；force=True 强制重解析（解析器版本升级、
       用户显式重试时用）。
+    * 解析三级分派（V2-3）：专用解析器（code/ddl/docx/pdf/xlsx/md/image）→ LLM 兜底
+      （kind=other 且可读出文本；provider 缺失/超限/失败则降级文本线索，逐文件注明原因）。
+      兜底解析消耗模型调用；限额为**单任务累计**（protocol.LLM_FALLBACK_*，默认 200 个 /
+      50MB，可用环境变量 WIZ_BUILD_LLM_FALLBACK_MAX_FILES/_MAX_BYTES 覆盖），已消耗量按
+      任务全部 scan 运行检查点累计，重试/再扫描不重置。
     * 无材料 / 全部失败 → 抛 PipelineError（run 记失败），但**已完成材料的结果保留**。
     * 长解析期间不持锁；每个材料完成即推进 progress {'done': n, 'total': m}。
+    * 解析并发（V2-10/G25）：第①级专用解析器文件在 run 内线程池并行解析（worker 只解析
+      不写库），主线程按物料登记顺序收集结果并逐个短事务落库——facts 内容与顺序同串行版
+      完全一致；并发度 protocol.PARSE_CONCURRENCY（默认 min(8, CPU)，env 可覆盖）；
+      取消/超时语义见 08 §4。
     """
     owner_id = str(owner_user_id or '')
     wanted = {str(item) for item in material_ids} if material_ids else None
@@ -157,71 +380,243 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False):
 
     parsed = reused = failed = facts_total = 0
     modules, details = [], []
-    for index, item in enumerate(plan, start=1):
-        if item['reusable']:
-            reused += 1
-            facts_total += int(item['factCount'])
-            for name in item['modules']:
-                if name not in modules:
-                    modules.append(name)
-            details.append({'id': item['id'], 'relPath': item['relPath'], 'parseState': 'reused',
-                            'facts': int(item['factCount']), 'error': ''})
-        else:
-            # parse_state 是业务内容（R4-01）：同事务核对取消/执行权后再写
-            runner.content_tx(owner_id, run_id,
-                              lambda conn, item=item:
-                              _scan_mark_running(conn, owner_id, run_id, item['id']))
-            if not item['path']:
-                outcome = {'state': 'failed', 'facts': 0, 'modules': [],
-                           'error': '材料文件缺失（已被清理或未登记为 blob）'}
-            else:
-                try:
-                    result = parse_material(item['path'], item['id'], item['kind'], item['relPath'])
-                except Exception as exc:  # noqa: BLE001 - 单材料异常降级为该材料失败
-                    outcome = {'state': 'failed', 'facts': 0, 'modules': [],
-                               'error': '解析材料失败（%s）：%s' % (exc.__class__.__name__, exc)}
-                else:
-                    # 事实与 parse_state/coverage 都是业务内容（R4-01）：同事务核对后再写
-                    outcome = runner.content_tx(
-                        owner_id, run_id,
-                        lambda conn, item=item, result=result:
-                        _scan_write(conn, owner_id, run_id, task_id, item, result))
-            details.append({'id': item['id'], 'relPath': item['relPath'],
-                            'parseState': outcome['state'], 'facts': int(outcome['facts']),
-                            'error': outcome.get('error') or ''})
-            facts_total += int(outcome['facts'])
-            for name in outcome.get('modules') or []:
-                if name not in modules:
-                    modules.append(name)
-            if outcome['state'] == 'failed':
-                failed += 1
-            else:
-                parsed += 1
-        runner.stage(owner_id, run_id, 'parse', label, {'done': index, 'total': total})
+    usage = _usage()
+    # V2-3（G19）：兜底限额是**单任务累计**口径——预算从该任务此前全部 scan 运行的
+    # 已消耗量起步（排除本次运行），重试/再扫描不重置；fallback_budget 是累计执行计数器，
+    # fallback_used 只记**本次运行**消耗（检查点落库的就是它，跨运行求和才是任务累计）。
+    seeded = _tx(lambda conn: store.scan_fallback_usage(conn, task_id, owner_id,
+                                                        exclude_run_id=run_id))
+    fallback_budget = {'files': int(seeded.get('files') or 0),
+                       'bytes': int(seeded.get('bytes') or 0)}
+    fallback_used = {'files': 0, 'bytes': 0}
 
-    runner.stage(owner_id, run_id, 'index', protocol.SCAN_STAGE_LABELS['index'],
-                 {'done': total, 'total': total})
-    checkpoint = {'scan': {'materials': total, 'parsed': parsed, 'reused': reused, 'failed': failed,
+    # V2-10（G25）：解析并发、落库串行——run 内创建线程池（worker 只解析、不写库），
+    # 三级分派第①级专用解析器文件按单文件粒度全部提交；主线程按物料登记顺序逐个
+    # 收集结果并逐个短事务落库（facts 内容与顺序同串行版完全一致）。黑名单/后缀过滤
+    # 在上传登记时已串行完成；LLM 兜底（第②级）不进线程池（主线程串行，预算计数
+    # 语义不变）；index 阶段串行。run 结束（完成/失败/取消）必须 shutdown——按
+    # shutdown(wait=False, cancel_futures=True) 关闭：未开始任务取消、执行中 worker
+    # 完成当前文件（≤单文件超时），超时/迟到结果一律丢弃不再落库。
+    executor = ThreadPoolExecutor(max_workers=max(1, int(protocol.PARSE_CONCURRENCY)),
+                                  thread_name_prefix='build-parse')
+    parse_futures = {}
+    try:
+        for item in plan:
+            if item['reusable'] or not item['path'] or item['kind'] not in DEDICATED_KINDS:
+                continue
+            parse_futures[item['id']] = executor.submit(parse_material, item['path'], item['id'],
+                                                        item['kind'], item['relPath'])
+        for index, item in enumerate(plan, start=1):
+            if item['reusable']:
+                reused += 1
+                facts_total += int(item['factCount'])
+                for name in item['modules']:
+                    if name not in modules:
+                        modules.append(name)
+                details.append({'id': item['id'], 'relPath': item['relPath'], 'parseState': 'reused',
+                                'facts': int(item['factCount']), 'error': ''})
+            else:
+                # parse_state 是业务内容（R4-01）：同事务核对取消/执行权后再写
+                runner.content_tx(owner_id, run_id,
+                                  lambda conn, item=item:
+                                  _scan_mark_running(conn, owner_id, run_id, item['id']))
+                if not item['path']:
+                    outcome = {'state': 'failed', 'facts': 0, 'modules': [],
+                               'error': '材料文件缺失（已被清理或未登记为 blob）'}
+                elif item['kind'] in DEDICATED_KINDS:
+                    # 第①级：收集池内已提交的解析结果（主线程，等待带单文件超时）
+                    outcome = _collect_pool_result(owner_id, run_id, task_id, item, parse_futures)
+                else:
+                    # 第②/③级：LLM 兜底或文本线索降级——主线程串行（不进线程池）
+                    try:
+                        result, usage = _parse_with_dispatch(owner_id, run_id, item, provider,
+                                                             fallback_budget, fallback_used, usage)
+                    except Exception as exc:  # noqa: BLE001 - 单材料异常降级为该材料失败
+                        result = None
+                        outcome = {'state': 'failed', 'facts': 0, 'modules': [],
+                                   'error': '解析材料失败（%s）：%s' % (exc.__class__.__name__, exc)}
+                    else:
+                        # 事实与 parse_state/coverage 都是业务内容（R4-01）：同事务核对后再写
+                        outcome = runner.content_tx(
+                            owner_id, run_id,
+                            lambda conn, item=item, result=result:
+                            _scan_write(conn, owner_id, run_id, task_id, item, result))
+                details.append({'id': item['id'], 'relPath': item['relPath'],
+                                'parseState': outcome['state'], 'facts': int(outcome['facts']),
+                                'error': outcome.get('error') or ''})
+                facts_total += int(outcome['facts'])
+                for name in outcome.get('modules') or []:
+                    if name not in modules:
+                        modules.append(name)
+                if outcome['state'] == 'failed':
+                    failed += 1
+                else:
+                    parsed += 1
+            runner.stage(owner_id, run_id, 'parse', label, {'done': index, 'total': total})
+
+        runner.stage(owner_id, run_id, 'index', protocol.SCAN_STAGE_LABELS['index'],
+                     {'done': total, 'total': total})
+        checkpoint = {'scan': {'materials': total, 'parsed': parsed, 'reused': reused,
+                           'failed': failed,
                            'facts': facts_total, 'modules': modules,
+                           'fallbackFiles': fallback_used['files'],
+                           'fallbackBytes': fallback_used['bytes'],
                            'note': '结构索引按材料解析覆盖摘要登记；token 级检索索引在生成阶段的 '
                                    'retrieve 步按需构建（避免把全部事实一次性读进内存）。'}}
-    _tx(lambda conn: (runner.check_cancelled(conn, run_id, owner_id),
-                      store.update_run(conn, run_id, owner_id, usage=_usage(),
-                                       checkpoint=checkpoint,
-                                       lease=runner.lease_of(owner_id, run_id) or None)))
+        _tx(lambda conn: (runner.check_cancelled(conn, run_id, owner_id),
+                          store.update_run(conn, run_id, owner_id, usage=usage,
+                                           checkpoint=checkpoint,
+                                           lease=runner.lease_of(owner_id, run_id) or None)))
 
-    if total == 0:
-        raise PipelineError('没有可解析的材料：请先上传材料并确认未被排除')
-    if parsed == 0 and reused == 0:
-        first_error = next((item['error'] for item in details if item['error']), '')
-        raise PipelineError('全部材料解析失败%s' % ('：%s' % first_error if first_error else ''))
-    return {'runId': run_id, 'kind': 'scan', 'state': 'succeeded', 'materials': total,
-            'parsed': parsed, 'reused': reused, 'failed': failed, 'facts': facts_total,
-            'modules': modules, 'details': details, 'usage': _usage()}
+        if total == 0:
+            raise PipelineError('没有可解析的材料：请先上传材料并确认未被排除')
+        if parsed == 0 and reused == 0:
+            first_error = next((item['error'] for item in details if item['error']), '')
+            raise PipelineError('全部材料解析失败%s' % ('：%s' % first_error if first_error else ''))
+        return {'runId': run_id, 'kind': 'scan', 'state': 'succeeded', 'materials': total,
+                'parsed': parsed, 'reused': reused, 'failed': failed, 'facts': facts_total,
+                'modules': modules, 'details': details, 'usage': usage}
+    finally:
+        # 完成/失败/取消都走这里：不等待（可能超时仍在跑的）worker，未开始任务取消
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+def _parse_with_dispatch(owner_id, run_id, item, provider, fallback_budget, fallback_used, usage):
+    """三级分派第②/③级（主线程串行，V2-10 起**不进线程池**）：LLM 兜底 / 文本线索降级。
+
+    仅 kind=other 会走到这里（第①级专用解析器已在池内并行解析，见 run_scan）；
+    兜底是远程模型调用并叠加单任务预算计数，串行避免限流与预算竞态。
+    返回 (ParseResult, usage)。fallback_budget 是单任务累计执行计数器（含此前运行
+    消耗，只用于限额判定）；fallback_used 记本次运行的兜底消耗（落检查点，
+    跨运行求和 = 任务累计）。
+    """
+    result = parse_material(item['path'], item['id'], item['kind'], item['relPath'])
+    # kind=other：先尝试 LLM 兜底（可读出文本才有意义），失败/不可用降级文本线索。
+    if provider is None:
+        _annotate_downgrade(result, 'LLM 兜底解析不可用（未配置模型提供方），已按文本线索降级。')
+        return result, usage
+    if int(fallback_budget['files']) >= protocol.LLM_FALLBACK_MAX_FILES or \
+            int(fallback_budget['bytes']) + int(item.get('size') or 0) > protocol.LLM_FALLBACK_MAX_BYTES:
+        _annotate_downgrade(result, '文件超过单任务 LLM 兜底限额（每轮扫描最多 %d 个文件 / %d MB），'
+                            '已按文本线索降级并在扫描报告注明。'
+                            % (protocol.LLM_FALLBACK_MAX_FILES,
+                               protocol.LLM_FALLBACK_MAX_BYTES // (1024 * 1024)))
+        return result, usage
+    fallback, new_usage = _llm_fallback_result(item, provider)
+    usage = _add_usage(usage, new_usage)
+    if not isinstance(fallback, dict):   # 成功：返回 ParseResult（弱证据事实）
+        size = int(item.get('size') or 0)
+        fallback_budget['files'] += 1
+        fallback_budget['bytes'] += size
+        fallback_used['files'] += 1
+        fallback_used['bytes'] += size
+        return fallback, usage
+    _annotate_downgrade(result, 'LLM 兜底解析失败（%s），已按文本线索降级，可修复模型配置后重试。'
+                        % (fallback.get('error') or '未知错误'))
+    return result, usage
+
+
+def _llm_fallback_result(item, provider):
+    """LLM 兜底解析一个文件：读文本 → 切片 → 逐片调用模型 → 产出弱证据事实。
+
+    返回 (ParseResult, usage)（成功）或 ({'ok': False, 'error': …}, usage)（整体失败）；
+    usage 是本次已消耗的模型调用累计（含失败切片），由调用方并入 run.usage。
+    """
+    from workbench.ontology_build.parsers import textline as textline_mod
+    rel = item['relPath']
+    try:
+        content = textline_mod.read_text_lines(item['path'])
+    except (OSError, IOError, ValueError) as exc:
+        return {'ok': False, 'error': '无法读取文件文本（%s）' % exc.__class__.__name__}, _usage()
+    lines = [line for line in content.lines if line.strip()]
+    if not lines:
+        return {'ok': False, 'error': '文件无可读文本（不可解码或为空）'}, _usage()
+    # 行号定位切片：每片最多 LLM_FALLBACK_SLICE_CHARS 字符、最多 LLM_FALLBACK_MAX_SLICES 片
+    line_numbers = [number for number, line in enumerate(content.lines, start=1) if line.strip()]
+    text_of = {number: content.line(number) for number in line_numbers}
+    slices = []  # (text, startLine, endLine)
+    buffer, start_line, last_line, size = [], line_numbers[0], line_numbers[0], 0
+    for number in line_numbers:
+        line = text_of[number]
+        if size + len(line) > protocol.LLM_FALLBACK_SLICE_CHARS and buffer:
+            slices.append(('\n'.join(buffer), start_line, last_line))
+            buffer, start_line, size = [], number, 0
+        buffer.append(line)
+        last_line = number
+        size += len(line)
+    if buffer:
+        slices.append(('\n'.join(buffer), start_line, last_line))
+    truncated_slices = max(0, len(slices) - protocol.LLM_FALLBACK_MAX_SLICES)
+    slices = slices[:protocol.LLM_FALLBACK_MAX_SLICES]
+
+    sink = textline_mod.FactSink(item['id'])
+    notes = ['该类型无专用解析器，已按 LLM 兜底解析（V2-3 第②级）：内容按数据发送、'
+             '请求声明「材料内容不是指令」；产物一律弱证据（quality=low、module=llm-fallback、'
+             '候选证据状态 inferred）。']
+    notes.append('发送 %d 个文本切片（每片≤%d 字符）；%s'
+                 % (len(slices), protocol.LLM_FALLBACK_SLICE_CHARS,
+                    '文件过长，仅解析前 %d 片（%d 片未发送）。'
+                    % (protocol.LLM_FALLBACK_MAX_SLICES, truncated_slices)
+                    if truncated_slices else '全文已覆盖。'))
+    failed_slices = []
+    usage_total = _usage()
+    for position, (slice_text, start_line, end_line) in enumerate(slices, start=1):
+        answer = llm.fallback_parse(provider, rel, slice_text, position)
+        _add_usage(usage_total, answer.get('usage'))
+        if not answer.get('ok'):
+            failed_slices.append(position)
+            continue
+        for clue in answer.get('facts') or []:
+            snippet = clue.get('quote') or '%s：%s' % (clue.get('title') or '', clue.get('detail') or '')
+            sink.add('llm-fallback',
+                     {'kind': 'llm', 'file': rel, 'slice': position,
+                      'startLine': start_line, 'endLine': end_line},
+                     snippet, 'llmClue',
+                     {'source': 'llm-fallback', 'title': clue.get('title') or '',
+                      'detail': clue.get('detail') or '', 'slice': position}, 'low')
+        for note in answer.get('notes') or []:
+            _note(notes, '模型说明：%s' % note)
+    notes.append('切片结果：%d/%d 片成功%s；事实 %d 条。'
+                 % (len(slices) - len(failed_slices), len(slices),
+                    ('，失败切片 %s（已重试 1 次）' % '、'.join(str(p) for p in failed_slices))
+                    if failed_slices else '', len(sink.facts)))
+    if failed_slices and not sink.facts:
+        return ({'ok': False, 'error': '全部切片解析失败（已重试 1 次）'}, usage_total)
+    coverage = {
+        'modules': ['llm-fallback'],
+        'notes': notes,
+        'failedSegments': [{'kind': 'slice', 'locator': {'kind': 'llm', 'file': rel, 'slice': p},
+                            'reason': 'LLM 兜底解析该切片失败（已重试 1 次）'}
+                           for p in failed_slices],
+        'locatorKind': 'llm', 'fallback': {'slices': len(slices), 'failedSlices': len(failed_slices)},
+        'encoding': content.encoding,
+    }
+    from workbench.ontology_build.parsers.base import ParseResult
+    return (ParseResult(facts=sink.facts, coverage=coverage,
+                        partial=bool(failed_slices or truncated_slices or sink.truncated)),
+            usage_total)
+
+
+def _annotate_downgrade(result, reason):
+    """把降级原因写入文本线索结果（notes + failedSegments），保证可见、不静默。"""
+    result.coverage['notes'] = list(result.coverage.get('notes') or []) + [reason]
+    result.coverage['failedSegments'] = list(result.coverage.get('failedSegments') or []) + [
+        {'kind': 'file', 'locator': {'kind': 'text', 'file': item_rel(result)}, 'reason': reason}]
+    result.warnings = list(result.warnings or []) + [reason]
+    result.partial = True
+
+
+def item_rel(result):
+    """从结果事实取相对路径（无事实时返回空串）。"""
+    for fact in result.facts or []:
+        locator = getattr(fact, 'locator', None)
+        if isinstance(locator, dict) and locator.get('file'):
+            return str(locator['file'])
+    return ''
 
 
 def _scan_plan(conn, owner_id, task_id, run_id, wanted, force=False):
-    """短事务：读任务与材料清单，给出本次要处理的材料（含 blob 真实路径）。"""
+    """短事务：读任务与材料清单，给出本次要处理的材料（含 blob 真实路径与字节量）。"""
     runner.check_cancelled(conn, run_id, owner_id)
     if store.require_task(conn, task_id, owner_id) is None:
         raise sto.NotFound('生成任务不存在')
@@ -232,9 +627,24 @@ def _scan_plan(conn, owner_id, task_id, run_id, wanted, force=False):
         coverage = material.get('coverage') if isinstance(material.get('coverage'), dict) else {}
         fact_count = int(coverage.get('factCount') or 0)
         path = material_store.material_blob_path(conn, owner_id, material['id'])
+        # 解析器集合会演进（如 2026-09-22 新增结构化格式解析器）：上传时检测并存库的 kind
+        # 只是缓存，扫描时按**实际内容**重新检测（后缀 + 头 8 字节魔数），
+        # 否则升级前上传的材料重扫也到不了新解析器（存量材料无法受益）。
+        kind = material['kind']
+        if path:
+            try:
+                with open(str(path), 'rb') as handle:
+                    head = handle.read(8)
+            except OSError:
+                head = b''
+            try:
+                kind = protocol.detect_kind(material['relPath'], head=head)
+            except Exception:
+                kind = material['kind']
         items.append({
-            'id': material['id'], 'relPath': material['relPath'], 'kind': material['kind'],
+            'id': material['id'], 'relPath': material['relPath'], 'kind': kind,
             'path': str(path) if path else '', 'factCount': fact_count,
+            'size': int(material.get('size') or 0),
             'modules': list(coverage.get('modules') or []),
             # 只有完全成功（success）且已有事实的材料才复用；partial 视为可重试，重新解析
             'reusable': (not force) and material['parseState'] == 'success' and fact_count > 0,
@@ -262,22 +672,127 @@ def _scan_write(conn, owner_id, run_id, task_id, item, result):
             'error': result.error or ''}
 
 
+def _collect_pool_result(owner_id, run_id, task_id, item, parse_futures):
+    """主线程收集池内解析结果（V2-10）：按登记顺序、单文件等待超时、迟到结果丢弃。
+
+    * 等待按 0.5s 短片轮询（总时长 ≤ protocol.PARSE_TIMEOUT_SECONDS）：**本函数不阻塞
+      取消判定**——轮询期间每片都回到主线程，`runner.stage()/content_tx()` 的事务内
+      取消检查照常执行；但「取消在多长时间内生效」由**当前文件的解析速度**决定：
+      若排在前面的文件仍在解析，主线程会一直等到它的结果或单文件超时（最坏 ≤120s）
+      才推进到取消检查点（需求 §5.7：执行中的 worker 让其完成当前文件）。
+    * 超时 → 该文件经 content_tx 标 failed（原因「解析超时」）并清空既有事实；
+      **迟到的解析结果一律丢弃、不再落库**（防重复 facts），需要内容走单文件重试。
+    * worker 异常（含适配器返回 None 等契约外返回值在后处理期抛出的异常，如
+      AttributeError）→ 该文件经 content_tx 标 failed 并清空既有事实（与超时路径同口径），
+      **只影响该文件、不传染其他文件、不杀死 run**（G25c）。
+    """
+    future = parse_futures[item['id']]
+    deadline = time.monotonic() + protocol.PARSE_TIMEOUT_SECONDS
+    result = None
+    timed_out = True
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            result = future.result(timeout=min(remaining, 0.5))
+            timed_out = False
+            break
+        except FutureTimeoutError:
+            continue
+        except Exception as exc:  # noqa: BLE001 - worker 异常只影响该文件（G25c）
+            # worker 内异常（注入失败/适配器契约外返回值触发的后处理异常等）：
+            # 与超时同口径落库——failed + 清空既有事实 + 原因含异常摘要。
+            return runner.content_tx(
+                owner_id, run_id,
+                lambda conn, item=item, exc=exc:
+                _scan_write_pool_failure(conn, owner_id, run_id, task_id, item, exc))
+    if timed_out:
+        return runner.content_tx(owner_id, run_id,
+                                 lambda conn, item=item:
+                                 _scan_write_timeout(conn, owner_id, run_id, task_id, item))
+    try:
+        outcome = runner.content_tx(owner_id, run_id,
+                                    lambda conn, item=item, result=result:
+                                    _scan_write(conn, owner_id, run_id, task_id, item, result))
+    except Exception as exc:  # noqa: BLE001 - 结果落库阶段的异常也只影响该文件
+        outcome = {'state': 'failed', 'facts': 0, 'modules': [],
+                   'error': '解析材料失败（%s）：%s' % (exc.__class__.__name__, exc)}
+    return outcome
+
+
+def _pool_failure_message(exc):
+    """worker 异常摘要（截断到既有 notes 长度口径，避免异常原文撑爆 coverage）。"""
+    detail = str(exc).replace('\n', ' ').strip()
+    if len(detail) > 300:
+        detail = detail[:300] + '…'
+    return ('解析失败（%s：%s）：该文件已按失败处理并清空事实，其余材料继续解析；'
+            '原因定位后可对该文件执行「重试解析」。' % (exc.__class__.__name__, detail))
+
+
+def _scan_write_pool_failure(conn, owner_id, run_id, task_id, item, exc):
+    """worker 异常的文件级落库（同一写事务内核对取消/fencing）：failed + 清空既有事实。
+
+    与超时路径同口径：清空既有事实（不保留旧 facts、不把失败当空内容继续），
+    failedSegments 留异常原因；迟到/无效结果永不落库。
+    """
+    runner.check_cancelled(conn, run_id, owner_id)
+    message = _pool_failure_message(exc)
+    store.replace_material_facts(conn, task_id, owner_id, item['id'], [])
+    coverage = {'modules': [],
+                'notes': [message],
+                'failedSegments': [{'kind': 'file',
+                                    'locator': {'kind': 'text', 'file': item['relPath']},
+                                    'reason': '解析失败（%s）' % exc.__class__.__name__}],
+                'factCount': 0}
+    store.update_material(conn, item['id'], owner_id, parse_state='failed', coverage=coverage,
+                          error='解析失败（%s）：%s' % (exc.__class__.__name__,
+                                                      str(exc).strip()[:120]))
+    return {'state': 'failed', 'facts': 0, 'modules': [],
+            'error': '解析失败（%s）：%s' % (exc.__class__.__name__, str(exc).strip()[:120])}
+
+
+def _scan_write_timeout(conn, owner_id, run_id, task_id, item):
+    """解析超时的落库（同一写事务内核对取消/fencing）：failed + 清空既有事实。
+
+    迟到结果永不落库：超时后不再读取该 future（结果随 executor 丢弃）；
+    清空既有事实与「失败不当空内容继续」口径一致（failedSegments 留超时原因）。
+    """
+    runner.check_cancelled(conn, run_id, owner_id)
+    message = ('解析超时（超过 %d 秒）：已放弃等待；该文件迟到的解析结果将被丢弃、'
+               '不再落库，如需内容请对该文件执行「重试解析」。' % protocol.PARSE_TIMEOUT_SECONDS)
+    store.replace_material_facts(conn, task_id, owner_id, item['id'], [])
+    coverage = {'modules': [],
+                'notes': [message],
+                'failedSegments': [{'kind': 'file',
+                                    'locator': {'kind': 'text', 'file': item['relPath']},
+                                    'reason': '解析超时'}],
+                'factCount': 0}
+    store.update_material(conn, item['id'], owner_id, parse_state='failed', coverage=coverage,
+                          error='解析超时')
+    return {'state': 'failed', 'facts': 0, 'modules': [], 'error': '解析超时'}
+
+
 # --- 候选校验与协议适配（确定性，不调用模型） -------------------------------------
 
 def _issue(code, field, message):
     return {'code': code, 'field': field, 'message': message}
 
 
-def verify_candidates(candidates, fact_ids):
+def verify_candidates(candidates, fact_ids, weak_fact_ids=None):
     """校验候选：证据引用、必填字段、类型枚举；剔除幻造引用并重算证据状态与默认决定。
 
     返回 (候选列表, 报告)。报告含 issues / droppedRefs / structural 计数与说明。
     证据状态只降不升：无证据 → insufficient；引用被剔除 → inferred；
     结构性问题不会保留 supported（避免“有依据”假象误导后续拟纳入）。
+    `weak_fact_ids`（V2-3）：LLM 兜底解析产物（module=llm-fallback）的 factId 集合——
+    证据命中任一弱证据事实的候选不得为 supported，一律降级 inferred 并默认暂缓（§9.1）。
     同一候选在不同阶段会被校验两次（逐批 + 合并后），完全相同的 issue 只保留一条。
     """
     known = {_text(item) for item in (fact_ids or []) if _text(item)}
-    out, report = [], {'issues': 0, 'droppedRefs': 0, 'structural': 0, 'notes': []}
+    weak = {str(item) for item in (weak_fact_ids or []) if _text(item)}
+    out, report = [], {'issues': 0, 'droppedRefs': 0, 'structural': 0,
+                       'fallbackDowngraded': 0, 'notes': []}
     for raw in candidates or []:
         if not isinstance(raw, dict):
             continue
@@ -370,6 +885,11 @@ def verify_candidates(candidates, fact_ids):
         if status not in protocol.EVIDENCE_STATUSES:
             status = 'inferred'
         has_structural = any(_text(item.get('code')) in _STRUCTURAL_CODES for item in issues)
+        refs = {ref for refs_list in (candidate.get('evidence') or {}).values()
+                for ref in (refs_list if isinstance(refs_list, list) else [])}
+        weak_hits = bool(refs & weak) if weak else False
+        if weak_hits and status == 'supported':
+            status = 'inferred'
         if not evidence and status != 'conflict':
             status = 'insufficient'
         if dropped and status != 'conflict':
@@ -377,6 +897,11 @@ def verify_candidates(candidates, fact_ids):
         if has_structural and status == 'supported':
             status = 'inferred'
         candidate['evidenceStatus'] = status
+        if weak_hits:
+            issues.append(_issue('LLM_FALLBACK_EVIDENCE', 'evidence',
+                                 '候选证据包含 LLM 兜底解析产物（弱证据，module=llm-fallback）：'
+                                 '一律按「推断待确认」处理并默认暂缓，不进入有依据初稿选择集'))
+            report['fallbackDowngraded'] += 1
         candidate['issues'] = issues[:40]
         candidate['decision'] = _text(candidate.get('decision')) or \
             protocol.default_decision(status, has_structural)
@@ -572,8 +1097,18 @@ def inherit_manual_exclusions(conn, owner_id, task_id, batch_id, items):
 
 # --- 生成：检索 → 对齐 → 抽象 → 校验 → 适配 ---------------------------------------
 
-def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
+def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode='auto'):
     """按冻结基线生成候选定义（只写任务侧候选，不创建本体）。
+
+    V2-8 / G23 断点续跑：
+    * 基线约束：重试沿用同一 scope revision 与材料基线——运行冻结基线与当前修订不一致
+      时直接失败（修改范围/材料不属于重试，须重新确认生成新批次）。
+    * 阶段检查点：retrieve/align（确定性阶段）产物按 modelFactIds 有序清单持久化；
+      LLM 阶段失败重试直接复用（不重算确定性阶段），清单中的事实缺失时自动降级为重算。
+    * 批次检查点：逐批落库 + 逐批持久化 done/failed；某批失败只标记该批，重试
+      （run-resume, resumeMode=auto）只跑失败批次，成功批次候选保留；resumeMode=abstract
+      表示复用确定性产物但重跑全部抽象批次。
+    * resume_mode='auto'（默认）按检查点续跑；'abstract' 强制重跑全部批次。
 
     返回运行摘要（含 usage / counts / definitionOrder / notes）；失败抛 PipelineError，
     已完成批次的候选与已解析材料保持可用。
@@ -582,83 +1117,252 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
     if not isinstance(provider, dict) or not provider.get('endpoint') or not provider.get('model'):
         raise PipelineError('尚未配置可用的 LLM 提供方，请先到「更多工具 → LLM 配置」添加')
     context = _tx(lambda conn: _generate_context(conn, owner_id, task_id, run_id))
-    scope, facts = context['scope'], context['facts']
+    scope, facts, task = context['scope'], context['facts'], context['task']
+    saved = (context['checkpoint'] or {}).get('generate') or {}
+    baseline = context['baseline'] or {}
     notes = []
+    # V2-3（G19）：LLM 兜底解析产物一律按弱证据处理——命中其证据的候选不得 supported。
+    weak_fact_ids = {str(fact.get('id')) for fact in facts
+                     if str(fact.get('module') or '') == 'llm-fallback'}
 
-    # 1) retrieve：本地检索（不调用模型）
-    label = protocol.GENERATE_STAGE_LABELS['retrieve']
-    runner.stage(owner_id, run_id, 'retrieve', label, {'done': 0, 'total': len(facts)})
-    index = retrieval.build_index(facts)
-    selection = retrieval.select_scope(facts, scope, index)
+    # 基线约束（G23）：重试沿用同一次范围/材料基线；修改范围或材料是重新生成。
+    if baseline.get('scopeRevision') is not None and \
+            int(baseline.get('scopeRevision')) != int(scope.get('revision') or 0):
+        raise PipelineError('范围已在生成后修改（基线 revision %s，当前 %s）：修改范围属于重新生成，'
+                            '请重新确认范围生成新批次，不能沿用旧批次重试。'
+                            % (baseline.get('scopeRevision'), scope.get('revision')))
+    if baseline.get('materialRevision') is not None and task is not None and \
+            int(baseline.get('materialRevision')) != int(task.get('materialRevision') or 0):
+        raise PipelineError('材料已在生成后变化（基线修订 %s，当前 %s）：请重新确认范围生成新批次。'
+                            % (baseline.get('materialRevision'), task.get('materialRevision')))
     by_id = {fact['id']: fact for fact in facts}
-    pool = [by_id[fact_id] for fact_id in selection['relevant'] + selection['related']
-            if fact_id in by_id]
-    if not pool:
-        raise PipelineError('没有可用于生成的事实：请先扫描材料并确认范围')
-    runner.stage(owner_id, run_id, 'retrieve', label,
-                 {'done': len(pool), 'total': len(pool), 'relevant': len(selection['relevant']),
-                  'related': len(selection['related']), 'excluded': len(selection['excluded'])})
 
-    # 2) align：同主体证据分组 + 同一片段哈希去重（重复副本不算独立佐证）
-    label = protocol.GENERATE_STAGE_LABELS['align']
-    runner.stage(owner_id, run_id, 'align', label, {'done': 0, 'total': len(pool)})
-    grouped = alignment.group_evidence(facts, selection['relevant'] + selection['related'])
-    seen_digest, model_facts = set(), []
-    for fact in pool:  # 保持“相关优先”顺序，重复片段只保留首个
-        digest = retrieval.snippet_digest(fact)
-        if digest in seen_digest:
-            continue
-        seen_digest.add(digest)
-        model_facts.append(fact)
-    truncated = max(0, len(model_facts) - MAX_MODEL_FACTS)
-    if truncated:
-        model_facts = model_facts[:MAX_MODEL_FACTS]
-        _note(notes, '事实总量超过单次生成上限 %d，按相关度优先保留前 %d 条，'
-                     '其余 %d 条未发送给模型（可缩小范围后重跑）。'
-                     % (MAX_MODEL_FACTS, len(model_facts), truncated))
-    _note(notes, '证据分组 %d 组，重复片段 %d 条只计一次佐证。'
-                 % (len(grouped['groups']), grouped['stats']['duplicates']))
-    runner.stage(owner_id, run_id, 'align', label,
-                 {'done': len(model_facts), 'total': len(model_facts),
-                  'groups': len(grouped['groups']), 'duplicates': grouped['stats']['duplicates']})
+    # 1)+2) retrieve/align：确定性阶段——优先复用已持久化产物，缺失时重算
+    label = protocol.GENERATE_STAGE_LABELS['retrieve']
+    saved_plan = saved.get('plan') if isinstance(saved.get('plan'), dict) else {}
+    plan_ids = [str(item) for item in (saved_plan.get('modelFactIds') or [])]
+    # 阶段检查点（V2-8）：auto 与 abstract 都复用已持久化的确定性产物（筛选/对齐不重算）；
+    # 两者只差在批次——auto 只补失败批，abstract 重跑全部抽象批。
+    plan_reusable = (plan_ids
+                     and int(saved_plan.get('scopeRevision') or -1) == int(scope.get('revision') or 0)
+                     and all(item in by_id for item in plan_ids))
+    if plan_reusable:
+        if resume_mode == 'abstract':
+            _note(notes, '从「抽象本体定义」阶段重试：复用上次运行持久化的筛选/对齐产物'
+                         '（%d 条事实，确定性阶段未重算），重跑全部 %d 个抽象批次。'
+                         % (len(saved_plan.get('modelFactIds') or []),
+                            -(-len(saved_plan.get('modelFactIds') or []) // protocol.LLM_BATCH_FACTS)))
+        model_facts = [by_id[item] for item in plan_ids if item in by_id]
+        relevant_n = int(saved_plan.get('relevant') or 0)
+        related_n = int(saved_plan.get('related') or 0)
+        excluded_n = int(saved_plan.get('excluded') or 0)
+        duplicates_n = int(saved_plan.get('duplicates') or 0)
+        groups_count = int(saved_plan.get('groups') or 0)
+        truncated = max(0, len(plan_ids) - MAX_MODEL_FACTS)
+        pool = model_facts
+        _note(notes, '复用上次运行持久化的筛选/对齐产物（%d 条事实、材料与范围基线一致），'
+                     '确定性阶段未重算。' % len(model_facts))
+        runner.stage(owner_id, run_id, 'retrieve', label,
+                     {'done': len(model_facts), 'total': len(model_facts),
+                      'relevant': relevant_n, 'related': related_n, 'excluded': excluded_n,
+                      'resumed': 1})
+        runner.stage(owner_id, run_id, 'align', protocol.GENERATE_STAGE_LABELS['align'],
+                     {'done': len(model_facts), 'total': len(model_facts),
+                      'groups': int(saved_plan.get('groups') or 0), 'duplicates': duplicates_n,
+                      'resumed': 1})
+    else:
+        runner.stage(owner_id, run_id, 'retrieve', label, {'done': 0, 'total': len(facts)})
+        index = retrieval.build_index(facts)
+        selection = retrieval.select_scope(facts, scope, index)
+        pool = [by_id[fact_id] for fact_id in selection['relevant'] + selection['related']
+                if fact_id in by_id]
+        if not pool:
+            raise PipelineError('没有可用于生成的事实：请先扫描材料并确认范围')
+        relevant_n, related_n = len(selection['relevant']), len(selection['related'])
+        excluded_n = len(selection['excluded'])
+        runner.stage(owner_id, run_id, 'retrieve', label,
+                     {'done': len(pool), 'total': len(pool), 'relevant': relevant_n,
+                      'related': related_n, 'excluded': excluded_n})
 
-    # 3) abstract：分批调用模型抽取，逐批落库（失败/取消时已完成批次保留）
+        # align：同主体证据分组 + 同一片段哈希去重（重复副本不算独立佐证）
+        label = protocol.GENERATE_STAGE_LABELS['align']
+        runner.stage(owner_id, run_id, 'align', label, {'done': 0, 'total': len(pool)})
+        grouped = alignment.group_evidence(facts, selection['relevant'] + selection['related'])
+        seen_digest, model_facts = set(), []
+        for fact in pool:  # 保持“相关优先”顺序，重复片段只保留首个
+            digest = retrieval.snippet_digest(fact)
+            if digest in seen_digest:
+                continue
+            seen_digest.add(digest)
+            model_facts.append(fact)
+        duplicates_n = grouped['stats']['duplicates']
+        groups_count = len(grouped['groups'])
+        truncated = max(0, len(model_facts) - MAX_MODEL_FACTS)
+        if truncated:
+            model_facts = model_facts[:MAX_MODEL_FACTS]
+            _note(notes, '事实总量超过单次生成上限 %d，按相关度优先保留前 %d 条，'
+                         '其余 %d 条未发送给模型（可缩小范围后重跑）。'
+                         % (MAX_MODEL_FACTS, len(model_facts), truncated))
+        _note(notes, '证据分组 %d 组，重复片段 %d 条只计一次佐证。'
+                     % (len(grouped['groups']), duplicates_n))
+        runner.stage(owner_id, run_id, 'align', label,
+                     {'done': len(model_facts), 'total': len(model_facts),
+                      'groups': len(grouped['groups']), 'duplicates': duplicates_n})
+
+    plan_snapshot = {
+        'modelFactIds': [str(fact.get('id')) for fact in model_facts],
+        'relevant': relevant_n, 'related': related_n, 'excluded': excluded_n,
+        'duplicates': duplicates_n, 'groups': groups_count,
+        'scopeRevision': int(scope.get('revision') or 0),
+        'materialRevision': int(task.get('materialRevision') or 0) if task else 0,
+    }
+
+    def _checkpoint(done_positions, failed_batches, extra=None):
+        payload = {'generate': {
+            'batchId': batch_id,
+            'scopeRevision': plan_snapshot['scopeRevision'],
+            'materialRevision': plan_snapshot['materialRevision'],
+            'plan': plan_snapshot,
+            'batches': {'size': protocol.LLM_BATCH_FACTS, 'total': len(batches),
+                        'done': sorted(done_positions), 'failed': failed_batches},
+        }}
+        if extra:
+            payload['generate'].update(extra)
+        return payload
+
+    # 3) abstract：分批调用模型抽取，逐批落库 + 逐批检查点（失败/取消时已完成批次保留）
     label = protocol.GENERATE_STAGE_LABELS['abstract']
     batches = [model_facts[start:start + protocol.LLM_BATCH_FACTS]
                for start in range(0, len(model_facts), protocol.LLM_BATCH_FACTS)]
     runner.stage(owner_id, run_id, 'abstract', label,
                  {'done': 0, 'total': len(batches), 'facts': len(model_facts)})
-    # 本批旧候选整批作废也是业务内容变更（R4-01）：同事务核对取消/执行权后再删
-    runner.content_tx(owner_id, run_id,
-                      lambda conn: store.delete_candidates_of_batch(conn, task_id, owner_id,
-                                                                    batch_id))
-    accumulated, errors = [], []
+    saved_batches = saved.get('batches') if isinstance(saved.get('batches'), dict) else {}
+    done_positions, failed_batches = set(), []
+    if plan_reusable and resume_mode != 'abstract' \
+            and int(saved_batches.get('total') or 0) == len(batches):
+        done_positions = {int(p) for p in (saved_batches.get('done') or [])
+                          if str(p).lstrip('-').isdigit() and 1 <= int(p) <= len(batches)}
+        failed_batches = [item for item in (saved_batches.get('failed') or [])
+                          if isinstance(item, dict)
+                          and 1 <= int(item.get('position') or 0) <= len(batches)]
+    else:
+        # 批次计划与上次不一致（重算/无检查点）：整批重来——先作废本批旧候选（R4-01，
+        # 同事务核对取消/执行权后再删）。
+        runner.content_tx(owner_id, run_id,
+                          lambda conn: store.delete_candidates_of_batch(conn, task_id, owner_id,
+                                                                        batch_id))
+    accumulated = []
+    if done_positions:
+        # 成功批次的候选已在库中（逐批落库）：载入为合并/校验的种子，绝不重跑这些批次
+        accumulated = list(_tx(lambda conn: store.all_candidates(conn, task_id, owner_id,
+                                                                batch_id=batch_id)))
+        if failed_batches:
+            _note(notes, '检测到上次失败的批次（%s），本次只重跑失败批次，成功批次候选保留。'
+                         % '、'.join(str(item.get('position')) for item in failed_batches))
     usage = _usage()
     rejected_total = 0
-    for position, batch in enumerate(batches, start=1):
-        result = llm.extract_candidates(provider, scope, batch)
+    # 批次级并发（2026-09-22）：批次之间无依赖，串行等待是纯浪费（实测 2 批 190 秒、
+    # 单批 57.7 秒）。池内并发调用模型，**主线程按批次序号逐个收集并落库**——
+    # facts/候选顺序与串行版完全一致（与 V2-10「解析并发、落库串行」同一确定性原则）。
+    # 批次日志（生成进度实时可观测）：追加式中文行，随每批 checkpoint 一并落库，
+    # 运行中轮询 run_view() 即可看到；上限 GENERATE_LOG_LIMIT（超限移除最早）。
+    # 续跑时先承接上次持久化的日志，重试不抹掉已完成的批次记录。
+    saved_log = saved.get('log') if isinstance(saved.get('log'), list) else []
+    batch_log = [str(item) for item in saved_log][-GENERATE_LOG_LIMIT:]
+    pending_batches = [(position, batch) for position, batch in enumerate(batches, start=1)
+                       if position not in done_positions]
+    for position, batch in pending_batches:
+        batch_log.append('批 %d/%d 开始抽取（%d 条事实）' % (position, len(batches), len(batch)))
+    if pending_batches:
+        # 抽取开跑前先落一次检查点：长抽取期间轮询即可看到本批次的开始行与已有 notes
+        _tx(lambda conn, done=set(done_positions), failed=list(failed_batches):
+            (runner.check_cancelled(conn, run_id, owner_id),
+             store.update_run(conn, run_id, owner_id,
+                              checkpoint=_checkpoint(done, failed,
+                                                     extra={'log': batch_log[-GENERATE_LOG_LIMIT:],
+                                                            'notes': list(notes)}),
+                              lease=runner.lease_of(owner_id, run_id) or None)))
+    for position, _batch in enumerate(batches, start=1):
+        if position in done_positions:
+            runner.stage(owner_id, run_id, 'abstract', label,
+                         {'done': position, 'total': len(batches), 'facts': len(model_facts),
+                          'candidates': len(accumulated), 'resumed': 1})
+    # 自适应并发调度（2026-09-22）：批次间无依赖，但 provider 有账号级 RPM 限流
+    # （实测 GLM：并发 2 稳定、4 路零星 429、16 路多数失败）——固定并发要么浪费
+    # 要么大批失败。调度器按结果动态调档（连续成功升一路、撞 429 降一路并冷却），
+    # 并在等待期间每 15 秒写心跳（waitingPosition/waitedSeconds），
+    # 解决「页面几分钟只显示处理中」；结果按批次序号返回，落库顺序与串行版一致。
+    def _flush_batch(position, result):
+        """批次完成即校验+落库+检查点（V2-8 逐批持久化；由调度器按前缀顺序回调）。
+
+        为什么必须在这里落库而不是等全部批次结束：池运行可能持续数分钟，中途取消或
+        服务被杀会让已成功批次结果全部丢失（实测 438 秒仍 candidates=0），
+        与「已完成批次候选各自提交、重试只补缺口」的承诺矛盾。
+        """
+        nonlocal rejected_total
+        verified = []      # 本批校验通过的候选（成功分支填充；失败批保持空）
         _add_usage(usage, result.get('usage'))
+        failed_batches[:] = [item for item in failed_batches
+                             if int(item.get('position') or 0) != position]
         if not result.get('ok'):
-            errors.append('第 %d 批抽取失败：%s' % (position, result.get('error') or '未知错误'))
+            failed_batches.append({'position': position,
+                                   'error': str(result.get('error') or '未知错误')[:400]})
+            batch_log.append('批 %d/%d 失败：%s'
+                             % (position, len(batches),
+                                str(result.get('error') or '未知错误')[:160]))
         else:
+            done_positions.add(position)
             rejected_total += int(result.get('rejectedRefs') or 0)
-            verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys())
+            split = result.get('split') if isinstance(result.get('split'), dict) else None
+            if split:
+                halves = split.get('halves') or [0, 0]
+                batch_log.append('批 %d 输出截断，已自动拆批重试（%d→%d+%d）'
+                                 % (position, int(split.get('from') or 0),
+                                    int(halves[0]), int(halves[1])))
+            verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys(),
+                                                  weak_fact_ids=weak_fact_ids)
             if verified:
                 accumulated.extend(verified)
-                # 候选是业务内容（R4-01）：同事务核对取消/执行权后再追加，
-                # 已取消/已被接管的旧 worker 在这里被拒绝，绝不污染新 attempt 的批次。
-                runner.content_tx(owner_id, run_id,
-                                  lambda conn, items=verified:
-                                  _append_candidates(conn, owner_id, task_id, batch_id, items))
+            batch_log.append('批 %d/%d 完成：候选 %d 个'
+                             % (position, len(batches), len(verified)))
+        # 候选写入与检查点必须**同一事务**提交：分成两个事务时，若在两者之间被杀/取消，
+        # `done` 未记录 → 该批重跑 → 候选双写（评审页出现重复项）。
+        # 同事务后二者同生共死：要么都写入（重试会跳过该批），要么都没写（重试重跑该批）。
+        # 取消/执行权核对由 content_tx 在同一写事务内完成（R4-01）。
+        def _flush_tx(conn):
+            if verified:
+                _append_candidates(conn, owner_id, task_id, batch_id, verified)
+            store.update_run(conn, run_id, owner_id,
+                             checkpoint=_checkpoint(set(done_positions), list(failed_batches),
+                                                    extra={'log': batch_log[-GENERATE_LOG_LIMIT:],
+                                                           'notes': list(notes)}),
+                             lease=runner.lease_of(owner_id, run_id) or None)
+        runner.content_tx(owner_id, run_id, _flush_tx)
         runner.stage(owner_id, run_id, 'abstract', label,
-                     {'done': position, 'total': len(batches), 'facts': len(model_facts),
-                      'candidates': len(accumulated)})
+                     {'done': len(done_positions), 'total': len(batches),
+                      'facts': len(model_facts), 'candidates': len(accumulated)})
+
+    _run_batches_adaptive(
+        owner_id, run_id, label, batches, pending_batches, provider, scope,
+        done_positions, accumulated, model_facts, on_result=_flush_batch)
+    errors = ['第 %d 批抽取失败：%s' % (item['position'], item.get('error') or '未知错误')
+              for item in failed_batches]
     for message in errors:
         _note(notes, message)
     if not accumulated:
         if errors:
-            raise PipelineError('全部批次抽取失败：%s' % errors[0])
+            raise PipelineError('全部批次抽取失败：%s；已完成批次候选保留，可「重试失败批次」。'
+                                % errors[0])
         raise PipelineError('模型未产出任何候选定义，请检查范围与材料后重试或更换模型')
+    if failed_batches:
+        # G23：某批失败只标记该批——成功批次候选保留，运行失败并给出失败入口；
+        # 重试（resumeMode=auto）只重跑失败批次。
+        first = failed_batches[0]
+        raise PipelineError('第 %d/%d 批抽取失败（%s）：其余 %d 批候选已保留，'
+                            '请在生成页「重试失败批次」只补跑失败批次。'
+                            % (first.get('position'), len(batches),
+                               first.get('error') or '未知错误',
+                               max(0, len(batches) - len(failed_batches))))
 
     # 跨批合并：同名同类型（属性还要求 dataType 一致）才合并，差异字段保留两侧
     aligned = alignment.align(accumulated)
@@ -668,7 +1372,8 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
     # 4) verify：证据引用 / 必填字段 / 类型枚举
     label = protocol.GENERATE_STAGE_LABELS['verify']
     runner.stage(owner_id, run_id, 'verify', label, {'done': 0, 'total': len(aligned['candidates'])})
-    verified, report = verify_candidates(aligned['candidates'], by_id.keys())
+    verified, report = verify_candidates(aligned['candidates'], by_id.keys(),
+                                         weak_fact_ids=weak_fact_ids)
     for message in report['notes']:
         _note(notes, message)
     runner.stage(owner_id, run_id, 'verify', label,
@@ -700,6 +1405,7 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
         'facts': {'total': len(facts), 'pool': len(pool), 'sent': len(model_facts),
                   'batches': len(batches), 'truncated': truncated},
         'stages': list(protocol.GENERATE_STAGES),
+        'resumedPlan': bool(plan_reusable),
         'candidates': len(final), 'counts': {'byType': _counts(final, 'type'),
                                              'byStatus': _counts(final, 'evidenceStatus'),
                                              'byDecision': _counts(final, 'decision')},
@@ -710,24 +1416,33 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider):
         'definitionOrder': adapted['definitionOrder'], 'notes': notes,
         'errors': errors, 'provider': _fingerprint(provider), 'usage': usage,
     }
-    checkpoint = {'generate': {'batch': batch_id, 'facts': summary['facts'],
-                               'counts': summary['counts'], 'issues': report['issues'],
-                               'droppedRefs': summary['droppedRefs'],
-                               'definitionOrder': adapted['definitionOrder'][:100],
-                               'truncatedOrder': max(0, len(adapted['definitionOrder']) - 100)}}
+    checkpoint = _checkpoint(done_positions, failed_batches, extra={
+        'facts': summary['facts'], 'counts': summary['counts'], 'issues': report['issues'],
+        'droppedRefs': summary['droppedRefs'],
+        'definitionOrder': adapted['definitionOrder'][:100],
+        'truncatedOrder': max(0, len(adapted['definitionOrder']) - 100),
+        # 成功收尾的最终检查点必须继续携带批次日志与 notes，
+        # 否则会把运行中逐批积累的 log 全部抹掉（B1 教训：logs 随 checkpoint 落库）。
+        'log': batch_log[-GENERATE_LOG_LIMIT:], 'notes': notes})
     _tx(lambda conn: store.update_run(conn, run_id, owner_id, usage=usage, checkpoint=checkpoint,
                                       lease=runner.lease_of(owner_id, run_id) or None))
     return summary
 
 
 def _generate_context(conn, owner_id, task_id, run_id):
-    """短事务：取消检查 + 任务/范围/事实快照（LLM 调用必须在事务外）。"""
+    """短事务：取消检查 + 任务/范围/事实/运行检查点快照（LLM 调用必须在事务外）。"""
     runner.check_cancelled(conn, run_id, owner_id)
-    if store.require_task(conn, task_id, owner_id) is None:
+    task_row = store.require_task(conn, task_id, owner_id)
+    if task_row is None:
         raise sto.NotFound('生成任务不存在')
-    return {'task': store.get_task(conn, task_id, owner_id),
+    run_row = store.get_run(conn, run_id, owner_id)
+    if run_row is None:
+        raise sto.NotFound('运行不存在')
+    return {'task': store.task_view(task_row),
             'scope': store.get_scope(conn, task_id, owner_id),
-            'facts': store.list_facts(conn, task_id, owner_id)}
+            'facts': store.list_facts(conn, task_id, owner_id),
+            'checkpoint': store._loads(run_row['checkpoint_json'] or '{}', {}),
+            'baseline': store._loads(run_row['baseline_json'] or '{}', {})}
 
 
 # --- 范围对话 ---------------------------------------------------------------------

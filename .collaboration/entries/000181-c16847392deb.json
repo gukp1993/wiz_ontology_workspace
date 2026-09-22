@@ -1,0 +1,26 @@
+{
+  "ticket": "5f5bdef7a1c14087922cfa34fecdccc3",
+  "task": "build-governance 生成进度实时可观测·前端（F1/F2/F3）",
+  "status": "implemented",
+  "summary": "进度页新增批次状态行（✓批N/✗批N：原因）与可折叠生成日志区（checkpoint.generate.log+notes，默认展开、折叠显最新一条、nextTick 自动滚底、上滚暂停吸附、空数据不渲染）；types.ts RunCheckpoint.generate 增可选 log/notes。仅改 BuildProgressPage.vue 与 types.ts 两文件，未动任何 .py 与其它 .vue，未提交 git。",
+  "decisions": [],
+  "verification": [
+    "cd frontend && npx vue-tsc --noEmit -p tsconfig.json → 0 错误",
+    "cd frontend && npm run build → 成功（19.1s，仅既有 chunk 警告）",
+    "node --import ./tests/ts_hooks.mjs tests/ontology_build_frontend.test.mjs → 通过 exit 0",
+    "node --import ./tests/ts_hooks.mjs tests/ontology_build_review_edit.test.mjs → 19/19 通过 exit 0"
+  ],
+  "next": [
+    "等后端 checkpoint.generate.log/notes 接线后浏览器联调真实数据",
+    "Codex 独立验收"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/需求说明_生成进度实时可观测_v1.md（主仓库未入本分支）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T03:27:44.998585+00:00",
+  "sequence": 181,
+  "filename": "000181-c16847392deb.json",
+  "record_hash": "1d1ba68e1ac70e6a6c9d4f3028efff46b762a8ba2ab6658e1186e22157839650",
+  "context_advanced": false
+}

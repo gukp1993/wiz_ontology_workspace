@@ -219,6 +219,11 @@ def _finish(user_id, run_id, state, error='', retryable=False):
     终态审计（第 5 轮报告 §4 要求的同类排查）：行已是终态时一律不改写——
     取消后 worker 再抛异常不会把 cancelled 覆盖成 failed，重复收尾幂等；
     「成功先提交、取消后到」由 request_cancel 的终态检查保证保持 succeeded。
+
+    任务阶段回退（V2-8 / G23 配套缺陷修复，08 §12.3）：generate 运行转入 failed
+    （或被 worker 在阶段边界察觉的 cancelled）时，任务若仍停在「生成中」则同一事务
+    回退为「确定范围」——与 request_cancel 的取消回退同一口径，任务列表不得在失败后
+    仍显示「生成中」。已写入的候选/事实保留，可从失败批次/阶段重试。
     """
     try:
         expected = lease_of(user_id, run_id)
@@ -231,9 +236,14 @@ def _finish(user_id, run_id, state, error='', retryable=False):
                 return
             if row['state'] in ('succeeded', 'failed', 'cancelled', 'interrupted'):
                 return
-            store.update_run(conn, run_id, user_id, state=state, error=error,
-                             retryable=retryable, cancel_requested=(state == 'cancelled'),
-                             lease=expected or None)
+            hit = store.update_run(conn, run_id, user_id, state=state, error=error,
+                                   retryable=retryable, cancel_requested=(state == 'cancelled'),
+                                   lease=expected or None)
+            if hit and state in ('failed', 'cancelled') and row['kind'] == 'generate':
+                task = store.require_task(conn, row['task_id'], user_id)
+                if task is not None and task['status'] == 'generating':
+                    store.touch_task(conn, row['task_id'], user_id, status='scope',
+                                     stage_label=protocol.TASK_STAGE_LABELS['scope'])
         with sto.write_tx() as tx:
             tx.run(body)
     except Exception:
@@ -329,15 +339,41 @@ def finish_success(user_id, run_id, usage=None):
         if row['kind'] != 'generate':
             return
         task = store.require_task(conn, row['task_id'], user_id)
-        if task is not None and task['status'] == 'generating':
+        if task is None:
+            return
+        if task['status'] == 'generating':
+            store.touch_task(conn, row['task_id'], user_id, status='review',
+                             stage_label=protocol.TASK_STAGE_LABELS['review'])
+            return
+        # V2-8：取消/失败曾把任务回退到「确定范围」，之后重试成功且本次运行基线
+        # 仍未过期（材料/范围修订与冻结基线一致）→ 恢复到「评审初稿」；基线已变
+        # （结果 stale）则保持 scope，由用户重新确认生成。
+        if task['status'] == 'scope' and _baseline_matches(conn, row, user_id, task):
             store.touch_task(conn, row['task_id'], user_id, status='review',
                              stage_label=protocol.TASK_STAGE_LABELS['review'])
     with sto.write_tx() as tx:
         tx.run(body)
 
 
+def _baseline_matches(conn, run_row, user_id, task_row):
+    """run 冻结基线与当前材料/范围修订是否一致（空基线按一致处理：测试种子/历史行）。"""
+    baseline = store._loads(run_row['baseline_json'] or '{}', {})
+    if not baseline:
+        return True
+    scope = store.get_scope(conn, run_row['task_id'], user_id)
+    if int(baseline.get('scopeRevision', -1)) != int(scope.get('revision') or 0):
+        return False
+    if int(baseline.get('materialRevision', -1)) != int(task_row['material_revision']):
+        return False
+    return True
+
+
 def request_cancel(user_id, run_id):
-    """请求取消：只置标记，不保证立即终止已发出的外部请求。"""
+    """请求取消：只置标记，不保证立即终止已发出的外部请求。
+
+    任务级语义（08 §12.3）：同一写事务内若任务处于 generating，回退为 scope
+    （确定范围）——任务列表不得在取消后仍显示「生成中」；已写入的候选/事实保留。
+    """
     def body(conn):
         row = store.get_run(conn, run_id, user_id)
         if row is None:
@@ -346,6 +382,10 @@ def request_cancel(user_id, run_id):
             return
         store.update_run(conn, run_id, user_id, cancel_requested=True, state='cancelled',
                          error='已取消', retryable=True)
+        task = store.require_task(conn, row['task_id'], user_id)
+        if task is not None and task['status'] == 'generating':
+            store.touch_task(conn, row['task_id'], user_id, status='scope',
+                             stage_label=protocol.TASK_STAGE_LABELS['scope'])
     with sto.write_tx() as tx:
         tx.run(body)
 

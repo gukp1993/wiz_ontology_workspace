@@ -1,0 +1,36 @@
+{
+  "ticket": "1e98f2cf858e4f0e8c45ef6ae960b922",
+  "task": "retrieve筛选优化-剖析与基准基建（codex/build-progress-log）",
+  "status": "implemented",
+  "summary": "R1/R3/R5/R7 剖析与基建交付：①新增 tests/retrieve_fixture.py（生产对齐合成夹具，默认 276k 条≈26 条/物料、四类 kind、五档长度、PRIMARY_SCOPE 弱词 85+hints 14 对齐 P2 扫描口径；纯标准库确定性，ruff 通过，不 import workbench）；②剖析报告 retrieve优化剖析报告_v1.md：基线=3dc51dc 快照（git show 导出仓库外加载，未改任何仓库文件），实测+外推——基线 build_index 占总耗时 96.7-98.8% 且呈幂指数≈2.0-2.4 膨胀（token 桶 fact_id not in bucket 线性查重随桶长线性增长），276k 外推 40-60 分钟与生产实测 40 分钟同量级吻合；优化后(retrieval.py@964493a) 276k 实测 45.29s（R3≤5min 达成）、峰值 RSS 919.6MB、texts 282.6MB 驻留未变（O1 未实施）。select 基线与优化版持平（合并正则≈逐词 in）；意外热点=依赖扩展全桶扫描二次项（select 13%→42% 随规模升）。③基准脚本 tests/benchmark_retrieve.py 已由实施线先期提交（d6ed223），本轮按写入归属未覆盖；发现其 --mode profile 空表缺陷（pstats 行带缩进致 startswith('ncalls') 恒假）与 --concurrency 占位缺口，留给脚本 owner。",
+  "decisions": [
+    "不覆盖在途线已提交的 tests/benchmark_retrieve.py 与等价金样（owner 归属）",
+    "剖析基线按需求锁定 3dc51dc 快照而非测量时 HEAD（HEAD 已前移但 retrieval.py 未再变，git diff 核实）",
+    "夹具 scope include 采用生产口吻长尾句（弱 gram 必须落在 include——select 第三循环只扫 include 弱词+hints，goal/relations 弱词被基线丢弃）",
+    "初轮矩阵部分 wall 点受并发残留干扰已识别，引用数字均经空机复测；RSS/profile 占比对争用不敏感沿用原矩阵"
+  ],
+  "verification": [
+    "ruff check tests/retrieve_fixture.py 通过（含 E4/E7/E9/F/B）",
+    "夹具自检：同 seed 确定性、分批==整建、分布符合设计（3000 条）",
+    "三方等价哨兵：inst==base 逐字节一致（计时副本可信）、head==base selection 逐字节一致（3 组 scope×2000 条）、head tokens 桶为空",
+    "关键 wall 点空机复测：base 20k index 9.1s（原 22.5s 判为干扰剔除）、base 40k 47.0s 双跑、head 276k 45.29s",
+    "幂律拟合 6 点：p≈2.01（残差包络 28-60 分钟区间）"
+  ],
+  "next": [
+    "脚本 owner：benchmark_retrieve.py profile 空表一行修复 + --concurrency 占位（V2-10 复用）",
+    "O1 单遍融合未实施——报告 §3.4/§6.4 已留对照基线（texts 282.6MB 驻留、双遍）",
+    "依赖扩展二次项（select 42.7s 中约半）为 O0-O3 未覆盖的后续算法轮次候选",
+    "剖析脚本现居 /tmp/prof（仓库外），是否入库由集成负责人/用户决定"
+  ],
+  "references": [
+    "worktree/build-governance/tests/retrieve_fixture.py",
+    "文档/需求/20260920_从物料自动构建本体/retrieve优化剖析报告_v1.md",
+    "worktree/build-governance/tests/benchmark_retrieve.py（在途线 d6ed223，未改动）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T04:35:04.133748+00:00",
+  "sequence": 183,
+  "filename": "000183-29b8b3b3c3ef.json",
+  "record_hash": "be25da2a2bb8a9e4108b67694c72e89e7251f11efde8525b0c88031fd304e3fe",
+  "context_advanced": true
+}

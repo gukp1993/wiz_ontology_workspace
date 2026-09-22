@@ -9,6 +9,16 @@
   `related` 并在 reasons 里说明与哪条事实重复。
 * 完全确定性：同一输入永远同一输出（不依赖时间、随机数、字典序以外的顺序）。
 
+性能（需求《retrieve 筛选算法优化》O0/O2/O3，行为保持）：
+* O0：`build_index` 默认**不再构建 token 倒排桶**（生成路径零消费的死工作），
+  `with_tokens=True` 参数化保留；`tokens` 键恒存在（空 dict），消费方形态不变。
+* O2：include/exclude/弱词/hints 词表分别编译**合并正则**（re.escape + 交替），
+  每条事实文本单趟扫描做**命中探测**；命中事实的展示词仍按原词表顺序、原
+  `term in text` 成员判定复算（合并正则的 findall 是非重叠匹配，与逐词成员判定
+  在重叠词上不等价——S1 语义边界），reasons 文本与优化前逐字一致。
+* O3：定级早停——include 命中即 relevant、否则 exclude 命中即 excluded；展示词按需
+  补齐（命中事实是少数）。
+
 范围词分级（保守口径）：
 * 强词 = 范围文本里整段英文/数字标识或整段中文（2–12 字）→ 命中 `include` 判 relevant。
 * 弱词 = 超长中文串切出的 2–3 字片段 → 只用于把事实标为 related 并给出更具体的理由，
@@ -31,6 +41,27 @@ WEAK_GRAM_MAX = 3
 DEPENDENT_PER_HIT = 5          # 每个 relevant 最多带出的同模块/同文件事实数
 _MAX_FIELD_CHARS = 400
 _MAX_DATA_ITEMS = 40
+
+# --- 词表合并正则（O2：命中探测单趟化） ----------------------------------------------
+
+def _merged_pattern(terms):
+    """词表 → 合并探测正则（仅判「是否存在命中」）；空词表返回 None。
+
+    * 逐词 re.escape 后交替连接：文本包含任一词 ⟺ search 命中（与逐词 `in` 探测
+      等价——交替匹配在任一词出现的位置必然命中，无命中时返回 None）。
+    * **不得**用 findall/match 结果直接拼 reasons：交替匹配是非重叠的，与逐词
+      `in` 成员判定在重叠词（text="abc"、词表 [ab, bc]）与词序上不等价（S1）。
+      命中事实的展示词一律回退 `_hits`（原词表顺序 + 原成员判定）复算。
+    """
+    terms = [term for term in (terms or []) if term]
+    if not terms:
+        return None
+    return re.compile('|'.join(re.escape(term) for term in terms))
+
+
+def _hits(terms, text):
+    """展示词收集：按词表顺序返回在文本中出现的词（原语义，供 reasons 拼接）。"""
+    return [term for term in terms if term and term in text]
 
 
 def _id_of(fact):
@@ -95,12 +126,16 @@ def index_tokens(text):
     return tokens
 
 
-def build_index(facts):
+def build_index(facts, with_tokens=False):
     """事实列表 → 本地检索索引。
 
     返回 {'modules': [...], 'tokens': {token: [factId]}, 'byKind': {kind: [factId]}, ...}；
     额外键（byModule/byFile/text/snippetHash/material/order）供 select_scope 与复核使用，
     全部按输入顺序稳定生成。
+
+    V2-10 后的性能口径（需求《retrieve 筛选算法优化》O0）：`with_tokens` 默认 False，
+    **跳过 token 倒排桶构建**（生成路径对该桶零消费，正则切分属死工作）；`tokens` 键
+    恒存在（空 dict），后续如出现消费方可用 `with_tokens=True` 参数化恢复。
     """
     modules = []
     tokens = {}
@@ -131,10 +166,12 @@ def build_index(facts):
         texts[fact_id] = text
         hashes[fact_id] = _snippet_hash(fact.get('snippet'))
         materials[fact_id] = str(fact.get('materialId') or '')
-        for token in index_tokens(' '.join([text, module, kind, file_name])):
-            bucket = tokens.setdefault(token, [])
-            if fact_id not in bucket:
-                bucket.append(fact_id)
+        if with_tokens:
+            # O0：默认跳过（生成路径零消费的死工作）。显式开启时行为与基线一致。
+            for token in index_tokens(' '.join([text, module, kind, file_name])):
+                bucket = tokens.setdefault(token, [])
+                if fact_id not in bucket:
+                    bucket.append(fact_id)
     return {'modules': modules, 'tokens': tokens, 'byKind': by_kind, 'byModule': by_module,
             'byFile': by_file, 'text': texts, 'snippetHash': hashes, 'material': materials,
             'order': order}
@@ -171,10 +208,6 @@ def scope_terms(text):
     return strong, weak
 
 
-def _hits(terms, text):
-    return [term for term in terms if term and term in text]
-
-
 def select_scope(facts, scope, index=None):
     """按范围文本裁决事实归属。
 
@@ -186,6 +219,11 @@ def select_scope(facts, scope, index=None):
       3. 其余 → 先做依赖扩展（与 relevant 同 module 或同 file，每个 relevant 最多 5 条）→ related。
       4. 仍未归类的 → related（保守保留，不丢材料）。
     排除项绝不因依赖扩展复活；文件名/扩展名不参与过滤。
+
+    性能（O2/O3，行为保持）：include/exclude/弱词/hints 词表分别编译合并正则，每条
+    事实文本单趟扫描做**命中探测**（早停：include 命中即定级 relevant，否则探测
+    exclude）；命中事实的展示词按原词表顺序经 `_hits` 复算（原 `term in text` 成员
+    判定），reasons 文本与基线实现逐字一致。
     """
     scope = scope if isinstance(scope, dict) else {}
     facts = [fact for fact in (facts or []) if isinstance(fact, dict) and _id_of(fact)]
@@ -195,6 +233,12 @@ def select_scope(facts, scope, index=None):
     hint_strong, _hint_weak = scope_terms(scope.get('goal'))
     relation_strong, _relation_weak = scope_terms(scope.get('relations'))
     hints = list(hint_strong) + list(relation_strong)
+
+    # O2：四个词表分别编译合并探测正则（空词表 → None，探测被跳过）
+    include_pattern = _merged_pattern(include_strong)
+    exclude_pattern = _merged_pattern(exclude_strong)
+    weak_pattern = _merged_pattern(include_weak)
+    hint_pattern = _merged_pattern(hints)
 
     contexts = {_id_of(fact): fact for fact in facts}
     texts = index.get('text') or {}
@@ -209,9 +253,9 @@ def select_scope(facts, scope, index=None):
     used_hash = {}
     for fact_id in order:
         text = texts.get(fact_id, '')
-        hit_include = _hits(include_strong, text)
-        hit_exclude = _hits(exclude_strong, text)
-        if hit_include:
+        # O3 早停：include 探测命中即定级 relevant（exclude 词仅在需要双命中注记时复算）
+        if include_pattern is not None and include_pattern.search(text):
+            hit_include = _hits(include_strong, text)
             digest = hashes.get(fact_id, '')
             if digest and digest in used_hash:
                 related.append(fact_id)
@@ -221,13 +265,16 @@ def select_scope(facts, scope, index=None):
                 continue
             if digest:
                 used_hash[digest] = fact_id
+            hit_exclude = (_hits(exclude_strong, text)
+                           if exclude_pattern is not None and exclude_pattern.search(text) else [])
             note = '命中纳入范围：%s' % '、'.join(hit_include[:5])
             if hit_exclude:
                 note += '；同时命中排除范围词（纳入优先，请人工确认）：%s' % '、'.join(hit_exclude[:5])
             relevant.append(fact_id)
             claimed[fact_id] = 'relevant'
             reasons[fact_id] = note
-        elif hit_exclude:
+        elif exclude_pattern is not None and exclude_pattern.search(text):
+            hit_exclude = _hits(exclude_strong, text)
             excluded.append(fact_id)
             claimed[fact_id] = 'excluded'
             reasons[fact_id] = '命中排除范围：%s' % '、'.join(hit_exclude[:5])
@@ -259,21 +306,25 @@ def select_scope(facts, scope, index=None):
                                      DEPENDENT_PER_HIT))
             taken += 1
 
-    # 其余事实：保守保留（不丢材料），理由区分是否与目标/关联描述弱相关
+    # 其余事实：保守保留（不丢材料）；弱词/hints 先合并正则探测任一命中（O3），
+    # 命中事实才按原词表顺序复算展示词（reasons 文本与基线逐字一致）。
     for fact_id in order:
         if fact_id in claimed:
             continue
         text = texts.get(fact_id, '')
-        weak_hits = _hits(include_weak, text)
-        hint_hits = _hits(hints, text)
+        weak_hits = (_hits(include_weak, text)
+                     if weak_pattern is not None and weak_pattern.search(text) else [])
         if weak_hits:
             reasons[fact_id] = ('范围描述的片段命中（保守保留，待人工确认）：%s'
                                 % '、'.join(weak_hits[:5]))
-        elif hint_hits:
-            reasons[fact_id] = ('命中建模目标/关联说明关键词（保守保留）：%s'
-                                % '、'.join(hint_hits[:5]))
         else:
-            reasons[fact_id] = '未命中范围关键词，保守保留（不丢材料）'
+            hint_hits = (_hits(hints, text)
+                         if hint_pattern is not None and hint_pattern.search(text) else [])
+            if hint_hits:
+                reasons[fact_id] = ('命中建模目标/关联说明关键词（保守保留）：%s'
+                                    % '、'.join(hint_hits[:5]))
+            else:
+                reasons[fact_id] = '未命中范围关键词，保守保留（不丢材料）'
         related.append(fact_id)
         claimed[fact_id] = 'related'
 

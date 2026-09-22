@@ -187,7 +187,8 @@ def scenario_cancel_between_content_and_finish():
     row = read_run(run_id)
     check(row['state'] == 'cancelled', '场景1 最终保持 cancelled（不被成功收尾覆盖）', row)
     check(int(row['cancel_requested'] or 0) == 1, '场景1 cancel_requested 保留（不被抹平）', row)
-    check(read_task(task_id)['status'] == 'generating', '场景1 任务阶段未被收尾推进（仍 generating）',
+    # 08 §12.3（fca1f2b 冻结）：取消时任务由 generating 回退 scope；收尾不得把它推到 review。
+    check(read_task(task_id)['status'] == 'scope', '场景1 取消回退 scope 且未被收尾推进（08 §12.3）',
           read_task(task_id))
     check(len(read_candidates(task_id, batch_id)) == 1, '场景1 已完成内容保留（1 条候选）',
           read_candidates(task_id, batch_id))

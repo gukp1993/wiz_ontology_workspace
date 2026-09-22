@@ -1,0 +1,30 @@
+{
+  "ticket": "4597e3d9ca554dda8e9e2f56ae463447",
+  "task": "三项增量实现完成（用户改回由 zcode 继续）+ 生成实测后台运行中",
+  "status": "implemented",
+  "summary": "用户改回由 zcode 完成。任务一三项增量代码完成并提交：fca1f2b（后端分组/分页/purge/取消回退+21 项测试）、37eae0b（前端后缀过滤/分组浏览/停止与级联确认+8 项测试）。契约 08 §12 于 9e66460 预先冻结。创智源生成实测后台运行中（jsonId 实测由后台子 agent 并行跑）。18881 未重启——等两个生成任务跑完再做集成重启与浏览器实测。",
+  "decisions": [
+    "分组口径：按 relPath 顶层目录聚合（folder=''=根目录），聚合恒加载，分组视图默认、平铺分页切换、详情弹层 100/页。",
+    "删除语义改为级联物理清理（任务行+11 张关联表+blob 文件），已交付本体草稿保留；文件删除在事务提交后进行且失败不回滚。",
+    "后缀过滤为前端选择时过滤（白名单归一：中文分号/顿号分隔、大小写、连续点），展示选中/上传/跳过计数。"
+  ],
+  "verification": [
+    "新增回归：materials_views 10/10、task_purge 11/11（含已交付本体保留、blob 文件删除、跨账号隔离）；upload_filter 8/8。",
+    "回归不退化：test_ontology_build、late_write、merge_refs、review_edit、ontology_build_frontend 全过；vue-tsc 0 错误、npm run build 通过。"
+  ],
+  "next": [
+    "等创智源（retrieve 27.6 万事实筛选中——试点规模校准的真实性能数据点）与 jsonId 两个生成完成后：重启 18881 加载新前端与后端，浏览器实测三项功能，再交 Codex 验收。",
+    "检索阶段性能建议作为规模校准专项数据点。"
+  ],
+  "references": [
+    "提交：fca1f2b（后端）、37eae0b（前端）；分支 codex/build-governance",
+    "契约：文档/接口文档/08-从物料自动构建本体接口.md §12（9e66460 冻结）",
+    "测试：tests/test_ontology_build_materials_views.py、tests/test_ontology_build_task_purge.py、tests/ontology_build_upload_filter.test.mjs"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T08:38:08.183946+00:00",
+  "sequence": 169,
+  "filename": "000169-27668660677a.json",
+  "record_hash": "7983d1ffc60924f01c2eee905a610a5a6227d9a0716671ce3cb32f8d82c3aa2c",
+  "context_advanced": false
+}

@@ -9,6 +9,7 @@
 """
 
 from workbench.ontology_build import delivery as delivery_domain
+from workbench.ontology_build import blacklist as blacklist_domain
 from workbench.ontology_build import materials as material_domain
 from workbench.ontology_build import protocol
 from workbench.ontology_build import review as review_domain
@@ -20,6 +21,37 @@ from workbench.storage import ontology_build as store
 _OPS = ('generate', 'scan', 'dialog')
 # provider 缺失时的统一可读文案（422 INVALID_STATE 的 message；对话端点写进 assistantError）
 NO_PROVIDER_MESSAGE = '尚未配置可用的 LLM 提供方：请到「更多工具 → LLM 配置」添加后再重试'
+
+# 解析器支持矩阵（08 §2.1/§12.7；需求《结构化格式解析支持_v1》§5）：静态支持矩阵，不查库。
+# 前 7 项 = 三级分派第①层专用解析器（kind → 后缀）；后 2 项 = 排除说明（硬/软黑名单），
+# locator 用 '—' 表示「不产出定位事实」。exts 一律含点小写，供能力页原样展示。
+# 调整解析支持时必须同步本表、protocol.detect_kind 与 parsers/__init__.py 的登记。
+PARSER_MATRIX = (
+    {'exts': ('.json', '.jsonld', '.jsonid'), 'label': '专用（json）',
+     'locator': 'JSON 路径 / 节点 @id', 'note': 'JSON-LD 语义模式（@graph 节点高质量事实）'},
+    {'exts': ('.jsonl', '.ndjson'), 'label': '专用（json 逐行）',
+     'locator': '行号+键路径', 'note': ''},
+    {'exts': ('.yaml', '.yml'), 'label': '专用（yaml）',
+     'locator': '键路径', 'note': 'PyYAML safe_load，与 JSON 同一遍历口径'},
+    {'exts': ('.properties',), 'label': '专用（properties）',
+     'locator': '行号', 'note': '\\uXXXX 按 Java 规范解码；编码复用既有探测链'},
+    {'exts': ('.csv', '.tsv'), 'label': '专用（csv）',
+     'locator': '行号+列统计', 'note': '>100 行采样并注记截断范围'},
+    {'exts': ('.ini', '.cfg', '.conf'), 'label': '专用（ini）',
+     'locator': '节+键路径', 'note': '重复节/解析错误进 failedSegments'},
+    {'exts': ('.toml',), 'label': '专用（toml 子集）',
+     'locator': '键路径', 'note': '多行字符串/日期时间/[[数组表]]/虚键不支持，逐条诚实降级'},
+    {'exts': ('.env*',), 'label': '硬黑名单排除',
+     'locator': '—', 'note': '凭据边界（G20），不可配置；不产出事实'},
+    {'exts': ('.parquet', '.proto', '.avro', '.msgpack'), 'label': '软黑名单/魔数排除',
+     'locator': '—', 'note': '二进制格式不可解析，如实报告，不进 LLM 兜底'},
+)
+
+
+def _parser_matrix():
+    """能力接口用的解析器支持矩阵（静态数据；列表化以免调用方改动元组）。"""
+    return [{'exts': list(item['exts']), 'label': item['label'],
+             'locator': item['locator'], 'note': item['note']} for item in PARSER_MATRIX]
 
 
 # ── 参数工具 ───────────────────────────────────────────────────────────────
@@ -104,6 +136,13 @@ def _run_task(owner_user_id, run_id, job):
 
 # ── GET ────────────────────────────────────────────────────────────────────
 
+def _ocr_capability():
+    """V2-2（G18）：OCR 可用性动态探测（pytesseract + Pillow + tesseract）。"""
+    from workbench.ontology_build.parsers import ocr_support
+    available, reason = ocr_support.ocr_status()
+    return {'available': available, 'reason': reason or 'OCR 已配置（本地 tesseract）'}
+
+
 def get_capabilities(query):
     from workbench import llm_providers
     provider = None
@@ -117,8 +156,23 @@ def get_capabilities(query):
                'model': provider.get('model', '')}
     return {
         'limits': protocol.LIMITS,
-        'ocr': {'available': False,
-                'reason': '未配置 OCR 服务；扫描页 PDF 将逐页报告失败，不假称解析成功'},
+        'ocr': _ocr_capability(),
+        # V2-4（08 §13）：黑名单三层枚举（硬层完整公开；软层为默认值，任务可覆盖）
+        'blacklist': {
+            'hard': {'exts': sorted(blacklist_domain.HARD_EXTS),
+                     'dirs': sorted(blacklist_domain.HARD_DIRS),
+                     'note': '安全边界，不可配置；任何白名单不能越过'},
+            'softDefaults': blacklist_domain.effective_soft_exts(None),
+        },
+        # V2-3（G19）：LLM 兜底解析限额与可用性（enabled=当前有默认提供方）
+        'llmFallback': {
+            'maxFiles': protocol.LLM_FALLBACK_MAX_FILES,
+            'maxBytes': protocol.LLM_FALLBACK_MAX_BYTES,
+            'sliceChars': protocol.LLM_FALLBACK_SLICE_CHARS,
+            'enabled': bool(ref),
+        },
+        # 结构化格式（08 §2.1/§12.7）：解析器支持矩阵，7 支持项 + 2 排除说明，静态数据
+        'parserMatrix': _parser_matrix(),
         'provider': ref,
         'parserVersion': protocol.PARSER_VERSION,
         'promptVersion': protocol.PROMPT_VERSION,
@@ -143,7 +197,7 @@ def get_task(query):
         detail = task_domain.get_task_detail(conn, task_id)
         detail['stale'] = task_domain.stale_for_task(conn, task_id, _owner())
         detail['capabilities'] = {'limits': protocol.LIMITS,
-                                  'ocrAvailable': False}
+                                  'ocrAvailable': _ocr_capability()['available']}
     return detail, 200
 
 
@@ -154,6 +208,24 @@ def get_materials(query):
         row = store.require_task(conn, task_id, owner_id)
         if row is None:
             raise sto.NotFound('生成任务不存在')
+        if 'view' in query and query['view'][0] == 'groups':
+            groups, total = store.list_material_groups(conn, task_id, owner_id)
+            return {'groups': groups, 'total': total,
+                    'revision': int(row['material_revision'])}, 200
+        if 'view' in query and query['view'][0] == 'filter':
+            # V2-4（08 §13）：被过滤文件报告——计数 + 清单 + 逐项命中规则（G20 可见性）。
+            return {'filter': store.filter_spec_view(row),
+                    'softDefaults': blacklist_domain.effective_soft_exts(None),
+                    'report': store.filter_report_view(row),
+                    'revision': int(row['material_revision'])}, 200
+        # folder 显式出现（含空串=根目录组）才过滤；不出现保持旧行为全量兼容
+        if 'folder' in query:
+            items, total = store.list_materials_page(
+                conn, task_id, owner_id, folder=query['folder'][0],
+                offset=_query_int(query, 'offset', default=0),
+                limit=_query_int(query, 'limit', default=100))
+            return {'items': items, 'total': total,
+                    'revision': int(row['material_revision'])}, 200
         items = store.list_materials(conn, task_id, owner_id)
     return {'items': items, 'revision': int(row['material_revision'])}, 200
 
@@ -258,7 +330,36 @@ def post_task_rename(payload):
         return {'task': tx.run(lambda conn: task_domain.rename_task(conn, task_id, name, revision))}, 200
 
 
+def post_task_filter(payload):
+    """任务级过滤设置（V2-4，08 §13）：软名单覆盖 + 自定义追加排除 + 后缀白名单。
+
+    * `revision` 是任务 token（同 build-task-rename，§0）：必填，缺失/空串 400，不匹配 409；
+    * `filter.softExts` 缺省/None = 用默认软名单；显式数组（含空数组）= 整体覆盖默认软名单；
+    * 后缀一律规范化为 '.ext' 小写形态；硬黑名单不受本设置影响（安全边界）。
+    """
+    task_id = _text(payload, 'taskId')
+    revision = _text(payload, 'revision', limit=80)
+    raw_filter = payload.get('filter')
+    if raw_filter is None:
+        raw_filter = {}
+    if not isinstance(raw_filter, dict):
+        raise ValueError('参数 filter 必须是对象')
+    spec = blacklist_domain.normalize_spec(raw_filter)
+    owner_id = _owner()
+    with sto.write_tx() as tx:
+        def body(conn):
+            row = store.require_task(conn, task_id, owner_id)
+            if row is None:
+                raise sto.NotFound('生成任务不存在')
+            store.touch_task(conn, task_id, owner_id, expected_revision=revision, status=None)
+            store.set_task_filter(conn, task_id, owner_id, spec)
+            return store.get_task(conn, task_id, owner_id)
+        task = tx.run(body)
+    return {'task': task, 'filter': spec}, 200
+
+
 def post_task_delete(payload):
+    # 08 §12.2：物理删除任务及全部关联行与 blob 文件；已创建的本体草稿不删除。
     task_id = _text(payload, 'taskId')
     confirm = _text(payload, 'confirmName', limit=160)
     owner_id = _owner()
@@ -269,13 +370,17 @@ def post_task_delete(payload):
                 raise sto.NotFound('生成任务不存在')
             if confirm.strip() != str(row['name']).strip():
                 raise ValueError('确认名称与任务名不一致，未删除')
-            store.soft_delete_task(conn, task_id, owner_id)
             delivery = store.get_delivery(conn, task_id, owner_id)
-            note = ''
-            if delivery:
-                note = '任务已删除，但已创建的本体草稿（%s）保留，不随任务删除；原始证据将不可用' % delivery['ontologyId']
-            return {'ok': True, 'note': note}
-        return tx.run(body), 200
+            counts, blob_paths = store.purge_task(conn, task_id, owner_id)
+            return counts, blob_paths, delivery
+        counts, blob_paths, delivery = tx.run(body)
+    cleaned = material_domain.delete_task_blob_files(blob_paths)
+    note = '已创建的本体草稿不随任务删除'
+    if delivery:
+        note += '；该任务此前交付的本体草稿（%s）保留' % delivery['ontologyId']
+    if cleaned['errors']:
+        note += '；%d 个物料文件删除失败（详见服务日志）' % len(cleaned['errors'])
+    return {'ok': True, 'deleted': counts, 'note': note}, 200
 
 
 # ── POST：上传与物料 ────────────────────────────────────────────────────────
@@ -285,13 +390,25 @@ def post_upload_init(payload):
     rel_path = _text(payload, 'relPath', limit=512)
     size = _int_arg(payload, 'size', low=1)
     owner_id = _owner()
-    with sto.write_tx() as tx:
-        def body(conn):
-            row = store.require_task(conn, task_id, owner_id)
-            if row is None:
-                raise sto.NotFound('生成任务不存在')
-            return material_domain.upload_init(conn, owner_id, task_id, rel_path, size)
-        return tx.run(body), 200
+    try:
+        with sto.write_tx() as tx:
+            def body(conn):
+                row = store.require_task(conn, task_id, owner_id)
+                if row is None:
+                    raise sto.NotFound('生成任务不存在')
+                return material_domain.upload_init(conn, owner_id, task_id, rel_path, size)
+            return tx.run(body), 200
+    except material_domain.Blacklisted as exc:
+        # V2-4（08 §13）：命中黑名单的上传在独立短事务里登记过滤事件（G20 可见性）——
+        # 主事务已回滚，事件不能写在被回滚的事务里；登记失败不改变 422 结论。
+        event = exc.event if isinstance(exc.event, dict) else {
+            'path': rel_path, 'layer': 'hard', 'rule': str(exc), 'size': 0}
+        try:
+            with sto.write_tx() as tx2:
+                tx2.run(lambda conn: store.append_filter_events(conn, task_id, owner_id, [event]))
+        except Exception:
+            pass
+        raise
 
 
 def post_upload_chunk(payload):
@@ -376,6 +493,8 @@ def post_scan(payload):
 def _start_scan(task_id, material_ids=None):
     owner_id = _owner()
     from workbench.ontology_build import pipeline
+    # V2-3：扫描可带 LLM 兜底解析——provider 缺失不阻断扫描（本地解析照常），仅跳过兜底。
+    provider = _current_provider()
     with sto.write_tx() as tx:
         def body(conn):
             row = store.require_task(conn, task_id, owner_id)
@@ -388,6 +507,12 @@ def _start_scan(task_id, material_ids=None):
                 raise _blocked([{'code': 'NO_MATERIAL', 'field': 'materials',
                                  'message': '没有可扫描的材料（至少需要一份未排除材料）'}])
             for material in materials:
+                if not material_ids and material['parseState'] == 'success' \
+                        and int((material.get('coverage') or {}).get('factCount') or 0) > 0:
+                    # 任务级扫描：已成功且内容未变的材料保留 success——run 内按内容哈希
+                    # 复用跳过（08 §4 / G25d「重新扫描仅解析未完成文件」；此前的整体
+                    # pending 重置使契约承诺的复用从未生效，属缺陷修复）。
+                    continue
                 store.update_material(conn, material['id'], owner_id, parse_state='pending', error='')
             run_id, _lease = store.create_run(conn, task_id, owner_id, 'scan',
                                               {'materialRevision': int(row['material_revision'])})
@@ -395,7 +520,8 @@ def _start_scan(task_id, material_ids=None):
                              stage_label='解析材料')
             return run_id, [m['id'] for m in materials]
         run_id, ids = tx.run(body)
-    _run_task(owner_id, run_id, lambda user, run: pipeline.run_scan(user, task_id, run))
+    _run_task(owner_id, run_id,
+              lambda user, run: pipeline.run_scan(user, task_id, run, provider=provider))
     return {'runId': run_id}, 200
 
 
@@ -424,6 +550,13 @@ def post_run_cancel(payload):
 def post_run_resume(payload):
     task_id = _text(payload, 'taskId')
     run_id = _text(payload, 'runId')
+    # V2-8（08 §5）：resumeMode 控制 generate 断点续跑粒度——
+    #   auto（默认）：按批次检查点只补跑失败批次，成功批次候选保留；
+    #   abstract：复用已持久化的确定性阶段产物（筛选/对齐），但重跑全部抽象批次。
+    # 非 generate 运行忽略该字段。
+    resume_mode = payload.get('resumeMode', 'auto')
+    if resume_mode not in ('auto', 'abstract'):
+        raise ValueError('参数 resumeMode 只能是 auto 或 abstract')
     owner_id = _owner()
     from workbench.ontology_build import pipeline
     with sto.write_tx() as tx:
@@ -444,18 +577,23 @@ def post_run_resume(payload):
         result = tx.run(body)
     kind = result['kind']
     if kind == 'generate':
-        return _resume_generate(owner_id, task_id, run_id, result['batchId']), 200
-    job = (lambda user, run: pipeline.run_scan(user, task_id, run)) if kind == 'scan' \
-        else (lambda user, run: pipeline.run_dialog(user, task_id, run, _provider_or_raise()))
-    _run_task(owner_id, run_id, job)
+        return _resume_generate(owner_id, task_id, run_id, result['batchId'], resume_mode), 200
+    if kind == 'scan':
+        scan_provider = _current_provider()
+        _run_task(owner_id, run_id,
+                  lambda user, run: pipeline.run_scan(user, task_id, run, provider=scan_provider))
+    else:
+        _run_task(owner_id, run_id,
+                  lambda user, run: pipeline.run_dialog(user, task_id, run, _provider_or_raise()))
     return {'runId': run_id}, 200
 
 
-def _resume_generate(owner_id, task_id, run_id, batch_id):
+def _resume_generate(owner_id, task_id, run_id, batch_id, resume_mode='auto'):
     provider = _provider_or_raise()
     from workbench.ontology_build import pipeline
     _run_task(owner_id, run_id,
-              lambda user, run: pipeline.run_generate(user, task_id, run, batch_id, provider))
+              lambda user, run: pipeline.run_generate(user, task_id, run, batch_id, provider,
+                                                      resume_mode=resume_mode))
     return {'runId': run_id}
 
 
