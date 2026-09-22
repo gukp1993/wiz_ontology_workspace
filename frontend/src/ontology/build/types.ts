@@ -198,6 +198,8 @@ export interface BuildLimits {
   zipExpandedBytes: number
   zipMaxEntries: number
   parseTimeoutSeconds: number
+  /** V2-10（G25）：扫描解析并发度（默认 min(8, CPU)，env 可覆盖） */
+  parseConcurrency: number
 }
 export interface OcrCapability { available: boolean; reason: string }
 export interface BuildProviderRef { id: string; name: string; model: string }

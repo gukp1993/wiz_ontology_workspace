@@ -241,6 +241,7 @@ async function submitDelete() {
         <div><dt>分片大小</dt><dd>{{ limitText(c => c.limits.chunkBytes) }}</dd></div>
         <div><dt>压缩包展开上限</dt><dd>{{ limitText(c => c.limits.zipExpandedBytes) }} · {{ caps.limits.zipMaxEntries }} 个条目</dd></div>
         <div><dt>单份材料解析超时</dt><dd>{{ caps.limits.parseTimeoutSeconds }} 秒</dd></div>
+        <div><dt>解析并发</dt><dd>{{ caps.limits.parseConcurrency }} 线程</dd></div>
         <div><dt>扫描页识别（OCR）</dt><dd :class="{ 'bt-warn-text': !caps.ocr.available }">{{ ocrText }}</dd></div>
         <div><dt>模型服务</dt><dd :class="{ 'bt-warn-text': !providerConfigured }">{{ providerText }}</dd></div>
         <div><dt>解析器 / 提示词版本</dt><dd>{{ caps.parserVersion }} / {{ caps.promptVersion }}</dd></div>
