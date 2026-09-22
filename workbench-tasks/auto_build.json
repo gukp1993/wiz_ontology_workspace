@@ -1,0 +1,16 @@
+{
+  "task": "auto-build-output-v3",
+  "owner": "zcode",
+  "role": "实施协调者（C）；Codex 独立验收",
+  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/auto_build",
+  "branch": "codex/auto_build",
+  "baseSha": "578acd7d47e2e457757e088110f2582ae261cbb0",
+  "headAtTakeover": "7dedc00f101acc6e10b1c058759867c25903af6e",
+  "port": 18890,
+  "dataRoot": "工作树根（data/workbench.sqlite3 + keys/wb-root.key，含真实数据与密钥副本，不可自动丢弃）",
+  "python": "system Python 3.9",
+  "scope": "文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md D00-D19",
+  "status": "merged_and_cleaned",
+  "updatedAt": "2026-09-22",
+  "notes": "默认开关关闭；只动本树；不合并 main、不更新主工作台；stop点=交Codex验收"
+}
