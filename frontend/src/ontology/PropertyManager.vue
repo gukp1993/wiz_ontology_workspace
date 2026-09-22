@@ -15,6 +15,11 @@
      共享引用属性（mg:sharedProperty）：表单只读 + 「打开共享定义」（就地切换为维护
        共享定义，带引用影响提示，原型 edit-shared）与「转为私有」（detachProperty，
        经 form-save 落盘）；「转为共享属性」（asShared）保留在更多设置中。
+     整表自动填写（T6 · O2，2026-09-22 改版）：默认无 AI 区；页头次要按钮「✦ 自动填写」
+       开 AssistPanel 侧栏抽屉（保存仍是主操作）；回填只写本地草稿，表单上方状态条提示
+       「已填写 N 项，尚未保存」+ 撤销本次填写 + 查看修改；绝不触发 touch/changed/form-save。
+       只读共享引用无入口；binding 层再加只读拒绝（原因进 refusals）。共享影响确认与
+       显式保存流程原样保留（保存时才走共享确认）。
      类型保护：数据类型下拉用 editorModel.dataTypeOptionsFor（常用四类 + 数组/结构体），
        已有 integer/dateTime 等精确类型打开再保存不改写；基础类型变化仅清理与旧类型
        绑定的配置（valueType/formatting/valueShape/decimalPlaces），与旧编辑器一致。 -->
@@ -24,8 +29,9 @@ import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
 import PropertyFormatting from './PropertyFormatting.vue'
 import AssistPanel from '../assist/AssistPanel.vue'
-import { propertyAssistBinding } from '../assist/propertyBinding'
-import type { AssistHostBinding } from '../assist/useAssistPanel'
+import { propertyAssistBinding, PROPERTY_ASSIST_READONLY_REASON, type PropertyAssistHostBinding } from '../assist/propertyBinding'
+import { defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
+import type { AutofillFillResponse } from '../assist/types'
 import { dataTypeOptionsFor } from './editorModel'
 import { makeProperty, effectiveProperty, localProperties, detachProperty, asShared, propertyDataType, setPropertyDataType, referencesOf } from './propertyModel'
 import { impactFingerprint, sharedImpactOf, type SharedImpact } from './dependencyModel'
@@ -161,6 +167,9 @@ async function runSave(mutate: () => void, after?: () => void) {
   })
   saving.value = false
   if (!r.ok) { error.value = r.message; return false }
+  // 已落盘：「已填写 N 项，尚未保存」状态随之结束；拒绝记录一并清空
+  resetAssistRound()
+  assistBinding.value?.resetRefusals()
   after?.(); return true
 }
 async function detach() {
@@ -174,43 +183,151 @@ async function toShared() {
   if (ok) { editingShared.value = false; initDraft() }  // 转为共享引用：表单切只读，定义已入共享库
 }
 
-// ── 辅助填写（T6 · O2，2026-09-21）：AI 建议只采纳进本地草稿，绝不自动保存 ──
-// 共享引用只读态（readonly）无入口；就地维护共享定义与共享属性库编辑面向 sharedProperty 场景。
-// 采纳本身不开共享影响确认：高影响确认仍只绑定「显式保存」（需求 11 指纹机制不变）。
+// ── 整表自动填写（T6 · O2，2026-09-22 改版）────────────────────────────────────
+// 回填只写本地草稿：绝不调用 touch/changed/form-save/commit-now；等待超过自动保存窗口也不落盘。
+// 共享引用只读态（readonly）无入口；binding 层再加只读拒绝（原因经 refusals 展示）。
+// 采纳语义已废除：生成结果直接回填，撤销单元 = 一次会话（宿主按引擎 snapshot 钩子对齐轮次）。
 const assistVisible = ref(false)
-const assistBinding = shallowRef<AssistHostBinding | null>(null)
+const assistBinding = shallowRef<PropertyAssistHostBinding | null>(null)
 const assistPanel = ref<InstanceType<typeof AssistPanel> | null>(null)
-let assistBaseline = '' // 面板对齐点（打开/采纳/撤销）的草稿 JSON：面板写入不算手改
+let assistBaseline = '' // 面板对齐点（打开/回填/撤销）的草稿 JSON：面板写入不算手改
+
+// 只读保护第二道：请求期只读 → fill 响应的 operations 全部转 unresolved（面板内如实展示原因）
+const injectedAssistApi = inject<AssistApi | null>('assist-api', null)
+const assistApi: AssistApi = (() => {
+  const real = injectedAssistApi ?? defaultAssistApi()
+  return {
+    context: body => real.context(body),
+    generate: async body => {
+      const resp = await real.generate(body)
+      if (body.mode === 'fill' && resp && typeof resp === 'object'
+        && (resp as { protocol?: unknown }).protocol === 'autofill/1' && readonly.value) {
+        const fill = resp as AutofillFillResponse
+        return {
+          ...fill,
+          operations: [],
+          unresolved: [...(fill.unresolved ?? []),
+            ...(fill.operations ?? []).map(op => ({ field: op.field, reason: PROPERTY_ASSIST_READONLY_REASON }))],
+        }
+      }
+      return resp
+    },
+  }
+})()
+
+// 宿主侧最近一轮（撤销单元）状态：已填 N 项 / 逐字段旧→新 / 可整轮撤销
+interface AssistChange { field: string; label: string; oldText: string; newText: string }
+const assistApplied = ref(0)
+const assistChanges = ref<AssistChange[]>([])
+const assistCanUndo = ref(false)
+const assistUndoHint = ref('')
+let assistRoundActive = false
+let assistRoundSnapshot: any = null
+const ASSIST_FIELDS: readonly (readonly [string, string])[] = [
+  ['label', '属性名称'], ['comment', '业务定义'], ['dataType', '数据类型'],
+  ['obsType', '观测值类型'], ['formatting', '显示格式'],
+]
+const assistFieldLabel = (f: string) => ASSIST_FIELDS.find(x => x[0] === f)?.[1] ?? f
+const assistRefusals = computed(() => assistBinding.value ? assistBinding.value.refusals.value : [])
+const assistBarText = computed(() => assistApplied.value > 0 ? `已填写 ${assistApplied.value} 项，尚未保存` : '')
+function fmtAssist(v: unknown): string {
+  return v === undefined || v === null || v === '' ? '（空）' : typeof v === 'object' ? JSON.stringify(v) : String(v)
+}
+function resetAssistRound() {
+  assistRoundActive = false
+  assistRoundSnapshot = null
+  assistApplied.value = 0
+  assistChanges.value = []
+  assistCanUndo.value = false
+  assistUndoHint.value = ''
+}
+/** 回填落笔后记账：以「实际变化」为准（拒绝/未变化的键不计入 N），起点快照取单元首次写入前 */
+function noteAssistWrite(before: Record<string, unknown>, after: Record<string, unknown>, preDraft: any) {
+  const changed = ASSIST_FIELDS.map(([f]) => f)
+    .filter(f => JSON.stringify(before[f] ?? null) !== JSON.stringify(after[f] ?? null))
+  if (!changed.length) return
+  if (!assistRoundActive) {
+    assistRoundActive = true
+    assistRoundSnapshot = preDraft ? clone(preDraft) : null // 写入前的草稿（与引擎单元快照同一内容）
+    assistApplied.value = 0
+    assistChanges.value = []
+    assistCanUndo.value = true
+    assistUndoHint.value = ''
+  }
+  for (const f of changed) {
+    const prev = assistChanges.value.find(c => c.field === f)
+    const oldText = prev ? prev.oldText : fmtAssist(before[f])
+    assistChanges.value = assistChanges.value.filter(c => c.field !== f)
+      .concat({ field: f, label: assistFieldLabel(f), oldText, newText: fmtAssist(after[f]) })
+  }
+  assistApplied.value = assistChanges.value.length
+  assistBaseline = JSON.stringify(draft.value)
+}
 const assistTargetKind = computed<'property' | 'sharedProperty'>(() => (editingShared.value || props.kind === 'shared') ? 'sharedProperty' : 'property')
 const assistTargetId = computed(() => editingShared.value ? sharedRefId.value : props.propertyId) // 新建为空串：后端按「新建属性定义/共享属性定义」出标题
-function buildAssistBinding(): AssistHostBinding {
+function buildAssistBinding(): PropertyAssistHostBinding {
   const inner = propertyAssistBinding({
     draft: () => draft.value,
     ontologyId: assistOntologyId,
     targetKind: assistTargetKind.value,
     targetId: assistTargetId.value,
-    isTimeSeries: () => selectedType.value === 'timeSeries',
+    writable: () => !readonly.value, // 共享引用只读态：binding 层拒绝写入并记录原因
     setType: setRange,          // 与「数据类型」下拉同一写路径，类型联动保持一致
     setObsType: setObservation, // 与「观测值类型」下拉同一写路径
   })
   return {
     ...inner,
-    apply: values => { inner.apply(values); assistBaseline = JSON.stringify(draft.value) },
+    snapshot: () => {
+      const snap = inner.snapshot()
+      // 引擎在新撤销单元首次写入前调用：宿主轮次在此对齐（重新发起填写 = 新单元，只保留最近一轮）
+      if (assistRoundActive) resetAssistRound()
+      return snap
+    },
+    applyDraft: next => {
+      const before = inner.draft()
+      const preDraft = draft.value ? clone(draft.value) : null
+      inner.applyDraft(next)
+      noteAssistWrite(before, inner.draft(), preDraft)
+    },
+    apply: values => {
+      const before = inner.draft()
+      const preDraft = draft.value ? clone(draft.value) : null
+      inner.apply(values)
+      noteAssistWrite(before, inner.draft(), preDraft)
+    },
     restore: snap => { inner.restore(snap); assistBaseline = JSON.stringify(draft.value) },
   }
 }
 function openAssist() {
+  if (readonly.value) return // 只读共享引用不提供可写入口
   assistBaseline = JSON.stringify(draft.value)
   assistBinding.value = buildAssistBinding() // 新 binding 对象：面板 watch 到变化即整卡重置并重取上下文
   assistVisible.value = true
 }
 function closeAssist() { assistVisible.value = false }
-function toggleAssist() { assistVisible.value ? closeAssist() : openAssist() }
-// 转为共享后表单整体变只读：收起面板，避免只读态残留可写建议入口
+function toggleAssist() {
+  if (readonly.value) return
+  if (!assistVisible.value) { openAssist(); return }
+  // 已挂载：抽屉收起态重新展开（保留会话与输入）；展开态交面板关闭（emit close → closeAssist）
+  assistPanel.value?.toggle()
+}
+function undoAssist() {
+  if (!assistCanUndo.value || assistRoundSnapshot === null) return false
+  assistBinding.value?.restore(assistRoundSnapshot) // wrapper 内更新 assistBaseline
+  resetAssistRound()
+  return true
+}
+// 转为共享后表单整体变只读：收起面板，避免只读态残留可写入口
 watch(readonly, r => { if (r) closeAssist() })
-// 面板写入（apply/restore）以外的草稿变化都算手改：通知面板使结果过期、解除撤销保护
+// 面板写入（apply/applyDraft/restore）以外的草稿变化都算手改：通知面板作废在途请求并禁整轮撤销
 watch(() => (draft.value ? JSON.stringify(draft.value) : ''), json => {
-  if (assistVisible.value && json !== assistBaseline) assistPanel.value?.notifyDraftChanged()
+  if (assistVisible.value && json !== assistBaseline) {
+    assistPanel.value?.notifyDraftChanged()
+    if (assistCanUndo.value) {
+      assistCanUndo.value = false
+      assistUndoHint.value = '已保留你的手动修改，本次自动填写不可直接撤销。'
+    }
+  }
 })
 
 // ── 校验与保存 ──
@@ -265,14 +382,32 @@ async function doSave() {
 <section class="card detail-card prop-form">
   <!-- 头部返回控件走共享 EditorHead（2026-09-20 全局统一）：与其他编辑表单同一位置、同一写法 -->
   <EditorHead :canvas-return="props.canvasReturn" :back-label="'← ' + (kind === 'property' ? '返回对象' : '返回共享属性库')" @back-to-graph="emit('back-to-graph')" @close="emit('close')"/>
-  <!-- 辅助填写入口（T6）：共享引用只读态不提供；采纳只写本地草稿，保存仍由用户显式触发 -->
-  <div v-if="!readonly" class="assist-entry">
-    <button type="button" class="mini" @click="toggleAssist">{{ assistVisible ? '✦ 收起辅助填写' : '✦ 辅助填写' }}</button>
-  </div>
   <div class="detail-heading">
     <div><p class="prop-form-context">{{ kind === 'shared' || editingShared ? '共享属性库' : contextName }}</p><h2>{{ title }}</h2></div>
+    <!-- 整表自动填写入口（T6 改版）：页头次要按钮，保存仍是主操作；只读共享引用不提供 -->
+    <button v-if="!readonly" id="pm-assist-trigger" type="button" class="mini assist-trigger"
+            :aria-expanded="assistVisible ? 'true' : 'false'" aria-controls="pm-assist-drawer"
+            @click="toggleAssist">✦ 自动填写</button>
   </div>
   <p v-if="error" class="inline-error prop-error" role="alert">{{ error }}</p>
+
+  <!-- 回填状态条（面板外、表单上方，宿主渲染）：已填 N 项尚未保存 + 撤销 + 查看修改 + 拒绝原因 -->
+  <div v-if="assistBarText || assistUndoHint || assistRefusals.length" class="assist-statusbar" role="status">
+    <div class="assist-statusbar-row">
+      <span v-if="assistBarText" class="assist-statusbar-text">{{ assistBarText }}</span>
+      <button v-if="assistApplied > 0" type="button" class="mini" :disabled="!assistCanUndo" @click="undoAssist">撤销本次填写</button>
+      <details v-if="assistChanges.length" class="assist-changes">
+        <summary>查看修改</summary>
+        <ul>
+          <li v-for="c in assistChanges" :key="c.field"><strong>{{ c.label }}</strong>：{{ c.oldText }} → {{ c.newText }}</li>
+        </ul>
+      </details>
+    </div>
+    <p v-if="assistUndoHint" class="assist-statusbar-hint">{{ assistUndoHint }}</p>
+    <div v-if="assistRefusals.length" class="assist-refusals" role="alert">
+      <p v-for="(r, i) in assistRefusals" :key="i">未能填写「{{ assistFieldLabel(r.field) }}」：{{ r.reason }}</p>
+    </div>
+  </div>
 
   <!-- 共享引用：只读 + 打开共享定义 / 解除为私有（原型 editorView property 分支） -->
   <div v-if="readonly || editingShared" class="shared-notice">
@@ -314,8 +449,8 @@ async function doSave() {
     <span>只影响当前本体草稿；已发布版本不变。</span>
   </div>
 
-  <!-- 辅助填写面板（T3 状态机 + T6 宿主 binding）：采纳只改本地草稿，保存与影响确认仍由用户显式触发 -->
-  <AssistPanel v-if="assistVisible && assistBinding" ref="assistPanel" :binding="assistBinding" @close="closeAssist"/>
+  <!-- 自动填写抽屉（T3 状态机 + T6 宿主 binding）：回填只改本地草稿，保存与影响确认仍由用户显式触发 -->
+  <AssistPanel v-if="assistVisible && assistBinding" ref="assistPanel" :binding="assistBinding" :api="assistApi" trigger-id="pm-assist-trigger" @close="closeAssist"/>
 
   <!-- 影响确认（20260920 需求 11）：字段前后值 + 受影响对象 → 属性；勾选后才提交当前草稿。 -->
   <div v-if="impactOpen" class="modal-backdrop" @click.self="cancelImpact">
@@ -355,11 +490,20 @@ async function doSave() {
 <style scoped>
 .prop-form-context{margin:0 0 3px;font-size:14px;font-weight:600;color:var(--ink-2)}
 .prop-error{margin:0 0 12px}
-.assist-entry{margin:-4px 0 10px}
 .prop-fields{border:0;padding:0;margin:0;min-width:0}
 .prop-form :deep(.form-grid .editor-field.full){grid-column:1/-1}
 .prop-more button{margin-top:10px}
 .prop-footer .tools{flex-wrap:wrap}
+.assist-statusbar{border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);
+  padding:10px 14px;margin:0 0 12px;font-size:13px}
+.assist-statusbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.assist-statusbar-text{color:var(--blue-ink);font-weight:600}
+.assist-changes summary{cursor:pointer;color:var(--muted)}
+.assist-changes ul{margin:8px 0 0;padding-left:18px}
+.assist-changes li{margin:3px 0;overflow-wrap:anywhere}
+.assist-statusbar-hint{margin:8px 0 0;color:var(--muted)}
+.assist-refusals{margin:8px 0 0}
+.assist-refusals p{margin:3px 0;color:var(--danger);overflow-wrap:anywhere}
 .prop-impact{width:min(640px,94vw);max-height:88vh;overflow:auto}
 .prop-impact h2{margin:0 0 8px}
 .impact-table{width:100%;border-collapse:collapse;margin:12px 0}
