@@ -49,6 +49,10 @@ DIALOG_STAGE = 'dialog'
 DIALOG_STAGE_LABEL = '范围对话'
 MAX_MODEL_FACTS = protocol.LLM_BATCH_FACTS * 25   # 单次生成最多发给模型的事实数
 
+# 生成进度日志上限（2026-09-22 生成进度实时可观测）：批次日志行随每批 checkpoint 落库，
+# 超限移除最早（轮询响应体不随超长运行无界膨胀）。
+GENERATE_LOG_LIMIT = 500
+
 # 批次并发的落库等待预算：单批正常 30–90 秒（推理开销），provider timeout 之上留缓冲；
 # 超时只标记该批失败（迟到结果丢弃，与 V2-10 迟到丢弃同一原则），不阻塞其余批次。
 # 抽取调用的超时**按批大小动态计算**（2026-09-22 实测）：
@@ -114,8 +118,14 @@ _HEARTBEAT_SECONDS = 15
 
 
 def _run_batches_adaptive(owner_id, run_id, label, batches, pending, provider, scope,
-                          done_positions, accumulated, model_facts):
-    """批次抽取调度：自适应并发 + 心跳，按批次序号返回结果。
+                          done_positions, accumulated, model_facts, on_result=None):
+    """批次抽取调度：自适应并发 + 心跳 + **完成即按前缀顺序回调落库**。
+
+    on_result(position, result)：批次完成后立即回调（调用方校验证据 + 同事务落库 +
+    写检查点）。**不能等全部批次跑完再落库**——池运行可能持续数分钟，中途取消或
+    服务被杀会让已成功批次的结果全部丢失（实测：438 秒仍 candidates=0、done 为空，
+    恢复要全量重跑），违反 V2-8「已完成批次候选各自提交」承诺。
+    回调按**前缀顺序**触发（1,2,3… 连续完成才推进），落库顺序仍等于串行版。
 
     为什么自适应：实测 GLM-5.3-Flash 账号并发 2 稳定、4 路零星 429、16 路多数失败
     （并发能力上限 50 与账号 RPM 限流是两件事）；固定并发要么浪费要么大批失败。
@@ -131,6 +141,7 @@ def _run_batches_adaptive(owner_id, run_id, label, batches, pending, provider, s
     cap = max(ADAPTIVE_MIN_WORKERS, min(ADAPTIVE_MAX_WORKERS, int(protocol.LLM_CONCURRENCY)))
     pool = ThreadPoolExecutor(max_workers=cap, thread_name_prefix='build-extract')
     results = {}
+    next_flush = min((pos for pos, _batch in pending), default=1)   # 前缀刷写游标
     queued = list(pending)
     running = {}
     workers_wanted = min(cap, len(queued))
@@ -152,6 +163,17 @@ def _run_batches_adaptive(owner_id, run_id, label, batches, pending, provider, s
                     result = {'ok': False, 'candidates': [],
                               'error': '批次执行异常：%s' % type(exc).__name__}
                 results[position] = result
+                if on_result is not None:
+                    # 前缀刷写：只推进连续完成的位置，保证落库顺序 = 串行版
+                    while next_flush in results:
+                        flush_result = results.pop(next_flush)
+                        try:
+                            on_result(next_flush, flush_result)
+                        except runner.Cancelled:
+                            raise
+                        except Exception:  # noqa: BLE001 - 单批落库失败不拖垮其余批次
+                            pass
+                        next_flush += 1
                 if result.get('ok'):
                     success_streak += 1
                     if success_streak >= 2 and workers_wanted < cap:
@@ -192,19 +214,21 @@ def _extract_batch_with_split(provider, scope, batch, depth=0):
     """
     result = None
     call_timeout = _extract_call_timeout(provider, len(batch))
-    rate_limited_hits = 0
-    for attempt in range(3):
+    # 连接类错误（含挂起超时）只重试 1 次，且**下一次用减半超时**：
+    # 实测挂住的请求会吃满整个超时（3 次重试 = 3×260 = 787 秒，用户体感「卡死」），
+    # 而正常请求只要 17–60 秒——重试一次足以避开偶发挂起，不必无限等。
+    max_attempts = 2
+    for attempt in range(max_attempts):
         result = llm.extract_candidates(provider, scope, batch, timeout=call_timeout)
         if result.get('ok') or not _is_transient_llm_error(result.get('error')):
             break
         # 429 是账号级 RPM 限流（实测：并发 2 稳定、4+ 开始 429、16 路多数失败）——
         # 单批内重试会继续撞限流窗口，改为**立即返回**让批次调度器降挡重排。
         if _rate_limited(result.get('error')):
-            rate_limited_hits += 1
-            if rate_limited_hits >= 1:
-                return result
-        if attempt < 2:
-            time.sleep(1 + 2 * attempt)   # 连接类短退避
+            return result
+        if attempt + 1 < max_attempts:
+            call_timeout = max(60, call_timeout // 2)   # 重试用减半超时
+            time.sleep(1)
     if result.get('ok'):
         return result
     error = str(result.get('error') or '')
@@ -215,13 +239,18 @@ def _extract_batch_with_split(provider, scope, batch, depth=0):
     right = _extract_batch_with_split(provider, scope, batch[middle:], depth + 1)
     usage = _merge_usage(left.get('usage'), right.get('usage'))
     if not left.get('ok') and not right.get('ok'):
-        return {'ok': False, 'candidates': [], 'usage': usage,
-                'error': '截断后拆批重试仍失败：%s' % (left.get('error') or right.get('error') or '')}
-    return {'ok': True,
-            'candidates': list(left.get('candidates') or []) + list(right.get('candidates') or []),
-            'usage': usage,
-            'rejectedRefs': int(left.get('rejectedRefs') or 0) + int(right.get('rejectedRefs') or 0),
-            'notes': list(left.get('notes') or []) + list(right.get('notes') or [])}
+        merged = {'ok': False, 'candidates': [], 'usage': usage,
+                  'error': '截断后拆批重试仍失败：%s' % (left.get('error') or right.get('error') or '')}
+    else:
+        merged = {'ok': True,
+                  'candidates': list(left.get('candidates') or []) + list(right.get('candidates') or []),
+                  'usage': usage,
+                  'rejectedRefs': int(left.get('rejectedRefs') or 0) + int(right.get('rejectedRefs') or 0),
+                  'notes': list(left.get('notes') or []) + list(right.get('notes') or [])}
+    # 拆批信息只在最外层（depth=0）随结果上抛：批次日志据此记「已自动拆批重试」行。
+    if depth == 0:
+        merged['split'] = {'from': len(batch), 'halves': [middle, len(batch) - middle]}
+    return merged
 
 # 人工排除决定回放的有效窗口（D04）：store.list_batches 默认只取最近 20 批，直接用默认值会
 # 把更早批次里的人工否决静默丢掉（保护再次失效）。这里放宽到任务级不设限的实用上限
@@ -1235,8 +1264,24 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
     # 批次级并发（2026-09-22）：批次之间无依赖，串行等待是纯浪费（实测 2 批 190 秒、
     # 单批 57.7 秒）。池内并发调用模型，**主线程按批次序号逐个收集并落库**——
     # facts/候选顺序与串行版完全一致（与 V2-10「解析并发、落库串行」同一确定性原则）。
+    # 批次日志（生成进度实时可观测）：追加式中文行，随每批 checkpoint 一并落库，
+    # 运行中轮询 run_view() 即可看到；上限 GENERATE_LOG_LIMIT（超限移除最早）。
+    # 续跑时先承接上次持久化的日志，重试不抹掉已完成的批次记录。
+    saved_log = saved.get('log') if isinstance(saved.get('log'), list) else []
+    batch_log = [str(item) for item in saved_log][-GENERATE_LOG_LIMIT:]
     pending_batches = [(position, batch) for position, batch in enumerate(batches, start=1)
                        if position not in done_positions]
+    for position, batch in pending_batches:
+        batch_log.append('批 %d/%d 开始抽取（%d 条事实）' % (position, len(batches), len(batch)))
+    if pending_batches:
+        # 抽取开跑前先落一次检查点：长抽取期间轮询即可看到本批次的开始行与已有 notes
+        _tx(lambda conn, done=set(done_positions), failed=list(failed_batches):
+            (runner.check_cancelled(conn, run_id, owner_id),
+             store.update_run(conn, run_id, owner_id,
+                              checkpoint=_checkpoint(done, failed,
+                                                     extra={'log': batch_log[-GENERATE_LOG_LIMIT:],
+                                                            'notes': list(notes)}),
+                              lease=runner.lease_of(owner_id, run_id) or None)))
     for position, _batch in enumerate(batches, start=1):
         if position in done_positions:
             runner.stage(owner_id, run_id, 'abstract', label,
@@ -1247,43 +1292,59 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
     # 要么大批失败。调度器按结果动态调档（连续成功升一路、撞 429 降一路并冷却），
     # 并在等待期间每 15 秒写心跳（waitingPosition/waitedSeconds），
     # 解决「页面几分钟只显示处理中」；结果按批次序号返回，落库顺序与串行版一致。
-    adaptive_results = _run_batches_adaptive(
+    def _flush_batch(position, result):
+        """批次完成即校验+落库+检查点（V2-8 逐批持久化；由调度器按前缀顺序回调）。
+
+        为什么必须在这里落库而不是等全部批次结束：池运行可能持续数分钟，中途取消或
+        服务被杀会让已成功批次结果全部丢失（实测 438 秒仍 candidates=0），
+        与「已完成批次候选各自提交、重试只补缺口」的承诺矛盾。
+        """
+        nonlocal rejected_total
+        _add_usage(usage, result.get('usage'))
+        failed_batches[:] = [item for item in failed_batches
+                             if int(item.get('position') or 0) != position]
+        if not result.get('ok'):
+            failed_batches.append({'position': position,
+                                   'error': str(result.get('error') or '未知错误')[:400]})
+            batch_log.append('批 %d/%d 失败：%s'
+                             % (position, len(batches),
+                                str(result.get('error') or '未知错误')[:160]))
+        else:
+            done_positions.add(position)
+            rejected_total += int(result.get('rejectedRefs') or 0)
+            split = result.get('split') if isinstance(result.get('split'), dict) else None
+            if split:
+                halves = split.get('halves') or [0, 0]
+                batch_log.append('批 %d 输出截断，已自动拆批重试（%d→%d+%d）'
+                                 % (position, int(split.get('from') or 0),
+                                    int(halves[0]), int(halves[1])))
+            verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys(),
+                                                  weak_fact_ids=weak_fact_ids)
+            if verified:
+                accumulated.extend(verified)
+                # 候选是业务内容（R4-01）：同事务核对取消/执行权后再追加，
+                # 已取消/已被接管的旧 worker 在这里被拒绝，绝不污染新 attempt 的批次。
+                runner.content_tx(owner_id, run_id,
+                                  lambda conn, items=verified:
+                                  _append_candidates(conn, owner_id, task_id, batch_id, items))
+            batch_log.append('批 %d/%d 完成：候选 %d 个'
+                             % (position, len(batches), len(verified)))
+        # 批次检查点（V2-8）：成功/失败都持久化——崩溃或失败后重试只补缺口；
+        # 日志与 notes 随同一写事务落库（运行中轮询可见；成功收尾也不得抹掉）。
+        _tx(lambda conn, done=set(done_positions), failed=list(failed_batches):
+            (runner.check_cancelled(conn, run_id, owner_id),
+             store.update_run(conn, run_id, owner_id,
+                              checkpoint=_checkpoint(done, failed,
+                                                     extra={'log': batch_log[-GENERATE_LOG_LIMIT:],
+                                                            'notes': list(notes)}),
+                              lease=runner.lease_of(owner_id, run_id) or None)))
+        runner.stage(owner_id, run_id, 'abstract', label,
+                     {'done': len(done_positions), 'total': len(batches),
+                      'facts': len(model_facts), 'candidates': len(accumulated)})
+
+    _run_batches_adaptive(
         owner_id, run_id, label, batches, pending_batches, provider, scope,
-        done_positions, accumulated, model_facts)
-    try:
-        for position, _batch in pending_batches:
-            result = adaptive_results.get(position) or {
-                'ok': False, 'candidates': [], 'error': '批次未返回结果（可「重试失败批次」）'}
-            _add_usage(usage, result.get('usage'))
-            failed_batches = [item for item in failed_batches
-                              if int(item.get('position') or 0) != position]
-            if not result.get('ok'):
-                failed_batches.append({'position': position,
-                                       'error': str(result.get('error') or '未知错误')[:400]})
-            else:
-                done_positions.add(position)
-                rejected_total += int(result.get('rejectedRefs') or 0)
-                verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys(),
-                                                       weak_fact_ids=weak_fact_ids)
-                if verified:
-                    accumulated.extend(verified)
-                    # 候选是业务内容（R4-01）：同事务核对取消/执行权后再追加，
-                    # 已取消/已被接管的旧 worker 在这里被拒绝，绝不污染新 attempt 的批次。
-                    runner.content_tx(owner_id, run_id,
-                                      lambda conn, items=verified:
-                                      _append_candidates(conn, owner_id, task_id, batch_id, items))
-            # 批次检查点（V2-8）：成功/失败都持久化——崩溃或失败后重试只补缺口
-            _tx(lambda conn, done=set(done_positions), failed=list(failed_batches):
-                (runner.check_cancelled(conn, run_id, owner_id),
-                 store.update_run(conn, run_id, owner_id, checkpoint=_checkpoint(done, failed),
-                                  lease=runner.lease_of(owner_id, run_id) or None)))
-            runner.stage(owner_id, run_id, 'abstract', label,
-                         {'done': position, 'total': len(batches), 'facts': len(model_facts),
-                          'candidates': len(accumulated)})
-    finally:
-        # 抽取池在 _run_batches_adaptive 内已 shutdown(wait=False, cancel_futures=True)：
-        # 未开始的批次取消，执行中的不等待（迟到结果一律丢弃，与 V2-10 同口径）。
-        pass
+        done_positions, accumulated, model_facts, on_result=_flush_batch)
     errors = ['第 %d 批抽取失败：%s' % (item['position'], item.get('error') or '未知错误')
               for item in failed_batches]
     for message in errors:
@@ -1359,7 +1420,10 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
         'facts': summary['facts'], 'counts': summary['counts'], 'issues': report['issues'],
         'droppedRefs': summary['droppedRefs'],
         'definitionOrder': adapted['definitionOrder'][:100],
-        'truncatedOrder': max(0, len(adapted['definitionOrder']) - 100)})
+        'truncatedOrder': max(0, len(adapted['definitionOrder']) - 100),
+        # 成功收尾的最终检查点必须继续携带批次日志与 notes，
+        # 否则会把运行中逐批积累的 log 全部抹掉（B1 教训：logs 随 checkpoint 落库）。
+        'log': batch_log[-GENERATE_LOG_LIMIT:], 'notes': notes})
     _tx(lambda conn: store.update_run(conn, run_id, owner_id, usage=usage, checkpoint=checkpoint,
                                       lease=runner.lease_of(owner_id, run_id) or None))
     return summary

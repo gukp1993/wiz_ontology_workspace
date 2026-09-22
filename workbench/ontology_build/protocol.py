@@ -62,10 +62,11 @@ PARSE_CONCURRENCY = _limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', min(8, os.cpu
 # 抽取批次的并发度（2026-09-22）：批次之间无依赖（各自独立调模型、结果按序落库），
 # 串行等待是纯浪费——实测单批 57.7 秒、2 批 190 秒。并发默认 4，env 可覆盖；
 # 落库仍按批次序号串行（保 facts 顺序确定性，与 V2-10 解析并发同一原则）。
-# 默认 1（串行）：实测 provider 对多路并发大请求会限流（MiniMax 账号级 429）
-# 或显著变慢（单批 57 秒 → 121 秒+），并发反而让整批失败；默认串行最稳。
-# 需要加速时用 env WIZ_BUILD_LLM_CONCURRENCY 显式开启（如额度充足时设 3–4）。
-LLM_CONCURRENCY = _limit_from_env('WIZ_BUILD_LLM_CONCURRENCY', 1)
+# 默认 3：实测 provider 有账号级 RPM 限流（GLM 并发 2 稳定、4 路起零星 429、
+# 16 路多数失败；并发能力上限 50 与 RPM 是两件事）。调度器按结果自适应调档
+# （连续成功升一路、撞 429 降一路并冷却），故给一个中间起点让上探/回落都有空间。
+# env WIZ_BUILD_LLM_CONCURRENCY 可覆盖（设 1 = 纯串行）。
+LLM_CONCURRENCY = _limit_from_env('WIZ_BUILD_LLM_CONCURRENCY', 3)
 
 LIMITS = {
     'chunkBytes': CHUNK_BYTES,
