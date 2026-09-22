@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`295c6f95cd9f086e`
+上下文版本：`9039678af1be4717`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,18 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### fill_by_llm · zcode · 实施中
+
+时间：2026-09-22T16:31:14.506067+00:00；记录：`.collaboration/entries/000260-60d5ab674c95.json`
+
+按用户明确指令为 fill_by_llm 创建开发环境（仅建分支/工作树/登记，未开发未装依赖未启动）：分支 fill_by_llm 从最新已提交 main 2d27584 建立，工作树 /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/fill_by_llm，端口 18941（创建时实测空闲），WIZ_WORKBENCH_ROOT=工作树根。按 2026-09-22 规则全量随迁 main 数据：transfer backup 快照（31 表与 main 逐表一致，wb_credentials 4=4、wb_model_configs 2=2，解密探针 4/4 通过）+ keys/wb-root.key 副本（shasum 一致）+ ontology-build-blobs/tmp 随迁。登记在 .git/workbench-tasks/fill_by_llm.json，标注含真实数据不可自动丢弃。
+
+- 决定：分支名用用户指定的 fill_by_llm（用户明确命名优先于 codex/<短名> 默认）；端口选 18941：不在既有登记（18871/18872/18881/18882/18890/18921/18931/18951）中且实测无监听；快照校验以逐表行数对比+解密探针为准；transfer verify 仅传 --source 的数量对比项是参数语义误用，不作为缺陷记录
+- 验证：git worktree add 成功，工作树 HEAD=2d27584 与 main 一致；快照库 31 张表与 main 逐表行数零差异；凭据解密探针 4/4 通过；integrity_check/foreign_key_check 通过；端口 18941 创建时与登记后两次检查均无监听
+- 下一步：等待用户下达开发指令后在 fill_by_llm 工作树实施（首开发轮需先安装前端依赖/构建）；未开发未验收；不合并 main
+- 依据/文档：.git/workbench-tasks/fill_by_llm.json；worktree/fill_by_llm
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### auto_build · zcode · 实施中
 
@@ -143,16 +155,4 @@ fill 分支完成：protocol=2 门禁、内存会话（TTL30min/LRU200，绑定 
 - 验证：node --import ./tests/ts_hooks.mjs --test tests/test_autofill_state.mjs → 68/68 通过 exit=0；node --import ./tests/ts_hooks.mjs tests/assist_panel.test.mjs → 22/22 通过 exit=0；cd frontend && npx vue-tsc --noEmit → 0 错误（含未改动的宿主组件与 6 个 binding 适配器）；npx eslint src/assist 四个文件 → 0 错误；未跑 npm run build、未起服务（任务边界）
 - 下一步：旧套件待 T5–T8 重写（可加载，失败均为旧勾选断言）：assist_object_workspace(2/9)、assist_property_manager(旧checked API崩)、assist_property_sources(5/12)、assist_identity_link(8/16)、assist_action_bindings(崩)、assist_workflow(2/11)；object_sources/mapping_forms/source_config_retention/ui_protection_independent 实测仍绿；T1 落地后各适配器注入 codecs/applyDraft/contractInfo；真实 codec 归 G2/G3；交付未提交（任务规定不执行 git），待协调者审阅提交
 - 依据/文档：frontend/src/assist/formAutofill.ts（引擎）；frontend/src/assist/useAssistPanel.ts（门面）；frontend/src/assist/AssistPanel.vue（抽屉）；tests/test_autofill_state.mjs / tests/assist_panel.test.mjs；文档/接口文档/04-编排与LLM接口.md §6；文档/需求/20260922_整表自动填写交互/
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 整表自动填写T1表单契约（assist-fill-production） · zcode · 已实施，待验收
-
-时间：2026-09-22T10:25:54.601255+00:00；记录：`.collaboration/entries/000247-e08943f14e6f.json`
-
-T1 交付：contracts/forms/ 10 份契约（propertySource 含 4 个 draft.kind variants）；workbench/assist_forms.py loader（严格语法校验、canonical SHA-256 digest、查询 API、check_consistency、T2 冻结的 FormContract 适配类）；workbench/assist_forms_gen.py 确定性生成 formContracts.gen.ts（生成物入库）；tests/test_autofill_contracts.py 423 项断言全过。未改 assist_fields/schema/routes/server 与 frontend/src/assist 其余文件。
-
-- 决定：契约字段 id 与 assist_fields 注册表键一一对应（点路径即契约路径）；property 的 dataType+obsType 为扁平 enum+atomicGroup typeCore，非嵌套组；dataType 取业务名枚举（六基础类型+timeSeries 特例，对齐 assist_schema._select_allowed），JSON-LD 转换交 codec dataTypeTransform；formatting 为 codec 托管组（group+formattingCodec，无内嵌 fields），requires dataType；可选说明类字段 nullable+clearable，其余不可清空；新增注册标识：codec 6 个（dataTypeTransform/formattingCodec/lookupMatchRows/redisKeyParams/flowInputBindings/actionParamRows）与 refProviders 候选提供方 13 个（见契约文件）；按 T2 assist_ops 冻结的 FormContract 接口补适配（规范化 field_def、list_def 归一、schema_version/digest 属性），T2 可由 FixtureContract 切到真 loader
-- 验证：python3 tests/test_autofill_contracts.py 退出码 0：423 项断言全过（加载+digest 幂等、生成器两次同字节、漂移检测、注册表双向覆盖 13 场景、语法拒绝、sensitive 边界、FormContract）；python3 -m workbench.assist_forms_gen 连续两次运行字节相同；formContracts.gen.ts 过 vue-tsc 0 错误（剩余 4 错属 T3 在改文件）；ruff check 三个新 py 文件全过；workbench/tests 全量仅剩他人文件既有 5 错
-- 下一步：T2 接 assist_ops 到 assist_forms.FormContract（propertySource 需传 draft_kind）；T4 按 refProviders 提供方名装配候选集；T3 消费 formContracts.gen.ts；协调者统一提交；本记录不构成验收
-- 依据/文档：contracts/forms/ 全部 10 份契约；workbench/assist_forms.py；workbench/assist_forms_gen.py；frontend/src/assist/formContracts.gen.ts；tests/test_autofill_contracts.py
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
