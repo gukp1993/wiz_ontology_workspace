@@ -1,0 +1,52 @@
+{
+  "inventory": {
+    "warehouse": {
+      "code": "WH-SYN-01",
+      "name": "示例备件库房",
+      "area": "华东示例区",
+      "zones": [
+        {
+          "zoneCode": "Z-A",
+          "name": "示例 A 区",
+          "tempControlled": true
+        },
+        {
+          "zoneCode": "Z-B",
+          "name": "示例 B 区",
+          "tempControlled": false
+        }
+      ]
+    },
+    "config": {
+      "configId": "cfg-inventory-01",
+      "domain": "inventory",
+      "stockAlertThreshold": 20,
+      "recountCycleDays": 30,
+      "allowNegativeStock": false,
+      "defaultSupplierCode": "SUP-SYN-09",
+      "currencyCode": "SYN-CNY",
+      "defaultLocationCode": "Z-A-01"
+    },
+    "batch": {
+      "batchNo": "LOT-SYN-2210",
+      "materialCode": "MAT-SYN-CELL-280",
+      "qty": 120,
+      "receivedAt": "2026-02-10T09:30:00Z",
+      "locationCode": "Z-A-03",
+      "meterPointRef": {
+        "refFile": "metering_b.json",
+        "refNode": "urn:ess-sample:meter-point-m1",
+        "note": "跨文件引用：该批次结算电量取自 metering_b.json 的计量点 m1"
+      }
+    },
+    "settlement": {
+      "unitPrice": {
+        "value": 0.52,
+        "dataType": "number",
+        "unit": "CNY/kWh",
+        "note": "结算电价（数值型口径）——与 metering_b.json 展示口径构成 dataType 冲突"
+      },
+      "settleCycle": "monthly"
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "manifestVersion": 1,
+  "task": "D11（三类合成材料与人工金样格式）",
+  "requirement": "文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §11/§8",
+  "candidateProtocol": "workbench/ontology_build/batch_contracts.py normalized candidate（提交 87d1473）",
+  "locatorProtocol": "文档/接口文档/08-从物料自动构建本体接口.md §1.3",
+  "syntheticDeclaration": "本目录全部内容为合成的确定性示例数据，由 D11 生成，不含任何真实业务数据、真实域名、密钥或个人信息。",
+  "scaleNote": "样本①为合成对标（对标“原 8KB JSON/JSON-LD”量级），不是 D18 原始真实文件；原文件若后续提供须另行登记内容 hash。",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "74575f2f9de724e5ffb249ed5c31f1661ff22bcb1e94498a30a3a03580d08180",
+      "bytes": 4991,
+      "synthetic": true,
+      "purpose": "三类样本判定要点与金样格式说明"
+    },
+    {
+      "path": "golden/amplified_device_instances.golden.json",
+      "sha256": "642baf9b246ba62e70252c287be5e6309f1616eeeb1e34823c1390691b25eeed",
+      "bytes": 12012,
+      "synthetic": true,
+      "purpose": "金样：样本② 期望候选 + structure 程序化断言块"
+    },
+    {
+      "path": "golden/schema_conflict.golden.json",
+      "sha256": "bac4845e4c186ec993f23c8acc700bfe7deb29f3d185ac21e31c07aff34db2e0",
+      "bytes": 8196,
+      "synthetic": true,
+      "purpose": "金样：样本③ 期望候选 + mustNotMerge + expectedConflicts + 跨文件关系"
+    },
+    {
+      "path": "golden/simple_gateway_config.golden.json",
+      "sha256": "8294f02d1becdb4efcc353daf7881011fcd198c3b674c9065e3438bbc2ff3290",
+      "bytes": 5724,
+      "synthetic": true,
+      "purpose": "金样：样本①-b 期望候选"
+    },
+    {
+      "path": "golden/simple_station_topology.golden.json",
+      "sha256": "c48e558704c7c8897ab15629b5dcc2d62459078263e36b9175ab4d3ae74d9d11",
+      "bytes": 24513,
+      "synthetic": true,
+      "purpose": "金样：样本①-a 期望候选（对象4/属性19/链接3）"
+    },
+    {
+      "path": "samples/amplified/device_instances.json",
+      "sha256": "014d4a790e6edb3cf55ea4fa07d88ed74d90757c0a9159353ab3aa5cef652c95",
+      "bytes": 45491,
+      "synthetic": true,
+      "purpose": "样本②：60 实例逐级放大（稀有字段/单位 kW-W/异常枚举/晚出现结构，序列化 ≥40KB）"
+    },
+    {
+      "path": "samples/schema_conflict/dispatch_logic.sql",
+      "sha256": "4deff9efad94eb945ee2417b02ea0c9f95b931a94dd30a54ce9de7ce5946d3f1",
+      "bytes": 1201,
+      "synthetic": true,
+      "purpose": "样本③：文本片段（DDL + rule R-SYN-101 + action A-SYN-07），由解析器按 ddl/text 处理"
+    },
+    {
+      "path": "samples/schema_conflict/inventory_a.json",
+      "sha256": "bcd90b31cda8e10f4828495a5b3b50ace608a81b315636a6b9cfe9182555db6b",
+      "bytes": 1397,
+      "synthetic": true,
+      "purpose": "样本③：库存域 config（同名异主体之一）+ 跨文件引用 + 结算电价 number 口径"
+    },
+    {
+      "path": "samples/schema_conflict/metering_b.json",
+      "sha256": "67b780f718c5a2390abd2b080ec2b0e7f7e190513d124cb82b4a1ce4a1fd2cd4",
+      "bytes": 1078,
+      "synthetic": true,
+      "purpose": "样本③：计量域 config（同名异主体之二）+ 关口计量点 + 结算电价 text 口径（冲突侧）"
+    },
+    {
+      "path": "samples/simple/gateway_config.json",
+      "sha256": "e2f7abe88ca9a4bd326fac854e501ca0607d3215764bc46b6ef479b756cba60b",
+      "bytes": 4349,
+      "synthetic": true,
+      "purpose": "样本①-b：约 4KB 嵌套 JSON 配置（对象+数组，dataType 覆盖 text/number/boolean/array/struct）"
+    },
+    {
+      "path": "samples/simple/station_topology.jsonld",
+      "sha256": "10414c4ce0ab37757768563bd0573390eb9f9961253c09641d58287df6acbdaf",
+      "bytes": 7895,
+      "synthetic": true,
+      "purpose": "样本①-a：约 8KB JSON-LD（@graph 对象/属性/链接，储能通用示例，合成对标原 8KB 规模）"
+    }
+  ]
+}

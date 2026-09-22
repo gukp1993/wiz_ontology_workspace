@@ -1,0 +1,196 @@
+{
+  "gateway": {
+    "deviceName": "SYN-GW-100",
+    "deviceCode": "GW-SYN-0001",
+    "stationCode": "STN-SYN-DEMO",
+    "installLocation": "示例站综合屏柜 B 列",
+    "protocolSupport": [
+      "modbus-tcp",
+      "mqtt",
+      "local-synlink"
+    ],
+    "telemetry": {
+      "intervalSeconds": 5,
+      "batchSize": 32,
+      "maxQueueDepth": 512,
+      "heartbeatIntervalSeconds": 30,
+      "retryPolicy": {
+        "maxRetries": 3,
+        "backoffBaseMs": 500
+      }
+    },
+    "channels": [
+      {
+        "channelId": "ch-pcs-demo",
+        "name": "示例变流器通道",
+        "protocol": "modbus-tcp",
+        "endpoint": "127.0.0.1:15020",
+        "pollMs": 1000,
+        "timeoutMs": 2000,
+        "points": [
+          {
+            "pointCode": "socPercent",
+            "register": 40101,
+            "scale": 0.1,
+            "unit": "%"
+          },
+          {
+            "pointCode": "activePower",
+            "register": 40103,
+            "scale": 1,
+            "unit": "kW"
+          },
+          {
+            "pointCode": "gridVoltage",
+            "register": 40105,
+            "scale": 0.1,
+            "unit": "V"
+          },
+          {
+            "pointCode": "cabinetTemp",
+            "register": 40107,
+            "scale": 0.1,
+            "unit": "℃"
+          }
+        ]
+      },
+      {
+        "channelId": "ch-meter-demo",
+        "name": "示例电表通道",
+        "protocol": "mqtt",
+        "topicPrefix": "syn/demo/meter",
+        "points": [
+          {
+            "pointCode": "activeEnergyImport",
+            "scale": 0.01,
+            "unit": "kWh"
+          },
+          {
+            "pointCode": "reactiveEnergyImport",
+            "scale": 0.01,
+            "unit": "kvarh"
+          },
+          {
+            "pointCode": "tariffDisplay",
+            "scale": 1
+          }
+        ]
+      },
+      {
+        "channelId": "ch-thermal-demo",
+        "name": "示例温控通道",
+        "protocol": "local-synlink",
+        "endpoint": "127.0.0.1:15030",
+        "points": [
+          {
+            "pointCode": "coolantTemp",
+            "scale": 0.1,
+            "unit": "℃"
+          },
+          {
+            "pointCode": "pumpRunning",
+            "scale": 1
+          }
+        ]
+      }
+    ],
+    "localGuards": [
+      {
+        "guardCode": "soc-low-guard",
+        "enabled": true,
+        "thresholdPercent": 10
+      },
+      {
+        "guardCode": "temp-high-guard",
+        "enabled": true,
+        "thresholdCelsius": 55
+      },
+      {
+        "guardCode": "voltage-sag-guard",
+        "enabled": false,
+        "thresholdVolts": 350
+      }
+    ],
+    "timeSync": {
+      "mode": "syn-ntp-pool",
+      "maxDriftMs": 120,
+      "resyncMinutes": 15
+    },
+    "diagnostics": {
+      "logRotationDays": 14,
+      "uploadDiagnostics": false,
+      "crashBundleLimitMb": 20
+    },
+    "rebootWindow": {
+      "hour": 3,
+      "minute": 30,
+      "dayOfWeek": "SUN"
+    },
+    "firmware": {
+      "version": "1.8.2",
+      "channel": "stable",
+      "autoUpgrade": false
+    },
+    "maintenance": {
+      "serviceIntervalDays": 90,
+      "lastServiceAt": "2026-07-15T02:00:00Z",
+      "checklist": [
+        "fan-filter",
+        "terminal-torque",
+        "clock-drift"
+      ]
+    },
+    "onCall": {
+      "group": "示例值班组",
+      "notifyChannel": "syn-console",
+      "escalateAfterMinutes": 15
+    },
+    "pointAliases": [
+      {
+        "alias": "demo.soc",
+        "targetPointCode": "socPercent"
+      },
+      {
+        "alias": "demo.power",
+        "targetPointCode": "activePower"
+      },
+      {
+        "alias": "demo.energy",
+        "targetPointCode": "activeEnergyImport"
+      },
+      {
+        "alias": "demo.coolant",
+        "targetPointCode": "coolantTemp"
+      },
+      {
+        "alias": "demo.tariff",
+        "targetPointCode": "tariffDisplay"
+      }
+    ],
+    "userRoles": [
+      {
+        "role": "viewer",
+        "scopes": [
+          "read-telemetry"
+        ]
+      },
+      {
+        "role": "operator",
+        "scopes": [
+          "read-telemetry",
+          "ack-alarms"
+        ]
+      },
+      {
+        "role": "maintainer",
+        "scopes": [
+          "read-telemetry",
+          "ack-alarms",
+          "write-config"
+        ]
+      }
+    ],
+    "tlsEnabled": true,
+    "logLevel": "info"
+  }
+}

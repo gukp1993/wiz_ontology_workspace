@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "goldenFor": [
+    "samples/amplified/device_instances.json"
+  ],
+  "synthetic": true,
+  "notes": [
+    "样本②（逐级放大）：同一模式重复实例 60 台；放大分级与稀有结构必须保留，不同实例/单位/枚举/晚出现稀有字段不得折叠。",
+    "structure 块供 fixture 测试程序化断言样本结构；生成评测（D13）按 expectedCandidates 判定。",
+    "金样按语义身份描述期望，不绑定具体 factId；fields 为子集断言。"
+  ],
+  "minimumCounts": {
+    "object": 1,
+    "property": 18
+  },
+  "expectedCandidates": [
+    {
+      "key": "syn_inverter",
+      "type": "object",
+      "name": "合成逆变器",
+      "ownerKey": null,
+      "fields": {},
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "$.devices[*] 60 个同模式实例（逐级放大）",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*]"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.device_no",
+      "type": "property",
+      "name": "设备编号",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "text"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].deviceNo",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].deviceNo"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.model",
+      "type": "property",
+      "name": "设备型号",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "text"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].model",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].model"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.status",
+      "type": "property",
+      "name": "运行状态",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "text"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].status；枚举含异常值 UNKNOWN_3 与 MAINTENANCE_HOLD（个别实例），必须随证据保留、不得静默折叠进正常枚举",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].status"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.rated_power",
+      "type": "property",
+      "name": "额定功率",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].ratedPowerKw；额定功率存在 kW/W 两种单位形态（ratedPowerKw 多数实例、ratedPowerW 个别实例），按 dataType=number 归一为同一属性，单位差异必须保留在证据说明中",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].ratedPowerKw"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.capacity_kwh",
+      "type": "property",
+      "name": "额定容量",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].capacityKwh",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].capacityKwh"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.rated_current_a",
+      "type": "property",
+      "name": "额定电流",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].ratedCurrentA",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].ratedCurrentA"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.rated_frequency_hz",
+      "type": "property",
+      "name": "额定频率",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].ratedFrequencyHz",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].ratedFrequencyHz"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.ambient_temp_limit_celsius",
+      "type": "property",
+      "name": "环境温度上限",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].ambientTempLimitCelsius",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].ambientTempLimitCelsius"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.commissioned_at",
+      "type": "property",
+      "name": "投运时间",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "dateTime"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].commissionedAt",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].commissionedAt"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.comm_protocol",
+      "type": "property",
+      "name": "通信协议",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "text"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].comm.protocol",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].comm.protocol"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.cooling_mode",
+      "type": "property",
+      "name": "冷却方式",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "text"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].coolingMode",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].coolingMode"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.cabinet_ip_rating",
+      "type": "property",
+      "name": "柜体防护等级",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "text"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].cabinetIpRating",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].cabinetIpRating"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.leak_detection_ohm",
+      "type": "property",
+      "name": "绝缘监测电阻",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].leakDetectionOhm；晚出现字段：仅后半实例（第 41 台起）携带",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].leakDetectionOhm"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.harmonic_threshold_pct",
+      "type": "property",
+      "name": "谐波阈值",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].harmonicThresholdPct；晚出现字段：仅后半实例（第 41 台起）携带",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].harmonicThresholdPct"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.anti_islanding_mode",
+      "type": "property",
+      "name": "防孤岛模式",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "text"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].antiIslandingMode；晚出现字段：仅后半实例（第 41 台起）携带",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].antiIslandingMode"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.derating_curve_ref",
+      "type": "property",
+      "name": "降额曲线引用",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "text"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].deratingCurveRef；稀有字段：仅 SYN-INV-007 独有",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].deratingCurveRef"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.parallel_bus_id",
+      "type": "property",
+      "name": "并联母线标识",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "text"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].parallelBusId；稀有字段：仅 SYN-INV-033 独有",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].parallelBusId"
+        }
+      }
+    },
+    {
+      "key": "syn_inverter.transformer_tap_position",
+      "type": "property",
+      "name": "变压器分接档位",
+      "ownerKey": "syn_inverter",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/amplified/device_instances.json",
+        "identity": "重复实例字段 $.devices[*].transformerTapPosition；稀有字段：仅 SYN-INV-052 独有",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.devices[*].transformerTapPosition"
+        }
+      }
+    }
+  ],
+  "mustNotMerge": [],
+  "expectedConflicts": [],
+  "crossFileRelations": [],
+  "structure": {
+    "instancePath": "$.devices",
+    "instanceCount": 60,
+    "tier2FromIndex": 21,
+    "tier2Fields": [
+      "coolingMode",
+      "cabinetIpRating"
+    ],
+    "lateFields": [
+      "leakDetectionOhm",
+      "harmonicThresholdPct",
+      "antiIslandingMode"
+    ],
+    "lateFieldsFirstIndex": 41,
+    "rareFields": [
+      {
+        "field": "deratingCurveRef",
+        "deviceNo": "SYN-INV-007"
+      },
+      {
+        "field": "parallelBusId",
+        "deviceNo": "SYN-INV-033"
+      },
+      {
+        "field": "transformerTapPosition",
+        "deviceNo": "SYN-INV-052"
+      }
+    ],
+    "unitVariants": [
+      {
+        "field": "ratedPowerKw",
+        "variantField": "ratedPowerW",
+        "variantDeviceNos": [
+          "SYN-INV-015",
+          "SYN-INV-031",
+          "SYN-INV-047"
+        ]
+      }
+    ],
+    "abnormalEnumValues": [
+      {
+        "field": "status",
+        "value": "UNKNOWN_3",
+        "deviceNo": "SYN-INV-024"
+      },
+      {
+        "field": "status",
+        "value": "MAINTENANCE_HOLD",
+        "deviceNo": "SYN-INV-049"
+      }
+    ],
+    "normalStatusValues": [
+      "RUNNING",
+      "STANDBY",
+      "FAULT"
+    ],
+    "minSerializedBytes": 40960
+  }
+}

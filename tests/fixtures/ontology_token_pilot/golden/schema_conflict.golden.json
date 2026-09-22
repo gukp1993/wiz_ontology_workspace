@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "goldenFor": [
+    "samples/schema_conflict/inventory_a.json",
+    "samples/schema_conflict/metering_b.json",
+    "samples/schema_conflict/dispatch_logic.sql"
+  ],
+  "synthetic": true,
+  "notes": [
+    "样本③（大 Schema 混合）：同名异主体、跨文件关系、dataType 来源冲突、rule、action 一并覆盖。",
+    "同名异主体：两个 config 原始对象名相同但分属库存域与计量域两个主体，必须判定为两个对象候选，禁止按名称合并（mustNotMerge）。",
+    "冲突属性 meter_point.unit_price 的 fields 不作子集断言；期望产生 dataType 冲突标注（expectedConflicts），不得静默取任一侧。",
+    "dispatch_logic.sql 为文本片段（DDL/规则注释），由材料解析器按 ddl/text 事实处理，其定位器为 {kind:ddl,file,line,table,column} 形态。",
+    "金样按语义身份描述期望，不绑定具体 factId；fields 为子集断言。"
+  ],
+  "minimumCounts": {
+    "object": 4,
+    "property": 3,
+    "link": 1,
+    "rule": 1,
+    "action": 1
+  },
+  "expectedCandidates": [
+    {
+      "key": "inventory_config",
+      "type": "object",
+      "name": "库存配置",
+      "ownerKey": null,
+      "fields": {},
+      "evidence": {
+        "file": "samples/schema_conflict/inventory_a.json",
+        "identity": "$.inventory.config（库存域主体，原始对象名 config）",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.inventory.config"
+        }
+      }
+    },
+    {
+      "key": "metering_config",
+      "type": "object",
+      "name": "计量配置",
+      "ownerKey": null,
+      "fields": {},
+      "evidence": {
+        "file": "samples/schema_conflict/metering_b.json",
+        "identity": "$.metering.config（计量域主体，原始对象名同名 config）",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.metering.config"
+        }
+      }
+    },
+    {
+      "key": "inventory_batch",
+      "type": "object",
+      "name": "物料批次",
+      "ownerKey": null,
+      "fields": {},
+      "evidence": {
+        "file": "samples/schema_conflict/inventory_a.json",
+        "identity": "$.inventory.batch（含跨文件引用 meterPointRef）",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.inventory.batch"
+        }
+      }
+    },
+    {
+      "key": "meter_point",
+      "type": "object",
+      "name": "关口计量点",
+      "ownerKey": null,
+      "fields": {},
+      "evidence": {
+        "file": "samples/schema_conflict/metering_b.json",
+        "identity": "$.metering.points[0]（pointId=urn:ess-sample:meter-point-m1）",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.metering.points[0]"
+        }
+      }
+    },
+    {
+      "key": "inventory_config.stock_alert_threshold",
+      "type": "property",
+      "name": "库存告警阈值",
+      "ownerKey": "inventory_config",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/schema_conflict/inventory_a.json",
+        "identity": "$.inventory.config.stockAlertThreshold",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.inventory.config.stockAlertThreshold"
+        }
+      }
+    },
+    {
+      "key": "metering_config.poll_interval_ms",
+      "type": "property",
+      "name": "轮询间隔",
+      "ownerKey": "metering_config",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/schema_conflict/metering_b.json",
+        "identity": "$.metering.config.pollIntervalMs",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.metering.config.pollIntervalMs"
+        }
+      }
+    },
+    {
+      "key": "meter_point.reading_kwh",
+      "type": "property",
+      "name": "正向有功电能示值",
+      "ownerKey": "meter_point",
+      "fields": {
+        "dataType": "number"
+      },
+      "evidence": {
+        "file": "samples/schema_conflict/metering_b.json",
+        "identity": "$.metering.points[0].readingKwh",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.metering.points[0].readingKwh"
+        }
+      }
+    },
+    {
+      "key": "meter_point.unit_price",
+      "type": "property",
+      "name": "结算电价",
+      "ownerKey": "meter_point",
+      "fields": {},
+      "evidence": {
+        "file": "samples/schema_conflict/inventory_a.json",
+        "identity": "inventory_a.json 给出 number 口径（$.inventory.settlement.unitPrice.dataType），metering_b.json 给出 text 口径（$.metering.points[0].priceTag.dataType）；两处为同一结算电价语义",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "paths": [
+            "$.inventory.settlement.unitPrice.dataType",
+            "$.metering.points[0].priceTag.dataType"
+          ]
+        }
+      }
+    },
+    {
+      "key": "link.batch.settled_by_point",
+      "type": "link",
+      "name": "批次结算来源",
+      "ownerKey": null,
+      "fields": {
+        "sourceRef": "inventory_batch",
+        "targetRef": "meter_point",
+        "cardinality": {
+          "source": "one",
+          "target": "one"
+        }
+      },
+      "evidence": {
+        "file": "samples/schema_conflict/inventory_a.json",
+        "identity": "$.inventory.batch.meterPointRef 引用 metering_b.json 的 urn:ess-sample:meter-point-m1（跨文件关系）",
+        "locatorKind": "json",
+        "locatorHint": {
+          "kind": "json",
+          "path": "$.inventory.batch.meterPointRef"
+        }
+      }
+    },
+    {
+      "key": "rule.low_soc_charge_lock",
+      "type": "rule",
+      "name": "低电量充电闭锁",
+      "ownerKey": "battery_ess",
+      "fields": {},
+      "evidence": {
+        "file": "samples/schema_conflict/dispatch_logic.sql",
+        "identity": "dispatch_logic.sql 中 rule R-SYN-101 注释块（触发条件/执行内容/归属对象 battery_ess）",
+        "locatorKind": "ddl",
+        "locatorHint": {
+          "kind": "ddl",
+          "marker": "rule R-SYN-101"
+        }
+      }
+    },
+    {
+      "key": "action.notify_duty_shift",
+      "type": "action",
+      "name": "值班通知",
+      "ownerKey": null,
+      "fields": {},
+      "evidence": {
+        "file": "samples/schema_conflict/dispatch_logic.sql",
+        "identity": "dispatch_logic.sql 中 action A-SYN-07 注释块（触发时机/执行效果）",
+        "locatorKind": "ddl",
+        "locatorHint": {
+          "kind": "ddl",
+          "marker": "action A-SYN-07"
+        }
+      }
+    }
+  ],
+  "mustNotMerge": [
+    {
+      "keys": [
+        "inventory_config",
+        "metering_config"
+      ],
+      "rawName": "config",
+      "reason": "同名异主体：两个不同表的 config 对象（库存域 vs 计量域），金样判定为两个对象、不合并"
+    }
+  ],
+  "expectedConflicts": [
+    {
+      "id": "unit-price-dataType",
+      "field": "dataType",
+      "candidateKey": "meter_point.unit_price",
+      "sides": [
+        {
+          "source": "samples/schema_conflict/inventory_a.json",
+          "locator": "$.inventory.settlement.unitPrice.dataType",
+          "expect": "number",
+          "note": "结算口径（数值型）"
+        },
+        {
+          "source": "samples/schema_conflict/metering_b.json",
+          "locator": "$.metering.points[0].priceTag.dataType",
+          "expect": "text",
+          "note": "展示口径（含币种后缀文本）"
+        }
+      ],
+      "note": "两份材料对同一结算电价属性给出不同 dataType，期望候选保留 conflict 标注"
+    }
+  ],
+  "crossFileRelations": [
+    {
+      "fromKey": "inventory_batch",
+      "toKey": "meter_point",
+      "fromFile": "samples/schema_conflict/inventory_a.json",
+      "toFile": "samples/schema_conflict/metering_b.json",
+      "targetIdentity": "urn:ess-sample:meter-point-m1",
+      "expectCandidateKey": "link.batch.settled_by_point"
+    }
+  ]
+}

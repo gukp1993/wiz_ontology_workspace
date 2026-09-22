@@ -1,0 +1,257 @@
+{
+  "@context": {
+    "ess": "https://example.org/vocab/energy-storage-sample/",
+    "name": "ess:displayName",
+    "definition": "ess:definition",
+    "nodeType": "ess:nodeType",
+    "attributes": "ess:attributes",
+    "dataType": "ess:dataType",
+    "unit": "ess:unit",
+    "source": "ess:linkSource",
+    "target": "ess:linkTarget",
+    "cardinality": "ess:cardinality"
+  },
+  "@graph": [
+    {
+      "@id": "urn:ess-sample:battery-ess",
+      "@type": "ess:DeviceClass",
+      "name": "电池储能单元",
+      "nodeType": "object",
+      "definition": "合成示例：由电芯模组、电池簇与本地监视单元组成的储能单元，负责存储电能并在调度指令下充放电；全部字段与取值均为解析试验造数，不代表任何真实站点、真实产品或真实工程参数。",
+      "attributes": {
+        "ratedPowerKw": {
+          "name": "额定功率",
+          "dataType": "number",
+          "unit": "kW"
+        },
+        "packCapacityKwh": {
+          "name": "电池组容量",
+          "dataType": "number",
+          "unit": "kWh"
+        },
+        "socPercent": {
+          "name": "荷电状态",
+          "dataType": "number",
+          "unit": "%"
+        },
+        "cellType": {
+          "name": "电芯类型",
+          "dataType": "text"
+        },
+        "commissionedAt": {
+          "name": "投运时间",
+          "dataType": "dateTime"
+        },
+        "insulationResistanceMohm": {
+          "name": "对地绝缘电阻",
+          "dataType": "number",
+          "unit": "MΩ"
+        },
+        "cycleLifeCycles": {
+          "name": "循环寿命",
+          "dataType": "number",
+          "unit": "次"
+        },
+        "maxChargeRateKw": {
+          "name": "最大充电功率",
+          "dataType": "number",
+          "unit": "kW"
+        }
+      }
+    },
+    {
+      "@id": "urn:ess-sample:pcs",
+      "@type": "ess:DeviceClass",
+      "name": "双向变流器",
+      "nodeType": "object",
+      "definition": "合成示例：连接电池直流侧与交流电网的双向变流装置，支持并网充放电与离网应急供电两种口径；字段名以 syn 前缀与自造词表命名，仅用于样本解析。",
+      "attributes": {
+        "ratedPowerKw": {
+          "name": "额定功率",
+          "dataType": "number",
+          "unit": "kW"
+        },
+        "conversionEfficiencyPercent": {
+          "name": "转换效率",
+          "dataType": "number",
+          "unit": "%"
+        },
+        "gridSideVoltageV": {
+          "name": "电网侧电压",
+          "dataType": "number",
+          "unit": "V"
+        },
+        "controlMode": {
+          "name": "控制模式",
+          "dataType": "text"
+        },
+        "switchingFrequencyKhz": {
+          "name": "开关频率",
+          "dataType": "number",
+          "unit": "kHz"
+        },
+        "reactivePowerKvar": {
+          "name": "无功功率",
+          "dataType": "number",
+          "unit": "kvar"
+        },
+        "gridCurrentThdPercent": {
+          "name": "并网电流谐波畸变率",
+          "dataType": "number",
+          "unit": "%"
+        }
+      }
+    },
+    {
+      "@id": "urn:ess-sample:ems",
+      "@type": "ess:SoftwareSystem",
+      "name": "能量管理系统",
+      "nodeType": "object",
+      "definition": "合成示例：负责调度策略、削峰填谷计划、功率分配与设备告警汇总的站级软件系统，向下对接变流器与电池监视单元。",
+      "attributes": {
+        "dispatchMode": {
+          "name": "调度模式",
+          "dataType": "text"
+        },
+        "socLowerLimitPercent": {
+          "name": "SOC 下限",
+          "dataType": "number",
+          "unit": "%"
+        },
+        "scheduleIntervalSec": {
+          "name": "计划周期",
+          "dataType": "number",
+          "unit": "s"
+        },
+        "vendorCode": {
+          "name": "厂商代号",
+          "dataType": "text"
+        },
+        "forecastHorizonHours": {
+          "name": "预测时窗",
+          "dataType": "number",
+          "unit": "h"
+        },
+        "alarmRetentionDays": {
+          "name": "告警保留天数",
+          "dataType": "number",
+          "unit": "天"
+        }
+      }
+    },
+    {
+      "@id": "urn:ess-sample:grid-meter",
+      "@type": "ess:MeteringPoint",
+      "name": "并网计量点",
+      "nodeType": "object",
+      "definition": "合成示例：关口计量点，记录正向有功电能、无功电能与结算电价展示值，作为站级结算与核对的参考口径。",
+      "attributes": {
+        "pointCode": {
+          "name": "计量点编号",
+          "dataType": "text"
+        },
+        "activeEnergyImportKwh": {
+          "name": "正向有功电能",
+          "dataType": "number",
+          "unit": "kWh"
+        },
+        "reactiveEnergyImportKvarh": {
+          "name": "正向无功电能",
+          "dataType": "number",
+          "unit": "kvarh"
+        },
+        "tariffDisplayPrice": {
+          "name": "结算电价展示值",
+          "dataType": "text"
+        },
+        "ctRatio": {
+          "name": "互感器变比",
+          "dataType": "text"
+        },
+        "measureAt": {
+          "name": "计量时刻",
+          "dataType": "dateTime"
+        }
+      }
+    },
+    {
+      "@id": "urn:ess-sample:thermal-unit",
+      "@type": "ess:DeviceClass",
+      "name": "温控单元",
+      "nodeType": "object",
+      "definition": "合成示例：为电池舱提供液冷/风冷温控的辅助设备，维持电芯温度在合成示例给定的目标区间内。",
+      "attributes": {
+        "coolantType": {
+          "name": "冷却介质类型",
+          "dataType": "text"
+        },
+        "targetTempCelsius": {
+          "name": "目标温度",
+          "dataType": "number",
+          "unit": "℃"
+        },
+        "pumpCount": {
+          "name": "循环泵数量",
+          "dataType": "number"
+        },
+        "filterMaintenanceIntervalDays": {
+          "name": "滤芯维护周期",
+          "dataType": "number",
+          "unit": "天"
+        }
+      }
+    },
+    {
+      "@id": "urn:ess-sample:link:battery-to-pcs",
+      "@type": "ess:LinkDefinition",
+      "name": "电池-变流器连接",
+      "nodeType": "link",
+      "definition": "多组电池单元经直流母线接入一台双向变流器（合成关系示例）。",
+      "source": "urn:ess-sample:battery-ess",
+      "target": "urn:ess-sample:pcs",
+      "cardinality": {
+        "source": "many",
+        "target": "one"
+      }
+    },
+    {
+      "@id": "urn:ess-sample:link:pcs-to-ems",
+      "@type": "ess:LinkDefinition",
+      "name": "变流器-管理系统受控",
+      "nodeType": "link",
+      "definition": "站内全部变流器接受能量管理系统统一调度（合成关系示例）。",
+      "source": "urn:ess-sample:pcs",
+      "target": "urn:ess-sample:ems",
+      "cardinality": {
+        "source": "many",
+        "target": "one"
+      }
+    },
+    {
+      "@id": "urn:ess-sample:link:meter-to-pcs",
+      "@type": "ess:LinkDefinition",
+      "name": "计量点-变流器观测",
+      "nodeType": "link",
+      "definition": "关口计量点观测唯一关联变流器的并网口径（合成关系示例）。",
+      "source": "urn:ess-sample:grid-meter",
+      "target": "urn:ess-sample:pcs",
+      "cardinality": {
+        "source": "one",
+        "target": "one"
+      }
+    },
+    {
+      "@id": "urn:ess-sample:link:thermal-to-battery",
+      "@type": "ess:LinkDefinition",
+      "name": "温控-电池服务",
+      "nodeType": "link",
+      "definition": "一套温控单元为多组电池单元提供热管理（合成关系示例）。",
+      "source": "urn:ess-sample:thermal-unit",
+      "target": "urn:ess-sample:battery-ess",
+      "cardinality": {
+        "source": "one",
+        "target": "many"
+      }
+    }
+  ]
+}

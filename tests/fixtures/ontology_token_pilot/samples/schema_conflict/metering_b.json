@@ -1,0 +1,39 @@
+{
+  "metering": {
+    "station": {
+      "code": "SUB-SYN-77",
+      "name": "示例开关站",
+      "voltageClassKv": 10
+    },
+    "config": {
+      "configId": "cfg-metering-02",
+      "domain": "metering",
+      "pollIntervalMs": 1000,
+      "meterTable": "t_syn_meter_reading",
+      "alarmContactStyle": "normally-open",
+      "dataRetentionDays": 365,
+      "freezeTime": "00:00:00"
+    },
+    "points": [
+      {
+        "pointId": "urn:ess-sample:meter-point-m1",
+        "pointCode": "MP-SYN-01",
+        "name": "示例关口计量点",
+        "ctRatio": "150/5",
+        "priceTag": {
+          "value": "0.52元/kWh",
+          "dataType": "text",
+          "note": "显示用单价文本（含币种后缀）——与 inventory_a.json 数值口径构成 dataType 冲突"
+        },
+        "readingKwh": 15820.5,
+        "readingAt": "2026-09-01T00:00:00Z"
+      },
+      {
+        "pointId": "urn:ess-sample:meter-point-m2",
+        "pointCode": "MP-SYN-02",
+        "name": "示例关口计量点（备用）",
+        "readingKwh": 9420.0
+      }
+    ]
+  }
+}
