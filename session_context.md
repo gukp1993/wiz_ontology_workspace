@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`f479b1de26cdcc4b`
+上下文版本：`e0dd7e344d21c522`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,39 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### assist-fill 正式实现外部标准验收循环：R2 通过 · zcode · 已验证
+
+时间：2026-09-22T03:58:23.102916+00:00；记录：`.collaboration/entries/000173-086f1d561ede.json`
+
+按用户指令开子 agent 执行《独立验收执行指令_正式实现_20260922.md》全量验收。R1 判定不通过（唯一 P1=DEF-EXT-1：O3 链接编辑器采纳含 label 建议后 contextTitle 读响应式 draft.label 致 binding 重建、面板整卡重置；其余 V1–V8 全过：后端 14+57+10、前端 46 套件、11 场景 revision 零保存取证、凭据零出网、真实模型 minimax 抽查、双视口、账号隔离）。修复 d7d4c20（标题在编辑器打开时冻结为 assistTitle，computed 改读冻结值；补 2 组回归断言）。R2 复验通过：18/18 浏览器断言闭环（横幅/不重置/撤销可用/intent 保留/标题冻结/零保存/保存前进）+ 单测 9/9 + 前端 46/46 + typecheck 0 + build 过 + V5.3/V6.2 抽查过，console 正式窗口 0 error/0 异常。交付 HEAD 09c3c61（含验收记录落款）。停在待用户授权集成。
+
+- 决定：DEF-EXT-1 修法=辅助标题在编辑器打开时冻结（editor.assistTitle 普通字符串），computed 不读响应式草稿——与 ActionLibrary 取行记录名同源思路；不采用收缩场景或去响应式开关等更大改动；外部验收全程只读仓库（.collaboration record 除外），修复由主 agent 执行后再派全新子 agent 复验；真实模型生成在限额内使用（R1 4 次）
+- 验证：R1：V1–V8 全量执行（后端三套件复跑、前端 46 套件、11 场景浏览器链路含 revision 零保存取证、凭据零出网、真实模型抽查、双视口、账号隔离），唯一 P1=DEF-EXT-1；修复后：assist_object_workspace 9/9（含 2 组新回归断言）、前端 46/46、typecheck 0、build 过、18951 重启加载；R2：变更核对仅 d7d4c20 两文件；18/18 浏览器断言闭环；V5.3/V6.2 抽查过；console 0 error/0 异常；证据 /tmp/kg_ext_accept/ 与 /tmp/kg_ext_accept_r2/
+- 下一步：外部验收通过，停在待用户授权集成；合并 main 与主工作台更新等待用户明确指令；登记待办不阻断：DEF-04 检查页签字段定位（P2）、登录过渡态 TypeError（疑存量）
+- 依据/文档：交付 HEAD 09c3c61（分支 codex/assist-fill-production）；修复提交 d7d4c20；指令：文档/需求/20260920_本体与项目辅助填写/独立验收执行指令_正式实现_20260922.md；证据 /tmp/kg_ext_accept/report.md 与 /tmp/kg_ext_accept_r2/；环境 http://127.0.0.1:18951
+
+### assist-fill-production 第二轮复验（DEF-EXT-1 闭环） · zcode · 已验证
+
+时间：2026-09-22T03:55:54.563356+00:00；记录：`.collaboration/entries/000172-25d11081518c.json`
+
+第二轮独立复验通过。变更核对：84eb6be..HEAD 仅 d7d4c20 一个提交、仅 ObjectWorkspace.vue+assist_object_workspace.test.mjs 两文件，与修复声明一致（assistTitle 打开时冻结、computed 改读冻结值）。DEF-EXT-1 浏览器直证 18/18 断言通过（assist_dev@18951，全程 CDP Input.* 真实事件，模型桩 18913）：采纳含 label 建议后「已填入表单，尚未保存」出现、面板保持结果态、撤销可用、intent 保留、标题稳定、label 写入表单；采纳零保存（revision 三测不变）；手改后撤销失效、标题不变；表单保存 revision 前进。回归抽查与上轮通过项抽查全过。console 探针自证后清零。收尾已恢复种子基线，仓库源码区零写入。
+
+- 决定：DEF-EXT-1 判定已闭环：P1 修复有效且无回归，总判定通过；验收写库仅限 assist_dev 合成验收本体（复验链路内保存），结束已恢复种子
+- 验证：git log/diff 84eb6be..HEAD：1 提交 2 文件（d7d4c20）；单测 assist_object_workspace.test.mjs 9/9（含新增 2 组断言）；前端 46/46 套件、vue-tsc typecheck、vite build 全过；浏览器断言 18/18：A1-A7 采纳后 banner/结果态/撤销/intent/标题/label 写入/零保存；B1-B4 手改后撤销失效/标题冻结/失效提示/值精确；C1 保存 revision 前进 r-b2ce036ff00e→r-2d729da4cdf1；V5.3 撤销保护抽查过（B1）；V6.2 账号隔离抽查过（admin GET assist_dev 本体 404、列表不含辅助验收本体）；console 探针自证后：console/exception 0、仅 2 条 network 404（V6.2 负例预期，URL 已核对）
+- 下一步：待用户明确授权集成/合并；种子基线中部分 description 为上轮验收留存内容（AI建议-业务定义-*），不影响功能
+- 依据/文档：/tmp/kg_ext_accept_r2/results/r2_defext1.json；/tmp/kg_ext_accept_r2/shots/；d7d4c20
+
+### assist-fill-production 独立验收（外部 harness） · zcode · 受阻
+
+时间：2026-09-22T03:09:47.952324+00:00；记录：`.collaboration/entries/000171-3612d2859567.json`
+
+独立验收完成，总判定不通过（1 项 P1）。V1 范围/三方登记（总数 99=95+4 认证行，准确）/计划落款一致；V2 后端 14+57+10 全过+契约抽查（409/400/404/默认工作区/只读不变式）；V3 前端 46/46+typecheck+build 过；V4 十二场景真实点击链（10 过+S4 不通过+S10 按指令判过带记录），S11 targetId=cluster.l_c2d 实测、S12 凭据 8 词 0 命中；V5 全 7 项过；V6 全过；V7 真实模型 4 次限额内（2 截断 502 合规+2 成功，meta=MiniMax-M3）；V8 双视口过；console 全零（探针自证）。报告 /tmp/kg_ext_accept/report.md
+
+- 决定：DEF-EXT-1（P1 新发现）：O3 链接编辑器采纳含 label 建议后，assistBinding computed 因 contextTitle 读 draft.label 而重建 binding，面板被当切换目标整卡重置——横幅不出/卡片清空/撤销不可用/intent 清空；草稿写入正确且无自动保存。两次独立复现；修复点 ObjectWorkspace.vue L266+AssistPanel binding watch；P2×2：项目区面板标题用稳定 id 与本体区显示名口径不一；桩对 P2/P4 valueField/flow 卡与非空 issues 不产出（200-empty 合规，物料缺口非缺陷）；环境变更：assist_dev 默认桩按指令删除后重建（字段一致，Key 为占位值，桩不校验）；admin 新增 2 合成对象；assist_dev 本体/项目草稿已恢复种子基线
+- 验证：git log fe1179f..HEAD 无代码变更；diff --stat 039a4f0..HEAD 58 文件符合声明；test_assist_context 14 / test_assist_schema 57 / test_assist_api 10（端口空闲实测）；前端 46/46+typecheck 0 错+build 过；12 场景 revision 取证：采纳后≥3s 零变化、保存后前进；截图 30+ 与全量日志在 /tmp/kg_ext_accept/
+- 下一步：开发方修复 DEF-EXT-1 后再次送验（复验面：O3 统一链路+V5.3/V5.4+assist_object_workspace 套件）；其余结论可沿用，无需全量重跑
+- 依据/文档：文档/需求/20260920_本体与项目辅助填写/独立验收执行指令_正式实现_20260922.md；/tmp/kg_ext_accept/report.md；被验 HEAD 84eb6be（代码交付 fe1179f）
 
 ### 交付 assist-fill 正式实现独立验收执行指令 · zcode · 需求已交付
 
@@ -117,37 +150,3 @@ T11完成：O1/O2/O2b/O3/O4/O5/P2/S14/S15/三视口通过；P1/P5辅助上下文
 - 验证：node --import ./tests/ts_hooks.mjs tests/assist_workflow.test.mjs → 11/11 通过，退出 0；cd frontend && npm run typecheck → 退出 0；回归冒烟：assist_object_workspace 9/9、assist_property_manager 54/54、assist_panel 51/51、dependency_guard 22/22、ont_list_unified 4/4、editor_head_consistency 19 项全过；未 git 提交（按任务边界），改动仅限 4 个授权文件；SSR 不覆盖 onMounted 与模板 ref 实链路
 - 下一步：待 Codex 独立验收；浏览器验收时确认面板生成/采纳/手改过期交互；与 T8+（项目区各表单）无文件交集；集成时与 T5/T6 同分支组合验证
 - 依据/文档：frontend/src/assist/workflowBindings.ts；frontend/src/ontology/BusinessRuleLibrary.vue；frontend/src/ontology/ActionLibrary.vue；tests/assist_workflow.test.mjs；workbench/assist_fields.py
-
-### assist-fill-production T5 本体对象与链接编辑接入辅助填写（O1/O3） · zcode · 已实施，待验收
-
-时间：2026-09-21T07:47:37.963008+00:00；记录：`.collaboration/entries/000161-ddf7325ef208.json`
-
-在已登记 worktree（codex/assist-fill-production）交付 T5 三文件：修改 frontend/src/ontology/ObjectWorkspace.vue（对象/链接表单各加「✦ 辅助填写」入口行、assistBinding computed 按 editor 目标构造、字段事件经 assistTouched→模板 ref 通知面板、AssistPanel 挂表单内、closeEditor 同步收起+watch 兜底），新建 frontend/src/assist/ontologyBindings.ts（objectAssistBinding/linkAssistBinding 工厂：白名单快照 {label,comment}/{label,from,to,cardinality,reverseLabel,comment}、undefined 不覆盖、白名单外忽略、快照就地恢复保持草稿引用稳定），新建 tests/assist_object_workspace.test.mjs（真实 SFC 编译 AssistPanel+ObjectWorkspace、provide('assist-api') 注入合成桩，9 组检查全过）。采纳只改本地草稿零保存调用（form-save spy=0）；手改后草稿指纹拦截采纳并解除撤销。未 git 提交、未跑 build、未启服务。
-
-- 决定：binding 工厂签名：(draft, options:{targetId?,contextTitle?})，draft 传编辑器实时草稿对象（引用须稳定，restore 就地恢复）；手改通知走字段输入事件+模板 ref（AssistPanel defineExpose 的 notifyDraftChanged），SSR 下 ref 为 null 自动跳过；面板草稿指纹自检作为兜底（手改后 adopt 必被拦）；目标切换：assistOpen 保持、assistBinding computed 随 editor 引用变化产生新对象，由 AssistPanel 内部 watch(binding) 重开；编辑器关闭/切属性表单置 null 收起；api 注入点：inject<AssistApi>('assist-api')（可选，缺省面板用 defaultAssistApi()），测试经 provide 注入桩
-- 验证：node --import ./tests/ts_hooks.mjs tests/assist_object_workspace.test.mjs → 9/9 退出 0；object_workspace 7/7；assist_panel 51/51；ont_list_unified 4/4；dependency_guard 22/22；list_controls 4/4；editor_head_consistency 19 项全过；cd frontend && npm run typecheck → 退出 0；mapping_forms.test.mjs 在本分支 HEAD 即失败（PropertySources 改版所致，与本轮文件无引用关系，未处理）；未做浏览器实测/build/真实联调
-- 下一步：浏览器验收需覆盖：面板 onMounted 自动取上下文、assistPanelRef 通道即时置过期横幅（SSR 无法覆盖，测试已注明）；mapping_forms 失败需归属负责人处理；集成注意：assist/ 下 propertyBinding.ts（T6）与 ontologyBindings.ts（T5）为并行新增，无文件冲突
-- 依据/文档：frontend/src/ontology/ObjectWorkspace.vue；frontend/src/assist/ontologyBindings.ts；tests/assist_object_workspace.test.mjs
-
-### assist-fill-production T6 属性与共享属性编辑接入辅助填写（O2） · zcode · 已实施，待验收
-
-时间：2026-09-21T07:44:14.160264+00:00；记录：`.collaboration/entries/000160-3e203be8dd69.json`
-
-在已登记 worktree（codex/assist-fill-production）交付 T6 三文件：修改 frontend/src/ontology/PropertyManager.vue（辅助入口+面板挂载+手改通知），新建 frontend/src/assist/propertyBinding.ts（propertyAssistBinding 宿主适配工厂）与 tests/assist_property_manager.test.mjs（54 断言）。未 git 提交、未跑 build、未启服务；未触碰 SharedLibrary/ObjectWorkspace/App.vue/AssistPanel/useAssistPanel 及并行 T5 代理的文件。
-
-- 决定：binding 工厂：propertyAssistBinding(opts{draft,targetKind:'property'|'sharedProperty',targetId,isTimeSeries,setType,setObsType})，setter 注入=组件 setRange/setObservation 本体（唯一写路径）；apply 内 dataType/obsType 原子组先类型后观测值，formatting 整组放最后（类型联动会清 formatting，先写会被误删）；快照白名单 {label,comment,dataType,obsType?,formatting?}：obsType 仅时间序列出现；formatting 取 mg:formatting @value；dataType 与 selectedType 同值；空 obsType（离开时序补位）不进 setter；formatting 经 effectiveConfig 判空，同 PropertyFormatting.sync 写 @json 或删键；snapshot/restore 为草稿节点整体 JSON 克隆，restore 原位替换键值保持 draft 对象身份（reactive 与 PropertyFormatting JSON watch 兼容）；组件侧 assistBaseline 在打开/采纳/撤销重对齐，深度 watch 只把面板写入以外的草稿变化通知 notifyDraftChanged；目标映射：私有属性编辑/新建 targetKind=property（新建 targetId 空串，后端出「新建属性定义」标题）；就地维护共享定义与 kind=shared → sharedProperty；共享引用只读态无入口；toShared 转只读时 watch(readonly) 自动收起面板；采纳绝不调用 formSave/commit-now/touch/emit；共享高影响确认仍只由显式 save() 触发（需求 11 指纹机制不变），采纳后的显式保存照常弹确认并落盘
-- 验证：node --import ./tests/ts_hooks.mjs tests/assist_property_manager.test.mjs → 54/54 通过退出 0：白名单快照映射/克隆、apply 与手动 UI 最终草稿逐字节等价、离开时序联动不残留、formatting 写换清与同组采纳顺序、采纳后 formSave 间谍零调用且 impactOpen=false、显式保存走桩合入 MANAGED 键、共享定义采纳后显式保存弹确认→确认落盘、只读态无入口、真实 AssistPanel 挂载/收起、手改后 stale 与撤销保护解除；cd frontend && npm run typecheck（vue-tsc --noEmit）→ 退出 0；复跑相邻回归无相互影响：tests/assist_panel.test.mjs 51/51、tests/editor_head_consistency.test.mjs 19/19、tests/dependency_guard.test.mjs 22/22，均退出 0；git status 核对：本任务仅改上述三文件；ObjectWorkspace.vue/ontologyBindings.ts/assist_object_workspace.test.mjs 为并行 T5 代理文件未触碰
-- 下一步：协调者串行执行 npm run build 与提交（按指令边界本任务未做）；集成注意：T2 建议的 formatting 复合组含 kind 判别键，binding 按 effectiveConfig 原样写入 @value（零丢失约定容忍未知键）；若裁定不落盘仅需在 propertyBinding.ts formatting 分支删键；测试注意：SSR 输出模板注释，断言辅助入口须匹配按钮文案「✦ 辅助填写」而非裸文本；tests/assist_object_workspace.test.mjs ⑦ 当前失败，属并行 T5 未提交的 ObjectWorkspace.vue WIP（不涉及本任务文件），请传导给 T5 owner
-- 依据/文档：frontend/src/assist/propertyBinding.ts；frontend/src/ontology/PropertyManager.vue；tests/assist_property_manager.test.mjs；文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md §8.2；workbench/assist_fields.py property/sharedProperty 白名单
-
-### assist-fill-production T2 模型输出schema与建议验证 · zcode · 已实施，待验收
-
-时间：2026-09-21T07:10:54.155870+00:00；记录：`.collaboration/entries/000159-a3228b2580b6.json`
-
-在已登记 worktree（codex/assist-fill-production）完成 T2：新建 workbench/assist_schema.py（ASSIST_SYSTEM_PROMPT、build_user_payload、parse_model_output、5 个复合组校验器）与 tests/test_assist_schema.py（57 项全过 exit 0）。只创建这两个文件，未改其他文件、无 git 写操作、未启服务、未连真实 LLM。
-
-- 决定：失败分层按 04 §5.2『502 或丢弃该条』：整体非 JSON/顶层形态非法/条数超限 → ModelBadResponse；单条结构违规 → dropped；引用/行内/原子组 → blocked 可见禁选；依赖未答问题 → pending；等值 → 丢弃。任务书测试项2 与流水线 4a 对『未知 fieldKeys/键不齐/枚举错/超长』矛盾，取 4a 分层丢弃（文档允许）；formatting『未知参数键』复合组节写结构违规、测试节要求 blocked，取 blocked 与行级策略一致；parse_model_output 增可选第 7 参 mode='fill'（任务书要求 explanation 仅 explain 非 null 但签名无 mode）；dataType 放行 'timeSeries'（同 PropertyManager typeOptions）、obsType 放行 ''；离开 timeSeries 自动补 obsType:'' 并并入 fieldKeys；服务端重编 questionId 为 q_<n>、suggestion id 为 s_<n>，模型 state 忽略，blocked/pending 原因写 blockedReason/pendingReason；候选提取对齐 T1 实际形状：definitions 编码 connection（engine 在 hint）/source/property/flow；catalog {connection,table,fields}；flows outputs[].fields[].id；保留 sources/identity/parameters/actionInputs 扩展键与 candidates 覆盖钩子；候选缺失 fail-closed
-- 验证：python3 tests/test_assist_schema.py → 57 项全过 exit 0（合法输出/重编、4 类整体超限、ref 幻觉、5 类复合组、原子组、ifQuestion 四态、等值、evidenceRefs、HTML 保留、注入仅数据、payload 裁剪、mode 语义、T1 形状对齐）；env -u WIZ_WORKBENCH_ROOT 直接 import 成功（无数据目录依赖）；py_compile 通过（Python 3.9.6）；git status 核对：仅新增本任务两文件；T1/T3 并行文件与 session_context.md 改动非本任务所改
-- 下一步：T4 路由调用 parse_model_output 时传 mode 与 normalize_draft 的 draft_kind；行级身份表字段核对（params/lookup 的 identityField）需 T4 在 context 注入 identity:{table,fields} 或用 candidates 覆盖；交 Codex 独立验收；HTTP 层与真实模型联调属 T4/T11 范围未做
-- 依据/文档：workbench/assist_schema.py；tests/test_assist_schema.py；workbench/assist_fields.py；文档/接口文档/04-编排与LLM接口.md §5；文档/需求/20260920_本体与项目辅助填写/开发计划_正式实现.md §8.2
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
