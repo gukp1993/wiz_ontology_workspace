@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`e5c27d519963f131`
+上下文版本：`25a87dee87971a86`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 模型设置思考强度选项（codex/auto_build 独立功能提交） · zcode · 已实施，待验收
+
+时间：2026-09-22T15:19:56.334008+00:00；记录：`.collaboration/entries/000215-a4d1aec8e9f0.json`
+
+用户指令「模型设置，编辑可设置思考强度」，在 auto_build worktree 实施并提交 c4ba68a（基于 HEAD 0057e9f，与修复提交 1df156f 无文件重叠）。范围：LLM 提供方配置新增 thinking 字段（default|off）——接口文档 04 §4.1/4.2/4.4 + README 变更记录先行；存储列 wb_model_configs.thinking + Alembic 迁移 20260922_0005（server_default 与迁移 DDL 一致）；llm_providers 校验/保存/回显（非法 400、读取宽容）；flow_routes save/test 透传；llm_client.apply_provider_extras 统一 chat/chat_once_result/test_connect 的家族微调（bigmodel.cn+off → thinking:{type:disabled}；minimax 既有行为不变；其他家族不追加）；前端模型设置高级设置加选择器与列表标记。实测依据：GLM-5.3-Flash 关思考单批 150-260s→15.2s（今晚 18891 诊断系列实测）。
+
+- 验证：tests/test_llm_providers.py 53/53（新增 12 项：枚举校验/存取回显/路由 400/请求体四组合/chat 桩捕获）；全量回归 tests/run.py all 78/78（exit 0，含 1df156f 修复后的组合状态）；前端 vue-tsc typecheck + vite build 通过；ruff 无告警；迁移演练：transfer init 新库 schema=20260922_0005 含列、裸 SQL 插入回落 default、revision 链 0004→0005 完整
+- 下一步：复验对象更新为 1df156f（验收修复）+ c4ba68a（本功能）；thinking off 的抽取质量 A/B（金样质量门）仍属建议项未做；待 Codex 复验通过后停在待用户授权集成；18891 隔离实例需重启才加载新代码（未动运行中服务）
+- 依据/文档：提交 c4ba68a；接口文档 04 分册 §4；迁移 20260922_0005；实测数据链：本会话 18890/18891 诊断（GLM 默认/关思考/minimax 对照、整文件一发截断实验）
 
 ### auto-build-output-v3 · zcode · 已实施，待验收
 
@@ -140,16 +150,4 @@ D06 交付：新建 workbench/ontology_build/output_codec.py（legacy-v1/compact
 - 验证：python3 tests/run.py --test tests/test_ontology_build_output_codec.py → 退出码 0（通过 126/126）；ruff check 两文件 → All checks passed；冒烟：import 不加载任何 llm/pipeline/storage 模块；整合计划 §10 compact 示例形状解码 ok=True 且别名还原真实 factId
 - 下一步：待 Codex 独立验收（alias还原/缺字段不补造/截断拒绝/legacy兼容）；协调者留意：batch_contracts.py §编解码 注释的 encode_request 形参（plan_doc/job/targets_by_id/facts_by_id）与本次按任务指令实现的扁平纯函数签名不一致，建议协调者统一契约注释（该文件归 C，本任务未改动）
 - 依据/文档：workbench/ontology_build/output_codec.py；tests/test_ontology_build_output_codec.py；workbench/ontology_build/batch_contracts.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### auto-build-output-v3/D11 · zcode · 已实施，待验收
-
-时间：2026-09-22T08:50:56.908415+00:00；记录：`.collaboration/entries/000201-7883ed3af219.json`
-
-D11 三类合成材料与人工金样格式已实施：新建 tests/fixtures/ontology_token_pilot/（11 个文件：simple 2 样本、amplified 60 实例样本、schema_conflict 3 文件、4 份金样、README、manifest）与 tests/test_ontology_token_pilot_fixtures.py。python3 tests/run.py --test tests/test_ontology_token_pilot_fixtures.py 通过 102/102，退出码 0（直跑同样 0）。
-
-- 决定：金样 schemaVersion=1：按语义身份描述期望（key/type/name/ownerKey/fields 子集断言/evidence 语义定位），不绑定具体 factId；键空间如 battery_ess.rated_power，D13 评测负责把候选对齐到金样键空间；同名异主体（两个 config）以 mustNotMerge 分组标注且组内 key 互异；dataType 冲突以 expectedConflicts 标注（unit_price number vs text，两侧 source/locator/expect）；跨文件关系以 crossFileRelations 标注（targetIdentity 必须真实出现在被引文件）；amplified 金样增加 structure 块（instanceCount/lateFields/lateFieldsFirstIndex/tier2/rareFields/unitVariants/abnormalEnumValues/minSerializedBytes）供 fixture 测试程序化断言晚出现结构；样本①为合成对标原 8KB 规模（JSON-LD 7895B、配置 4349B），不是 D18 原始真实文件；原文件若提供须另行登记 hash；manifest 独立登记全部 11 文件 sha256+bytes+用途+合成声明；dispatch_logic.sql 为文本片段（DDL+rule R-SYN-101+action A-SYN-07），头部注明由材料解析器按 ddl/text 处理（定位器形态对齐接口文档 08 §1.3）
-- 验证：python3 tests/run.py --test tests/test_ontology_token_pilot_fixtures.py → 退出码 0，通过 102/102（直跑退出码 0 同结果）；ruff check tests/test_ontology_token_pilot_fixtures.py → All checks passed；确定性生成器重跑两次字节一致（12 项 sha256 与 manifest 全部匹配，防漂移断言在测试内）；泄漏扫描：samples/+golden/ 无 sk-/api_key/AKIA/password/secret 等样式、http(s) 仅 example.org 保留域、无邮箱与 .com/.cn/.net 域名样式
-- 下一步：D13 evaluate.py 消费金样（schemaVersion=1）做生成评测；D14 CLI 引用 manifest；D18 若拿到原 8KB 真实文件须另行登记 hash 并补对应金样
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §11/§8 D11；workbench/ontology_build/batch_contracts.py（87d1473，normalized candidate）；文档/接口文档/08-从物料自动构建本体接口.md §1.3；tests/fixtures/ontology_token_pilot/README.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
