@@ -18,6 +18,7 @@ TASK_BYTES = 512 * 1024 * 1024
 ZIP_EXPANDED_BYTES = 512 * 1024 * 1024
 ZIP_MAX_ENTRIES = 20000
 PARSE_TIMEOUT_SECONDS = 120
+# LIMITS 暴露给能力接口的键（parseConcurrency 为 V2-10/G25 新增，值随 env 覆盖变化）
 UPLOAD_TTL_SECONDS = 30 * 60
 MAX_CANDIDATES_PER_BATCH = 500
 MAX_FACTS_PER_MATERIAL = 20000
@@ -61,6 +62,7 @@ LIMITS = {
     'zipExpandedBytes': ZIP_EXPANDED_BYTES,
     'zipMaxEntries': ZIP_MAX_ENTRIES,
     'parseTimeoutSeconds': PARSE_TIMEOUT_SECONDS,
+    'parseConcurrency': PARSE_CONCURRENCY,
 }
 
 # --- 状态 ---
