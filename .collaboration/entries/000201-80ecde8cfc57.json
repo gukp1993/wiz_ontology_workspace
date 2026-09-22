@@ -1,0 +1,30 @@
+{
+  "ticket": "57c9a7bb69c14c07a6e9cb837870ce2a",
+  "task": "20260920 需求说明v2 增补 V2-10 解析并发（线程池）评审",
+  "status": "decision",
+  "summary": "只读增补评审结论：不通过（1 阻塞+4 建议）。确定性模型自洽：按登记顺序=按提交顺序逐个等待 future 收集，完成顺序不影响落库顺序，facts 可复现可单测；三级分派仅①级进池、②级主线程串行，与 §5.5 不冲突；取消/失败隔离语义与 §4 A04/§5.6 一致；契约引用真实（/api/build-capabilities 已存在且有 llmFallback 同模式扩展先例；WIZ_BUILD_PARSE_CONCURRENCY 命名合惯例）；未写成已实现（主仓 grep 无任何线程池代码，V2-10 未标已上线）。阻塞：§5.7『daemon 线程不阻塞 run 结束』与声明栈矛盾——Python 3.9 起 ThreadPoolExecutor 线程为非 daemon（bpo-39812）且公开 API 无法设 daemon，按字面实现碰壁；行为本身可达成（shutdown(wait=False, cancel_futures=True)，3.9+ 均支持），建议改措辞。建议：超时后迟到结果应明确一律丢弃不落库；§15『演示本轮全部新增交互』因 V2-10 无原型演示需加注；G25 锐化（串行基线=并发1/非法env回退断言/取消后重扫仅解析未完成文件/无锁冲突改可观测口径）；capabilities 加字段须按接口文档规则先同步 08 分册。",
+  "decisions": [
+    "评审结论=不通过，1 阻塞：§5.7 取消/超时段括注『daemon 线程不阻塞 run 结束』技术性错误（本项目 Python 3.9 的 ThreadPoolExecutor 线程非 daemon，公开 API 不可设 daemon），须改为 shutdown(wait=False) 措辞后再冻结；修复成本一句话。",
+    "G25 建议补关键验收点：取消后重新扫描仅解析未完成文件（已成功按内容哈希复用跳过）——部分完成扫描的续跑交互；及串行基线口径（并发=1）与非法 env 回退断言。"
+  ],
+  "verification": [
+    "逐项核对 git diff（9 处改动与增补清单一致，无夹带）；§5.7 与 §2/§1/§4 A02/§13 G25 交叉引用齐全。",
+    "代码核对：/api/build-capabilities 在 main 与 build-governance worktree 均实现（worktree 版已按同模式挂 llmFallback 限额）；WIZ_BUILD_LLM_FALLBACK_* 命名先例确认；主仓 grep 无 ThreadPool/concurrent 实现。",
+    "技术事实复核：bpo-39812 自 Python 3.9 移除执行器 daemon 线程（解释器退出统一 join）；shutdown(cancel_futures=True) 3.9 可用；按序 result(timeout=120) 收集可实现且迟到结果天然不落库。"
+  ],
+  "next": [
+    "交付方改 §5.7 daemon 措辞（B1）后可复审；S1-S4 不阻塞可随手处理。",
+    "实施前按接口文档规则同步 08 分册 capabilities 字段（先文档后代码）；实施需既有 worktree 循环或用户明确指令。"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/需求说明_v2.md（§5.7/G25 增补）",
+    "workbench/ontology_build_routes.py get_capabilities",
+    "worktree/build-governance/workbench/ontology_build/protocol.py（WIZ_BUILD_* 先例）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T00:49:58.452143+00:00",
+  "sequence": 201,
+  "filename": "000201-80ecde8cfc57.json",
+  "record_hash": "1225cf0105f519fe2e72e89f986f992e8a1663d480ef0bfa10333dc5c9a9a88b",
+  "context_advanced": true
+}

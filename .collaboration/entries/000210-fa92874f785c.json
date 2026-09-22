@@ -1,0 +1,27 @@
+{
+  "ticket": "012ec41291714b5f86ef750118a9a46f",
+  "task": "多子agent并行拆分：接线agent已派发（三线程并行格局）",
+  "status": "in_progress",
+  "summary": "按用户指令拆分并行。盘点现状：V2-10开发agent已提交4commit（68adc85契约/feebad2线程池核心/a766747 capabilities/3731593前端），正在改 tests/test_ontology_build.py 做测试与G25f实测；解析器实现agent7文件已落盘（json/yaml/properties/csv/ini/toml/structwalk）正在收尾。新拆出第三线程=接线集成agent（新代理，当前模型）：把六新kind接入protocol.py MATERIAL_KINDS与后缀映射/parsers/__init__注册/08分册与get_capabilities矩阵/前端kind标签四处，新增零交集测试tests/test_struct_parsers_wiring.py；提交时序约束：解析器未落库则不提交留工作区。三线程文件交集分析：V2-10=tests/test_ontology_build.py+protocol并发段+前端能力面板；解析器=parsers/新文件；接线=protocol kind段+parsers/__init__+routes+前端标签+新测试——protocol.py 存在同文件不同区段风险，已在接线agent指令中要求只动kind区段且提交前核对。不再增派第四线程（在途产物均为下游依赖）。",
+  "decisions": [
+    "并行度=3（V2-10测试/解析器收尾/接线），其余任务均依赖在途输出，再拆会踩踏",
+    "接线agent提交时序：解析器文件未跟踪时不提交，避免孤儿引用"
+  ],
+  "verification": [
+    "worktree实测：V2-10四提交在链、7解析器文件在盘未跟踪、tests/test_ontology_build.py修改中"
+  ],
+  "next": [
+    "三agent完成通知→协调者统一收口：提交时序编排/全量回归/转测试agent验收",
+    "V2-10测试验收循环仍待开发完成后启动"
+  ],
+  "references": [
+    "worktree/build-governance（codex/build-governance@3731593）",
+    "文档/需求/20260920_从物料自动构建本体/需求说明_结构化格式解析支持_v1.md"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T01:17:47.994449+00:00",
+  "sequence": 210,
+  "filename": "000210-fa92874f785c.json",
+  "record_hash": "e837d6bd1640d76bb0a61024f9d3193131bfd659355b9f19f394235144ec795e",
+  "context_advanced": false
+}

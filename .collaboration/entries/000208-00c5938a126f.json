@@ -1,0 +1,23 @@
+{
+  "ticket": "685348313e174433976b9a5bce85c39a",
+  "task": "解析器实现 agent 按新模型重派（用户指令）",
+  "status": "implemented",
+  "summary": "用户确认切换模型后指令重派。已停掉旧解析器 agent（零残留——实测 parsers/ 无新文件、测试文件未创建），确认现场干净后用当前会话模型重派同一任务：只新建 8 个零交集文件（json/yaml/properties/csv/ini/toml 六解析器 + structwalk 共享遍历器 + 测试），绝不修改既有文件。并行状态实测：V2-10 开发 agent 已开始落盘（protocol.py 新增 PARSE_CONCURRENCY 常量），印证错峰策略必要；解析器任务与 V2-10 仍保持零文件交集。",
+  "decisions": [
+    "重派保持与首派完全相同的零交集范围约束，并显式注明 protocol.py 正被 V2-10 修改、禁止触碰。",
+    "接线（protocol/registry/routes/前端标签）仍等 V2-10 落定后由协调者统一做。"
+  ],
+  "verification": [
+    "旧 agent 停止后实测无残留（parsers/ 目录未增文件、tests 未创建）；V2-10 当前改动面=protocol.py 4 行（PARSE_CONCURRENCY 常量），与本任务零交集。"
+  ],
+  "next": [
+    "解析器 agent 完成→校验测试；V2-10 落定→四处接线→全量回归→重启 18881 验证→提交。"
+  ],
+  "references": [],
+  "actor": "zcode",
+  "created_at": "2026-09-22T01:09:15.205777+00:00",
+  "sequence": 208,
+  "filename": "000208-00c5938a126f.json",
+  "record_hash": "c2a7fc0504d9ae03141574a7589ea26119aeb3fcaa41fc9842ec1b20d99003bc",
+  "context_advanced": false
+}

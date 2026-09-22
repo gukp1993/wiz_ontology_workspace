@@ -1,0 +1,28 @@
+{
+  "ticket": "fc9158c305cf47299ddd94975186aefa",
+  "task": "结构化格式解析支持需求文档交付 + 评审循环启动（用户指令：先需求不开发、走评审循环）",
+  "status": "decision",
+  "summary": "按用户指令完成互联网检索（配置类：JSON/YAML/TOML/INI/env/Properties/XML；数据交换类：CSV/TSV/JSONL；语义类：JSON-LD）并交付需求增量文档 文档/需求/20260920_从物料自动构建本体/需求说明_结构化格式解析支持_v1.md（未提交，待评审通过后随复审结论一并提交）。第一批范围：JSON/JSON-LD/JSONL、YAML、Properties、CSV/TSV、INI/ENV/CONF、TOML 最小子集——全部专用解析器（零新增依赖：标准库+已有 PyYAML），进三级分派第①层；明确不做：二进制格式/通用XML专项/OpenAPI语义抽取（待定项）。验收条 S1-S7。未开发任何代码。独立评审代理已后台派发（对照 v2 与代码事实核实），评审-修复-复审循环进行中。",
+  "decisions": [
+    "按用户指令先需求后开发；评审通过前文档不提交、代码不动。",
+    "第一批零新增依赖（标准库+已有 PyYAML）；TOML 用最小子集解析并对不支持语法诚实降级；二进制格式列入不做清单如实告知。",
+    "新 kind 进三级分派第①层后不再进 LLM 兜底；JSON-LD @graph 语义模式为用户储能 jsonId 物料的直接升级路径（文本线索 low → 结构化 high）。"
+  ],
+  "verification": [
+    "两轮互联网检索覆盖配置与数据交换格式共识；工作树核对 PyYAML 6.0.3 可用（零新增依赖成立）；解析器登记表 7+image 项现状已由盘点 agent 逐文件核实。"
+  ],
+  "next": [
+    "评审结论到达：不通过→逐条修复→复审直至通过；通过→随复审结论提交需求文档并汇报，等用户决定是否进入开发循环。",
+    "与 V2-10 解析多线程草案相互独立，后续按用户节奏分别确认。"
+  ],
+  "references": [
+    "需求文档：文档/需求/20260920_从物料自动构建本体/需求说明_结构化格式解析支持_v1.md",
+    "解析器现状盘点：parsers/__init__.py（7 专用+image+textline）、pipeline.py（LLM 兜底限额 200 文件/50MB）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T00:45:13.806012+00:00",
+  "sequence": 200,
+  "filename": "000200-0c483c4880f9.json",
+  "record_hash": "05b798c343340bc3e2bd6093fbeecacea06446bd5c4f2408ccfb777f90051c37",
+  "context_advanced": true
+}

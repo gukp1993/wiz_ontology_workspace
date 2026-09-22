@@ -1,0 +1,25 @@
+{
+  "ticket": "9791dceea7494a93884472404e5e20c2",
+  "task": "V2-10/接线并行线更新：接线提交权归结构化解析线，本会话接线 agent 冻结",
+  "status": "in_progress",
+  "summary": "对 000210（三线程并行）的更新：核实发现四处接线由另一会话 sess_65cdf0e3（结构化格式解析任务线）的 agent 在执行（其计划内工作），本会话已冻结自己的接线 agent（禁写入/禁提交，转只读报告），接线与提交权归该任务线；worktree 共享上下文已记详细条目（worktree entry 000174）。功能快检通过：六新 kind 注册/映射/blacklist/分派集均正确。V2-10 线继续：cb65d4f（244/244），G25f 首组数字 1200文件 串行2.44s vs 并发8 2.61s，开发 agent 收尾基准与最终回归中；完成后按循环转测试 agent 验收（G25 a-f）。",
+  "decisions": [
+    "接线及提交权归结构化格式解析线（跨会话同文件单 owner）；本会话退出该文件集"
+  ],
+  "verification": [
+    "功能快检：import parsers 通过、MATERIAL_KINDS/detect_kind/blacklist/pipeline DEDICATED_KINDS 均正确"
+  ],
+  "next": [
+    "V2-10 收尾→测试 agent 验收循环；接线由结构化解析线自行回归提交"
+  ],
+  "references": [
+    "worktree/build-governance",
+    ".collaboration/entries/000210（本会话并行调度）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T01:28:57.644216+00:00",
+  "sequence": 213,
+  "filename": "000213-95471e656eea.json",
+  "record_hash": "e285ff960f24c9771ac4a90fc4eff9fcadeea3f708d834204b387d3d64a50218",
+  "context_advanced": false
+}

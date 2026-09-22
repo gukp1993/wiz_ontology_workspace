@@ -1,0 +1,22 @@
+{
+  "ticket": "cc723b02f358423981986affd1b86d84",
+  "task": "解析多线程优化需求草案交付（用户指令）",
+  "status": "decision",
+  "summary": "用户指令：文件解析引入线程池并行处理（点击扫描时开多个解析任务线程），要求给出具体优化需求。已交付完整需求草案（对话内）：并发模型=扫描run内ThreadPoolExecutor任务粒度单物料文件（concurrent.futures）；并发度默认min(8,cpu核数)env可配；核心约束=解析并发、落库串行（worker纯解析读文件，run主线程按提交顺序短事务落库保事实顺序确定性）；边界=LLM兜底不并发（主线程串行防限流与预算竞态）、黑名单判定前置串行、index阶段不并发；取消=不再提交新任务+cancel_futures；失败隔离=单文件异常不影响他文件；超时沿用单文件120s（线程无法强杀的泄漏风险如实登记）；验收=功能等价(同输入同facts)+取消即时+失败隔离+无锁冲突+加速比实测记录。草案待用户确认后并入需求说明v2（V2-10）走评审/开发循环。",
+  "decisions": [
+    "解析并发/落库串行的混合模型（保确定性）；LLM兜底排除在并发外"
+  ],
+  "verification": [],
+  "next": [
+    "用户确认草案后：并入需求说明v2（V2-10）→评审循环→开发/测试循环"
+  ],
+  "references": [
+    "worktree/build-governance/workbench/ontology_build/pipeline.py:383,905"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T00:37:46.081703+00:00",
+  "sequence": 198,
+  "filename": "000198-ded3b71b71c4.json",
+  "record_hash": "60ac70a81214b2c98c2886522a2b3e0376ea841d4533354f6dec10a2938e05f8",
+  "context_advanced": false
+}

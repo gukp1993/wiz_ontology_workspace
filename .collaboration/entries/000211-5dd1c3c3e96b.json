@@ -1,0 +1,29 @@
+{
+  "ticket": "e7e7a28003a2431e86d9c3011810722b",
+  "task": "AGENTS.md 默认并行规则落盘 + 四线程并行执行中",
+  "status": "in_progress",
+  "summary": "按用户指令：①AGENTS.md 新增「默认并行执行」规则（细粒度拆分节首条），main 提交 5e342d0、工作树 cherry-pick 1d27206（自动合入 main 的 worktree 拷贝规则，无冲突），两处均已校验；②执行任务最大化并行：当前四线程并行、文件集互斥——解析器单测 agent（tests/test_ontology_build_struct_parsers.py）、后端接线 agent（protocol/registry/routes/blacklist/08分册）、前端接线 agent（types/标签/accept/能力页矩阵）、端到端回归 agent（新派，上传→扫描→结构化事实断言）。③发现并修补真实缺口：用户真实样本后缀为 .jsonId（≠.jsonld），需求文档 §2 表格漏了该扩展名——已发消息要求后端接线 agent 把 .jsonid 映射到 json kind 并补断言。收口（组合回归/真实样本复扫/18881 重启/提交）由协调者串行做。",
+  "decisions": [
+    "默认并行规则措辞：文件归属互斥、接口与资源不冲突、可独立验证的前提下用尽可能多子代理；协调者负责拆分/冲突检查/串行收口；强耦合保持串行；不改变授权停止点。",
+    ".jsonId 后缀映射到 json kind（补齐需求文档遗漏；detect_kind 已统一 lower，加 'jsonid' 即可）。"
+  ],
+  "verification": [
+    "grep 校验：main 第 116 行、worktree 第 115 行均含新规则；worktree 无冲突标记；cherry-pick 自动合并完成无残留。",
+    "工作树实测：四线程各自的文件集互斥（前端 3 文件 / routes+protocol+registry+blacklist / 新测试文件×2 / 08 分册）。"
+  ],
+  "next": [
+    "四 agent 完成通知→协调者收口：组合回归（S1-S7）、真实 储能 jsonId 样本复扫（验证 low 文本线索→结构化高质量升级）、重启 18881、分组提交、交接。",
+    "V2-10 测试验收循环由另一侧继续；tests/test_ontology_build.py 在途不可碰。"
+  ],
+  "references": [
+    "AGENTS.md 新规则：main 5e342d0 / worktree 1d27206（细粒度拆分与多 agent 并行原则节）",
+    "需求口径：文档/需求/20260920_从物料自动构建本体/需求说明_结构化格式解析支持_v1.md v1.1",
+    "在途四 agent：struct_parsers 单测 / 后端接线 / 前端接线 / struct_e2e 端到端"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T01:20:06.373045+00:00",
+  "sequence": 211,
+  "filename": "000211-5dd1c3c3e96b.json",
+  "record_hash": "2248cea53f04a3a0be140100aa503baa6ab0db4773c44c9f28a878f247b4929a",
+  "context_advanced": false
+}
