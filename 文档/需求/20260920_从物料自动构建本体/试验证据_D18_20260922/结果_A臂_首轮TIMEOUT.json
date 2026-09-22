@@ -1,0 +1,482 @@
+{
+  "schemaVersion": 1,
+  "resultKind": "ontology-token-pilot-run",
+  "campaignId": "d18-smoke-20260922",
+  "sample": "simple",
+  "arm": "A",
+  "repeat": 1,
+  "mode": "real",
+  "runState": "failed",
+  "blocking": {
+    "code": "TIMEOUT",
+    "message": "作业 j-156a723b1d69d34b2690 失败（TIMEOUT）；已成功结果保留，可重试只补未成功部分"
+  },
+  "planId": "p-4072c7e48842",
+  "usage": {
+    "calls": 3,
+    "promptTokens": null,
+    "completionTokens": null,
+    "totalTokens": null,
+    "knownCompletionTokens": 0,
+    "unknownUsageCalls": 3,
+    "reasoningTokens": null,
+    "finishReasons": {},
+    "errorCodes": {
+      "TIMEOUT": 3
+    },
+    "states": {
+      "failed": 3
+    },
+    "durationMs": 0,
+    "maxAttemptDurationMs": 0,
+    "promptBytes": 0,
+    "completionBytes": 0
+  },
+  "quality": [
+    {
+      "goldenFor": [
+        "samples/simple/gateway_config.json"
+      ],
+      "goldenCount": 11,
+      "candidateCount": 0,
+      "matched": [],
+      "missing": [
+        {
+          "key": "gateway",
+          "type": "object",
+          "name": "示例网关"
+        },
+        {
+          "key": "gateway.device_code",
+          "type": "property",
+          "name": "设备编号"
+        },
+        {
+          "key": "gateway.firmware_version",
+          "type": "property",
+          "name": "固件版本"
+        },
+        {
+          "key": "gateway.log_level",
+          "type": "property",
+          "name": "日志级别"
+        },
+        {
+          "key": "gateway.maintenance",
+          "type": "property",
+          "name": "维护配置"
+        },
+        {
+          "key": "gateway.protocol_support",
+          "type": "property",
+          "name": "支持协议"
+        },
+        {
+          "key": "gateway.retry_policy",
+          "type": "property",
+          "name": "重试策略"
+        },
+        {
+          "key": "gateway.telemetry_batch_size",
+          "type": "property",
+          "name": "遥测批量"
+        },
+        {
+          "key": "gateway.telemetry_interval_seconds",
+          "type": "property",
+          "name": "遥测周期"
+        },
+        {
+          "key": "gateway.time_sync",
+          "type": "property",
+          "name": "对时配置"
+        },
+        {
+          "key": "gateway.tls_enabled",
+          "type": "property",
+          "name": "TLS 开关"
+        }
+      ],
+      "extra": [],
+      "matchedCount": 0,
+      "missingCount": 11,
+      "extraCount": 0,
+      "precision": 1.0,
+      "recall": 0.0,
+      "typeMatched": 0,
+      "typeMismatched": [],
+      "matchedByType": {},
+      "missingByType": {
+        "object": 1,
+        "property": 10
+      },
+      "quality": {
+        "fieldsChecked": 0,
+        "fieldsMismatched": []
+      },
+      "conflictCoverage": {
+        "expected": 0,
+        "covered": 0,
+        "uncovered": []
+      },
+      "conflictDetails": [],
+      "mergeGroups": [],
+      "mergeSuspects": [],
+      "structuralIssues": [],
+      "goldenMinimumCounts": {
+        "object": 1,
+        "property": 10
+      }
+    },
+    {
+      "goldenFor": [
+        "samples/simple/station_topology.jsonld"
+      ],
+      "goldenCount": 40,
+      "candidateCount": 0,
+      "matched": [],
+      "missing": [
+        {
+          "key": "link.battery_to_pcs",
+          "type": "link",
+          "name": "电池-变流器连接"
+        },
+        {
+          "key": "link.meter_to_pcs",
+          "type": "link",
+          "name": "计量点-变流器观测"
+        },
+        {
+          "key": "link.pcs_to_ems",
+          "type": "link",
+          "name": "变流器-管理系统受控"
+        },
+        {
+          "key": "link.thermal_to_battery",
+          "type": "link",
+          "name": "温控-电池服务"
+        },
+        {
+          "key": "battery_ess",
+          "type": "object",
+          "name": "电池储能单元"
+        },
+        {
+          "key": "ems",
+          "type": "object",
+          "name": "能量管理系统"
+        },
+        {
+          "key": "grid_meter",
+          "type": "object",
+          "name": "并网计量点"
+        },
+        {
+          "key": "pcs",
+          "type": "object",
+          "name": "双向变流器"
+        },
+        {
+          "key": "thermal_unit",
+          "type": "object",
+          "name": "温控单元"
+        },
+        {
+          "key": "battery_ess.cell_type",
+          "type": "property",
+          "name": "电芯类型"
+        },
+        {
+          "key": "battery_ess.commissioned_at",
+          "type": "property",
+          "name": "投运时间"
+        },
+        {
+          "key": "battery_ess.cycle_life_cycles",
+          "type": "property",
+          "name": "循环寿命"
+        },
+        {
+          "key": "battery_ess.insulation_resistance_mohm",
+          "type": "property",
+          "name": "对地绝缘电阻"
+        },
+        {
+          "key": "battery_ess.max_charge_rate_kw",
+          "type": "property",
+          "name": "最大充电功率"
+        },
+        {
+          "key": "battery_ess.pack_capacity_kwh",
+          "type": "property",
+          "name": "电池组容量"
+        },
+        {
+          "key": "battery_ess.rated_power_kw",
+          "type": "property",
+          "name": "额定功率"
+        },
+        {
+          "key": "battery_ess.soc_percent",
+          "type": "property",
+          "name": "荷电状态"
+        },
+        {
+          "key": "ems.alarm_retention_days",
+          "type": "property",
+          "name": "告警保留天数"
+        },
+        {
+          "key": "ems.dispatch_mode",
+          "type": "property",
+          "name": "调度模式"
+        },
+        {
+          "key": "ems.forecast_horizon_hours",
+          "type": "property",
+          "name": "预测时窗"
+        },
+        {
+          "key": "ems.schedule_interval_sec",
+          "type": "property",
+          "name": "计划周期"
+        },
+        {
+          "key": "ems.soc_lower_limit_percent",
+          "type": "property",
+          "name": "SOC 下限"
+        },
+        {
+          "key": "ems.vendor_code",
+          "type": "property",
+          "name": "厂商代号"
+        },
+        {
+          "key": "grid_meter.active_energy_import_kwh",
+          "type": "property",
+          "name": "正向有功电能"
+        },
+        {
+          "key": "grid_meter.ct_ratio",
+          "type": "property",
+          "name": "互感器变比"
+        },
+        {
+          "key": "grid_meter.measure_at",
+          "type": "property",
+          "name": "计量时刻"
+        },
+        {
+          "key": "grid_meter.point_code",
+          "type": "property",
+          "name": "计量点编号"
+        },
+        {
+          "key": "grid_meter.reactive_energy_import_kvarh",
+          "type": "property",
+          "name": "正向无功电能"
+        },
+        {
+          "key": "grid_meter.tariff_display_price",
+          "type": "property",
+          "name": "结算电价展示值"
+        },
+        {
+          "key": "pcs.control_mode",
+          "type": "property",
+          "name": "控制模式"
+        },
+        {
+          "key": "pcs.conversion_efficiency_percent",
+          "type": "property",
+          "name": "转换效率"
+        },
+        {
+          "key": "pcs.grid_current_thd_percent",
+          "type": "property",
+          "name": "并网电流谐波畸变率"
+        },
+        {
+          "key": "pcs.grid_side_voltage_v",
+          "type": "property",
+          "name": "电网侧电压"
+        },
+        {
+          "key": "pcs.rated_power_kw",
+          "type": "property",
+          "name": "额定功率"
+        },
+        {
+          "key": "pcs.reactive_power_kvar",
+          "type": "property",
+          "name": "无功功率"
+        },
+        {
+          "key": "pcs.switching_frequency_khz",
+          "type": "property",
+          "name": "开关频率"
+        },
+        {
+          "key": "thermal_unit.coolant_type",
+          "type": "property",
+          "name": "冷却介质类型"
+        },
+        {
+          "key": "[REDACTED_BLOB]",
+          "type": "property",
+          "name": "滤芯维护周期"
+        },
+        {
+          "key": "thermal_unit.pump_count",
+          "type": "property",
+          "name": "循环泵数量"
+        },
+        {
+          "key": "thermal_unit.target_temp_celsius",
+          "type": "property",
+          "name": "目标温度"
+        }
+      ],
+      "extra": [],
+      "matchedCount": 0,
+      "missingCount": 40,
+      "extraCount": 0,
+      "precision": 1.0,
+      "recall": 0.0,
+      "typeMatched": 0,
+      "typeMismatched": [],
+      "matchedByType": {},
+      "missingByType": {
+        "link": 4,
+        "object": 5,
+        "property": 31
+      },
+      "quality": {
+        "fieldsChecked": 0,
+        "fieldsMismatched": []
+      },
+      "conflictCoverage": {
+        "expected": 0,
+        "covered": 0,
+        "uncovered": []
+      },
+      "conflictDetails": [],
+      "mergeGroups": [],
+      "mergeSuspects": [],
+      "structuralIssues": [],
+      "goldenMinimumCounts": {
+        "object": 5,
+        "property": 31,
+        "link": 4
+      }
+    }
+  ],
+  "qualitySummary": {
+    "sampleCount": 2,
+    "matchedCount": 0,
+    "missingCount": 51,
+    "extraCount": 0,
+    "precision": 1.0,
+    "recall": 0.0,
+    "matchedByType": {},
+    "missingByType": {
+      "object": 6,
+      "property": 41,
+      "link": 4
+    },
+    "conflictsExpected": 0,
+    "conflictsCovered": 0,
+    "structuralIssueCount": 0,
+    "mergeSuspectCount": 0
+  },
+  "events": {
+    "plannedJobs": 3,
+    "jobSucceeded": 0,
+    "jobSplit": 0,
+    "formatRepair": 0,
+    "networkRetry": 2,
+    "jobFailed": 1,
+    "blocked": 0
+  },
+  "ledgerAttempts": [
+    {
+      "attemptId": "a-e8a897fe6eed176cebf1a6b196527715",
+      "jobId": "j-156a723b1d69d34b2690",
+      "usage": {
+        "promptTokens": null,
+        "completionTokens": null,
+        "reasoningTokens": null,
+        "totalTokens": null,
+        "usageSource": "absent"
+      },
+      "finishReason": null,
+      "errorCode": "TIMEOUT",
+      "errorMessage": "网络错误",
+      "durationMs": null,
+      "promptBytes": 0,
+      "state": "failed"
+    },
+    {
+      "attemptId": "a-0435ce23bd924986b31242d9b964a403",
+      "jobId": "j-156a723b1d69d34b2690",
+      "usage": {
+        "promptTokens": null,
+        "completionTokens": null,
+        "reasoningTokens": null,
+        "totalTokens": null,
+        "usageSource": "absent"
+      },
+      "finishReason": null,
+      "errorCode": "TIMEOUT",
+      "errorMessage": "网络错误",
+      "durationMs": null,
+      "promptBytes": 0,
+      "state": "failed"
+    },
+    {
+      "attemptId": "a-784bddb255ac295da768f40184611f94",
+      "jobId": "j-156a723b1d69d34b2690",
+      "usage": {
+        "promptTokens": null,
+        "completionTokens": null,
+        "reasoningTokens": null,
+        "totalTokens": null,
+        "usageSource": "absent"
+      },
+      "finishReason": null,
+      "errorCode": "TIMEOUT",
+      "errorMessage": "TIMEOUT",
+      "durationMs": null,
+      "promptBytes": 0,
+      "state": "failed"
+    }
+  ],
+  "meta": {
+    "codec": "legacy-v1",
+    "planner": "fixed-batch",
+    "adapterDiffs": [
+      "固定20批 planner：每 job 固定 20 事实（protocol.LLM_BATCH_FACTS），不经 batch_plan.pack_next 的语义单元聚合/硬预算/软目标装箱与冷启动估算",
+      "A/B 初始计划不含 plan_initial 初始作业：全部目标保持 pending，由注入 planner 一次性分批",
+      "调度/持久化/恢复/重试/拆分仍全部走 batch_execution 共享核心（无第二套调度器）"
+    ],
+    "schemaVersion": 2,
+    "model": "glm-5.3-flash",
+    "targetCount": 42,
+    "jobCount": 3,
+    "goldenCount": 2,
+    "physicalCalls": 3,
+    "cacheHits": 0,
+    "resumed": false,
+    "runAttempt": 1,
+    "campaignBudgetRemainingAtStart": {
+      "maxAttempts": 24,
+      "maxWallMs": 3600000,
+      "completionSoftLimit": 60000
+    },
+    "campaignCountersAfter": {
+      "attempts": 3,
+      "knownCompletionTokens": 0,
+      "activeMs": 0
+    }
+  }
+}

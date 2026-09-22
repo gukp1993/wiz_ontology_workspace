@@ -1,0 +1,1534 @@
+{
+  "schemaVersion": 1,
+  "resultKind": "ontology-token-pilot-run",
+  "campaignId": "d18-smoke-20260922",
+  "sample": "simple",
+  "arm": "D",
+  "repeat": 1,
+  "mode": "real",
+  "runState": "blocked",
+  "blocking": {
+    "code": "COMPLETION_SOFT_LIMIT",
+    "message": "已知 completion 累计 60318 达软限 60000，停止派发"
+  },
+  "planId": "p-bcf89959d7f7",
+  "usage": {
+    "calls": 12,
+    "promptTokens": null,
+    "completionTokens": null,
+    "totalTokens": null,
+    "knownCompletionTokens": 60318,
+    "unknownUsageCalls": 1,
+    "reasoningTokens": null,
+    "finishReasons": {
+      "stop": 11
+    },
+    "errorCodes": {
+      "TIMEOUT": 1
+    },
+    "states": {
+      "succeeded": 11,
+      "failed": 1
+    },
+    "durationMs": 1245380,
+    "maxAttemptDurationMs": 148605,
+    "promptBytes": 267926,
+    "completionBytes": 0
+  },
+  "quality": [
+    {
+      "goldenFor": [
+        "samples/simple/gateway_config.json"
+      ],
+      "goldenCount": 11,
+      "candidateCount": 68,
+      "matched": [],
+      "missing": [
+        {
+          "key": "gateway",
+          "type": "object",
+          "name": "示例网关"
+        },
+        {
+          "key": "gateway.device_code",
+          "type": "property",
+          "name": "设备编号"
+        },
+        {
+          "key": "gateway.firmware_version",
+          "type": "property",
+          "name": "固件版本"
+        },
+        {
+          "key": "gateway.log_level",
+          "type": "property",
+          "name": "日志级别"
+        },
+        {
+          "key": "gateway.maintenance",
+          "type": "property",
+          "name": "维护配置"
+        },
+        {
+          "key": "gateway.protocol_support",
+          "type": "property",
+          "name": "支持协议"
+        },
+        {
+          "key": "gateway.retry_policy",
+          "type": "property",
+          "name": "重试策略"
+        },
+        {
+          "key": "gateway.telemetry_batch_size",
+          "type": "property",
+          "name": "遥测批量"
+        },
+        {
+          "key": "gateway.telemetry_interval_seconds",
+          "type": "property",
+          "name": "遥测周期"
+        },
+        {
+          "key": "gateway.time_sync",
+          "type": "property",
+          "name": "对时配置"
+        },
+        {
+          "key": "gateway.tls_enabled",
+          "type": "property",
+          "name": "TLS 开关"
+        }
+      ],
+      "extra": [
+        {
+          "key": "gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_point_alias",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_contains_point",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_config_contains_channel",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_config_contains_point_alias",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_battery",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_pcs",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_thermal_unit",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "link_thermal_to_battery",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "link_battery_to_pcs",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_battery",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_power",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_point_aliases",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_telemetry",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel_points",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_meter",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_pcs",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_link_meter_to_pcs",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_local_guard",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_point_alias",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_has_channel",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel_has_point",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_user_roles",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_local_guards",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_list",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_point_list",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "energy_storage_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_user_role",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "station_grid_meter",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "station_thermal_unit",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ems_energy_management_system",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "pcs_power_conversion_system",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_local_guard",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_battery_system",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_pcs_converter",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_ems_system",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_link_pcs_to_ems",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_device",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_user_roles",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channels",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_measurement_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_point_alias",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "link_gateway_config_contains_channel",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "link_gateway_channel_contains_point",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "link_point_alias_ref_point",
+          "type": "link",
+          "reason": "no-golden-match"
+        }
+      ],
+      "matchedCount": 0,
+      "missingCount": 11,
+      "extraCount": 68,
+      "precision": 0.0,
+      "recall": 0.0,
+      "typeMatched": 0,
+      "typeMismatched": [],
+      "matchedByType": {},
+      "missingByType": {
+        "object": 1,
+        "property": 10
+      },
+      "quality": {
+        "fieldsChecked": 0,
+        "fieldsMismatched": []
+      },
+      "conflictCoverage": {
+        "expected": 0,
+        "covered": 0,
+        "uncovered": []
+      },
+      "conflictDetails": [],
+      "mergeGroups": [],
+      "mergeSuspects": [],
+      "structuralIssues": [
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_station",
+          "detail": "与候选 'ess_station' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_battery",
+          "detail": "与候选 'ess_battery' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_config",
+          "detail": "与候选 'gateway_config' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway",
+          "detail": "与候选 'ess_gateway' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_station",
+          "detail": "与候选 'ess_station' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_pcs",
+          "detail": "与候选 'ess_pcs' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway",
+          "detail": "与候选 'ess_gateway' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_config",
+          "detail": "与候选 'gateway_config' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_channel",
+          "detail": "与候选 'gateway_channel' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway",
+          "detail": "与候选 'ess_gateway' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_channel",
+          "detail": "与候选 'gateway_channel' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_station",
+          "detail": "与候选 'ess_station' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_channel_point",
+          "detail": "与候选 'gateway_channel_point' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_station",
+          "detail": "与候选 'ess_station' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_channel_point",
+          "detail": "与候选 'gateway_channel_point' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway_config",
+          "detail": "与候选 'ess_gateway_config' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway_channel",
+          "detail": "与候选 'ess_gateway_channel' 语义身份相同（type+owner+key）"
+        }
+      ],
+      "goldenMinimumCounts": {
+        "object": 1,
+        "property": 10
+      }
+    },
+    {
+      "goldenFor": [
+        "samples/simple/station_topology.jsonld"
+      ],
+      "goldenCount": 40,
+      "candidateCount": 68,
+      "matched": [
+        {
+          "key": "link.thermal_to_battery",
+          "type": "link",
+          "name": "温控-电池服务",
+          "candidateKey": "link_thermal_to_battery"
+        },
+        {
+          "key": "link.battery_to_pcs",
+          "type": "link",
+          "name": "电池-变流器连接",
+          "candidateKey": "link_battery_to_pcs"
+        }
+      ],
+      "missing": [
+        {
+          "key": "link.meter_to_pcs",
+          "type": "link",
+          "name": "计量点-变流器观测"
+        },
+        {
+          "key": "link.pcs_to_ems",
+          "type": "link",
+          "name": "变流器-管理系统受控"
+        },
+        {
+          "key": "battery_ess",
+          "type": "object",
+          "name": "电池储能单元"
+        },
+        {
+          "key": "ems",
+          "type": "object",
+          "name": "能量管理系统"
+        },
+        {
+          "key": "grid_meter",
+          "type": "object",
+          "name": "并网计量点"
+        },
+        {
+          "key": "pcs",
+          "type": "object",
+          "name": "双向变流器"
+        },
+        {
+          "key": "thermal_unit",
+          "type": "object",
+          "name": "温控单元"
+        },
+        {
+          "key": "battery_ess.cell_type",
+          "type": "property",
+          "name": "电芯类型"
+        },
+        {
+          "key": "battery_ess.commissioned_at",
+          "type": "property",
+          "name": "投运时间"
+        },
+        {
+          "key": "battery_ess.cycle_life_cycles",
+          "type": "property",
+          "name": "循环寿命"
+        },
+        {
+          "key": "battery_ess.insulation_resistance_mohm",
+          "type": "property",
+          "name": "对地绝缘电阻"
+        },
+        {
+          "key": "battery_ess.max_charge_rate_kw",
+          "type": "property",
+          "name": "最大充电功率"
+        },
+        {
+          "key": "battery_ess.pack_capacity_kwh",
+          "type": "property",
+          "name": "电池组容量"
+        },
+        {
+          "key": "battery_ess.rated_power_kw",
+          "type": "property",
+          "name": "额定功率"
+        },
+        {
+          "key": "battery_ess.soc_percent",
+          "type": "property",
+          "name": "荷电状态"
+        },
+        {
+          "key": "ems.alarm_retention_days",
+          "type": "property",
+          "name": "告警保留天数"
+        },
+        {
+          "key": "ems.dispatch_mode",
+          "type": "property",
+          "name": "调度模式"
+        },
+        {
+          "key": "ems.forecast_horizon_hours",
+          "type": "property",
+          "name": "预测时窗"
+        },
+        {
+          "key": "ems.schedule_interval_sec",
+          "type": "property",
+          "name": "计划周期"
+        },
+        {
+          "key": "ems.soc_lower_limit_percent",
+          "type": "property",
+          "name": "SOC 下限"
+        },
+        {
+          "key": "ems.vendor_code",
+          "type": "property",
+          "name": "厂商代号"
+        },
+        {
+          "key": "grid_meter.active_energy_import_kwh",
+          "type": "property",
+          "name": "正向有功电能"
+        },
+        {
+          "key": "grid_meter.ct_ratio",
+          "type": "property",
+          "name": "互感器变比"
+        },
+        {
+          "key": "grid_meter.measure_at",
+          "type": "property",
+          "name": "计量时刻"
+        },
+        {
+          "key": "grid_meter.point_code",
+          "type": "property",
+          "name": "计量点编号"
+        },
+        {
+          "key": "grid_meter.reactive_energy_import_kvarh",
+          "type": "property",
+          "name": "正向无功电能"
+        },
+        {
+          "key": "grid_meter.tariff_display_price",
+          "type": "property",
+          "name": "结算电价展示值"
+        },
+        {
+          "key": "pcs.control_mode",
+          "type": "property",
+          "name": "控制模式"
+        },
+        {
+          "key": "pcs.conversion_efficiency_percent",
+          "type": "property",
+          "name": "转换效率"
+        },
+        {
+          "key": "pcs.grid_current_thd_percent",
+          "type": "property",
+          "name": "并网电流谐波畸变率"
+        },
+        {
+          "key": "pcs.grid_side_voltage_v",
+          "type": "property",
+          "name": "电网侧电压"
+        },
+        {
+          "key": "pcs.rated_power_kw",
+          "type": "property",
+          "name": "额定功率"
+        },
+        {
+          "key": "pcs.reactive_power_kvar",
+          "type": "property",
+          "name": "无功功率"
+        },
+        {
+          "key": "pcs.switching_frequency_khz",
+          "type": "property",
+          "name": "开关频率"
+        },
+        {
+          "key": "thermal_unit.coolant_type",
+          "type": "property",
+          "name": "冷却介质类型"
+        },
+        {
+          "key": "[REDACTED_BLOB]",
+          "type": "property",
+          "name": "滤芯维护周期"
+        },
+        {
+          "key": "thermal_unit.pump_count",
+          "type": "property",
+          "name": "循环泵数量"
+        },
+        {
+          "key": "thermal_unit.target_temp_celsius",
+          "type": "property",
+          "name": "目标温度"
+        }
+      ],
+      "extra": [
+        {
+          "key": "gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_point_alias",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_contains_point",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_config_contains_channel",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_config_contains_point_alias",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_battery",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_pcs",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_thermal_unit",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_battery",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_power",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_point_aliases",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_telemetry",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel_points",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_meter",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_pcs",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_link_meter_to_pcs",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_local_guard",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_point_alias",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_has_channel",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel_has_point",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_user_roles",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_local_guards",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_list",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_point_list",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "energy_storage_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_user_role",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "station_grid_meter",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "station_thermal_unit",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ems_energy_management_system",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "pcs_power_conversion_system",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_local_guard",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_station",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_battery_system",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_pcs_converter",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_ems_system",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_link_pcs_to_ems",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_device",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_user_roles",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channels",
+          "type": "property",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "gateway_channel_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_config",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_gateway_channel",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_measurement_point",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "ess_point_alias",
+          "type": "object",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "link_gateway_config_contains_channel",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "link_gateway_channel_contains_point",
+          "type": "link",
+          "reason": "no-golden-match"
+        },
+        {
+          "key": "link_point_alias_ref_point",
+          "type": "link",
+          "reason": "no-golden-match"
+        }
+      ],
+      "matchedCount": 2,
+      "missingCount": 38,
+      "extraCount": 66,
+      "precision": 0.0294,
+      "recall": 0.05,
+      "typeMatched": 2,
+      "typeMismatched": [],
+      "matchedByType": {
+        "link": 2
+      },
+      "missingByType": {
+        "link": 2,
+        "object": 5,
+        "property": 31
+      },
+      "quality": {
+        "fieldsChecked": 6,
+        "fieldsMismatched": [
+          {
+            "key": "link.thermal_to_battery",
+            "field": "cardinality",
+            "expected": {
+              "source": "one",
+              "target": "many"
+            },
+            "actual": null,
+            "note": "候选缺少金样声明字段"
+          },
+          {
+            "key": "link.thermal_to_battery",
+            "field": "sourceRef",
+            "expected": "thermal_unit",
+            "actual": "ess_thermal_unit",
+            "note": "字段值与金样不一致（dataType/单位/枚举等，评价明细不扣分母）"
+          },
+          {
+            "key": "link.thermal_to_battery",
+            "field": "targetRef",
+            "expected": "battery_ess",
+            "actual": "ess_battery",
+            "note": "字段值与金样不一致（dataType/单位/枚举等，评价明细不扣分母）"
+          },
+          {
+            "key": "link.battery_to_pcs",
+            "field": "cardinality",
+            "expected": {
+              "source": "many",
+              "target": "one"
+            },
+            "actual": null,
+            "note": "候选缺少金样声明字段"
+          },
+          {
+            "key": "link.battery_to_pcs",
+            "field": "sourceRef",
+            "expected": "battery_ess",
+            "actual": "ess_battery",
+            "note": "字段值与金样不一致（dataType/单位/枚举等，评价明细不扣分母）"
+          },
+          {
+            "key": "link.battery_to_pcs",
+            "field": "targetRef",
+            "expected": "pcs",
+            "actual": "ess_pcs",
+            "note": "字段值与金样不一致（dataType/单位/枚举等，评价明细不扣分母）"
+          }
+        ]
+      },
+      "conflictCoverage": {
+        "expected": 0,
+        "covered": 0,
+        "uncovered": []
+      },
+      "conflictDetails": [],
+      "mergeGroups": [],
+      "mergeSuspects": [],
+      "structuralIssues": [
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_station",
+          "detail": "与候选 'ess_station' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_battery",
+          "detail": "与候选 'ess_battery' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_config",
+          "detail": "与候选 'gateway_config' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway",
+          "detail": "与候选 'ess_gateway' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_station",
+          "detail": "与候选 'ess_station' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_pcs",
+          "detail": "与候选 'ess_pcs' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway",
+          "detail": "与候选 'ess_gateway' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_config",
+          "detail": "与候选 'gateway_config' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_channel",
+          "detail": "与候选 'gateway_channel' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway",
+          "detail": "与候选 'ess_gateway' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_channel",
+          "detail": "与候选 'gateway_channel' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_station",
+          "detail": "与候选 'ess_station' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_channel_point",
+          "detail": "与候选 'gateway_channel_point' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_station",
+          "detail": "与候选 'ess_station' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "gateway_channel_point",
+          "detail": "与候选 'gateway_channel_point' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway_config",
+          "detail": "与候选 'ess_gateway_config' 语义身份相同（type+owner+key）"
+        },
+        {
+          "code": "duplicateIdentity",
+          "candidateKey": "ess_gateway_channel",
+          "detail": "与候选 'ess_gateway_channel' 语义身份相同（type+owner+key）"
+        }
+      ],
+      "goldenMinimumCounts": {
+        "object": 5,
+        "property": 31,
+        "link": 4
+      }
+    }
+  ],
+  "qualitySummary": {
+    "sampleCount": 2,
+    "matchedCount": 2,
+    "missingCount": 49,
+    "extraCount": 134,
+    "precision": 0.0147,
+    "recall": 0.0392,
+    "matchedByType": {
+      "link": 2
+    },
+    "missingByType": {
+      "object": 6,
+      "property": 41,
+      "link": 2
+    },
+    "conflictsExpected": 0,
+    "conflictsCovered": 0,
+    "structuralIssueCount": 34,
+    "mergeSuspectCount": 0
+  },
+  "events": {
+    "plannedJobs": 11,
+    "jobSucceeded": 11,
+    "jobSplit": 0,
+    "formatRepair": 0,
+    "networkRetry": 1,
+    "jobFailed": 0,
+    "blocked": 1
+  },
+  "ledgerAttempts": [
+    {
+      "attemptId": "a-22eabe8ee241eaccdd1bbabbd4392469",
+      "jobId": "j-c2ef7bf4c8ad3a9a41a3",
+      "usage": {
+        "promptTokens": 895,
+        "completionTokens": 7487,
+        "reasoningTokens": null,
+        "totalTokens": 8382,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 148605,
+      "promptBytes": 33224,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-3bbb54371f9495767743c45b3def0589",
+      "jobId": "j-dfd5c2251dabf1746350",
+      "usage": {
+        "promptTokens": 908,
+        "completionTokens": 4644,
+        "reasoningTokens": null,
+        "totalTokens": 5552,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 100656,
+      "promptBytes": 21378,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-74772bc0b70e257b3b00f27ac3c70263",
+      "jobId": "j-e3d15cc984a24b31c23c",
+      "usage": {
+        "promptTokens": 1207,
+        "completionTokens": 5537,
+        "reasoningTokens": null,
+        "totalTokens": 6744,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 119462,
+      "promptBytes": 24353,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-358055f8c0af02cebfddcb3e6cc166c4",
+      "jobId": "j-8f78f959a7c7b294aecc",
+      "usage": {
+        "promptTokens": 887,
+        "completionTokens": 3842,
+        "reasoningTokens": null,
+        "totalTokens": 4729,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 88906,
+      "promptBytes": 18166,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-6fee3d3a995c09dbbb58270679b0ff67",
+      "jobId": "j-9361c096e85a50f19502",
+      "usage": {
+        "promptTokens": null,
+        "completionTokens": null,
+        "reasoningTokens": null,
+        "totalTokens": null,
+        "usageSource": "absent"
+      },
+      "finishReason": null,
+      "errorCode": "TIMEOUT",
+      "errorMessage": "网络错误",
+      "durationMs": null,
+      "promptBytes": 0,
+      "state": "failed"
+    },
+    {
+      "attemptId": "a-ab013ba880164f15fe882d767c99990a",
+      "jobId": "j-9361c096e85a50f19502",
+      "usage": {
+        "promptTokens": 1042,
+        "completionTokens": 5977,
+        "reasoningTokens": null,
+        "totalTokens": 7019,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 119119,
+      "promptBytes": 26184,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-8249fe3886dfcd782504d7747a18b823",
+      "jobId": "j-acb322abbca29531a79d",
+      "usage": {
+        "promptTokens": 1035,
+        "completionTokens": 6887,
+        "reasoningTokens": null,
+        "totalTokens": 7922,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 138932,
+      "promptBytes": 30186,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-eff8598ba308dfef7ea178265fdef4f9",
+      "jobId": "j-8f05f4c26d557fb9a15e",
+      "usage": {
+        "promptTokens": 1042,
+        "completionTokens": 5333,
+        "reasoningTokens": null,
+        "totalTokens": 6375,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 107906,
+      "promptBytes": 24127,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-0017fb63fb1f7267e31cb6ab688aece8",
+      "jobId": "j-16b3b20afec762d56147",
+      "usage": {
+        "promptTokens": 1038,
+        "completionTokens": 5638,
+        "reasoningTokens": null,
+        "totalTokens": 6676,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 121098,
+      "promptBytes": 25134,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-b230013e1528af33adb76eb81adb5c3a",
+      "jobId": "j-a5a9300169e29f7e9645",
+      "usage": {
+        "promptTokens": 1042,
+        "completionTokens": 3486,
+        "reasoningTokens": null,
+        "totalTokens": 4528,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 75212,
+      "promptBytes": 15981,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-ed18bbfd11ce75aa23e311adeec1a429",
+      "jobId": "j-dbde58ea3e29adfc5956",
+      "usage": {
+        "promptTokens": 1048,
+        "completionTokens": 7314,
+        "reasoningTokens": null,
+        "totalTokens": 8362,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 143915,
+      "promptBytes": 31063,
+      "state": "succeeded"
+    },
+    {
+      "attemptId": "a-c677a3f0da479bd404c2f2b91af96a6b",
+      "jobId": "j-88b7fc964f849bb38f68",
+      "usage": {
+        "promptTokens": 1037,
+        "completionTokens": 4173,
+        "reasoningTokens": null,
+        "totalTokens": 5210,
+        "usageSource": "api"
+      },
+      "finishReason": "stop",
+      "errorCode": null,
+      "errorMessage": null,
+      "durationMs": 81569,
+      "promptBytes": 18130,
+      "state": "succeeded"
+    }
+  ],
+  "meta": {
+    "codec": "compact-v1",
+    "planner": "v3-pack-next",
+    "adapterDiffs": [],
+    "schemaVersion": 2,
+    "model": "glm-5.3-flash",
+    "targetCount": 42,
+    "jobCount": 12,
+    "goldenCount": 2,
+    "physicalCalls": 12,
+    "cacheHits": 0,
+    "resumed": false,
+    "runAttempt": 1,
+    "campaignBudgetRemainingAtStart": {
+      "maxAttempts": 21,
+      "maxWallMs": 3600000,
+      "completionSoftLimit": 60000
+    },
+    "campaignCountersAfter": {
+      "attempts": 15,
+      "knownCompletionTokens": 60318,
+      "activeMs": 1245380
+    }
+  }
+}

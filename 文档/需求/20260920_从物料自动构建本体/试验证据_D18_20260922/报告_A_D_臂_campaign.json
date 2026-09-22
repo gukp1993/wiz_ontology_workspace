@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "reportKind": "ontology-token-pilot",
+  "config": {
+    "campaignId": "d18-smoke-20260922",
+    "mode": "real",
+    "repeats": 1,
+    "samples": [
+      "simple"
+    ],
+    "providerId": "llm-5021bee500",
+    "profile": {
+      "contextTokens": 131072,
+      "outputLimitTokens": 8192,
+      "requestOutputTokens": 32000,
+      "targetRatio": 0.5
+    },
+    "campaignBudget": {
+      "maxAttempts": 24,
+      "maxCompletionTokens": 60000,
+      "maxWallMs": 3600000
+    },
+    "arms": {
+      "A": {
+        "codec": "legacy-v1",
+        "planner": "fixed-batch"
+      },
+      "D": {
+        "codec": "compact-v1",
+        "planner": "v3-pack-next"
+      }
+    }
+  },
+  "arms": {
+    "A": {
+      "config": {
+        "codec": "legacy-v1",
+        "planner": "fixed-batch"
+      },
+      "usage": {
+        "calls": 3,
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "knownCompletionTokens": 0,
+        "unknownUsageCalls": 3,
+        "reasoningTokens": null,
+        "finishReasons": {},
+        "errorCodes": {
+          "TIMEOUT": 3
+        },
+        "states": {
+          "failed": 3
+        },
+        "durationMs": 0,
+        "maxAttemptDurationMs": 0,
+        "promptBytes": 0,
+        "completionBytes": 0
+      },
+      "quality": {
+        "sampleCount": 2,
+        "matchedCount": 0,
+        "missingCount": 51,
+        "extraCount": 0,
+        "precision": 1.0,
+        "recall": 0.0,
+        "matchedByType": {},
+        "missingByType": {
+          "object": 6,
+          "property": 41,
+          "link": 4
+        },
+        "conflictsExpected": 0,
+        "conflictsCovered": 0,
+        "structuralIssueCount": 0,
+        "mergeSuspectCount": 0
+      },
+      "openItems": {
+        "missingGolden": 51,
+        "extraCandidates": 0,
+        "unknownUsageCalls": 3,
+        "structuralIssues": 0,
+        "mergeSuspects": 0
+      }
+    },
+    "D": {
+      "config": {
+        "codec": "compact-v1",
+        "planner": "v3-pack-next"
+      },
+      "usage": {
+        "calls": 12,
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "knownCompletionTokens": 60318,
+        "unknownUsageCalls": 1,
+        "reasoningTokens": null,
+        "finishReasons": {
+          "stop": 11
+        },
+        "errorCodes": {
+          "TIMEOUT": 1
+        },
+        "states": {
+          "succeeded": 11,
+          "failed": 1
+        },
+        "durationMs": 1245380,
+        "maxAttemptDurationMs": 148605,
+        "promptBytes": 267926,
+        "completionBytes": 0
+      },
+      "quality": {
+        "sampleCount": 2,
+        "matchedCount": 2,
+        "missingCount": 49,
+        "extraCount": 134,
+        "precision": 0.0147,
+        "recall": 0.0392,
+        "matchedByType": {
+          "link": 2
+        },
+        "missingByType": {
+          "object": 6,
+          "property": 41,
+          "link": 2
+        },
+        "conflictsExpected": 0,
+        "conflictsCovered": 0,
+        "structuralIssueCount": 34,
+        "mergeSuspectCount": 0
+      },
+      "openItems": {
+        "missingGolden": 49,
+        "extraCandidates": 134,
+        "unknownUsageCalls": 1,
+        "structuralIssues": 34,
+        "mergeSuspects": 0
+      }
+    }
+  },
+  "compare": null,
+  "notes": [
+    "real 模式：provider 已解析（model=glm-5.3-flash）；key 只留内存，不入报告",
+    "simple/A/r1：failed（TIMEOUT：作业 j-156a723b1d69d34b2690 失败（TIMEOUT）；已成功结果保留，可重试只补未成功部分）",
+    "simple/D/r1：blocked（COMPLETION_SOFT_LIMIT：已知 completion 累计 60318 达软限 60000，停止派发）"
+  ],
+  "g2": {
+    "qualityGate": {
+      "rows": [
+        {
+          "sample": "simple",
+          "verdict": "fail",
+          "failedChecks": [
+            "criticalObjects",
+            "ownershipComplete",
+            "endpointsComplete",
+            "noStructuralIssues",
+            "precisionNotRegressed"
+          ]
+        }
+      ]
+    },
+    "compactBenefitGate": {
+      "verdict": "not_run",
+      "detail": "A 或 B 臂未跑，compact 收益门无法判定"
+    },
+    "costTradeoff": {
+      "verdict": "unprovable",
+      "detail": "存在 unknown usage（A=3, D=1）：总量未知，成本取舍不可证"
+    }
+  }
+}
