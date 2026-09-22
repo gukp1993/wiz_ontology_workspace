@@ -144,7 +144,11 @@ def empty_usage():
 
 
 def normalize_usage(raw):
-    """provider usage 原始 dict → 冻结形状；缺项 None，非法值 None（绝不猜 0）。"""
+    """provider usage → 冻结形状；幂等（回喂本函数输出形状不丢信息）；缺项 None，绝不猜 0。
+
+    同时接受原始 snake_case（prompt_tokens…）与规范化 camelCase（promptTokens…）——
+    D08 落库/D13 聚合把已规范化 usage 再喂回来时不得被判 absent。
+    """
     raw = raw if isinstance(raw, dict) else {}
 
     def _int(value):
@@ -152,14 +156,18 @@ def normalize_usage(raw):
             return None
         return int(value) if value >= 0 else None
 
-    present = any(_int(raw.get(key)) is not None
-                  for key in ('prompt_tokens', 'completion_tokens', 'total_tokens',
-                              'reasoning_tokens'))
-    return {'promptTokens': _int(raw.get('prompt_tokens')),
-            'completionTokens': _int(raw.get('completion_tokens')),
-            'reasoningTokens': _int(raw.get('reasoning_tokens')),
-            'totalTokens': _int(raw.get('total_tokens')),
-            'usageSource': 'api' if present else 'absent'}
+    prompt = _int(raw.get('prompt_tokens', raw.get('promptTokens')))
+    completion = _int(raw.get('completion_tokens', raw.get('completionTokens')))
+    reasoning = _int(raw.get('reasoning_tokens', raw.get('reasoningTokens')))
+    total = _int(raw.get('total_tokens', raw.get('totalTokens')))
+    source = raw.get('usageSource', raw.get('usage_source'))
+    present = any(value is not None for value in (prompt, completion, reasoning, total))
+    if present and source in (None, '', 'absent'):
+        source = 'api'
+    elif not present:
+        source = 'absent' if source in (None, '') else str(source)
+    return {'promptTokens': prompt, 'completionTokens': completion, 'reasoningTokens': reasoning,
+            'totalTokens': total, 'usageSource': str(source)}
 
 
 def add_usage(left, right):
@@ -379,6 +387,10 @@ def validate_profile(profile, provider_id=None, model=None):
 # groupingConfidence='low'。**每个范围内事实至少产生一个 target**：不因值短/像元数据删除事实。
 # build_targets(facts) -> {'targets': [Target], 'groups': [{'subjectKey','targetIds','confidence'}],
 #                          'stats': {'factCount': n, 'targetCount': n, 'lowConfidenceGroups': n}}
+# context_fact_ids(targets, groups, max_context=8)（D03 冻结语义）：
+#   targets=同次 build_targets 全量 targets（targetId→factId 解析表）；
+#   groups=本叶任务主目标所在组（可为主组子集）；
+#   上下文=同 subjectKey 且不属于主目标组的邻近事实，机械保证与主目标 factId 不相交（不算覆盖）。
 
 
 def canonical_selector(selector):
@@ -490,7 +502,8 @@ def coverage_check(planned_digests, completed_digests):
 #                    'errorCode','splitPath'}},
 #   'attempts': {attemptId: {'jobId','sequence','runAttempt','requestFingerprint',
 #                            'requestedMaxTokens','state','finishReason','usage','bytes',
-#                            'durationMs'}},
+#                            'durationMs','errorCode','errorMessage'}},
+#   （jobs[*] 另有 'supersededBy'：queued 被重打包时指向新 job，持久化重打包映射 §4.3）
 #   'coverage': {'targetTotal': n, 'targetCompleted': n, 'targetPending': n},
 #   'usageAggregate': {usage_aggregate 输出},
 #   'blocking': {'code': str, 'message': str} | None,
@@ -592,10 +605,14 @@ def final_state_check(plan_doc):
 
 
 # --- 编解码（D06 output_codec.py 实现）------------------------------------------------
-# encode_request(codec_version, plan_doc, job, targets_by_id, facts_by_id, scope_payload)
-#   -> {'messages': [...], 'aliasMap': {alias(f0..): factId}, 'unitIds': [..]}
+# encode_request(codec_version, job_targets, context_facts, scope_payload,
+#                property_data_types=None, value_types=None)
+#   -> {'messages': [...], 'aliasMap': {alias(f0..): factId}, 'unitIds': [targetId..]}
+#   job_targets：本叶 job 主目标（targetId/factId/selector/kind/subjectKey）；
+#   context_facts：背景事实 dict 列表（只供理解，不算覆盖，不带 id、不可被引用）。
 #   别名只在本调用内有效，程序保留 alias→factId/selector 映射，不跨批复用。
 #   主目标与背景必须区分（提示词声明"只为本次主目标生成定义，背景对象只作引用"）。
+#   证据范围 = aliasMap 值 = 本次主目标事实；背景事实不可作为证据引用。
 # decode_response(codec_version, content, alias_map, expected_unit_ids)
 #   -> {'ok': bool, 'candidates': [normalized dict], 'coverage': [{'unit','status'}],
 #       'errors': [{'code','message'}], 'notes': [str], 'rejectedRefs': int}
