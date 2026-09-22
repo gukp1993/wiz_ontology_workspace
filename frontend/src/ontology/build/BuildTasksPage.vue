@@ -4,10 +4,11 @@
      边界（与需求一致）：本页只做任务与物料入口，不生成项目映射、不覆盖已有本体、不自动发布。 -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { formatDateTime } from '../../shared/format'
 import { cancelRun, createTask, deleteTask, errorMessage, fetchCapabilities, fetchRun, fetchTask, listTasks } from './api'
 import type { BuildTaskDetail } from './api'
 import {
-  TASK_STATUS_LABELS, TASK_STATUS_TONE, formatBytes, formatTime, labelOf, taskStatusLabel, toneOf,
+  TASK_STATUS_LABELS, TASK_STATUS_TONE, formatBytes, labelOf, taskStatusLabel, toneOf,
   type BuildCapabilities, type BuildTask, type ParserMatrixItem, type Tone,
 } from './types'
 
@@ -330,7 +331,7 @@ async function submitDelete() {
               <template v-if="row.detail">{{ row.detail.materialCount }} 份</template>
               <span v-else class="muted" :title="detailsLoading ? '正在读取该任务的材料数量' : '未能读取该任务的详情'">{{ detailsLoading ? '读取中…' : '—' }}</span>
             </td>
-            <td>{{ formatTime(row.task.updatedAt) }}</td>
+            <td>{{ formatDateTime(row.task.updatedAt) }}</td>
             <td class="bt-ops">
               <button type="button" class="row-link" @click="emit('open-task', row.task.id)">{{ row.task.status === 'delivered' ? '查看任务' : '继续' }}</button>
               <!-- 08 §12.3：任务级停止——对最近一次运行调用取消，后端同事务把任务回退到「确定范围」 -->

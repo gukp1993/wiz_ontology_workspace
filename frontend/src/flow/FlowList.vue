@@ -4,7 +4,7 @@
 import { computed, ref } from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import { createFlow, copyFlow, deleteFlow, listFlows } from './api'
-import { formatTime } from './flowModel'
+import { formatDateTime } from '../shared/format'
 const emit = defineEmits(['open', 'created', 'deleted', 'copied', 'navigate'])
 const items = ref<any[]>([])
 const loading = ref(false)
@@ -79,7 +79,7 @@ async function remove(item: any) {
         <tr v-for="item in filtered" :key="item.id" :class="{deleted:item.status==='deleted'}">
           <td class="prop-name">{{item.name}}<small v-if="item.status==='deleted'" class="muted">（已删除）</small><small v-if="item.description" class="muted row-desc" :title="item.description">{{item.description}}</small></td>
           <td>{{item.nodeCount}}</td>
-          <td>{{formatTime(item.updatedAt)}}</td>
+          <td class="col-time">{{formatDateTime(item.updatedAt)}}</td>
           <td>
             <span v-if="item.status==='deleted'" class="muted">—</span>
             <span v-else-if="item.configStatus==='passed'" class="property-pill">检查通过</span>
@@ -111,13 +111,20 @@ async function remove(item: any) {
 </div>
 </template>
 <style scoped>
-table{table-layout:fixed}
+/* fixed 布局下没写宽度的名称列只吃剩余空间：窄窗口里曾被压到 25px（一行一个字、行高 157px）。
+   按 .ont-table / .attribute-table 的既有约定补 min-width 兜住列宽之和，横滚交给 .scroll 容器。 */
+table{table-layout:fixed;min-width:756px}
 tr.deleted td{opacity:.55}
 .list-search{margin:0}.list-search input{margin-top:5px}
-th.col-nodes{width:84px;white-space:nowrap}
+th.col-nodes{width:84px}
 th.col-time{width:150px}
-th.col-status{width:110px}
-th.col-ops{width:148px}
+/* 150px 是「待完善 · 3 个问题」这类最长文案的实测宽度（130px）加单元格左右内边距（各 10px）；
+   原来 110px 会让胶囊溢出单元格，140px 仍然差 10px。 */
+th.col-status{width:156px}
+/* 三个 .mini 按钮实测 45+44+45 + 两条 6px 间距 = 146px，加内边距 20px；原 148px 让「删除」
+   溢出单元格右边 8px，粘在表格边界外。 */
+th.col-ops{width:168px}
+.col-time{white-space:nowrap}
 td.ops{white-space:nowrap;overflow:visible}
 td.ops .mini+.mini{margin-left:6px}
 .prop-name{overflow:hidden}

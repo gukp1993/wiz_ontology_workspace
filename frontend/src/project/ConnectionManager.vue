@@ -3,6 +3,7 @@ import {computed,inject,nextTick,onBeforeUnmount,ref,watch} from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
 import RowMenu from '../shared/RowMenu.vue'
+import { formatDateTimeSec } from '../shared/format'
 import type {FormGuardAPI,FormGuardInstance,FormSaveAPI} from '../app/formGuard'
 import { connectionTest, connectionSecret, catalogRefresh } from './api'
 const props=defineProps<{projectState:any}>()
@@ -251,7 +252,7 @@ async function refreshCatalog(c:any){
   if(d.stale){notify(d.message||'探测期间连接配置或凭据已变化，本次结果未保存；请重新刷新','error');return}
   if(!d.ok){notify('目录未刷新（'+(d.message||'请求失败')+'）；已保留旧选择','error');return}
   mutate(()=>{props.projectState.bindings.catalogs=props.projectState.bindings.catalogs||{};props.projectState.bindings.catalogs[c.id]={database:d.database,tables:d.tables,refreshedAt:d.refreshedAt}})
-  notify('「'+(c.name||c.id)+'」'+d.message+'（'+new Date(d.refreshedAt).toLocaleString()+'）','success')
+  notify('「'+(c.name||c.id)+'」'+d.message+'（'+formatDateTimeSec(d.refreshedAt)+'）','success')
  }catch(e){notify('目录未刷新（'+(e as Error).message+'）；已保留旧选择','error')}finally{catalogBusy.value=''}
 }
 function catalogPreview(c:any):string{
@@ -294,7 +295,7 @@ function catalogPreview(c:any):string{
   <div v-for="c in mysqlConnections" :key="c.id" class="conn-row">
     <div class="conn-main">
       <strong>{{c.name||c.id}}</strong>
-      <small v-if="catalogInfo(c)">已缓存 {{(catalogInfo(c).tables||[]).length}} 张表／视图 · 刷新于 {{new Date(catalogInfo(c).refreshedAt).toLocaleString()}}</small>
+      <small v-if="catalogInfo(c)">已缓存 {{(catalogInfo(c).tables||[]).length}} 张表／视图 · 刷新于 {{formatDateTimeSec(catalogInfo(c).refreshedAt)}}</small>
       <small v-else>尚未读取目录</small>
       <small v-if="catalogPreview(c)" class="mono">{{catalogPreview(c)}}</small>
     </div>

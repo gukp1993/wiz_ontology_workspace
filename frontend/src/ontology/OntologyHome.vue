@@ -16,6 +16,7 @@ import { listVersions, validateOntology, publishCheck } from './api'
 import { listProjects } from '../project/api'
 import { validationGroups } from './validationPresentation'
 import { navIcons } from '../shared/icons'
+import { formatDateTimeSec } from '../shared/format'
 import OntologyImport from './OntologyImport.vue'
 const props=defineProps<{state:any}>()
 const emit=defineEmits<{navigate:[view:string,focus?:any];openProject:[id:string]}>()
@@ -61,7 +62,7 @@ const diffLatest=ref('')
 const published=computed(()=>versionState.value==='ready'&&!!(diffState.value!=='unknown'&&diffLatest.value||metaLatest.value))
 const latestVersion=computed(()=>diffState.value!=='unknown'&&diffLatest.value?diffLatest.value:metaLatest.value)
 const latestTime=computed(()=>{const hit=versionItems.value.find(v=>String(v.version||'')===latestVersion.value);if(!hit?.createdAt)return ''
-  try{const d=new Date(hit.createdAt);return isNaN(+d)?'':d.toLocaleString('zh-CN',{hour12:false})}catch{return ''}})
+  return formatDateTimeSec(String(hit.createdAt))})
 async function loadVersions(){
   const oid=ontologyId.value
   versionState.value='loading';versionError.value=''

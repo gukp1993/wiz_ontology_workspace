@@ -592,10 +592,3 @@ export function defaultPosition(state: any): { x: number; y: number } {
   const column = count % 4, row = Math.floor(count / 4)
   return { x: 160 + column * 210, y: 120 + row * 150 }
 }
-
-export function formatTime(iso: string): string {
-  if (!iso) return '—'
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return iso
-  return date.toLocaleString('zh-CN', { hour12: false })
-}
