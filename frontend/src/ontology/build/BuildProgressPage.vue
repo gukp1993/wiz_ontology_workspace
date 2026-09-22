@@ -4,6 +4,9 @@
      行为要点：
      · fetchRun 每 1.5 秒轮询；只展示服务端给出的真实阶段与 progress.done/total，
        不做假倒计时与百分比动画；到达终态（已完成/失败/已取消/已中断）停止轮询，卸载清定时器。
+     · 抽取阶段等待期间服务端每 15 秒写一次批内心跳（waitingPosition/waitingCount/waitedSeconds），
+       进度行据此追加「等待第 N 批返回（还有 X 批未完成，已等待 Y）」，超过 60 秒再加一句安心提示；
+       心跳字段缺失时展示与改动前完全一致（不推算、不本地计时）。
      · state=interrupted 必须写明「服务重启导致中断，可重试」，绝不显示为运行中。
      · 失败保留已完成阶段并展示 run.error 原文；取消/重试分别走 build-run-cancel / build-run-resume。
      · 取消提示：取消不保证立即终止已发出的模型请求，但晚到的结果不会写入当前批次。
@@ -118,14 +121,45 @@ const currentStageLabel = computed(() => {
   if (!value) return ''
   return value.stageLabel || (value.stage ? labelOf(STAGE_LABELS, value.stage, '') : '')
 })
-/** 真实进度文案：只回报服务端给出的阶段名与 done/total，不推算百分比、不做倒计时。 */
+/** 批次并发等待心跳（仅抽取阶段等待期间出现；批次完成后服务端不再下发这三个字段）。
+ *  字段缺失时返回 null，展示口径与改动前完全一致（向后兼容）。 */
+const batchWait = computed(() => {
+  const progress = run.value?.progress
+  const position = progress?.waitingPosition
+  if (typeof position !== 'number' || position <= 0) return null
+  const count = typeof progress?.waitingCount === 'number' && progress.waitingCount > 0 ? progress.waitingCount : 0
+  const waited = typeof progress?.waitedSeconds === 'number' && progress.waitedSeconds >= 0 ? progress.waitedSeconds : null
+  return { position, count, waited }
+})
+/** 等待文案：秒数一律用服务端心跳值，不做本地倒计时/推算。 */
+const waitText = computed(() => {
+  const wait = batchWait.value
+  if (!wait) return ''
+  const parts: string[] = []
+  if (wait.count > 0) parts.push(`还有 ${wait.count} 批未完成`)
+  if (wait.waited !== null) parts.push(`已等待 ${formatDuration(wait.waited * 1000)}`)
+  return parts.length > 0 ? `等待第 ${wait.position} 批返回（${parts.join('，')}）` : `等待第 ${wait.position} 批返回`
+})
+/** 等待超过 60 秒时的安心提示：单批抽取耗时 1–4 分钟属正常，避免用户误判卡死。 */
+const waitHint = computed(() => (
+  batchWait.value && batchWait.value.waited !== null && batchWait.value.waited > 60
+    ? '模型正在处理大批次，单批可能耗时 1–4 分钟，请耐心等待；进度每 15 秒刷新一次。'
+    : ''
+))
+
+/** 真实进度文案：只回报服务端给出的阶段名与 done/total，不推算百分比、不做倒计时；
+ *  等待期间追加批次心跳（已完成批数 / 等待批号 / 已等待秒数），不覆盖既有 done/total。 */
 const progressText = computed(() => {
   const value = run.value
   if (!value) return ''
   const stage = currentStageLabel.value || '阶段处理中'
   const done = value.progress?.done, total = value.progress?.total
-  if (typeof done !== 'number' || typeof total !== 'number') return `${stage}（服务端尚未给出计数）`
-  return `${stage} ${done} / ${total}`
+  const wait = batchWait.value
+  if (typeof done !== 'number' || typeof total !== 'number') {
+    return wait ? `${stage}（服务端尚未给出计数）· ${waitText.value}` : `${stage}（服务端尚未给出计数）`
+  }
+  if (!wait) return `${stage} ${done} / ${total}`
+  return `${stage}：已完成 ${done} / ${total} 批 · ${waitText.value}`
 })
 const progressPercent = computed(() => {
   // 仅用于进度条宽度，仍来自真实 done/total；无计数时不画。
@@ -336,6 +370,7 @@ onUnmounted(() => {
         <div v-if="progressPercent !== null" class="bp-bar" role="progressbar" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100">
           <span :style="{ width: progressPercent + '%' }"></span>
         </div>
+        <p v-if="waitHint !== ''" class="muted bp-hint">{{ waitHint }}</p>
       </template>
 
       <ol class="bp-stages">

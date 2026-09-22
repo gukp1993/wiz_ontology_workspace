@@ -117,16 +117,19 @@ def _extract_batch_with_split(provider, scope, batch, depth=0):
     """
     result = None
     call_timeout = _extract_call_timeout(provider, len(batch))
+    rate_limited_hits = 0
     for attempt in range(3):
         result = llm.extract_candidates(provider, scope, batch, timeout=call_timeout)
         if result.get('ok') or not _is_transient_llm_error(result.get('error')):
             break
+        # 429 是账号级 RPM 限流（实测：并发 2 稳定、4+ 开始 429、16 路多数失败）——
+        # 单批内重试会继续撞限流窗口，改为**立即返回**让批次调度器降挡重排。
+        if _rate_limited(result.get('error')):
+            rate_limited_hits += 1
+            if rate_limited_hits >= 1:
+                return result
         if attempt < 2:
-            # 退避：限流用长退避（5s/15s，等额度窗口恢复），连接类用短退避（1s/3s）
-            if _rate_limited(result.get('error')):
-                time.sleep(5 + 10 * attempt)
-            else:
-                time.sleep(1 + 2 * attempt)
+            time.sleep(1 + 2 * attempt)   # 连接类短退避
     if result.get('ok'):
         return result
     error = str(result.get('error') or '')
@@ -1164,23 +1167,18 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
             runner.stage(owner_id, run_id, 'abstract', label,
                          {'done': position, 'total': len(batches), 'facts': len(model_facts),
                           'candidates': len(accumulated), 'resumed': 1})
-    extract_pool = None
-    extract_futures = {}
-    if pending_batches:
-        workers = max(1, min(int(protocol.LLM_CONCURRENCY), len(pending_batches)))
-        extract_pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix='build-extract')
-        for position, batch in pending_batches:
-            extract_futures[position] = extract_pool.submit(
-                _extract_batch_with_split, provider, scope, batch)
+    # 自适应并发调度（2026-09-22）：批次间无依赖，但 provider 有账号级 RPM 限流
+    # （实测 GLM：并发 2 稳定、4 路零星 429、16 路多数失败）——固定并发要么浪费
+    # 要么大批失败。调度器按结果动态调档（连续成功升一路、撞 429 降一路并冷却），
+    # 并在等待期间每 15 秒写心跳（waitingPosition/waitedSeconds），
+    # 解决「页面几分钟只显示处理中」；结果按批次序号返回，落库顺序与串行版一致。
+    adaptive_results = _run_batches_adaptive(
+        owner_id, run_id, label, batches, pending_batches, provider, scope,
+        done_positions, accumulated, model_facts)
     try:
         for position, _batch in pending_batches:
-            try:
-                result = extract_futures[position].result(
-                    timeout=_batch_wait_timeout(provider, len(_batch)))
-            except FutureTimeoutError:
-                # 迟到结果丢弃（与 V2-10 同一原则）：该批按失败处理，不等待、不落库
-                result = {'ok': False, 'candidates': [],
-                          'error': '批次等待超时（迟到结果丢弃，可「重试失败批次」）'}
+            result = adaptive_results.get(position) or {
+                'ok': False, 'candidates': [], 'error': '批次未返回结果（可「重试失败批次」）'}
             _add_usage(usage, result.get('usage'))
             failed_batches = [item for item in failed_batches
                               if int(item.get('position') or 0) != position]
@@ -1208,9 +1206,9 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
                          {'done': position, 'total': len(batches), 'facts': len(model_facts),
                           'candidates': len(accumulated)})
     finally:
-        if extract_pool is not None:
-            # 取消/失败时未开始的批次直接取消；执行中的批次不等待（迟到结果一律丢弃）
-            extract_pool.shutdown(wait=False, cancel_futures=True)
+        # 抽取池在 _run_batches_adaptive 内已 shutdown(wait=False, cancel_futures=True)：
+        # 未开始的批次取消，执行中的不等待（迟到结果一律丢弃，与 V2-10 同口径）。
+        pass
     errors = ['第 %d 批抽取失败：%s' % (item['position'], item.get('error') or '未知错误')
               for item in failed_batches]
     for message in errors:

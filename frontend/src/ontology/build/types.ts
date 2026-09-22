@@ -122,7 +122,14 @@ export type RunState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelle
 /** scan: retrieve/align；generate: retrieve/align/abstract/verify/adapt。 */
 export type RunStage = 'retrieve' | 'align' | 'abstract' | 'verify' | 'adapt'
 
-export interface RunProgress { done: number; total: number }
+export interface RunProgress {
+  done: number
+  total: number
+  /** 批次并发等待心跳（仅抽取阶段等待期间出现）：当前等待批号 / 未返回批数 / 已等待秒数 */
+  waitingPosition?: number
+  waitingCount?: number
+  waitedSeconds?: number
+}
 export interface RunUsage { calls: number; promptBytes: number; completionBytes: number; durationMs: number }
 export interface RunError { message: string; retryable: boolean }
 export interface RunBaseline {
