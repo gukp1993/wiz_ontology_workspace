@@ -1300,6 +1300,7 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
         与「已完成批次候选各自提交、重试只补缺口」的承诺矛盾。
         """
         nonlocal rejected_total
+        verified = []      # 本批校验通过的候选（成功分支填充；失败批保持空）
         _add_usage(usage, result.get('usage'))
         failed_batches[:] = [item for item in failed_batches
                              if int(item.get('position') or 0) != position]
@@ -1322,22 +1323,21 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
                                                   weak_fact_ids=weak_fact_ids)
             if verified:
                 accumulated.extend(verified)
-                # 候选是业务内容（R4-01）：同事务核对取消/执行权后再追加，
-                # 已取消/已被接管的旧 worker 在这里被拒绝，绝不污染新 attempt 的批次。
-                runner.content_tx(owner_id, run_id,
-                                  lambda conn, items=verified:
-                                  _append_candidates(conn, owner_id, task_id, batch_id, items))
             batch_log.append('批 %d/%d 完成：候选 %d 个'
                              % (position, len(batches), len(verified)))
-        # 批次检查点（V2-8）：成功/失败都持久化——崩溃或失败后重试只补缺口；
-        # 日志与 notes 随同一写事务落库（运行中轮询可见；成功收尾也不得抹掉）。
-        _tx(lambda conn, done=set(done_positions), failed=list(failed_batches):
-            (runner.check_cancelled(conn, run_id, owner_id),
-             store.update_run(conn, run_id, owner_id,
-                              checkpoint=_checkpoint(done, failed,
-                                                     extra={'log': batch_log[-GENERATE_LOG_LIMIT:],
-                                                            'notes': list(notes)}),
-                              lease=runner.lease_of(owner_id, run_id) or None)))
+        # 候选写入与检查点必须**同一事务**提交：分成两个事务时，若在两者之间被杀/取消，
+        # `done` 未记录 → 该批重跑 → 候选双写（评审页出现重复项）。
+        # 同事务后二者同生共死：要么都写入（重试会跳过该批），要么都没写（重试重跑该批）。
+        # 取消/执行权核对由 content_tx 在同一写事务内完成（R4-01）。
+        def _flush_tx(conn):
+            if verified:
+                _append_candidates(conn, owner_id, task_id, batch_id, verified)
+            store.update_run(conn, run_id, owner_id,
+                             checkpoint=_checkpoint(set(done_positions), list(failed_batches),
+                                                    extra={'log': batch_log[-GENERATE_LOG_LIMIT:],
+                                                           'notes': list(notes)}),
+                             lease=runner.lease_of(owner_id, run_id) or None)
+        runner.content_tx(owner_id, run_id, _flush_tx)
         runner.stage(owner_id, run_id, 'abstract', label,
                      {'done': len(done_positions), 'total': len(batches),
                       'facts': len(model_facts), 'candidates': len(accumulated)})
