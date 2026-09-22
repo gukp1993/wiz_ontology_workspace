@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`4dfacb7f05149380`
+上下文版本：`45ea6854486bf450`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,27 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### ontology-build-v2-10-r2（V2-10 测试第一轮整改，worktree/build-governance） · zcode · 已实施，待验收
+
+时间：2026-09-22T01:58:40.631818+00:00；记录：`.collaboration/entries/000179-c93d4abcce14.json`
+
+测试第一轮 3 项（1 严重+2 一般）全部修复，单一提交 3dc51dc：严重#1 _collect_pool_result.future.result() 超时分支之外补 except Exception（不含 BaseException）——worker 内异常（注入失败、适配器契约外返回值在后处理段触发的 AttributeError）转该文件 failed+异常摘要+清空事实（与超时同口径），继续收集下一文件、不再杀死整个 run（新增 _scan_write_pool_failure/_pool_failure_message）；同提交把「0.5s 短片边界取消即时生效」注释改为如实描述（0.5s 轮询只保证主线程及时回到取消检查点，实际取消生效时间由当前文件解析速度决定，最坏 ≤120s）。一般#2 README 变更记录补 V2-10 一行（git diff --cached 复核仅 1 行新增）。测试新增 6 项断言覆盖两条复现路径（RuntimeError 注入 + 猴补 REGISTRY 适配器返回 None 触发 parse_material 后处理 AttributeError，未改 parsers 源文件），均断言 run succeeded、崩溃文件 failed 且原因含异常类名、事实清空、其余文件 success。
+
+- 决定：异常隔离在 pipeline 侧实现（parsers/__init__.py 属另一任务线，未触碰）；落库口径与超时路径一致（failed + 清空既有事实 + failedSegments 记异常类名）；未夹带其他改动：偶发 ECONNRESET 属基线既有缺陷（探针量化见 verification），本轮仅报告不修改以守「不夹带」纪律
+- 验证：tests/test_ontology_build.py 250/250（连续 2 次全绿 v210_r1/r2 + cr_2/cr_3 共 4 次；本轮共 7 次运行）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；偶发失败定性（预存缺陷，非本轮引入）：约 1/3 运行在「未登录 POST」分支（main() 第 2262 行）报 ConnectionResetError。机制：server.py:313 鉴权门在未登录时不读取请求体即返回 401 并关连接，客户端读响应体时撞 OS 级 RST。定向探针（200 轮未登录 POST，两树同机对比）：当前树 60/200 ECONNRESET、基线树 c482547 66/200（同为 ~30%）——同量级；另有 V2-10 之前 R6 轮日志 /tmp/obt.log 同址复现佐证；vue-tsc 0 错误、npm run build 通过（本轮前端零改动）；ruff 改动文件全过
+- 下一步：待测试 agent 第二轮复验（G25c 两条复现路径 + README 行）；建请协调者裁定：偶发 ECONNRESET 是否安排单独修复（建议方案：测试客户端对「未登录 401」响应体读取失败容忍为重试一次，或服务端在 401 前 drain 请求体——影响面小但均属本轮范围外，未擅自实施）
+- 依据/文档：worktree/build-governance 分支 codex/build-governance：3dc51dc（本轮单一提交）；workbench/ontology_build/pipeline.py _collect_pool_result/_scan_write_pool_failure；探针脚本 /tmp/rst_probe.py（临时，未入库）
+
+### build-governance V2-10 解析并发（G25）测试agent独立验收 第一轮 · zcode · 受阻
+
+时间：2026-09-22T01:49:11.197507+00:00；记录：`.collaboration/entries/000178-bd63e5fd19ea.json`
+
+V2-10（G25 a-f）独立验收完成，结论不通过（1 严重）。在 /tmp/v2_10_verify 干净导出树（e03257d）内验收，未触碰工作区他人未提交改动。G25a 符合（rowid 物理序补验顺序维度，内容与顺序双一致）；G25b 符合（峰值并发4、6.04→2.42s、env 7 形态回退、实例 1/8/回退8）；G25d 符合（取消保留已完成+迟到不补写+重扫 reused=2；cb65d4f 修复生效 reused=5/parsed=1）；G25e 符合（0 锁错误；写事务全来自 build-run-*，解析线程 0 写）；G25f 符合（serial 3.44/3.98 vs parallel 4.05/4.08；CPU 竞争 5.60/6.11 佐证 13.67 离群成因；纯解析仅占 3%，GIL+落库串行致小文件无加速）。G25c 部分符合：超时/迟到完全符合（超时落库 t+1.01s、worker 完成 t+3.01s、之后 facts 不变）；worker 异常路径不符合——future.result() 仅捕 FutureTimeoutError（pipeline.py:471-476），异常杀死整个 run、其余材料停 pending/running，与注释承诺矛盾；两条复现（注入 RuntimeError；适配器返回 None 触发后处理 AttributeError，parsers/__init__:127-135 后处理在 try 外）。一般#2 README 未登记 V2-10；一般#3 取消注释称 0.5s 生效，实测延迟=当前文件剩余时长。回归 244/244、95/95、17/17、60/60、34/34、27/27、vue-tsc 0 错。报告 /tmp/v2_test_report_v2_10.md
+
+- 验证：G25a：独立脚本 g25_equiv.py 双实例对比——内容集合 21 条逐字段一致 + rowid 物理插入序逐元素一致 + 落库序==材料登记序；G25b/G25c/G25d/G25e：g25_whitebox.py 11/12（唯一失败=异常隔离缺陷）；超时时序证据 timeout@1.01s < worker_done@3.01s 且 facts 不变；write_tx 线程追踪 parsers 0 写；G25f：基准复跑 2 轮（3.44/4.05、3.98/4.08）+ CPU 竞争轮（5.60/6.11）；重解析对照 200×5000行 3.44 vs 3.78、xlsx 2.30 vs 2.34；回归：test_ontology_build 244/244、parsers 95/95、purge 17/17、storage_contract 60/60、runner_isolation 34/34、finish_guard 27/27、vue-tsc exit 0；缺陷复现：注入 RuntimeError 与畸形适配器 None 返回均致 run failed 且其余材料 pending/running（G25c 违反）
+- 下一步：开发修复严重#1：_collect_pool_result 把 future.result() 的异常纳入隔离（该文件 failed 继续下一个），并评估 parse_material 后处理段纳入 except 或返回值类型校验；修复后按两条复现路径+全量回归交回复测；补登记 README 变更记录 V2-10 一行（capabilities.limits.parseConcurrency）；修正 _collect_pool_result 取消注释（0.5s 短片边界→当前文件收集完成后生效，最坏≤120s）；观察项不阻塞：并发在当前文件构成下无加速（GIL+落库串行占比97%）；基准脚本 concurrency 形参未用；同路径重传生成第二行材料（既有行为）
+- 依据/文档：/tmp/v2_test_report_v2_10.md；worktree build-governance@e03257d（V2-10 七提交）；workbench/ontology_build/pipeline.py:454-488（_collect_pool_result）；workbench/ontology_build/parsers/__init__.py:127-141（parse_material 后处理在 try 外）
 
 ### ontology-build-v2-10-parse-concurrency（V2-10/G25，worktree/build-governance） · zcode · 已实施，待验收
 
@@ -130,25 +151,3 @@ V2 六项增量全部实施并逐项提交（基于 425a28d，分支 codex/build
 - 验证：main 3debc02：tracked ontology=0/.idea=0/总数883；磁盘 ontology=995(=基线)/.idea=6(=基线)；除他人暂存重组外无本任务残留；组合验证：ruff All checks passed、eslint exit 0、build 4.02s、TS 6/6、quick 3/3、all 48/49（pypdf 缺口 main 对照 83/85 同败）；无盘失败定位：集成树合并后 ontology/ 被 checkout 删除致 5 用例败，恢复磁盘后全过——纯磁盘种子缺失非代码回归；合并构成：996 D=991+5；Palantir 对照表 D+A 系 rename 断裂假象（新路径与 main 版 diff 为空）；69 R100=备份改名；非目标删除 0；端口18941无监听、两树无进程；18765 HTTP 200 未动
 - 下一步：主工作台 18765 运行合并前代码，更新需另行授权（build+重启）；新克隆环境测试种子依赖建议立项专项（测试自含种子或跳过守卫）；main 备份 data/workbench-before-build-migration-20260921-143248.sqlite3 保留
 - 依据/文档：main 链：5755e72→a4dd4e6→3debc02(含 merge 1279542)；被合并 codex/repo-cleanup@2c6a44d；文档/需求/20260921_仓库架构整理与代码规范/；验收记录提交 b3e912b/5a47ede
-
-### meeting-48 续会7纪要评审并产出 A1 裁决前置草稿（本体自动化构建） · zcode · 已实施，待验收
-
-时间：2026-09-21T07:21:06.146095+00:00；记录：`.collaboration/entries/000166-e7a8098883bf.json`
-
-评审 meeting-48-export.md（续会7，材料为方向整合议程 08c5cbd1fc46，用户全程未发言、awaiting_confirmation），交付 文档/自动化构建续会7纪要评审_20260921.md（107 行，commit 5f64fd7）。判定六轮最佳：按议程推进（B2 滞留→A1 前置→产出物规格）零绕圈，不再讨论清单/确认记录表规则/第六节第5条分工均生效（W11'提交代码快照'表述被纠正为 worktree 路径），多次自我修正，A1 正确留白待业务方裁决。议题收敛质量高：滞留口径+关闭条件三段式+B1/B2/B3 三检查点拆分；A1 前置贡献判定基线/溯源基线分离（解析器指纹只溯源、判定函数物理隔离）、规则集指纹双基线、单一事实源。吸收两处对本侧方向文档的修正：A1 量级佐证后置（当前无真实存量确认记录，只做功能性预演）、滞留窗口定义前置化挂 B1。新问题：orchestrator truncated 第五次且丢失最重（发言 45-61 的三态状态列/断言清单/出处自检/两套状态语义区分整体未进纪要）；结构化区第五次空；发言 58 断言清单'四条'指认与发言 54 三条清单矛盾。按会议分工（散落结论整理归本侧）产出 A1 裁决前置强制产出物：按 B1/B2/A1/C1C2/D1D3 检查点分列的三态草稿（共识/倾向/待裁决+对话出处）+ 经出处核对的 D3 断言清单（①同批落键②干跑隔离③解析器指纹明确认领，④口径文档版本引用为候选）。下次方向：A1 裁决（对三态草稿逐项拍防顺手全批）→ C1 立项落 build-governance worktree（18881 已就绪）→ B1 前置数值 → D1 收尾文档；导出工具缺陷累计五次须反馈。纯文档+只读核对。
-
-- 验证：核对用户未发言（对话仅 system'用户结束会议'一条用户痕迹）；worktree 路径修正确认：发言 45 引用方向文档第六节第5条、发言 46/50 W11 接受并修正表述；断言清单出处核对：发言 6/8 同批落键、13/14 干跑隔离、37/38 解析器指纹明确认领；发言 44 版本号引用未明确认领为 D3 断言；发言 58'四条'理由（补解析器指纹）与发言 54 三条清单（已含）矛盾；三态草稿逐条对照对话出处（约 25 条目）标注共识/倾向/待裁决；git show 5f64fd7 仅含该评审文档 1 文件 107 行
-- 下一步：用户/业务方可持评审第五节三态草稿直接进行 A1 裁决（stripped_dump vs raw_bytes+随行项）；裁决后 C1 立项：build-governance worktree（18881、main 快照已就绪）实施滞留留痕+D3 断言（R02/R10+①-③）；D1 收尾文档待用户指令由本侧产出（含新增拍板项节+两条前置补记+单一事实源框架）；导出工具缺陷五次，建议用户向工具方反馈
-- 依据/文档：文档/自动化构建续会7纪要评审_20260921.md；commit 5f64fd7
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### worktree 数据根迁入分支文件夹（各自独立管理）+ 纠正 18765 错位 · zcode · 已实施，待验收
-
-时间：2026-09-21T07:18:52.282280+00:00；记录：`.collaboration/entries/000165-aaeb7d91d797.json`
-
-按用户指令把数据根从仓库外平级目录迁入各自分支工作树内（WIZ_WORKBENCH_ROOT=工作树根，data/ 与 keys/ 自含，镜像 main 运行布局）。迁移中发现并纠正一个严重错位：18765 曾由 build-governance 工作树目录内启动的进程服务（14:48 起），用户在 18765 的操作实际读写工作树数据副本。已停两个错位实例（按 PID+cwd 核对），18765 从 main 仓库真实根重启（start.sh，PID 9300），18881 以工作树自含数据根重启（PID 9356，admin/admin 验证通过）。用户上传的 1161 个物料 blob 已从旧目录随迁至工作树 data/ontology-build-blobs；误初始化的空库与旧平级目录已清除。AGENTS §3 规范修订为工作树内自含数据根（commit 2496b9b），登记同步更新。
-
-- 决定：数据根位置定为工作树根目录本身（镜像 main 布局 data/+keys/），废弃仓库外平级目录模式；AGENTS 0f287be 规则相应修订。；git worktree remove 因未跟踪数据被拒属保护机制；删除或 --force 前必须经用户确认数据处置（已写入规范）。；18765 错位期间无数据丢失：用户操作写入的是 main 快照副本（已随迁），main 真实库未被写坏（mtime 14:56 的写入属其正常使用）。
-- 验证：18765=PID 9300 cwd=main 仓库 HTTP 200；18881=PID 9356 cwd=worktree/build-governance，curl admin/admin 登录返回 admin(isAdmin=true)；worktree/data 11 资产、1161 blob、keys/wb-root.key 0600 就位；旧平级目录已清除。；期间一次执行链因 rmdir 失败后台化导致 task.env 未更新、实例错位——已现场盘点（进程 cwd/ps env/三库对照）后全部纠正，终态以 curl 与 cwd 双重验证。
-- 下一步：用户照常使用：18765=main（原密码），18881=build-governance 副本（admin/admin，数据为快照+其上传）。；后续新建 worktree 按 AGENTS 修订版执行：数据根=工作树根，backup 快照+根密钥随行。；两个实例的会话 Cookie 同源 127.0.0.1 不同端口可能互相覆盖（AGENTS 已有告诫），浏览器验收分实例用隔离上下文。
-- 依据/文档：commit 2496b9b（AGENTS §3 修订）；登记 .git/workbench-tasks/build-governance.json；实例 18881 数据：worktree/build-governance/data/workbench.sqlite3 + data/ontology-build-blobs（1161 文件）+ keys/wb-root.key
