@@ -8,7 +8,7 @@ import { cancelRun, createTask, deleteTask, errorMessage, fetchCapabilities, fet
 import type { BuildTaskDetail } from './api'
 import {
   TASK_STATUS_LABELS, TASK_STATUS_TONE, formatBytes, formatTime, labelOf, taskStatusLabel, toneOf,
-  type BuildCapabilities, type BuildTask, type Tone,
+  type BuildCapabilities, type BuildTask, type ParserMatrixItem, type Tone,
 } from './types'
 
 // 与 App 的契约：进入任务（A02）与进入对象建模；本页不自行切换路由。
@@ -151,6 +151,17 @@ const ocrText = computed(() => {
 })
 const limitText = (pick: (c: BuildCapabilities) => number) => caps.value ? formatBytes(pick(caps.value)) : '—'
 
+// ─── 解析器支持矩阵（08 §2.1 `parserMatrix` / 需求 §5） ─────────────────────
+// 字段为服务端可选下发（未接线的旧后端没有该字段）：为空/未定义时整个区块不渲染。
+// 只做展示映射，不推断矩阵内容、不硬编码后端口径。
+const parserMatrix = computed<ParserMatrixItem[]>(() => {
+  const list = caps.value?.parserMatrix
+  return Array.isArray(list) ? list.filter(item => !!item) : []
+})
+/** 后缀列：exts 以「、」拼接（服务端给的标准形态含前导点；缺数组时不显示 undefined）。 */
+const matrixExts = (item: ParserMatrixItem): string =>
+  Array.isArray(item.exts) && item.exts.length ? item.exts.join('、') : '—'
+
 // ─── 新建：名称可留空（服务端自动命名），创建成功后立即进入任务 ───
 const newOpen = ref(false), newName = ref(''), creating = ref(false), newError = ref('')
 function openNew() { newName.value = ''; newError.value = ''; newOpen.value = true }
@@ -246,6 +257,26 @@ async function submitDelete() {
         <div><dt>模型服务</dt><dd :class="{ 'bt-warn-text': !providerConfigured }">{{ providerText }}</dd></div>
         <div><dt>解析器 / 提示词版本</dt><dd>{{ caps.parserVersion }} / {{ caps.promptVersion }}</dd></div>
       </dl>
+      <!-- 解析器支持矩阵（08 §2.1 / 需求 §5 S7）：可折叠；服务端未下发时整块不渲染 -->
+      <details v-if="parserMatrix.length" class="bt-matrix">
+        <summary>解析器支持矩阵 <span class="bt-sub">（{{ parserMatrix.length }} 项 · 含排除项）</span></summary>
+        <p class="bt-sub">各后缀使用的解析器与定位粒度；排除项（硬黑名单凭据、软黑名单二进制）不可配置，如实列出。</p>
+        <div class="bt-tablewrap">
+          <table class="bt-table bt-table-matrix">
+            <thead>
+              <tr><th scope="col">后缀</th><th scope="col">支持方式 / 说明</th><th scope="col">定位粒度</th><th scope="col">备注</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, i) in parserMatrix" :key="'pm' + i">
+                <td><strong>{{ matrixExts(item) }}</strong></td>
+                <td>{{ item.label || '—' }}</td>
+                <td>{{ item.locator || '—' }}</td>
+                <td><span class="muted bt-sub">{{ item.note || '—' }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
       <p v-if="!providerConfigured" class="bt-note warn">
         尚未配置模型服务：可以创建任务并上传材料，但「确定范围」的对话与「生成初稿」无法启动。
         请先到「设置 → 模型设置」添加一条可用的模型配置，再回到这里继续。
@@ -379,6 +410,12 @@ async function submitDelete() {
 .bt-hero-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .bt-tablewrap{overflow:auto}
 .bt-table{min-width:820px}
+/* 解析器支持矩阵：沿用既有 token 的可折叠区块，不新增全局规则 */
+.bt-matrix{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.bt-matrix summary{cursor:pointer;font-size:13px;color:var(--ink-2)}
+.bt-matrix .bt-sub{margin:6px 0 0}
+.bt-table-matrix{min-width:640px;margin-top:8px}
+.bt-table-matrix td,.bt-table-matrix th{font-size:13px}
 .bt-col-name{width:34%}
 .bt-col-ops{width:24%}
 .bt-sub{display:block;font-size:12px;color:var(--muted);margin-top:4px}

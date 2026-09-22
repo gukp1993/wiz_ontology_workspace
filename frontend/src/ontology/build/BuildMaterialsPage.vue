@@ -544,7 +544,7 @@ const blockedReason = computed(() => {
         <span class="bt-sub">多值用逗号/空格分隔；大小写不敏感。示例：只传 Java 源码时填 .java。</span>
       </label>
     </div>
-    <input ref="fileInput" class="bt-hidden-input" type="file" multiple accept=".zip,.sql,.docx,.pdf,.xlsx,.md,.java,.py,.ts,.tsx,.js,.jsx,.vue,.json,.xml,.yaml,.yml,.txt,.csv" @change="onPick">
+    <input ref="fileInput" class="bt-hidden-input" type="file" multiple accept=".zip,.sql,.docx,.pdf,.xlsx,.md,.java,.py,.ts,.tsx,.js,.jsx,.vue,.json,.xml,.yaml,.yml,.txt,.csv,.jsonld,.jsonl,.ndjson,.properties,.ini,.cfg,.conf,.toml" @change="onPick">
     <input ref="dirInput" class="bt-hidden-input" type="file" multiple @change="onPick">
 
     <!-- V2-6（G21）大文件夹软引导层：不硬阻断，「仍要直接上传」原样入队 -->

@@ -44,8 +44,12 @@ export interface TaskFilterSpec {
 
 // ── §1.2 Material ──────────────────────────────────────────────────────────
 /** 材料识别类型（识别后填入；未识别时服务端可能给空串，展示走 materialKindLabel 兜底）。
- *  image 为 V2-2（G18）新增：位图 OCR / SVG 文本。 */
-export type MaterialKind = 'code' | 'ddl' | 'docx' | 'pdf' | 'xlsx' | 'md' | 'image' | 'zip' | 'other'
+ *  image 为 V2-2（G18）新增：位图 OCR / SVG 文本。
+ *  json/yaml/properties/csv/ini/toml 为结构化格式解析支持（需求说明_结构化格式解析支持_v1 §2/§5）新增的
+ *  六个专用解析器 kind；服务端可能给表外新值，展示一律走 materialKindLabel 兜底。 */
+export type MaterialKind =
+  | 'code' | 'ddl' | 'docx' | 'pdf' | 'xlsx' | 'md' | 'image' | 'zip' | 'other'
+  | 'json' | 'yaml' | 'properties' | 'csv' | 'ini' | 'toml'
 export type UploadState = 'open' | 'complete' | 'aborted'
 export type ParseState = 'pending' | 'running' | 'success' | 'partial' | 'failed' | 'excluded'
 
@@ -210,6 +214,19 @@ export interface BlacklistInfo {
   softDefaults: string[]
 }
 
+/** 解析器支持矩阵条目（08 §2.1 `parserMatrix`；需求 §5 的矩阵即本结构：
+ *  支持项（后缀/解析层/定位粒度/说明）与排除项（硬黑名单 .env*、软黑名单二进制格式）同列表呈现）。 */
+export interface ParserMatrixItem {
+  /** 适用后缀（含点，如 ['.json', '.jsonld']；页面以「、」拼接展示） */
+  exts: string[]
+  /** 支持方式 / 说明（如「专用（json）」「硬黑名单排除」） */
+  label: string
+  /** 定位粒度（如「JSON 路径 / 节点 @id」；排除项为「—」） */
+  locator: string
+  /** 备注（采样/降级等口径说明，可为空串） */
+  note: string
+}
+
 export interface BuildCapabilities {
   limits: BuildLimits
   ocr: OcrCapability
@@ -217,6 +234,8 @@ export interface BuildCapabilities {
   provider: BuildProviderRef | null
   /** 黑名单三层枚举（08 §13；2026-09-21 新增） */
   blacklist?: BlacklistInfo
+  /** 解析器支持矩阵（08 §2.1 / 需求 §5；**可选**：未接线的旧后端不下发，页面整块隐藏） */
+  parserMatrix?: ParserMatrixItem[]
   parserVersion: string
   promptVersion: string
 }
@@ -304,6 +323,13 @@ export const KIND_LABELS: Record<MaterialKind, string> = {
   image: '图片（OCR）',
   zip: '压缩包',
   other: '其他',
+  // 结构化格式（需求 §5 矩阵与标签表同步项）
+  json: 'JSON / JSON-LD',
+  yaml: 'YAML',
+  properties: 'Properties',
+  csv: 'CSV / TSV',
+  ini: 'INI / CONF',
+  toml: 'TOML',
 }
 
 /** 阶段中文名（scan 只用 retrieve/align，generate 用全部五项）。 */
@@ -341,6 +367,13 @@ export const KIND_LOCATOR_LABELS: Record<MaterialKind, string> = {
   image: '整图 / 图片区域',
   zip: '压缩包内路径',
   other: '待识别',
+  // 结构化格式定位粒度（需求 §5 矩阵「定位粒度」列）
+  json: 'JSON 路径 / 节点 @id',
+  yaml: '键路径',
+  properties: '行号',
+  csv: '行号 + 列统计',
+  ini: '节 + 键路径',
+  toml: '键路径',
 }
 
 /** 徽章色调：ok=绿、warn=橙、bad=红、info=蓝（页面按自己的 scoped 样式渲染）。 */
