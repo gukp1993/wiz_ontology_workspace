@@ -1,0 +1,35 @@
+{
+  "ticket": "9b2053d9a19647d087cc2f8dc3128957",
+  "task": "auto-build-output-v3/D13",
+  "status": "implemented",
+  "summary": "D13 用量/质量评价与脱敏报告已实施：新建 experiments/ontology_token_pilot/evaluate.py（UsageLedger/evaluate_candidates/quality_gate/cost_compare/redact_report/scan_report/build_report，纯函数，仅依赖 batch_contracts）与 tests/test_ontology_token_pilot_metrics.py（11 场景 88 断言）+ experiments 两级空包标记。验证命令退出码 0（88/88），ruff 通过，D11 回归复跑仍 0。",
+  "decisions": [
+    "Ledger 只吃 attempt 列表不去重不丢弃：父截断+子调用+格式修复+网络重试全入账（一次一记责任在执行器 content_tx）；token 口径逐字复用 contracts.usage_aggregate；reasoningTokens 只单列（已知求和，无已知为 None）绝不并入 completion",
+    "候选↔金样=机械归一化后精确身份匹配（camel→snake/小写/分隔符折叠；property 去 owner 前缀；ownerKey 参与身份），一对一消耗，不做模糊匹配；dataType/单位/枚举差异进 quality.fieldsMismatched 明细不改分母",
+    "同名异主体：一对一匹配天然不误判 matched，未匹配组进 mergeGroups，多余候选键=组 rawName 记 mergeSuspects；重复身份计 duplicateIdentity；link 悬空引用/空键/非法类型/rejectedRefs 进 structuralIssues；ownerKey 悬空仅调用方提供 allowed_owner_keys 时核验",
+    "cost_compare 中位数只用已知样本；任一臂有 unknown → savingsProvable=False 且 compactBenefitGate=None（无法判定≠False 通过）；-20% 为 G2 compact 收益门。quality_gate：三类金样缺失=0+冲突保留 100%+无结构问题+基线降≤2pp；'端点'以链接端点代替，HTTP 端点门归 D16/D17",
+    "redact：删 prompt/response 类键、掩密钥形键值/sk-/Bearer/长随机串，纯 hex≥40 按 hash 保留（goldenSha256 不误伤），脱敏幂等；build_report 输出全可 json.dumps 并防御性再脱敏"
+  ],
+  "verification": [
+    "python3 tests/run.py --test tests/test_ontology_token_pilot_metrics.py → 退出码 0，通过 88/88（直跑同 0）",
+    "ruff check experiments/ tests/test_ontology_token_pilot_metrics.py → All checks passed",
+    "python3 tests/run.py --test tests/test_ontology_token_pilot_fixtures.py → 退出码 0（D11 不受影响）",
+    "4 份真实 D11 金样镜像候选全命中（precision=recall=1.0、冲突 covered==expected、质量门全过）——G2 关键金样 100% 路径可达成"
+  ],
+  "next": [
+    "D14 CLI 接 evaluate：四臂跑分后用 quality_gate(arm_D, arm_A) 与 cost_compare(arm_A, arm_B) 出报告；D17 引用 scan_report 做脱敏证据",
+    "G2 真实样本精确率/召回率与 compact 收益门需 D18 真实试验数据，本轮只交付机制"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §8 D13/§12 G2",
+    "workbench/ontology_build/batch_contracts.py（HEAD c5eadc5：normalize_usage 幂等/attempts errorCode errorMessage）",
+    "tests/fixtures/ontology_token_pilot/golden/（f391679，D11）",
+    "experiments/ontology_token_pilot/evaluate.py"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T09:58:32.990690+00:00",
+  "sequence": 204,
+  "filename": "000204-7c61d8e7a6ee.json",
+  "record_hash": "5eea8a507d01c70061e6b62b3a347f9f69ca555e1dc0247b6d11f74160b35232",
+  "context_advanced": false
+}

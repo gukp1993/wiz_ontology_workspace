@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`6c4f3277eecbfa85`
+上下文版本：`07feb393f342e901`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,135 +22,138 @@
 
 ## 最近交接（新 → 旧）
 
-### auto-build-output-v3 · zcode · 实施中
+### auto-build-output-v3 · zcode · 已实施，待验收
 
-时间：2026-09-22T08:20:23.871555+00:00；记录：`.collaboration/entries/000196-150c5f67d722.json`
+时间：2026-09-22T13:05:34.089002+00:00；记录：`.collaboration/entries/000210-b71e9ef08f3d.json`
 
-接手《本体生成控输出_最终执行指令_v3.md》并开工：实际HEAD 7dedc00（基线main 578acd7，R1–R5修复22a60e5已在基线内）、分支codex/auto_build、在途仅共享上下文自动汇总无他人未提交业务代码。D00进行中：batch_contracts.py已写入并冒烟通过（Profile/Target/Job/Attempt/CallResult/Codec/Persistence/执行器事件/HTTP摘要/usage不双计口径逐项冻结）；接口文档08新增§14+变更记录、README/05已登记、workbench-tasks/auto_build.json已登记。下一步按冻结契约并行派发D01/D03/D05/D06/D07/D11/D15。
+本体生成控输出v3（D00–D19）实施完成，停在待Codex独立验收。实施HEAD 7bca975（分支codex/auto_build，接手7dedc00，基main 578acd7）。22个提交覆盖：契约冻结87d1473→D01-D14逐任务→D16在线接线85aac98→D17脚本A/B全过→D18真实试验→D19收口7bca975。全量回归 all 77/77全绿、前端typecheck+build通过、隔离浏览器5项验收通过（4态截图+无console错误）。D17双适配器契约矩阵抓出并修复3项真缺陷（commit_* bool语义、resume预检误拦legacy、amend通道缺失+候选id跨epoch冲突+路由判据）。D18真实试验（GLM-5.3-Flash合成simple样本）：G2三项如实——质量门未过（金样命中2/51、重复身份34条）、compact收益门未测（B臂未跑）、成本不可证（A侧usage大量unknown）；A臂高TIMEOUT率(6调用5超时)vs D臂(12调用11成功)为真实观察。默认开关全关；main未合并；18765与18890均未动。
 
-- 决定：契约冻结于batch_contracts.py：schema2内部结构/错误码/usage聚合（unknown不冒充总数，reasoning不双计）/checkpoint软阈值=1MiB-16KiB-8KiB×(在途+1)/jobId由planEpoch+目标集+splitPath派生；estimate_request冻结为utf8_proxy（字节数+32×消息数）；文件owner按整合计划§8表：C=pipeline/llm/protocol/routes/App.vue/tests.run.py/契约文档，D=storage/ontology_build.py+runner.py，B=llm_client.py，其余新建模块
-- 下一步：D00提交后并行派发W1七任务；D09/D16由协调者串行；G1机制门=共享核心+两存储适配器假模型/恢复契约；停在待Codex验收
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md；文档/接口文档/08-从物料自动构建本体接口.md §14
+- 决定：实施期7项契约裁定已落batch_contracts并记录于整合计划§8.1（拆分登记制expandedInto/failed显式重排队/commit_* bool语义/normalize_usage幂等/planEpoch种子/attempt记账通道/别名范围）；新增amend_plan通道：save_plan仅初建，执行器计划内事件一律amend（在线条件写/实验结构+容量校验后UPDATE）；v2/legacy路由：仅「已有旧计划(无版本或v1)的auto续跑」走legacy，新运行与v2计划走v2，abstract对旧计划=新epoch；D18结果按整合计划§12 G2口径交付：未达标不伪装，可交付legacy+自适应分批与实验性compact（默认不启用）
+- 验证：python3 tests/run.py all → 77/77全绿（修复后终跑，日志/tmp/all_reg4.log）；npm run typecheck 0错误 + npm run build 成功；隔离浏览器5项（schema2成功/受阻/unknown/schema1/无console错误）全过（截图已入库）；D17脚本A 15项检查 + 脚本B 6契约×双适配器全过；D18真实试验：D臂12调用/11成功/60318 known tokens/软限生效；报告与原始结果JSON已入库 文档/需求/20260920_从物料自动构建本体/试验证据_D18_20260922/
+- 下一步：交Codex独立验收（对应HEAD 7bca975）；验收通过后待用户授权集成并合并main；未测项：B/C臂、原8KB真实样本、真实语义质量调优（超出本需求范围）
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §13；文档/需求/20260920_从物料自动构建本体/试验证据_D18_20260922/D18_真实试验报告.md；文档/接口文档/08-从物料自动构建本体接口.md §14
 
-### auto_build R1-R5整改独立复验 · codex · 受阻
+### auto-build-output-v3/D18_报告 · zcode · 已实施，待验收
 
-时间：2026-09-22T08:06:30.191317+00:00；记录：`.collaboration/entries/000195-a7b439636ed0.json`
+时间：2026-09-22T13:03:18.243804+00:00；记录：`.collaboration/entries/000209-bf762b23af56.json`
 
-22a60e5整改复验未通过：R1拆分子批最终属性归属错误(P1)、R2门禁后预检与装配不一致(P2)、R4部分成功重试重复候选(P2)。交付报告、可复跑合成证据及整改执行指令；未改业务代码或合并main。
+D18 真实试验效果报告已交付：/tmp/wiz_pilot_d18/D18_真实试验报告.md（249 行：实验设置/每臂结果表/G2 三项判定/机制结论/未完成项/codec 上线建议/脱敏声明）。本子任务只写报告，未跑试验、未改仓库代码（git status 无本人改动）。全部数字自 results.json 与状态库 SQLite 实读，26 项交叉断言 0 不一致。G2：质量门未过（D object 缺 6/6、property 缺 41/41、link 缺 2/4，命中 2/51、extra 134；34 条结构问题全 duplicateIdentity=17×2金样；precision A 0.0357→D 0.0147 降 2.10pp 超阈，recall A 0.0196→D 0.0392 升 1.96pp 未触阈）；compact 收益门未测（B/C 未跑，不编造收益数字）；成本取舍不可证（A 5/6 unknown、D 1/12 unknown）。A 臂首轮 3×TIMEOUT 已重跑完成且仍 failed（6 调用、knownCompletionTokens 8344、unknown 5、8 条 danglingRef、P 0.0357/R 0.0196），报告 A 列采信重跑、首轮仅作故障记录。
 
-- 验证：完整回归60/60、主套件单独250/250、事实身份21/21通过。；R1真实拆分至assemble复现错误domain；R2真实临时SQLite复现precheck=True但prepare被阻断；R4真实AST闭包+内存I/O替身复现重复，未宣称真实库全链路。；期间HEAD推进7dedc00，仅文档变化；22a60e5到7dedc00的workbench/frontend/tests无差异。
-- 下一步：按整改执行指令修复A1-A3并补真实库恢复/最终图/浏览器验证，提交精确SHA交Codex复验；不合并main。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收报告_R1-R5复验_Codex_20260922.md；文档/需求/20260920_从物料自动构建本体/整改执行指令_R1-R5复验问题_20260922.md
+- 决定：codec 上线建议：机制可用，但 compact 收益未实测前不启用——保持在线默认 legacy-v1、compact-v1 仅实验能力默认关闭（对齐整合计划 v3 §12）；A 列采信 A 臂重跑（out-armA）；不用首轮 precision=1.0（空集默认值）作基线，否则得出下降 98.53pp 的假结论；拒绝编造：未给任何 compact 收益百分比与 D-vs-A 成本增幅；A/D 已知部分 7.2×/4.4×/6.6× 仅标非正式参考、不作判定依据；机制结论如实标注：截断拆分链路由 fake 回归覆盖、真实运行未触发（三个 run 的 jobSplit 均 0、无 finishReason=length）
+- 验证：自读 results/.../simple-A-r1.json（首轮）、simple-D-r1.json、out-armA/results/.../simple-A-r1.json、两份 report.json/report.md、config.json/config-A.json、状态库 campaign.sqlite3 与 simple-{A,D}-r1.sqlite3（只读 uri）；26 项数值交叉断言（calls/known/unknown/finishReasons/errorCodes/states/durationMs/promptBytes/events/campaignCounters/qualitySummary/missingByType/coverage/budgetProfile）全部一致，0 不一致；脱敏核对：无 key/api_key/password/secret/bearer 样式串，无 prompt/response 正文键；候选 key/name 均来自仓库内合成 fixture；报告无遗留占位/待补文字（grep 确认）
+- 下一步：待 Codex 验收报告（独立核对数字与 G2 口径）；补齐项（报告 §6）：原 8KB 真实样本并登记 hash；补跑 B/C 臂分离 codec 与装箱效应；消除跨作业重复身份与同义多命名；provider 返回 reasoning/completionBytes；排查 TIMEOUT 频发（三轮共 9 次）；报告在 /tmp（仓库外），如需入库归档请指定仓库内路径与提交范围
+- 依据/文档：/tmp/wiz_pilot_d18/D18_真实试验报告.md；/tmp/wiz_pilot_d18/out-real3/report.json；/tmp/wiz_pilot_d18/out-armA/report.json；/tmp/wiz_pilot_d18/out-real3/results/d18-smoke-20260922/simple-D-r1.json；/tmp/wiz_pilot_d18/out-armA/results/d18-armA-20260922/simple-A-r1.json
+
+### auto-build-output-v3/D14 · zcode · 已实施，待验收
+
+时间：2026-09-22T11:45:59.977606+00:00；记录：`.collaboration/entries/000208-97e8b52fd85c.json`
+
+D14 CLI/模型适配/四臂运行已实施（worktree auto_build，分支 codex/auto_build）：新建 experiments/ontology_token_pilot/adapter.py（FakeModel 脚本事件 length/429/bad_json/crash/unknown_usage、RealModel 懒加载 llm_client、load_config、load_sample_facts 确定性样本事实、run_arm、campaign 预算与暖缓存）、__main__.py（冻结用法 argparse CLI，退出码 0/2/1，report.json+report.md 含 G2 三项判定）、README.md 与 tests/test_ontology_token_pilot_cli.py（7 场景）。四臂全走 batch_execution.run_plan 唯一共享核心：C/D=plan_initial+缺省 pack_next，A/B 仅注入固定20批 planner 且差异登记 meta.adapterDiffs；AST 断言无第二套调度器。
+
+- 决定：A/B 对照臂用 batch_execution._plan_more 既有 planner 注入点实现固定 20 事实批，不复制任何调度逻辑；A/B 无 plan_initial 初始作业；campaign 预算与模型响应暖缓存同放 <output-dir>/states/<campaign>/campaign.sqlite3（跨臂/样本/重复/续跑共享）；物理请求计数逐次即时落库（保守），已知 completion 按本次 runAttempt 收口补记不双计；终态（succeeded/failed/blocked）结果续跑跳过不重做，历史受阻结论保留进续跑报告 notes；重跑须显式删该 run 的结果与状态文件；compact encode_request 实现把目标单元放 payload['facts']（带 alias/unit），FakeModel 按实际实现协议响应（output_codec docstring 的 'units' 键与实现不一致，未改 D06 文件）；结果文件/报告统一过 D13 redact_report；real 模式仅显式 --mode real 时 import workbench 存储层，key 只留内存 provider dict
+- 验证：python3 tests/run.py --test tests/test_ontology_token_pilot_cli.py → 退出码 0（7/7 场景：四臂 CLI 子进程、共享核心+AST 无第二调度器、截断 split 父+子入账、campaign maxAttempts=2 第二臂受阻退出2+续跑累计不重置、repeats=2 暖缓存零物理调用、compact coverage 全命中 decode+金样评价、参数错误退出1）；回归：tests/test_ontology_build_batch_execution.py、test_ontology_token_pilot_state.py、test_ontology_token_pilot_metrics.py、test_ontology_token_pilot_fixtures.py 全部通过；ruff check（新三文件）通过；--mode real 无 provider 时优雅受阻退出 2 并出报告（未派发任何真实调用）
+- 下一步：real 模式实测与 G2 真实收益归 D18；已知限制：campaign 预算库随 output-dir 走，换目录=新预算库（v3 要求跨目录共享，未实现，待 C 裁决）；默认预算 128 物理请求跑不全三样本×四臂矩阵（约需 114 次，C/D 软目标装箱批较小）；扩额须配置显式给出；blocked/failed run 不自动重试（重跑须删该 run 文件）；如需协议登记可将 skip/预算受阻语义并入接口文档 08
+- 依据/文档：experiments/ontology_token_pilot/adapter.py；experiments/ontology_token_pilot/__main__.py；experiments/ontology_token_pilot/README.md；tests/test_ontology_token_pilot_cli.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §8/§11/§12
+
+### auto-build-output-v3/D04 · zcode · 已实施，待验收
+
+时间：2026-09-22T10:39:42.954515+00:00；记录：`.collaboration/entries/000207-82a59abec002.json`
+
+D04 装箱/拆分/稳定ID/覆盖守恒已实施（worktree auto_build，分支 codex/auto_build）：新建 batch_plan.py（纯函数，仅 stdlib+contracts+budget）与 93 断言回归；plan_initial/pack_next/split_or_block/verify_split_coverage/job_definition/estimate_batch_messages 全按冻结规则实现，stable_job_id 复用 contracts。协议变更请求：field selector 拆分子目标为新派生 id，batch_state.job_split 现协议无登记事件，D09 前只能到映射层，待 C 裁决。
+
+- 决定：pack_next/plan_initial/split_or_block 在冻结签名外仅追加 keyword 默认参数（plan_epoch/parent_job_id/parent_split_path/root_job_id/scope_payload），不影响冻结调用；软目标 V 用契约 cold_output_estimate(整批slots,整批I)；硬输出 ΣE 用 expected_output（校准取 max）；反馈收缩以候选单元 E 调 shrink_for_feedback 只缩不扩；field 子目标 targetId 按冻结公式本地派生（t-+sha256(factId+selector)[:16]），不 import semantic_units；field 拆分子作业 contextFactIds 置空（同事实不得既当主目标又当背景）；单元/目标二分子作业 context 取对侧事实 ≤8
+- 验证：python3 tests/run.py --test tests/test_ontology_build_batch_plan.py → 退出码 0（93/93）；ruff check 两新文件 → All checks passed；相邻回归 budget/semantic_units/batch_state 测试各 1/1 通过；batch_state 联调：5 个事件全部受理、validate_plan_doc 零错误、pending 清空、coverage_check ok
+- 下一步：待 Codex 独立验收 D04（不合并 main）；selector 子目标入状态机的协议扩层待 C 裁决；D09 接线时复核 pack_next 整批重估 O(n²) 开销
+- 依据/文档：workbench/ontology_build/batch_plan.py；tests/test_ontology_build_batch_plan.py；workbench/ontology_build/batch_contracts.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
-### auto-build-output-v3 最终合并需求与并行执行指令 · codex · 需求已交付
+### auto-build-output-v3/D10 · zcode · 已实施，待验收
 
-时间：2026-09-22T07:55:11.397868+00:00；记录：`.collaboration/entries/000194-fa15f2751f11.json`
+时间：2026-09-22T10:32:03.794423+00:00；记录：`.collaboration/entries/000206-bdcb2618e958.json`
 
-按用户最新要求停止由Codex直接开发，合并指定v1在线预算计划与v2试点，交付v3唯一技术基线及最终执行指令。任务D00-D19共20项，明确依赖、文件唯一owner、4槽滚动并行、共享核心/两存储适配器、阶段门与隔离验收。所有开发子agent确认未落盘代码。
+D10 终态/lease/取消/旧版本守卫已实施：runner.py 纯追加 5 个守卫（finish_success_guarded 先跑 final_state_check，不过返回 (False, violations) 不改 run；resume_plan_guard 只读分 legacy_*/v2_*，未知版本 UNKNOWN_CHECKPOINT_SCHEMA 绝不删候选；plan_fingerprint_matches；resumable_jobs；claim_for_resume 进入即轮换 lease）。既有函数零改动（183 行全追加）。新测试 10 场景 93 断言全过（退出码 0），既有 8 套相关回归全绿。未提交 git（按指令，待协调者）。
 
-- 决定：旧两组v1及v2加历史入口提示；统一ratio0.50、首批2、动态输入预留、只缩不扩及共同3次请求额度。；范围包含试验和默认关闭的分支在线接线；核心fake/恢复是接线前置，HTTP浏览器归最终验收；实验B/D可用compact测G2，在线启用受效果门约束。；接手参考更新为8d38f63及修复22a60e5，修复尚待独立验收；不合并main、不启用主服务、不迁移真实库。
-- 验证：检查D00-D19恰好20项、文档相对链接与代码围栏、git diff --check通过。；子agent只读审核发现阶段门循环，已修正；只交付文档，未跑业务测试或真实模型。
-- 下一步：用户将最终执行指令交实施harness，核对实际SHA与owner后按DAG开发自测提交，交Codex独立验收。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md；文档/需求/20260920_从物料自动构建本体/本体生成控输出_最终执行指令_v3.md
+- 决定：finish_success_guarded 冻结 (ok, violations) 元组：拒绝时不写 failed+blocking、不动 run（任务书冻结口径），由 D16 决定后续；resumable_jobs 可续叶=queued/running/failed（§9 场景5 右子返回）；blocked 不返回（§6 须显式新计划）、superseded 不返回（§4.3）、成功叶不重做；begin_worker_scope(lease=None) 只读不轮换、不构成接管，故另立 claim_for_resume（复用 submit 的轮换语义，context manager，退出作废）；resume_plan_guard 防御码 RESUME_MODE_INVALID/RUN_NOT_FOUND/RESUME_GUARD_ERROR（fail-closed），在冻结返回形状内；runner.py 顶部追加 import json、batch_contracts（后者仅标准库依赖，无环）
+- 验证：python3 tests/run.py --test tests/test_ontology_build_budget_resume.py → 退出码 0（93/93）；python3 tests/run.py --test tests/test_ontology_build_finish_guard.py → 退出码 0；python3 tests/run.py --test tests/test_ontology_build_runner_isolation.py → 退出码 0（34/34）；附加回归退出码均 0：late_write、progress_log、batch_state、batch_accounting、budget_storage、test_ontology_build(HTTP e2e)；ruff check 两文件 All checks passed
+- 下一步：D16：resume 路由先调 resume_plan_guard；auto 用 plan_fingerprint_matches（期望指纹按冻结 parts 组装）不一致→422 BUDGET_PLAN_MISMATCH；abstract 按 v2_abstract 建新 epoch（候选清理+计划替换同事务）；D16：generate 收尾改调 finish_success_guarded（plan_doc 传 checkpoint 形态 {'generate': doc}），拒绝时不标 succeeded；协调者安排 git 提交（本轮未操作 git）
+- 依据/文档：workbench/ontology_build/runner.py；tests/test_ontology_build_budget_resume.py；workbench/ontology_build/batch_contracts.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md；文档/接口文档/08-从物料自动构建本体接口.md §14.5
+
+### auto-build-output-v3/D12 · zcode · 已实施，待验收
+
+时间：2026-09-22T10:02:33.780153+00:00；记录：`.collaboration/entries/000205-a6d21e4f29e5.json`
+
+D12 试验 SQLite 适配与隔离缓存已实施：新建 experiments/ontology_token_pilot/state.py（ExperimentState/open_state/candidate_id_for/CheckpointCapacityError；标准库 sqlite3，WAL+busy_timeout=5000，显式 BEGIN IMMEDIATE…COMMIT 异常回滚；复用 batch_state.apply_event/validate_plan_doc 推进与校验，不复制状态机；计划 doc 整体 JSON 列，候选结构化列+payload_json 全量列，candidate_id='c-'+jobId[:12]+'-'+局部键 幂等；每次落库前 contracts.checkpoint_fits 守卫超限抛本地 CheckpointCapacityError；冷缓存独立 KV 表 cache_get/cache_put 支持 ttl、跟 db_path 跨重跑共用）与 tests/test_ontology_token_pilot_state.py（10 场景 82 断言：往返/claim 先落库/commit_success 原子与注入候选表 drop 回滚/幂等/split 父子同事务且子可 claim/interrupted_unknown 聚合 unknownUsageCalls/501 候选分页无重无漏/超 1MiB 容量与 commit 路径注入上限回滚/冷缓存 ttl/双库隔离+零 workbench.storage 依赖）。
+
+- 决定：commit_success 返回值口径：首次提交 True；重复回调（job/attempt 均已 succeeded）返回 False 跳过不写候选；attempt 非 started / job 非 running 一律 ValueError（晚结果拒绝、取消不复活）——已写入模块 docstring 供 D17 双适配器参数化对照；claim_job：queued→claimed+started；running（崩溃恢复续尝试）→直接追加 started；其余状态 ValueError；requestedMaxTokens 按 job.estimate（requestedMaxTokens/requestOutputTokens/expectedOutputTokens）→budgetProfile.requestOutputTokens→contracts 默认值派生；commit_split：在途 started 尝试按 attempt_succeeded+finishReason='length' 收口（usage 取 event_usage）；queued 父作业无在途直接拆分不记账；子作业合法性（覆盖守恒/深度/id 冲突）全部由 batch_state.job_split 校验；save_plan 守卫顺序：validate_plan_doc → checkpoint_fits（超限 CheckpointCapacityError 库内不变）→ 事务；同指纹重存幂等覆盖、异指纹 ValueError 拒绝串写；mark_interrupted_unknown：不存在/非 started id 跳过不抛，返回实际收口数；同一事务批量收口
+- 验证：python3 tests/run.py --test tests/test_ontology_token_pilot_state.py → 退出码 0（82/82 断言通过）；python3 tests/test_ontology_token_pilot_state.py 直跑退出码 0；~/Library/Python/3.9/bin/ruff check experiments tests/test_ontology_token_pilot_state.py → All checks passed；回归复跑：test_ontology_build_batch_state.py、test_ontology_build_batch_accounting.py、test_ontology_token_pilot_fixtures.py 均 0；场景 10 断言导入后 sys.modules 无 workbench.storage、state.py 源码无该 import 语句
+- 下一步：D17 组合时统一 CheckpointCapacityError 与双适配器参数化用例（含 commit_success 返回值口径核对）；D09/D14 使用本模块时按 docstring 的方法语义要点接线；Persistence 方法签名清单已在交付报告列出
+- 依据/文档：experiments/ontology_token_pilot/state.py；tests/test_ontology_token_pilot_state.py；workbench/ontology_build/batch_contracts.py（持久化接口节，D00 冻结）；workbench/ontology_build/batch_state.py（D07）；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §8 D12 行、§11
+
+### auto-build-output-v3/D13 · zcode · 已实施，待验收
+
+时间：2026-09-22T09:58:32.990690+00:00；记录：`.collaboration/entries/000204-7c61d8e7a6ee.json`
+
+D13 用量/质量评价与脱敏报告已实施：新建 experiments/ontology_token_pilot/evaluate.py（UsageLedger/evaluate_candidates/quality_gate/cost_compare/redact_report/scan_report/build_report，纯函数，仅依赖 batch_contracts）与 tests/test_ontology_token_pilot_metrics.py（11 场景 88 断言）+ experiments 两级空包标记。验证命令退出码 0（88/88），ruff 通过，D11 回归复跑仍 0。
+
+- 决定：Ledger 只吃 attempt 列表不去重不丢弃：父截断+子调用+格式修复+网络重试全入账（一次一记责任在执行器 content_tx）；token 口径逐字复用 contracts.usage_aggregate；reasoningTokens 只单列（已知求和，无已知为 None）绝不并入 completion；候选↔金样=机械归一化后精确身份匹配（camel→snake/小写/分隔符折叠；property 去 owner 前缀；ownerKey 参与身份），一对一消耗，不做模糊匹配；dataType/单位/枚举差异进 quality.fieldsMismatched 明细不改分母；同名异主体：一对一匹配天然不误判 matched，未匹配组进 mergeGroups，多余候选键=组 rawName 记 mergeSuspects；重复身份计 duplicateIdentity；link 悬空引用/空键/非法类型/rejectedRefs 进 structuralIssues；ownerKey 悬空仅调用方提供 allowed_owner_keys 时核验；cost_compare 中位数只用已知样本；任一臂有 unknown → savingsProvable=False 且 compactBenefitGate=None（无法判定≠False 通过）；-20% 为 G2 compact 收益门。quality_gate：三类金样缺失=0+冲突保留 100%+无结构问题+基线降≤2pp；'端点'以链接端点代替，HTTP 端点门归 D16/D17；redact：删 prompt/response 类键、掩密钥形键值/sk-/Bearer/长随机串，纯 hex≥40 按 hash 保留（goldenSha256 不误伤），脱敏幂等；build_report 输出全可 json.dumps 并防御性再脱敏
+- 验证：python3 tests/run.py --test tests/test_ontology_token_pilot_metrics.py → 退出码 0，通过 88/88（直跑同 0）；ruff check experiments/ tests/test_ontology_token_pilot_metrics.py → All checks passed；python3 tests/run.py --test tests/test_ontology_token_pilot_fixtures.py → 退出码 0（D11 不受影响）；4 份真实 D11 金样镜像候选全命中（precision=recall=1.0、冲突 covered==expected、质量门全过）——G2 关键金样 100% 路径可达成
+- 下一步：D14 CLI 接 evaluate：四臂跑分后用 quality_gate(arm_D, arm_A) 与 cost_compare(arm_A, arm_B) 出报告；D17 引用 scan_report 做脱敏证据；G2 真实样本精确率/召回率与 compact 收益门需 D18 真实试验数据，本轮只交付机制
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §8 D13/§12 G2；workbench/ontology_build/batch_contracts.py（HEAD c5eadc5：normalize_usage 幂等/attempts errorCode errorMessage）；tests/fixtures/ontology_token_pilot/golden/（f391679，D11）；experiments/ontology_token_pilot/evaluate.py
+
+### auto-build-output-v3 D02 完整请求估算与反馈收缩 · zcode · 已实施，待验收
+
+时间：2026-09-22T09:50:48.323039+00:00；记录：`.collaboration/entries/000203-092763936f2a.json`
+
+在 worktree/auto_build（分支 codex/auto_build，基线含 3995586 D01 与契约 3 处注释级修订，HEAD c5eadc5）交付 D02：新建 workbench/ontology_build/budget.py 与 tests/test_ontology_build_budget.py。estimate_request/cold_output_estimate 从 batch_contracts 再导出（函数身份等同，未复制逻辑）；新增 unit_slots/target_slots（孤立1、adjacent_window或data无结构4、同身份去重）、bucket_key/update_bucket/calibrated_estimate 校准桶族（<20 max×1.25、≥20 P90×1.25 线性插值、截断拒绝、unknown usage 不记 0、滑窗有界 20）、expected_output（E=max(冷启动,校准) 永不低于冷启动、整 token 向上取整）、shrink_for_feedback（只缩不扩、无反馈保持原值、单单元放不下→0）、check_input_budget（I+L+reserve≤C 边界相等通过、超限中文可读原因）、snapshot_bounds（CALIBRATION_MAX_SAMPLES=20 有界化、保留 count/max、不改传入）。import 仅 stdlib+batch_contracts（sys.modules 验证零其他 workbench 导入）。
+
+- 决定：update_bucket 增加 truncated=False 可选关键字（任务给定四参调用形式不变）：截断样本双保险拒绝，执行器对 finish_reason=length 必须传 True 或不调用；桶 samples 为最近 20 个比率的滑窗（裁最旧），count 为历史累计接受数——≥20 判定用 count，不受窗口裁剪影响；snapshot_bounds 对手工/遗留无界桶再做一次有界化；expected_output 返回整 token（向上取整，宁高估不低估）；calibration 参数兼容 None/数值/(buckets,key) 元组三种形式；显式 coldOutput 仍受契约 1024 下限收口；unit_slots 身份口径：优先 targetId，缺失回退 contracts.target_digest（factId+selector，与覆盖比对同口径）；未发现契约缺陷，无协议变更请求
+- 验证：python3 tests/run.py --test tests/test_ontology_build_budget.py → 退出码 0（93/93 通过）；python3 tests/test_ontology_build_budget.py 直跑 → 退出码 0；ruff check 两个新文件 → 退出码 0；导入隔离：import budget 后 sys.modules 无 batch_contracts/budget 之外的 workbench 模块；9 场景：utf8_proxy 逐字一致（中/英/多消息/空）/slots 口径与去重/冷启动边界（slots=0→1、下限1024、ceil 逐点）/校准桶 19→1250 与 ≥20→P90 插值1500（非max 3750）与截断/unknown拒绝与维度隔离与滑窗/E 永不低于冷启动/shrink 只缩不扩/输入预算边界156000相等通过超1拒绝/快照有界化保留count/max/零副作用（os.environ浅拷贝+传入对象不变）
+- 下一步：待 Codex 独立验收（P(D02) 命令）；不合并 main；D04 batch_plan.py 可按契约基于本模块开工
+- 依据/文档：workbench/ontology_build/batch_contracts.py（估算节，含 normalize_usage 幂等化等 3 处修订）；workbench/ontology_build/budget.py；tests/test_ontology_build_budget.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §4.2/§4.3/§8 D02
+
+### auto-build-output-v3/D06_output_codec · zcode · 已实施，待验收
+
+时间：2026-09-22T08:52:26.710472+00:00；记录：`.collaboration/entries/000202-4bc4775e8b17.json`
+
+D06 交付：新建 workbench/ontology_build/output_codec.py（legacy-v1/compact-v1 编解码纯函数，冻结签名 encode_request/decode_response，净化与 llm._sanitize_candidates 同语义的独立实现，不 import llm/pipeline/storage/llm_client）与 tests/test_ontology_build_output_codec.py（11 场景 126 断言）。验证命令退出码 0，ruff 通过。按任务约束未操作 git，提交留协调者。
+
+- 决定：证据范围口径：两种 codec 的 evidence 只认 aliasMap 值=本次主目标事实；背景事实载荷不带 id、不可被引用（legacy 主目标给真实 factId，compact 只给 f0/f1 别名，aliasMap 两种 codec 都返回）；compact coverage 按 expected_unit_ids（=encode 的 unitIds=targetId）比对，缺任一 ok=False+COVERAGE_INCOMPLETE 且 candidates 恒空；多余未知单元只记 note；evidence 未知别名→整条丢候选+DANGLING_REFERENCE；conflicts 某侧别名未知→只丢该侧（不足两侧整条冲突丢弃，候选保留）；decode 对非 length 的其他非 stop finish_reason 返回 FORMAT_INVALID；未知 codec 编解码两侧抛 ValueError；compact 顶层 codecVersion 必填校验，legacy 不要求（现行结构兼容）；缺 definition/fields/ownerKey 输出空串/空 dict；evidenceStatus 缺失/未识别落 inferred，绝不默认 supported；selector 切片由调用方完成（内容经 target[fact] 或 entry snippet/data 传入）
+- 验证：python3 tests/run.py --test tests/test_ontology_build_output_codec.py → 退出码 0（通过 126/126）；ruff check 两文件 → All checks passed；冒烟：import 不加载任何 llm/pipeline/storage 模块；整合计划 §10 compact 示例形状解码 ok=True 且别名还原真实 factId
+- 下一步：待 Codex 独立验收（alias还原/缺字段不补造/截断拒绝/legacy兼容）；协调者留意：batch_contracts.py §编解码 注释的 encode_request 形参（plan_doc/job/targets_by_id/facts_by_id）与本次按任务指令实现的扁平纯函数签名不一致，建议协调者统一契约注释（该文件归 C，本任务未改动）
+- 依据/文档：workbench/ontology_build/output_codec.py；tests/test_ontology_build_output_codec.py；workbench/ontology_build/batch_contracts.py；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
-### R1–R5 五项正确性缺陷整改（开发-测试循环完成，待 Codex 复验） · zcode · 已实施，待验收
+### auto-build-output-v3/D11 · zcode · 已实施，待验收
 
-时间：2026-09-22T07:42:35.583638+00:00；记录：`.collaboration/entries/000193-2e98bf99648e.json`
+时间：2026-09-22T08:50:56.908415+00:00；记录：`.collaboration/entries/000201-7883ed3af219.json`
 
-按用户指令「用多个子agent开始整改，执行开发-测试循环」完成 Codex 审核意见五条 P1 的整改。协调者拆分四路并行（文件归属互斥：A=R5+R4 调度器/拆批、B=R1 命名空间、C=R2 冲突门禁、D=R3 事实身份），每路以 /tmp/repro_*.py 复现脚本为验收锚点（修复前全部复现失败→修复后全部转绿），pipeline.py 按行号区域切分独占编辑区，git 提交由协调者统一串行执行。修复内容：R1 冲突条件命名空间+引用同步重写+key 规范化；R2 合并降级后未经确认 include 自动撤销（AUTO_INCLUDE_REVOKED）+交付端硬门禁（conflictExcluded/Items）；R3 事实身份哈希（snippet+kind+locator+data 语义键）+plan.duplicateOf+duplicates 实数；R4 拆批部分失败父批按失败记账+整批重跑幂等；R5 批次完成即独立落库+落库失败计 failed+收尾核对覆盖；删死代码 _batch_wait_timeout。提交：22a60e5（代码+116 项新测试+接口文档 08/README）、8d38f63（方案文档归档+协作记录）；基线 805e1d9。全量回归 tests/run.py all 60/60、test_ontology_build 250/250 零断言修改、ruff 全过。停在与 Codex 审核意见同等的「待复验」状态，未合并 main。
+D11 三类合成材料与人工金样格式已实施：新建 tests/fixtures/ontology_token_pilot/（11 个文件：simple 2 样本、amplified 60 实例样本、schema_conflict 3 文件、4 份金样、README、manifest）与 tests/test_ontology_token_pilot_fixtures.py。python3 tests/run.py --test tests/test_ontology_token_pilot_fixtures.py 通过 102/102，退出码 0（直跑同样 0）。
 
-- 决定：四路并行按文件归属互斥拆分：pipeline.py 是四路共同热点，按行号区域切分独占编辑区（调度器=A、累加点=B、verify/门禁=C、去重循环=D），越界即停；实践零冲突。；提交粒度：五项修复在 pipeline.py 深度交织，拆分会制造不完整中间态，故单 commit 22a60e5 分列五项；接口文档与代码同 commit（AGENTS 契约先行规则）。；R1 采用冲突条件前缀而非无条件前缀：既有测试按原始 key 直改种子行，无条件前缀破坏其契约；冲突条件模式使 test_ontology_build 250/250 零断言修改原生兼容。；接口文档 08 更新范围：§1.6 决定重算时机+新 issue 码、§5 批次独立落库/拆批部分失败/重复事实身份、§8.1 交付选定集合口径+conflictExcluded 字段；README 变更记录登记。
-- 验证：五条复现脚本终验（最新代码）：repro_r1/r2/r3/r4/r5_final 全部「未复现」（修复前全部复现成功）。；新增测试 4 套件 116 项：batch_accounting 36（非连续续跑/乱序落库/落库失败计 failed/拆批四态/幂等重试/429 单次）、key_namespace 30、conflict_gate 29（含人工确认保留 include、交付门禁计数）、fact_identity 21（含 5 万条 0.9s 冒烟）。；全量回归：tests/run.py all 60/60 通过（含并行线四套件自动发现）；test_ontology_build 250/250 零既有断言修改；ruff 全部改动文件 All checks passed。；提交：22a60e5（fix，六代码文件+四测试文件+08 分册+README）、8d38f63（docs，四份方案文档+协作记录）；基线 805e1d9；工作区干净。；过程插曲归因：C 时点报 test_ontology_build 108/110 失败系 B 第一版无条件前缀中间态，B 迭代为冲突条件模式后消除；D 时点 60/60 与 A 收尾时点互证并行改动可共存。
-- 下一步：待 Codex 复验本次整改（对象：22a60e5，对照审核意见 R1–R5 验收标准；复现脚本在 /tmp 可复用，建议复验后转正入 tests/）。；已知遗留（未修，均有归属）：拆批两子批间同名 key 回落 _dedupe_keys（彻底解决需拆批处给子批独立前缀）；_flush_batch 部分成功分支未累计 rejectedRefs；all_candidates 500 行上限对单批去重覆盖的影响受 MAX_CANDIDATES_PER_BATCH=500 约束。；审核意见 D1–D3（覆盖预算/按主体编批/金样质量评价）与「布尔短标量过滤」属方案层改进，待用户拍板后另立需求。；分支 codex/auto_build 未合并 main——按流程等用户明确集成指令。
-- 依据/文档：提交：22a60e5（fix R1–R5）、8d38f63（docs 归档）；分支 codex/auto_build；审核对象：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md（已提交 805e1d9）；并行 agent 交接：entries 000189（C）/000190（B）/000191（A）/000185（协调者复现分析）
-
-### auto_build-token-pilot-v2 整合试点方案 · codex · 需求已交付
-
-时间：2026-09-22T07:31:42.069282+00:00；记录：`.collaboration/entries/000192-1be3034f3e5d.json`
-
-交付控输出与质量对比试点v2，整合稀疏协议、语义分批、超限恢复、字段级证据及程序组装。先独立实验，再决定在线接入。仅文档，未实施实验或业务代码，未运行模型。
-
-- 决定：本文为唯一试点执行入口，不混用两组v1参数；输出估算比例0.5，基线按当前已交接实现冻结。；原8KB、重复实例、大Schema三类样本；先A/D冒烟再A/B/C/D，分别评估协议与调度；含全部失败重试用量。；质量门槛优先；总token下降与单次超限恢复分开评价；用户看真实结果后决定在线接入。
-- 验证：只读核对当前候选prompt、协议与在途修改；独立子agent复核试验及完整性门槛。；试验入口和测试明确待实现，无实测收益声明。
-- 下一步：实施harness核对owner与基线后按P0-P4开发独立实验，自测提交并交Codex验收，不自动在线接入或合并。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/控输出与质量对比试点_v2.md
+- 决定：金样 schemaVersion=1：按语义身份描述期望（key/type/name/ownerKey/fields 子集断言/evidence 语义定位），不绑定具体 factId；键空间如 battery_ess.rated_power，D13 评测负责把候选对齐到金样键空间；同名异主体（两个 config）以 mustNotMerge 分组标注且组内 key 互异；dataType 冲突以 expectedConflicts 标注（unit_price number vs text，两侧 source/locator/expect）；跨文件关系以 crossFileRelations 标注（targetIdentity 必须真实出现在被引文件）；amplified 金样增加 structure 块（instanceCount/lateFields/lateFieldsFirstIndex/tier2/rareFields/unitVariants/abnormalEnumValues/minSerializedBytes）供 fixture 测试程序化断言晚出现结构；样本①为合成对标原 8KB 规模（JSON-LD 7895B、配置 4349B），不是 D18 原始真实文件；原文件若提供须另行登记 hash；manifest 独立登记全部 11 文件 sha256+bytes+用途+合成声明；dispatch_logic.sql 为文本片段（DDL+rule R-SYN-101+action A-SYN-07），头部注明由材料解析器按 ddl/text 处理（定位器形态对齐接口文档 08 §1.3）
+- 验证：python3 tests/run.py --test tests/test_ontology_token_pilot_fixtures.py → 退出码 0，通过 102/102（直跑退出码 0 同结果）；ruff check tests/test_ontology_token_pilot_fixtures.py → All checks passed；确定性生成器重跑两次字节一致（12 项 sha256 与 manifest 全部匹配，防漂移断言在测试内）；泄漏扫描：samples/+golden/ 无 sk-/api_key/AKIA/password/secret 等样式、http(s) 仅 example.org 保留域、无邮箱与 .com/.cn/.net 域名样式
+- 下一步：D13 evaluate.py 消费金样（schemaVersion=1）做生成评测；D14 CLI 引用 manifest；D18 若拿到原 8KB 真实文件须另行登记 hash 并补对应金样
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §11/§8 D11；workbench/ontology_build/batch_contracts.py（87d1473，normalized candidate）；文档/接口文档/08-从物料自动构建本体接口.md §1.3；tests/fixtures/ontology_token_pilot/README.md
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
-### auto_build-R4R5批次记账修复（codex/auto_build worktree） · zcode · 已实施，待验收
+### auto-build-output-v3/D03-semantic-units · zcode · 已实施，待验收
 
-时间：2026-09-22T07:31:09.401557+00:00；记录：`.collaboration/entries/000191-a8f61c516ffc.json`
+时间：2026-09-22T08:48:54.198862+00:00；记录：`.collaboration/entries/000200-8dc0a80b74c5.json`
 
-修复R5/R4两条管线正确性缺陷并全绿：R5（pipeline._run_batches_adaptive）废弃连续前缀刷写游标，改为每批完成即独立 on_result 落库（候选表/definitionOrder 按类型+对齐键排序，不依赖落库顺序）；删除死代码 _batch_wait_timeout 与 _BATCH_WAIT_SLACK_SECONDS。R4（pipeline._extract_batch_with_split）拆批返回三态（全成功/全失败/部分成功）：部分成功 ok=False 父批不进 done（重试整批重跑），成功半候选保留，error 注明「拆批后部分失败：已保留 X 条候选…可重试」，failedFactIds 随 error 上抛（嵌套精确到失败子批）。调用方 run_generate._flush_batch：部分成功候选校验+namespace 后同事务落库；content_tx 失败不静默（回滚内存 done、该批计 failed 错误注明「落库失败」、accumulated 只在事务成功后并入）；_flush_tx 写入前按同批已存在 alignedKey/原始 key 去重（部分失败整批重跑幂等）；调度器返回后兜底核对 done∪failed 覆盖 pending，遗漏显式计 failed 并落检查点。
+D03 语义目标与来源 selector：新建 workbench/ontology_build/semantic_units.py（纯函数，只依赖 stdlib+batch_contracts）与 tests/test_ontology_build_semantic_units.py（11 场景 68 断言）。build_targets 按冻结优先级分组（nodeId→jsonld_node、ddl 表、code 限定符号、doc 章节/pdf 按页、json/yaml/toml 最近对象路径保留下标、fallback 相邻窗口/孤立 single_fact 低置信），每 fact 恰一个 whole target 绝不丢弃；targetId=t-+sha256(factId+canonical_selector)[:16]；targets_for_facts/context_fact_ids 过滤与上下文辅助。
 
-- 决定：落库顺序不再强求等于串行版：候选展示与 definitionOrder 预检按类型+对齐键排序，与落库先后无关；部分成功批的候选也走 namespace_batch 与成功批同一键空间；/tmp 复现脚本修正判定逻辑以表达修复后的不变量（R5 判定改为 pending 全覆盖检查；R4 补丁目标从 _extract_batch_with_split 改为 llm.extract_candidates 才能真正执行拆批分支）
-- 验证：WIZ_WORKBENCH_ROOT 隔离下 /tmp/repro_r5_final.py 与 /tmp/repro_r4.py 均输出 ✅（修复前均复现缺陷）；新增 tests/test_ontology_build_batch_accounting.py：7 场景 36 断言全过（非连续续跑空洞、完成序乱序、落库写事务失败计 failed、调度漏报收尾兜底、拆批左成右败/右成左败/全失败/嵌套/全成功、部分失败整批重试批内去重幂等、429 单次调用不重试），tests/run.py --test 子进程亦过；python3 tests/test_ontology_build.py 250/250 全过（无既有断言改动）；python3 tests/run.py all 全绿（60 套件，含并行线新增套件，exit 0）；ruff check workbench/ontology_build/pipeline.py tests/test_ontology_build_batch_accounting.py 全过
-- 下一步：待 Codex 独立验收（SHA 以协调者统一提交为准）；未 git commit（协调者统一提交）；与并行线 R1（namespace_batch existing=参数）/R2（AUTO_INCLUDE_REVOKED）/R3（全池 duplicateOf）改动已同文件合流，验收时一并核对
-- 依据/文档：workbench/ontology_build/pipeline.py；tests/test_ontology_build_batch_accounting.py
+- 决定：context_fact_ids 契约口径澄清（待 C 确认）：groups 冻结形状只有 targetIds 无 factId，故钉死语义为 targets=同次 build_targets 全量 targets（targetId→factId 解析表）、groups=本叶任务主目标组（可为主组子集）；上下文=同 subjectKey 且不属于主组的邻近事实，机械保证与主组 factId 不相交（不算覆盖）。batch_contracts.py 未改，如需把该口径写入 D00 冻结注释属协议变更请求，由 C 统一处理。；yaml/toml 与 json 同遍历口径（接口 08 §1.3），locator.path 非空时共用 json_object 分组；xlsx/ini/csv/properties/text/image/llm 等冻结清单外定位按规则⑥落相邻窗口，不发明新 kind。；pdf 无 section 字段，按真实定位字段 page 作章节粒度（subjectKey 记 page:<n>）。；fact 缺 id 或非 dict 抛 ValueError 拒绝静默丢弃（每个 fact 至少一个 target 的诚实实现）。
+- 验证：python3 tests/run.py --test tests/test_ontology_build_semantic_units.py → 退出码 0（68/68 通过）；python3 tests/test_ontology_build_semantic_units.py 直跑 → 退出码 0；ruff check 两文件 → 0 错误（仓库 ruff.toml）
+- 下一步：待 Codex 独立验收 P(D03)；D04 batch_plan.py 可基于本模块真实交付开工；context_fact_ids 口径如获 C 确认，建议在 batch_contracts.py 目标节补一行注释（协议变更走 C）
+- 依据/文档：workbench/ontology_build/batch_contracts.py（87d1473 冻结契约，未改）；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §4.1/§8；文档/接口文档/08-从物料自动构建本体接口.md §1.3
 
-### auto_build-R1跨批临时键冲突（codex/auto_build worktree） · zcode · 已实施，待验收
+### auto-build-output-v3 D15 前端类型与v1/v2展示 · zcode · 已实施，待验收
 
-时间：2026-09-22T07:29:43.493040+00:00；记录：`.collaboration/entries/000190-4413a2704276.json`
+时间：2026-09-22T08:46:11.238326+00:00；记录：`.collaboration/entries/000199-93f6fdfd5e69.json`
 
-修复R1：跨批同名临时键（obj/p）导致属性宿主解析错误、同名同dataType属性被误并。①alignment 新增 namespace_batch(candidates, position, existing=None)：与累积集合实际冲突的键加 b{position}: 前缀并按「先建映射再替换」重写批内 ownerKey/链接 sourceRef/targetRef；无冲突键保留原键（入库行为与历史一致，existing=None 为全量前缀纯批模式）；目标键被占用追加下划线兜底，跨批键绝不冲突。②alignment._ref_index 保留同名键全部命中（按出现顺序），_owner_name_for/_resolve_owner 对多命中按「属性之前最近宿主」消歧——旧存量无前缀候选行与直调 align 场景的兜底，键唯一时行为与原实现一致。③pipeline 批内 verify 后、入 accumulated 与同事务落库前调用 namespace_batch(verified, position, existing=accumulated)（成功分支与拆批部分成功分支两处，均为本任务指定改动点）。④llm.SYSTEM_EXTRACT 规则7要求对象限定见名知义 key（battery_rated_power 而非 p）；_sanitize_candidates 新增 _normalize_key_ref 对 key/ownerKey/sourceRef/targetRef 用同一函数规范化（去空白/内部空白折叠下划线/小写/截断60），修复大小写不一致断链。新增 tests/test_ontology_build_key_namespace.py 30 项断言（纯函数 8 组 + 管线端到端）。
+D15 完成。types.ts：新增 08 §14.3 schema2 检查点类型组（Budget/Jobs/Coverage/Blocking/V2 + V2View 判别臂），RunCheckpoint.generate 改 schema1|schema2 联合 + isSchemaV2 守卫；RunUsage 新增可空 token 字段，旧四字段不变。BuildProgressPage.vue：schema1 批次展示保留且仅 !isSchemaV2 渲染；新增 schema2 目标进度块（已处理目标 X/Y·成功叶任务·待处理/失败/受阻·因输出超限拆分 K 次）、估算方式标注、预算三项（空=未配置）、blocking 原因+分类处置指引，blocking 时重试按钮改「重新规划生成」；usage 增 completionTokens（null 显「含未知」）等；进度条按目标覆盖计数。仅改两份授权文件，typecheck 退出码 0。
 
-- 决定：命名空间化采用冲突条件模式而非无条件全批前缀：无条件前缀会使库内候选键全部变为 b1:* 形态，test_ontology_build.py flow_bad_candidates 按原始 ckey 直接 UPDATE/查找候选的 4 处断言失配（实测 108/110）；冲突条件模式保持「跨批键绝不冲突」不变量同时非冲突批入库键与历史完全一致，既有测试无需修改；决策继承按 alignedKey（名称型）不受键命名空间化影响，未改 inherit_manual_exclusions
-- 验证：WIZ_WORKBENCH_ROOT=/tmp/r1probe python3 /tmp/repro_r1.py：修复前 ❌（属性 2→1、alignedKey 错记 @电池）；修复后 ✅（2 条属性，宿主分别为电池/逆变器）；python3 tests/test_ontology_build_key_namespace.py：30/30（含管线端到端：批1无冲突保留原始键、批2冲突键 b2:obj/b2:p，两条额定功率宿主正确）；python3 tests/test_ontology_build.py：250/250；tests/test_ontology_build_merge_refs.py：42/42；tests/test_ontology_build_exclusion_inheritance.py：17/17；python3 tests/run.py all：60/60 全绿（其中 test_ontology_build_batch_accounting.py 首轮失败系并行 R4/R5 重构中间态，复跑通过）；ruff check alignment.py llm.py pipeline.py 新测试：All checks passed
-- 下一步：未修相邻问题1：拆批两个子批之间的同名 key 冲突仍在——子批边界信息在 _extract_batch_with_split（调度器区，本轮禁改区），namespace_batch 收到的是合并后候选无法区分子批；子批冲突键会命中冲突条件被前缀化，但两个子批各自冲突键共享同一 position 前缀时仍同名（回落 _dedupe_keys 首个保留，后续引用悬空为既有行为）；未修相邻问题2：_ref_index 邻近消歧是位置启发式（属性先于宿主对象输出且宿主在同批更早位置时选最近 precedent），仅兜底旧数据；主路径已由命名空间化保证；llm key 统一小写化理论上可能把批内大小写不同的两个键折叠为同名（模型违约场景），由 _dedupe_keys 首个保留兜住，属既有失效等级
-- 依据/文档：workbench/ontology_build/alignment.py；workbench/ontology_build/pipeline.py；workbench/ontology_build/llm.py；tests/test_ontology_build_key_namespace.py；/tmp/repro_r1.py
-
-### auto_build-R2冲突候选交付门禁（codex/auto_build worktree） · zcode · 已实施，待验收
-
-时间：2026-09-22T07:22:19.071773+00:00；记录：`.collaboration/entries/000189-595b708843ed.json`
-
-修复R2：跨批发现冲突后候选仍被默认纳入交付。①pipeline.verify_candidates 决定赋值区：带 alignedKey 且状态降级（conflict/inferred/insufficient）、decision=include 且 reviewed 非真的候选重置为 defer，附 AUTO_INCLUDE_REVOKED issue 与报告 note；逐批首次赋值与 reviewed=true/exclude 不变。②delivery 新增 _delivery_allowed 硬门禁：选定集合=include ∧（reviewed=true ∨（无 conflicts ∧ supported））；precheck 新增 conflictExcluded/conflictExcludedItems/notes 排除报告。③protocol.default_decision 文档字符串补充重算时机。新增 tests/test_ontology_build_conflict_gate.py（29 断言，5 场景）全过；repro /tmp/repro_r2.py 转绿；exclusion_inheritance 17/17、finish_guard 27/27、merge_refs 42/42；ruff 全过；tests/run.py all 58/59。
-
-- 决定：撤销与门禁按「准确说」口径实现：无 conflicts 但 evidenceStatus 非 supported 且未确认的 include 候选同样不进交付选定集合（比「仅冲突」口径更严，语义不弱化）；重算逻辑以 alignedKey 为合并标记放在 verify_candidates 决定赋值区（首次赋值时逐批候选尚无 alignedKey，天然不影响），未改动 1373-1380 调用点；被门禁拦截的候选不删行、进 precheck.conflictExcludedItems 显式列出，不静默消失
-- 验证：WIZ_WORKBENCH_ROOT=/tmp/r2probe python3 /tmp/repro_r2.py：修复前 ❌ 复现（conflict+include+未确认），修复后 ✅（decision=defer）；python3 tests/test_ontology_build_conflict_gate.py：29/29（含真实临时库播种 delivery.precheck 计数断言）；python3 tests/test_ontology_build_exclusion_inheritance.py 17/17；tests/test_ontology_build_finish_guard.py 27/27；tests/test_ontology_build_merge_refs.py 42/42；ruff check（pipeline/delivery/protocol/新测试）：All checks passed；tests/run.py all：58/59，唯一失败 test_ontology_build.py 经对照实验（禁用本次两处修复后失败完全相同：108/110+同一中断）归因为并行 R1 命名空间改动（候选 key 变 b1:obj-device）与该测试裸 key 播种/断言的冲突，非本修复引起；unit 组 48/49，另一失败 batch_accounting.py 为并行 agent 15:21 新增的调度器 WIP 自测（乱序回调/拆批部分失败），同样与本修复无关
-- 下一步：接口文档 08 分册需协调者统一登记：§1.6 issues 新增码 AUTO_INCLUDE_REVOKED（field=decision）与默认决定重算时机；§8.1 预检响应新增 conflictExcluded/conflictExcludedItems/notes，且 selectedIds/counts/checkToken 口径收窄为「门禁后选定集合」；test_ontology_build.py 的 R1 冲突（mutate/查找按裸 key）与 batch_accounting.py WIP 失败由对应并行 agent/协调者处理；未 git commit（按指令由协调者统一提交）；未改动接口文档、alignment/llm/retrieval/runner/storage/frontend
-- 依据/文档：workbench/ontology_build/pipeline.py:929-951；workbench/ontology_build/delivery.py:48-73,175-181,196-206；workbench/ontology_build/protocol.py:257-266；tests/test_ontology_build_conflict_gate.py；文档/需求/20260920_从物料自动构建本体/
+- 决定：RunUsage 新字段声明为可选（?: number|null）：容忍 D16 接线前/旧运行字段缺省，字段名与可空性仍与 08 §14.3 逐字一致；schema2 的 log/notes 日志块继续渲染（不随批次 chips 门控）：08 §14.3 明确 schema2 保留 log/notes，隐藏会违背「生成进度实时可观测」；与指令字面「仅 !isSchemaV2 渲染」的出入在此声明；blocking 处置指引按 batch_contracts.py 错误码分三类（配置项/计划指纹与规模/预算耗尽）+未知码保守文案
+- 验证：cd frontend && npm run typecheck → 退出码 0；npx eslint types.ts BuildProgressPage.vue → 退出码 0；git diff 核对仅触及授权两文件
+- 下一步：D16 接线后真实联调；D17 浏览器验收；schema2 数据未到达时目标进度块不显示属预期，mock 不算联调通过
+- 依据/文档：文档/接口文档/08-从物料自动构建本体接口.md §14（@87d1473）；frontend/src/ontology/build/types.ts；frontend/src/ontology/build/BuildProgressPage.vue
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### auto_build-output-budget-v1 方案交付 · codex · 需求已交付
-
-时间：2026-09-22T07:18:24.312855+00:00；记录：`.collaboration/entries/000188-daf784c7d17e.json`
-
-交付输出预算分批方案与执行指令，供其他harness实施。仅文档，未改业务代码、未做模型实测或业务验收。依据Semantica固定源码与Palantir官方资料，明确局部抽取与程序组装机制，未发现可保证首次输出不截断的精确预测机制。
-
-- 决定：新计划采用语义单元、输入输出双预算、超限细分、成功叶持久化、失败续跑和完整性守卫；不静默截前N条。；保留v1任务兼容，v2有容量/调用上限；不声称100MB原文件已全量解析。；开发前核对在途owner与实际SHA，契约先行、独立任务并行；待用户下达实施指令，不合并main。
-- 验证：只读核对代码与公开资料；文档核对授权停止点、任务表、执行顺序、验证矩阵。业务测试尚未实施。
-- 下一步：执行harness落实热点文件交接，按方案开发自测提交，再交Codex独立验收。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/输出预算分批_方案与开发计划_v1.md；文档/需求/20260920_从物料自动构建本体/输出预算分批_执行指令_v1.md
-
-### auto_build-输出预算分批落地方案v1 · codex · 需求已交付
-
-时间：2026-09-22T07:13:14.720325+00:00；记录：`.collaboration/entries/000187-d02f3b764c8e.json`
-
-按用户要求交付其他harness可执行的方案与开发计划、执行指令两份文档。范围为语义单元、双预算估算、反馈调批、有界v2检查点、单attempt记账、叶任务独立提交、超限拆分与覆盖守恒；不承诺零截断或100MB解析全覆盖。文档包含并行任务/唯一文件owner、接口变更、验收矩阵和自包含分支集成授权边界。本轮未实施业务或运行模型。
-
-- 决定：第一版复用现有checkpoint_json并有界保护，不新增表或真实库迁移；默认开关关，隔离验证开启。；预算绑定providerId/model；同步422在任何状态写入前；为在途结果和受阻终态预留checkpoint空间。；源码仍有其他owner在途六文件与三测试，接手须先交接实际已提交基线，不覆盖或代为提交。
-- 验证：协调者与两条只读agent核对规划/调用/恢复/存储/API现状；未以旧审核缺陷假称当前未修。；规格复审修正profile绑定、422前置与检查点预留；两文档链接/代码围栏/授权流程检查通过。；纯文档交付；未运行开发测试、前端构建、浏览器验收或真实模型调用。
-- 下一步：用户将执行指令交给指定harness后，在已登记auto_build按文件归属实施自测提交，停在待Codex验收，不合并main。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/输出预算驱动分批_落地方案与开发计划_v1.md；文档/需求/20260920_从物料自动构建本体/输出预算驱动分批_执行指令_v1.md
-
-### auto_build-输出Token膨胀专项分析 · codex · 已确认决定
-
-时间：2026-09-22T06:45:10.590567+00:00；记录：`.collaboration/entries/000186-6c1aa459d9f9.json`
-
-仅分析输出Token膨胀，未展开此前五阶段整改。原文推理/格式/元数据方向有价值，但字符占比不是token占比，输入形态与批大小仍影响输出。建议先补安全usage观测并对照low推理档，再验证保留语义节点/受支持本体确定性映射与模型专用紧凑协议；不承诺节省比例。已交专项分析文档，未改业务代码、未读取真实数据或调用模型。
-
-- 验证：代码805e1d9：llm_client未设置reasoning_effort且未返回provider usage；llm usage仅bytes。；JSON通用数组只留结构摘要；模型响应已有标准化边界，内部压缩不必变更前后端候选协议。；2026-09-22查Z.ai官方：GLM5.3Flash不支持禁用思考，effort支持low/high/max，默认max；实际endpoint未读取、参数未实测。
-- 下一步：实验建议尚未执行；先固定质量与用量基线，单因素比较推理档、协议、输入表示，再调批次。
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/输出Token膨胀_专项分析意见_Codex_20260922.md；https://docs.z.ai/guides/capabilities/thinking
-
-### Codex 五阶段方案审核意见分析（R1-R5 逐条独立复现） · zcode · 已确认决定
-
-时间：2026-09-22T06:27:02.893418+00:00；记录：`.collaboration/entries/000185-f5adf7220be7.json`
-
-对 Codex 审核意见（五阶段方案审核意见_Codex_20260922.md）逐条独立复现。**5 条 P1 全部复现成功**：R1 跨批临时键冲突致属性宿主错误（电池/逆变器各带同 key 属性，对齐后 2 条并为 1 条，alignedKey 错记为 @电池）；R4 拆批半失败被判父批成功（左成右败仍返回 ok=True，调用方据 ok 记 done → 该半批永久缺失）；R5 非连续失败批续跑漏落库（done={2}/pending=[1,3] 时仅批1回调落库、批3 静默丢弃；终局验证 accumulated 非空且 failed_batches 为空 → 运行继续并报成功 = 静默数据丢失且重试不补）；R2 冲突项默认纳入（跨批降级 conflict 但 decision 保持 include、reviewed/reason 空，交付端仅按 include 选取）；R3 去重误剔（battery.voltage=220 与 motor.power=220 因 snippet 哈希相同被剔 1 条，对外 reporting duplicates=0）。另核实第4节批评：429「降挡重排」表述与代码不符（只减并发+冷却，未放回 queued）；JSON 修复确会追加第2次调用故 390 秒非全局上限。
-
-- 决定：R1-R5 均为代码级正确性缺陷且已独立复现，应作为修复生成可靠性前的阻断项，优先级高于进度展示与 429 体验类问题。；R5 性质最严重：静默数据丢失且谎报成功（缺整批候选但运行 succeeded），重试不会补。；审核意见第4.1条质疑成立：原瓶颈论证是同一数据回算且未计 reasoning；后续实测已发现 reasoning_content 占输出约 50%（8676 vs 3007 字符），该发现尚未写入方案文档（reasoning 命中 0 次），需补充。
-- 验证：R1 /tmp/repro_r1.py：4 候选→对齐后 3，属性 2→1，alignedKey=property:额定功率#number@电池。；R4 /tmp/repro_r4.py：调用序列 [全批,左半,右半,右半重试]，返回 ok=True、split={'from':4,'halves':[2,2]}。；R5 /tmp/repro_r5.py 与 repro_r5_final.py：flush=[1]、残留 results=[3]；终局 done=[1,2]、failed=[] → 报成功。；R2 /tmp/repro_r2.py：二次 verify 后 evidenceStatus=conflict、decision=include、reviewed=None、reason=None。；代码与第三例：pipeline.py:1191-1197/236-249/157-176/906-907/1314；retrieval.py:344-346；delivery.py:48-52（R3 复现见 /tmp/repro_r3.py，哈希同为 f37062d9a65543a4…，duplicates=0）。
-- 下一步：待用户裁决是否按 R1-R5 出整改需求；本轮仅分析，未改任何业务代码。；方案文档待补：reasoning_content 占输出 50% 的实测、第4.1条论证修正、429/390秒口径修正。；复现脚本在 /tmp，未入库；如需留证应移入 tests/ 或证据目录。
-- 依据/文档：审核意见：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md；被审文档：同目录 生成五阶段完整方案_20260922.md（869 行）；代码基线：codex/auto_build @ 578acd7

@@ -1,0 +1,36 @@
+{
+  "ticket": "0598f332af5d46598c5650b02eec25e5",
+  "task": "auto-build-output-v3/D18_报告",
+  "status": "implemented",
+  "summary": "D18 真实试验效果报告已交付：/tmp/wiz_pilot_d18/D18_真实试验报告.md（249 行：实验设置/每臂结果表/G2 三项判定/机制结论/未完成项/codec 上线建议/脱敏声明）。本子任务只写报告，未跑试验、未改仓库代码（git status 无本人改动）。全部数字自 results.json 与状态库 SQLite 实读，26 项交叉断言 0 不一致。G2：质量门未过（D object 缺 6/6、property 缺 41/41、link 缺 2/4，命中 2/51、extra 134；34 条结构问题全 duplicateIdentity=17×2金样；precision A 0.0357→D 0.0147 降 2.10pp 超阈，recall A 0.0196→D 0.0392 升 1.96pp 未触阈）；compact 收益门未测（B/C 未跑，不编造收益数字）；成本取舍不可证（A 5/6 unknown、D 1/12 unknown）。A 臂首轮 3×TIMEOUT 已重跑完成且仍 failed（6 调用、knownCompletionTokens 8344、unknown 5、8 条 danglingRef、P 0.0357/R 0.0196），报告 A 列采信重跑、首轮仅作故障记录。",
+  "decisions": [
+    "codec 上线建议：机制可用，但 compact 收益未实测前不启用——保持在线默认 legacy-v1、compact-v1 仅实验能力默认关闭（对齐整合计划 v3 §12）",
+    "A 列采信 A 臂重跑（out-armA）；不用首轮 precision=1.0（空集默认值）作基线，否则得出下降 98.53pp 的假结论",
+    "拒绝编造：未给任何 compact 收益百分比与 D-vs-A 成本增幅；A/D 已知部分 7.2×/4.4×/6.6× 仅标非正式参考、不作判定依据",
+    "机制结论如实标注：截断拆分链路由 fake 回归覆盖、真实运行未触发（三个 run 的 jobSplit 均 0、无 finishReason=length）"
+  ],
+  "verification": [
+    "自读 results/.../simple-A-r1.json（首轮）、simple-D-r1.json、out-armA/results/.../simple-A-r1.json、两份 report.json/report.md、config.json/config-A.json、状态库 campaign.sqlite3 与 simple-{A,D}-r1.sqlite3（只读 uri）",
+    "26 项数值交叉断言（calls/known/unknown/finishReasons/errorCodes/states/durationMs/promptBytes/events/campaignCounters/qualitySummary/missingByType/coverage/budgetProfile）全部一致，0 不一致",
+    "脱敏核对：无 key/api_key/password/secret/bearer 样式串，无 prompt/response 正文键；候选 key/name 均来自仓库内合成 fixture",
+    "报告无遗留占位/待补文字（grep 确认）"
+  ],
+  "next": [
+    "待 Codex 验收报告（独立核对数字与 G2 口径）",
+    "补齐项（报告 §6）：原 8KB 真实样本并登记 hash；补跑 B/C 臂分离 codec 与装箱效应；消除跨作业重复身份与同义多命名；provider 返回 reasoning/completionBytes；排查 TIMEOUT 频发（三轮共 9 次）",
+    "报告在 /tmp（仓库外），如需入库归档请指定仓库内路径与提交范围"
+  ],
+  "references": [
+    "/tmp/wiz_pilot_d18/D18_真实试验报告.md",
+    "/tmp/wiz_pilot_d18/out-real3/report.json",
+    "/tmp/wiz_pilot_d18/out-armA/report.json",
+    "/tmp/wiz_pilot_d18/out-real3/results/d18-smoke-20260922/simple-D-r1.json",
+    "/tmp/wiz_pilot_d18/out-armA/results/d18-armA-20260922/simple-A-r1.json"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T13:03:18.243804+00:00",
+  "sequence": 209,
+  "filename": "000209-bf762b23af56.json",
+  "record_hash": "967ac7d85b290f90236828a2933e08c91186c575349cac407f74a731cdcaef2d",
+  "context_advanced": false
+}

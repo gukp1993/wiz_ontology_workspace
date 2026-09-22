@@ -1,0 +1,38 @@
+{
+  "ticket": "9d58633d2d3e4adda3ead88acd904824",
+  "task": "auto-build-output-v3/D10",
+  "status": "implemented",
+  "summary": "D10 终态/lease/取消/旧版本守卫已实施：runner.py 纯追加 5 个守卫（finish_success_guarded 先跑 final_state_check，不过返回 (False, violations) 不改 run；resume_plan_guard 只读分 legacy_*/v2_*，未知版本 UNKNOWN_CHECKPOINT_SCHEMA 绝不删候选；plan_fingerprint_matches；resumable_jobs；claim_for_resume 进入即轮换 lease）。既有函数零改动（183 行全追加）。新测试 10 场景 93 断言全过（退出码 0），既有 8 套相关回归全绿。未提交 git（按指令，待协调者）。",
+  "decisions": [
+    "finish_success_guarded 冻结 (ok, violations) 元组：拒绝时不写 failed+blocking、不动 run（任务书冻结口径），由 D16 决定后续",
+    "resumable_jobs 可续叶=queued/running/failed（§9 场景5 右子返回）；blocked 不返回（§6 须显式新计划）、superseded 不返回（§4.3）、成功叶不重做",
+    "begin_worker_scope(lease=None) 只读不轮换、不构成接管，故另立 claim_for_resume（复用 submit 的轮换语义，context manager，退出作废）",
+    "resume_plan_guard 防御码 RESUME_MODE_INVALID/RUN_NOT_FOUND/RESUME_GUARD_ERROR（fail-closed），在冻结返回形状内",
+    "runner.py 顶部追加 import json、batch_contracts（后者仅标准库依赖，无环）"
+  ],
+  "verification": [
+    "python3 tests/run.py --test tests/test_ontology_build_budget_resume.py → 退出码 0（93/93）",
+    "python3 tests/run.py --test tests/test_ontology_build_finish_guard.py → 退出码 0",
+    "python3 tests/run.py --test tests/test_ontology_build_runner_isolation.py → 退出码 0（34/34）",
+    "附加回归退出码均 0：late_write、progress_log、batch_state、batch_accounting、budget_storage、test_ontology_build(HTTP e2e)",
+    "ruff check 两文件 All checks passed"
+  ],
+  "next": [
+    "D16：resume 路由先调 resume_plan_guard；auto 用 plan_fingerprint_matches（期望指纹按冻结 parts 组装）不一致→422 BUDGET_PLAN_MISMATCH；abstract 按 v2_abstract 建新 epoch（候选清理+计划替换同事务）",
+    "D16：generate 收尾改调 finish_success_guarded（plan_doc 传 checkpoint 形态 {'generate': doc}），拒绝时不标 succeeded",
+    "协调者安排 git 提交（本轮未操作 git）"
+  ],
+  "references": [
+    "workbench/ontology_build/runner.py",
+    "tests/test_ontology_build_budget_resume.py",
+    "workbench/ontology_build/batch_contracts.py",
+    "文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md",
+    "文档/接口文档/08-从物料自动构建本体接口.md §14.5"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T10:32:03.794423+00:00",
+  "sequence": 206,
+  "filename": "000206-bdcb2618e958.json",
+  "record_hash": "f25030431b4591b95ca88cfadc6a7d75cc90925e25c709908a8a257d950ace72",
+  "context_advanced": false
+}

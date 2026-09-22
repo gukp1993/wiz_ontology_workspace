@@ -1,0 +1,35 @@
+{
+  "ticket": "cacc17eb285342c297187d981a688760",
+  "task": "auto-build-output-v3 D01 能力profile与配置预检",
+  "status": "implemented",
+  "summary": "在 worktree/auto_build（分支 codex/auto_build，基线 87d1473）交付 D01：新建 workbench/ontology_build/budget_profile.py 与 tests/test_ontology_build_budget_profile.py。模块从 batch_contracts 再导出 build_profile/validate_profile/budget_view/input_reserve_tokens（函数身份等同，未复制逻辑）及 8 个环境变量名/默认值常量；新增纯函数 request_budget_errors(profile, provider_id=None, model=None)→[(code,message)]（复用 validate_profile，中文可读 message，不含密钥，供 422 用）与 effective_limits(profile)（有界 limits 摘要：C/L/请求输出/比例+effective 三值+planTargets/jobs/attempts/checkpointBytes 等冻结规模上限）。未 import 存储层/管线/路由（sys.modules 验证零违禁导入）。",
+  "decisions": [
+    "request_budget_errors 未启用 profile 返回空列表（契约：errors 只在 enabled 时收集，是否要求 profile 由调用方按开关判定），与 batch_contracts.validate_profile 语义一致",
+    "effective_limits 在 profile 未启用/非法时派生值为 None，静态规模上限（4096/512/1024/1MiB 等）仍原样展示，与 budget_view 同口径",
+    "未发现契约缺陷，无协议变更请求"
+  ],
+  "verification": [
+    "python3 tests/run.py --test tests/test_ontology_build_budget_profile.py → 退出码 0（121/121 通过）",
+    "python3 tests/test_ontology_build_budget_profile.py 直跑 → 退出码 0",
+    "ruff check 两个新文件 → 退出码 0",
+    "导入隔离检查：import budget_profile 后 sys.modules 无 storage/pipeline/routes/runner/llm/sqlalchemy",
+    "8 场景覆盖：契约同源/全量合法env三值公式/缺C缺L缺绑定→REQUIRED/非法值→INVALID/绑定不符→MISMATCH（provider与model分别）/缺省未启用/2万上限cap=20000/零副作用（os.environ浅拷贝对比+注入env不变）与budget_view冻结字段及codec回退"
+  ],
+  "next": [
+    "待 Codex 独立验收（P(D01) 命令）；不合并 main",
+    "D02 budget.py 可按契约基于本模块开工"
+  ],
+  "references": [
+    "workbench/ontology_build/batch_contracts.py（87d1473 冻结契约）",
+    "workbench/ontology_build/budget_profile.py",
+    "tests/test_ontology_build_budget_profile.py",
+    "文档/接口文档/08-从物料自动构建本体接口.md §14",
+    "文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §3/§8"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T08:36:28.688139+00:00",
+  "sequence": 197,
+  "filename": "000197-f73131df2b41.json",
+  "record_hash": "93a34177c511653c6487a45b5cb4d060b2ecf202d40abe3e8734805ec7fca73c",
+  "context_advanced": false
+}

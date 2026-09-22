@@ -1,0 +1,35 @@
+{
+  "ticket": "a9b47f8456384039b1b70b9a26c95dfe",
+  "task": "auto-build-output-v3/D04",
+  "status": "implemented",
+  "summary": "D04 装箱/拆分/稳定ID/覆盖守恒已实施（worktree auto_build，分支 codex/auto_build）：新建 batch_plan.py（纯函数，仅 stdlib+contracts+budget）与 93 断言回归；plan_initial/pack_next/split_or_block/verify_split_coverage/job_definition/estimate_batch_messages 全按冻结规则实现，stable_job_id 复用 contracts。协议变更请求：field selector 拆分子目标为新派生 id，batch_state.job_split 现协议无登记事件，D09 前只能到映射层，待 C 裁决。",
+  "decisions": [
+    "pack_next/plan_initial/split_or_block 在冻结签名外仅追加 keyword 默认参数（plan_epoch/parent_job_id/parent_split_path/root_job_id/scope_payload），不影响冻结调用",
+    "软目标 V 用契约 cold_output_estimate(整批slots,整批I)；硬输出 ΣE 用 expected_output（校准取 max）；反馈收缩以候选单元 E 调 shrink_for_feedback 只缩不扩",
+    "field 子目标 targetId 按冻结公式本地派生（t-+sha256(factId+selector)[:16]），不 import semantic_units",
+    "field 拆分子作业 contextFactIds 置空（同事实不得既当主目标又当背景）；单元/目标二分子作业 context 取对侧事实 ≤8"
+  ],
+  "verification": [
+    "python3 tests/run.py --test tests/test_ontology_build_batch_plan.py → 退出码 0（93/93）",
+    "ruff check 两新文件 → All checks passed",
+    "相邻回归 budget/semantic_units/batch_state 测试各 1/1 通过",
+    "batch_state 联调：5 个事件全部受理、validate_plan_doc 零错误、pending 清空、coverage_check ok"
+  ],
+  "next": [
+    "待 Codex 独立验收 D04（不合并 main）",
+    "selector 子目标入状态机的协议扩层待 C 裁决",
+    "D09 接线时复核 pack_next 整批重估 O(n²) 开销"
+  ],
+  "references": [
+    "workbench/ontology_build/batch_plan.py",
+    "tests/test_ontology_build_batch_plan.py",
+    "workbench/ontology_build/batch_contracts.py",
+    "文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T10:39:42.954515+00:00",
+  "sequence": 207,
+  "filename": "000207-82a59abec002.json",
+  "record_hash": "5462c4bb7da1b4dae63a5854bf1d9ad68f6a7ff9ece7eb2f52be91dcce36a573",
+  "context_advanced": true
+}

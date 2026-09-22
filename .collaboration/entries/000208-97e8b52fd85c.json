@@ -1,0 +1,36 @@
+{
+  "ticket": "38dea050ff3340aea42bb17343429d0d",
+  "task": "auto-build-output-v3/D14",
+  "status": "implemented",
+  "summary": "D14 CLI/模型适配/四臂运行已实施（worktree auto_build，分支 codex/auto_build）：新建 experiments/ontology_token_pilot/adapter.py（FakeModel 脚本事件 length/429/bad_json/crash/unknown_usage、RealModel 懒加载 llm_client、load_config、load_sample_facts 确定性样本事实、run_arm、campaign 预算与暖缓存）、__main__.py（冻结用法 argparse CLI，退出码 0/2/1，report.json+report.md 含 G2 三项判定）、README.md 与 tests/test_ontology_token_pilot_cli.py（7 场景）。四臂全走 batch_execution.run_plan 唯一共享核心：C/D=plan_initial+缺省 pack_next，A/B 仅注入固定20批 planner 且差异登记 meta.adapterDiffs；AST 断言无第二套调度器。",
+  "decisions": [
+    "A/B 对照臂用 batch_execution._plan_more 既有 planner 注入点实现固定 20 事实批，不复制任何调度逻辑；A/B 无 plan_initial 初始作业",
+    "campaign 预算与模型响应暖缓存同放 <output-dir>/states/<campaign>/campaign.sqlite3（跨臂/样本/重复/续跑共享）；物理请求计数逐次即时落库（保守），已知 completion 按本次 runAttempt 收口补记不双计",
+    "终态（succeeded/failed/blocked）结果续跑跳过不重做，历史受阻结论保留进续跑报告 notes；重跑须显式删该 run 的结果与状态文件",
+    "compact encode_request 实现把目标单元放 payload['facts']（带 alias/unit），FakeModel 按实际实现协议响应（output_codec docstring 的 'units' 键与实现不一致，未改 D06 文件）",
+    "结果文件/报告统一过 D13 redact_report；real 模式仅显式 --mode real 时 import workbench 存储层，key 只留内存 provider dict"
+  ],
+  "verification": [
+    "python3 tests/run.py --test tests/test_ontology_token_pilot_cli.py → 退出码 0（7/7 场景：四臂 CLI 子进程、共享核心+AST 无第二调度器、截断 split 父+子入账、campaign maxAttempts=2 第二臂受阻退出2+续跑累计不重置、repeats=2 暖缓存零物理调用、compact coverage 全命中 decode+金样评价、参数错误退出1）",
+    "回归：tests/test_ontology_build_batch_execution.py、test_ontology_token_pilot_state.py、test_ontology_token_pilot_metrics.py、test_ontology_token_pilot_fixtures.py 全部通过",
+    "ruff check（新三文件）通过；--mode real 无 provider 时优雅受阻退出 2 并出报告（未派发任何真实调用）"
+  ],
+  "next": [
+    "real 模式实测与 G2 真实收益归 D18；已知限制：campaign 预算库随 output-dir 走，换目录=新预算库（v3 要求跨目录共享，未实现，待 C 裁决）",
+    "默认预算 128 物理请求跑不全三样本×四臂矩阵（约需 114 次，C/D 软目标装箱批较小）；扩额须配置显式给出",
+    "blocked/failed run 不自动重试（重跑须删该 run 文件）；如需协议登记可将 skip/预算受阻语义并入接口文档 08"
+  ],
+  "references": [
+    "experiments/ontology_token_pilot/adapter.py",
+    "experiments/ontology_token_pilot/__main__.py",
+    "experiments/ontology_token_pilot/README.md",
+    "tests/test_ontology_token_pilot_cli.py",
+    "文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §8/§11/§12"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T11:45:59.977606+00:00",
+  "sequence": 208,
+  "filename": "000208-97e8b52fd85c.json",
+  "record_hash": "5db6b6767d947096842bfcad544a4d4045b660be5022c33b56adce3edebec094",
+  "context_advanced": false
+}

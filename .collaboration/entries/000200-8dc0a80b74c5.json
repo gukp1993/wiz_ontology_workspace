@@ -1,0 +1,32 @@
+{
+  "ticket": "70d268cdbe47412294a2dba1caaf8074",
+  "task": "auto-build-output-v3/D03-semantic-units",
+  "status": "implemented",
+  "summary": "D03 语义目标与来源 selector：新建 workbench/ontology_build/semantic_units.py（纯函数，只依赖 stdlib+batch_contracts）与 tests/test_ontology_build_semantic_units.py（11 场景 68 断言）。build_targets 按冻结优先级分组（nodeId→jsonld_node、ddl 表、code 限定符号、doc 章节/pdf 按页、json/yaml/toml 最近对象路径保留下标、fallback 相邻窗口/孤立 single_fact 低置信），每 fact 恰一个 whole target 绝不丢弃；targetId=t-+sha256(factId+canonical_selector)[:16]；targets_for_facts/context_fact_ids 过滤与上下文辅助。",
+  "decisions": [
+    "context_fact_ids 契约口径澄清（待 C 确认）：groups 冻结形状只有 targetIds 无 factId，故钉死语义为 targets=同次 build_targets 全量 targets（targetId→factId 解析表）、groups=本叶任务主目标组（可为主组子集）；上下文=同 subjectKey 且不属于主组的邻近事实，机械保证与主组 factId 不相交（不算覆盖）。batch_contracts.py 未改，如需把该口径写入 D00 冻结注释属协议变更请求，由 C 统一处理。",
+    "yaml/toml 与 json 同遍历口径（接口 08 §1.3），locator.path 非空时共用 json_object 分组；xlsx/ini/csv/properties/text/image/llm 等冻结清单外定位按规则⑥落相邻窗口，不发明新 kind。",
+    "pdf 无 section 字段，按真实定位字段 page 作章节粒度（subjectKey 记 page:<n>）。",
+    "fact 缺 id 或非 dict 抛 ValueError 拒绝静默丢弃（每个 fact 至少一个 target 的诚实实现）。"
+  ],
+  "verification": [
+    "python3 tests/run.py --test tests/test_ontology_build_semantic_units.py → 退出码 0（68/68 通过）",
+    "python3 tests/test_ontology_build_semantic_units.py 直跑 → 退出码 0",
+    "ruff check 两文件 → 0 错误（仓库 ruff.toml）"
+  ],
+  "next": [
+    "待 Codex 独立验收 P(D03)；D04 batch_plan.py 可基于本模块真实交付开工",
+    "context_fact_ids 口径如获 C 确认，建议在 batch_contracts.py 目标节补一行注释（协议变更走 C）"
+  ],
+  "references": [
+    "workbench/ontology_build/batch_contracts.py（87d1473 冻结契约，未改）",
+    "文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §4.1/§8",
+    "文档/接口文档/08-从物料自动构建本体接口.md §1.3"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T08:48:54.198862+00:00",
+  "sequence": 200,
+  "filename": "000200-8dc0a80b74c5.json",
+  "record_hash": "d318aa434c1a84b7ab8812cb2a00944c9ececaf726c88d6f0e9f4b448b9fae1b",
+  "context_advanced": false
+}
