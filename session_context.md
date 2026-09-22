@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`ac14547cbf8c6c8a`
+上下文版本：`ae5ba5c791a84938`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,13 +24,13 @@
 
 ### assist-fill-production · zcode · 已实施，待验收
 
-时间：2026-09-22T14:51:39.216650+00:00；记录：`.collaboration/entries/000254-b8ee5253c84c.json`
+时间：2026-09-22T15:21:05.739883+00:00；记录：`.collaboration/entries/000255-7512133e418a.json`
 
-按用户指令在既有 worktree 实施「整表自动填写」改版（需求 20260922_整表自动填写交互，文档 99e5a20），替代旧逐条勾选流程。T0 先冻契约（04 §6 autofill/1：受限 operations/会话多轮/限额/表单契约格式），再按 G1-G4 分批并行实施 T1-T10，共 12 笔提交（60037b8..08d2215，HEAD 见交付报告）。核心：contracts/forms 单一契约来源 + assist_forms loader/生成器（423 断言守护）；assist_ops 受限操作校验（冲突整组拒绝/原子组/basis 核验）；前端 formAutofill 引擎 + 420px 侧栏抽屉（宿主常驻受控挂载）；后端进程内会话（TTL30m/LRU200）+ 契约 digest 入 token；11 场景全部接入新协议（本体四场景/属性/属性来源三类/实例/链接/动作）。T9 集成发现并修复 P1（list 契约摘要 KeyError 使 4 类契约全 400）；T10 浏览器验收发现并修复 F1（焦点不入输入框）/F2（主动关闭丢输入）/F3（empty 带 unresolved 误报「内容已一致」），三项复验全过。真实模型 GLM 合成数据联调：对象/属性链路可完成、basis 逐字合规、原子组成对输出。状态：已实施+自测+浏览器复验，待独立验收；未合并 main、未推送、主工作台未动。数据根已按最新 AGENTS 迁至工作树根（data/+keys/，含真实数据副本不可自动丢弃）。
+用户截图反馈：自动填写抽屉在生成中（「正在填写…」态）主按钮渲染成空框。定位为 CSS 特异性反吃——.assist-actions button(0,1,1) 只覆盖 background/border 声明，而裸 .assist-primary(0,1,0) 的 color:#fff 仍生效，按钮变白字白底（disabled 态 opacity:.5 时更明显）。修复：规则抬到 .assist-actions button.assist-primary（hover 同步 .assist-actions button.assist-primary:hover:not(:disabled) 压过 (0,3,1)），并在 DESIGN.md 共享语义类表登记该不变量与失败症状。加 3 项回归锁（tests/assist_panel.test.mjs ⑥a/⑥b/⑥c：必须用抬特异性的写法、hover 同款、不得再出现裸单类声明）。全仓同类反吃扫描（裸变体类 + 同父后代选择器覆盖）结果 0 处。前端 45/47（剩 2 个 main 既有债务）、构建过、18951 已重启。提交 eec8314。
 
-- 验证：后端 tests/run.py unit 52/52、quick 3/3、http 11/11；autofill 四套件（contracts 423 断言/patch 40/http 13 组/integration 12 组）全过；前端 47 套件 45 过（剩 2 个为 main 既有债务）；vue-tsc 0 错；npm run build 过；浏览器 CDP 真实事件：A01/A03/A09/A10/A11/A18+console 0 error 过；F1/F2/F3 修复后独立复验全过（含 A01 未破坏、二宿主抽查）；真实 GLM 联调：对象 2/2 字段 14.7s、属性 timeSeries 原子组成对 15.6s，6 次调用全 200，basis 引文程序核对逐字命中；18951（数据根=工作树根）运行中，admin 走真实 GLM、assist_dev 走 autofill/1 桩（18933）
-- 下一步：待独立验收（验收通过前不合并 main；合并需用户明确指令）；未覆盖：项目区 connection/table/field 真实目录链路（本机 MySQL 不可达）、行操作/redis-flow 浏览器路径、check/explain 与错误码浏览器呈现、会话 TTL/LRU 实测；债务：editableFields 的 xsd:* 枚举与契约业务枚举双形态并存（低影响）；旧数据根 .runtime/assist-data 与迁移前快照 .runtime/assist-data-backup-20260922 保留未删
-- 依据/文档：文档/需求/20260922_整表自动填写交互/（需求/计划/指令/原型）；文档/接口文档/04-编排与LLM接口.md §6；开发计划 §8/§9
+- 验证：修复后源码核对：.assist-actions button.assist-primary + hover 变体，无裸 .assist-primary 声明；tests/assist_panel.test.mjs 25/25（含新增 ⑥a/⑥b/⑥c 三项样式回归锁）；全仓扫描裸变体 + 同父按钮覆盖的潜在反吃：0 处；前端 47 套件 45 过（flow_test_workspace/legacy_graph_bridge 为 main 既有债务）；npm run build 过；18951 重启（PID 81880）
+- 下一步：待独立验收（交付 SHA 更新为 eec8314）；用户可在 18951 刷新页面确认按钮恢复蓝底白字
+- 依据/文档：DESIGN.md（共享语义类表新增 .assist-actions button.assist-primary 行）；frontend/src/assist/AssistPanel.vue:309-313；开发计划 §9
 
 ### 整表自动填写 T9 集成与对抗测试（tests/test_autofill_integration.py） · zcode · 已实施，待验收
 
