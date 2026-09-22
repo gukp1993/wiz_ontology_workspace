@@ -357,7 +357,7 @@ def scenario_r02(api, rec, project_id, project_state, object_type, prop, tag='R0
     gres = V.classify_validate_observation(
         True, r, {'ok_status': (200,), 'diagnostic_term_groups': gdiag,
                   'detail': '负对照 validate：errors=%s' % _brief(gerrs)})
-    ghost_validate_blocked = gres['result'] == V.PRODUCT_PASS
+    _ghost_validate_blocked = gres['result'] == V.PRODUCT_PASS
     # 7b) 负对照的 publish 段：期望 422 拦截且版本零新增
     before2, before2_note = _releases_of(api, project_id)
     r2 = api.post('/api/project-publish', {'state': ghost, 'revision': rev3,

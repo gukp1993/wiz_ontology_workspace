@@ -61,7 +61,7 @@ export function fieldEntries(type, data = {}) {
   const entries = (FIELDS[type] || [])
     .map((spec) => {
       const v = data[spec.key]
-      const isList = spec.type === 'list'
+      const _isList = spec.type === 'list'
       if (Array.isArray(v)) {
         if (!v.length) return null
         return { key: spec.key, label: spec.label, isList: true, value: v }

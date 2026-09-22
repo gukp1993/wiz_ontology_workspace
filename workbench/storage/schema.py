@@ -262,6 +262,12 @@ wb_build_tasks = sa.Table('wb_build_tasks', METADATA,
     sa.Column('scope_revision', sa.Integer(), nullable=False, default=0),
     sa.Column('current_batch', BinV(36), nullable=False, default=''),
     sa.Column('delivery_ontology_id', BinV(80), nullable=False, default=''),
+    # V2-4 格式黑名单三层（20260921_0004）：任务级过滤设置与被过滤文件报告（08 §13）。
+    # filter_json = {'allowExts':[...], 'softExts':[...]|None, 'excludeExts':[...]}（'.' 前缀小写）；
+    # filter_report_json = {'items':[{path,layer,rule,size}...≤500], 'counts':{hard,soft,custom,total},
+    #                       'truncated':bool}——被过滤文件必须可见，不许静默消失（G20）。
+    sa.Column('filter_json', LongText(), nullable=False, default='{}', server_default='{}'),
+    sa.Column('filter_report_json', LongText(), nullable=False, default='{}', server_default='{}'),
     sa.Column('created_at', sa.String(32), nullable=False, default=''),
     sa.Column('updated_at', sa.String(32), nullable=False, default=''),
     sa.Column('deleted_at', sa.String(32), nullable=True),

@@ -7,8 +7,8 @@
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import AppError from '../shared/AppError.vue'
 import { appConfirm } from '../shared/appConfirm'
-import { checkFileMeta, parseWorkbook, MAX_FILE_BYTES, MAX_BUSINESS_ROWS, CHUNK_LOAD_HINT, chunkLoadFailure, type ParseIssue } from './excelImport'
-import { applyPlan, buildPlan, collectExistingNames, planCounts, verifyImported, type ImportDecision, type ImportPolicy, type PlanOutcome } from './importPlan'
+import { checkFileMeta, parseWorkbook, MAX_FILE_BYTES, MAX_BUSINESS_ROWS, CHUNK_LOAD_HINT, type ParseIssue } from './excelImport'
+import { applyPlan, buildPlan, collectExistingNames, planCounts, verifyImported, type ImportPolicy, type PlanOutcome } from './importPlan'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 
 const props = defineProps<{ state: any }>()
@@ -107,7 +107,7 @@ async function runCheck() {
 
 // 表单守卫：确认中途离开需确认（检查/预览本身不写数据，dirty 仅在 saving 期间为真）
 const guard = { isDirty: () => saving.value, discard: () => {} }
-watch(() => saving.value, open => { open ? guardApi.register(guard) : guardApi.unregister(guard) }, { immediate: true })
+watch(() => saving.value, open => { if (open) guardApi.register(guard); else guardApi.unregister(guard) }, { immediate: true })
 onBeforeUnmount(() => guardApi.unregister(guard))
 
 async function confirmImport() {

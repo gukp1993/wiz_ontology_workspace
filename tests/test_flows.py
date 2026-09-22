@@ -52,7 +52,7 @@ def node(kind, name, inputs=(), outputs=(), impl=None, description=''):
     return {'id': f'nd_{name}', 'kind': kind, 'name': name, 'description': description,
             'inputs': [dict(i, id='in_' + i['name']) for i in inputs],
             'outputs': [dict(o, id='out_' + o['name']) for o in outputs],
-            'implementation': impl or ({'language': 'python', 'code': f'def main():\n    return None\n'} if kind == 'python'
+            'implementation': impl or ({'language': 'python', 'code': 'def main():\n    return None\n'} if kind == 'python'
                                        else {'language': 'sql', 'sql': 'SELECT 1', 'connectionId': ''})}
 
 
@@ -94,7 +94,7 @@ check(status == 400, 'flow-check 缺 state 返回 400', {'status': status})
 # 4) 空编排 + 名称校验 ------------------------------------------------------------------------
 created2, state2 = blank('空编排')
 report_empty0 = flows.check_flow(state2)
-check(report_empty0['status'] == 'pending' and not report_empty0['errors'] and not report_empty0['warnings'] is None,
+check(report_empty0['status'] == 'pending' and not report_empty0['errors'] and report_empty0['warnings'] is not None,
       '空编排（仅名称）无错误（打磨轮起给 FLOW_EMPTY 指引 warning，状态为待完善）', report_empty0)
 try:
     flows.create('测试编排')

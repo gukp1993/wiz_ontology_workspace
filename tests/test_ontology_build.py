@@ -46,6 +46,12 @@ import auth_client  # noqa: E402
 from workbench import model_format  # noqa: E402
 from workbench import storage  # noqa: E402
 from workbench.ontology_build import alignment  # noqa: E402
+from workbench.ontology_build import blacklist as blacklist_domain  # noqa: E402
+from workbench.ontology_build import llm as build_llm  # noqa: E402
+from workbench.ontology_build import pipeline as build_pipeline  # noqa: E402
+from workbench.ontology_build import retrieval  # noqa: E402
+from workbench.ontology_build.parsers import image_parser  # noqa: E402
+from workbench.ontology_build.parsers import ocr_support  # noqa: E402
 from workbench.ontology_build import materials as materials_domain  # noqa: E402
 from workbench.ontology_build import protocol  # noqa: E402
 from workbench.ontology_build import runner  # noqa: E402
@@ -105,12 +111,24 @@ class FakeLlm(BaseHTTPRequestHandler):
     """按 system prompt 分流：范围澄清 → questions/patch；候选抽取 → candidates。
 
     抽取应答故意包含一个捏造 factId（BOGUS_FACT_ID），用于验证「越界证据被剔除」。
+    V2-8：extract_fail_remaining > 0 时抽取请求返回 HTTP 500（模拟批次失败），逐次递减；
+    extract_attempts 记录抽取尝试次数（含失败），供批次续跑断言「只重跑失败批次」。
     """
     calls = []
     facts_seen = []
+    extract_fail_remaining = 0
+    extract_attempts = 0
 
     def log_message(self, *args):  # 不打印访问日志
         pass
+
+    def _reply(self, status, payload):
+        data = json.dumps(payload, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self):
         length = int(self.headers.get('Content-Length') or 0)
@@ -120,7 +138,16 @@ class FakeLlm(BaseHTTPRequestHandler):
         user_text = str(messages[-1].get('content') or '') if messages else ''
         if '抽取器' in system:
             FakeLlm.calls.append('extract')
+            FakeLlm.extract_attempts += 1
+            if FakeLlm.extract_fail_remaining > 0:
+                FakeLlm.extract_fail_remaining -= 1
+                self._reply(500, {'error': {'message': '注入的抽取批次失败',
+                                            'type': 'server_error'}})
+                return
             payload = self._extract_payload(user_text)
+        elif '材料解析器' in system:
+            FakeLlm.calls.append('fallback')
+            payload = self._fallback_payload(user_text)
         else:
             FakeLlm.calls.append('scope')
             payload = {
@@ -128,13 +155,22 @@ class FakeLlm(BaseHTTPRequestHandler):
                                'suggestion': '暂不纳入', 'reason': '本期聚焦设备运行'}],
                 'patch': {'include': '设备台账、监测数据'},
                 'notes': ['材料覆盖：DDL 与需求文档一致']}
-        data = json.dumps({'choices': [{'message': {'content': json.dumps(payload, ensure_ascii=False)},
-                                        'finish_reason': 'stop'}]}).encode()
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self._reply(200, {'choices': [{'message': {'content': json.dumps(payload, ensure_ascii=False)},
+                                       'finish_reason': 'stop'}]})
+
+    @staticmethod
+    def _fallback_payload(user_text):
+        """兜底解析应答：quote 逐字取自切片原文（通过服务端原文校验）。"""
+        try:
+            slice_text = str(json.loads(user_text).get('text') or '')
+        except ValueError:
+            slice_text = ''
+        return {'facts': [
+            {'title': '业务线索', 'detail': '切片文本中识别到的业务线索（假模型）',
+             'quote': slice_text[:80]},
+            {'title': '伪造引用', 'detail': 'quote 不在原文中，必须被服务端丢弃',
+             'quote': '这句quote不在切片原文里 ABCDEF'}],
+            'notes': ['假 LLM 兜底解析应答']}
 
     @staticmethod
     def _extract_payload(user_text):
@@ -941,6 +977,837 @@ def flow_revision_contracts():
           '物料排除按 String(materialRevision) 通过并推进修订', actual=(status, _short(excluded)))
 
 
+# --- 回归流：V2-10 解析并发（线程池，G25） ---------------------------------------------
+class _SlowParseProbe:
+    """慢解析桩：包住真实 parse_material，记录并发峰值；可按文件名片段匹配。"""
+
+    def __init__(self, delay, match=None):
+        self.delay = float(delay)
+        self.match = match
+        self.lock = threading.Lock()
+        self.active = 0
+        self.max_active = 0
+        self.original = build_pipeline.parse_material
+
+    def __call__(self, path, material_id, kind, rel_path=''):
+        if self.match and self.match not in str(rel_path):
+            return self.original(path, material_id, kind, rel_path)
+        with self.lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        try:
+            time.sleep(self.delay)
+            return self.original(path, material_id, kind, rel_path)
+        finally:
+            with self.lock:
+                self.active -= 1
+
+
+def _scan_task_files(name, files):
+    """建任务→上传文件列表[(relPath, text)]→扫描→返回 (task_id, run_id, run)。"""
+    status, created = api('/api/build-task-create', {'name': name})
+    task_id = require((created.get('task') or {}).get('id'), '并发回归任务创建失败：%s' % name)
+    for rel_path, content in files:
+        status, body = _upload_bytes(content.encode('utf-8'), task_id, rel_path)
+        if status != 200:
+            raise Abort('并发回归上传 %s 失败：%s' % (rel_path, _short(body)))
+    status, scan = api('/api/build-scan', {'taskId': task_id})
+    run_id = require(scan.get('runId'), '并发回归扫描未返回 runId')
+    return task_id, run_id, poll_run(task_id, run_id)
+
+
+def _fact_fingerprint(task_id):
+    """任务内全部事实的内容指纹（按材料相对路径 + 事实 id 定序；不含会随任务变化的字段）。"""
+    # 排序键用内容列（locator/snippet/module/kind/quality/data）：fact_id 含 material_id，
+    # 跨任务不可作为顺序键；同内容 ⇒ 同排序 ⇒ 指纹可比。
+    rows = db_rows(
+        'SELECT m.rel_path AS rp, f.module AS md, f.kind AS kd, f.locator_json AS lc, '
+        'f.snippet AS sn, f.quality AS q, f.data_json AS dj '
+        'FROM wb_build_facts f JOIN wb_build_materials m '
+        'ON f.material_id = m.material_id AND f.task_id = m.task_id '
+        'WHERE f.task_id = ? '
+        'ORDER BY m.rel_path, f.locator_json, f.snippet, f.module, f.kind, f.quality, f.data_json',
+        (task_id,))
+    return [(r['rp'], r['md'], r['kd'], r['lc'], r['sn'], r['q'], r['dj']) for r in rows]
+
+
+def flow_parse_concurrency():
+    """V2-10 / G25：功能等价、并发生效、取消、超时、env 覆盖。"""
+    # capabilities 展示生效并发数
+    _, caps = api('/api/build-capabilities')
+    check((caps.get('limits') or {}).get('parseConcurrency') == protocol.PARSE_CONCURRENCY,
+          'capabilities 展示解析并发数（parseConcurrency）',
+          actual=(caps.get('limits') or {}).get('parseConcurrency', protocol.PARSE_CONCURRENCY))
+
+    # ⑤ env 覆盖与非法/非正值回退
+    saved_env = os.environ.get('WIZ_BUILD_PARSE_CONCURRENCY')
+    try:
+        os.environ['WIZ_BUILD_PARSE_CONCURRENCY'] = '3'
+        check(protocol._limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', 8) == 3,
+              'WIZ_BUILD_PARSE_CONCURRENCY 覆盖并发度')
+        os.environ['WIZ_BUILD_PARSE_CONCURRENCY'] = 'abc'
+        check(protocol._limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', 8) == 8,
+              '非法并发度环境变量回退默认（不 crash）')
+        os.environ['WIZ_BUILD_PARSE_CONCURRENCY'] = '0'
+        check(protocol._limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', 8) == 8,
+              '非正值并发度环境变量回退默认')
+    finally:
+        if saved_env is None:
+            os.environ.pop('WIZ_BUILD_PARSE_CONCURRENCY', None)
+        else:
+            os.environ['WIZ_BUILD_PARSE_CONCURRENCY'] = saved_env
+
+    write_fixtures()
+
+    # ① 功能等价：并发=1 与并发=4 的 facts 内容与顺序完全一致
+    saved_cc = protocol.PARSE_CONCURRENCY
+    try:
+        protocol.PARSE_CONCURRENCY = 1
+        serial_id, _rid1, serial_run = _scan_task_files('并发等价-串行', [
+            (name, (FIXTURE_DIR / name).read_text(encoding='utf-8'))
+            for name in ('schema.sql', 'Device.java', 'req.md')])
+        check(serial_run.get('state') == 'succeeded', '等价组：串行扫描 succeeded',
+              actual=serial_run.get('error'))
+        protocol.PARSE_CONCURRENCY = 4
+        par_id, _rid2, par_run = _scan_task_files('并发等价-并行', [
+            (name, (FIXTURE_DIR / name).read_text(encoding='utf-8'))
+            for name in ('schema.sql', 'Device.java', 'req.md')])
+        check(par_run.get('state') == 'succeeded', '等价组：并发扫描 succeeded',
+              actual=par_run.get('error'))
+        fp_serial, fp_par = _fact_fingerprint(serial_id), _fact_fingerprint(par_id)
+        check(fp_serial == fp_par and len(fp_serial) >= 8,
+              '功能等价：并发=1 与并发=4 产出 facts 内容与顺序完全一致（G25a）',
+              actual=(len(fp_serial), len(fp_par)))
+    finally:
+        protocol.PARSE_CONCURRENCY = saved_cc
+
+    # ② 并发生效：4 个慢文件（各 1.0s）应在池内同时解析
+    slow_files = [('slow%d.md' % i, '# 慢解析 %d\n\n设备监测数据与额定容量说明。\n' % i)
+                  for i in range(1, 5)]
+    probe2 = _SlowParseProbe(1.0)
+    build_pipeline.parse_material = probe2
+    try:
+        started = time.monotonic()
+        _tid2, _rid3, run2 = _scan_task_files('并发生效回归', slow_files)
+        elapsed = time.monotonic() - started
+        check(run2.get('state') == 'succeeded' and probe2.max_active >= 2 and elapsed < 3.5,
+              '并发生效：多文件同时解析中（峰值并发 %d，总耗时 %.1fs < 串行下限 4s；G25b）',
+              actual=(run2.get('state'), probe2.max_active, round(elapsed, 1)))
+    finally:
+        build_pipeline.parse_material = probe2.original
+
+    # ③ 取消：已完成结果保留、未完成不再落库；恢复解析后重扫只补未完成文件（G25d）
+    cancel_files = [('cancel%d.md' % i, '# 取消回归 %d\n\n设备台账说明。\n' % i)
+                    for i in range(1, 7)]
+    probe3 = _SlowParseProbe(2.0)
+    build_pipeline.parse_material = probe3
+    saved_cc3 = protocol.PARSE_CONCURRENCY
+    protocol.PARSE_CONCURRENCY = 2   # 6 文件×2s、并发 2：取消到达时必有未开始任务
+    try:
+        status, created = api('/api/build-task-create', {'name': '并发取消回归'})
+        task3 = require((created.get('task') or {}).get('id'), '取消回归任务创建失败')
+        for rel_path, content in cancel_files:
+            api('/api/build-upload-init', {'taskId': task3, 'relPath': rel_path,
+                                           'size': len(content.encode('utf-8'))})
+        # 逐文件完整上传（init→chunk→complete）
+        for rel_path, content in cancel_files:
+            status, body = _upload_bytes(content.encode('utf-8'), task3, rel_path)
+            if status != 200:
+                raise Abort('取消回归上传 %s 失败：%s' % (rel_path, _short(body)))
+        status, scan = api('/api/build-scan', {'taskId': task3})
+        run_id3 = require(scan.get('runId'), '取消回归扫描未返回 runId')
+        # 等第一份材料解析成功（慢桩 2s）
+        deadline = time.monotonic() + 8
+        first_done = False
+        while time.monotonic() < deadline:
+            _, listing = api('/api/build-materials', query='?taskId=' + task3)
+            if any((m.get('parseState') == 'success') for m in listing.get('items') or []):
+                first_done = True
+                break
+            time.sleep(0.2)
+        check(first_done, '取消前置：至少一份材料已完成落库')
+        status, cancelled = api('/api/build-run-cancel', {'taskId': task3, 'runId': run_id3})
+        run3 = poll_run(task3, run_id3)
+        check(run3.get('state') == 'cancelled',
+              '取消生效：run 转入 cancelled（不再收集新结果）', actual=run3.get('state'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task3)
+        states3 = [(m['relPath'], m['parseState']) for m in listing.get('items') or []]
+        check(sum(1 for _, s in states3 if s == 'success') >= 1
+              and sum(1 for _, s in states3 if s != 'success') >= 2,
+              '取消后：已完成结果保留，未完成文件不再解析（G25d 前半）', actual=states3)
+        facts_before = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?',
+                               (task3,))[0]['n']
+        time.sleep(3.0)   # 超过慢桩时长：验证执行中的迟到结果不会被补写
+        facts_after = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?',
+                              (task3,))[0]['n']
+        check(facts_before >= 1 and facts_before == facts_after,
+              '取消后 facts 数量稳定（迟到结果一律丢弃、不再落库）',
+              actual=(facts_before, facts_after))
+        # 恢复真实解析后重扫：已成功文件按内容复用跳过，仅补未完成文件（G25d 后半）
+        build_pipeline.parse_material = probe3.original
+        status, rescan = api('/api/build-scan', {'taskId': task3})
+        rescan_run_id = require(rescan.get('runId'), '重扫未返回 runId')
+        run3b = poll_run(task3, rescan_run_id)
+        ckpt = json.loads(db_rows('SELECT checkpoint_json AS c FROM wb_build_runs '
+                                  'WHERE run_id = ?', (rescan_run_id,))[0]['c'] or '{}')
+        reused_count = int((ckpt.get('scan') or {}).get('reused') or 0)
+        check(run3b.get('state') == 'succeeded' and reused_count >= 1,
+              '取消后重新扫描 succeeded 且已成功文件按内容复用（检查点 reused≥1）',
+              actual=(run3b.get('error'), reused_count))
+        _, listing = api('/api/build-materials', query='?taskId=' + task3)
+        check(all(m.get('parseState') == 'success' for m in listing.get('items') or []),
+              '重扫后全部材料解析成功（未完成文件被补齐，已成功文件复用）',
+              actual=[(m['relPath'], m['parseState']) for m in listing.get('items') or []])
+    finally:
+        build_pipeline.parse_material = probe3.original
+        protocol.PARSE_CONCURRENCY = saved_cc3
+
+    # ④ 超时：慢文件等待超时 → failed「解析超时」，迟到结果不落库（G25c）
+    saved_timeout = protocol.PARSE_TIMEOUT_SECONDS
+    probe4 = _SlowParseProbe(5.0, match='slow-timeout')
+    build_pipeline.parse_material = probe4
+    try:
+        protocol.PARSE_TIMEOUT_SECONDS = 1
+        task4, _rid4, run4 = _scan_task_files('解析超时回归', [
+            ('slow-timeout.md', '# 超时文件\n\n这段解析会很慢。\n'),
+            ('fast1.md', '# 快文件一\n\n设备额定容量说明。\n'),
+            ('fast2.md', '# 快文件二\n\n监测数据采样说明。\n')])
+        check(run4.get('state') == 'succeeded',
+              '超时回归：快文件不受影响（run succeeded）', actual=run4.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task4)
+        slow = next((m for m in listing.get('items') or []
+                     if m['relPath'] == 'slow-timeout.md'), {})
+        check(slow.get('parseState') == 'failed' and '解析超时' in str(slow.get('error')),
+              '超时文件标 failed 且原因含「解析超时」（G25c）',
+              actual=(slow.get('parseState'), slow.get('error')))
+        check((slow.get('coverage') or {}).get('factCount') == 0,
+              '超时文件事实被清空（不保留旧 facts、不假称成功）', actual=slow.get('coverage'))
+        facts_t0 = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?',
+                           (task4,))[0]['n']
+        time.sleep(6.0)   # 超过慢桩 5s：迟到结果到达，必须已被丢弃
+        facts_t1 = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?',
+                           (task4,))[0]['n']
+        _, listing = api('/api/build-materials', query='?taskId=' + task4)
+        slow_after = next((m for m in listing.get('items') or []
+                           if m['relPath'] == 'slow-timeout.md'), {})
+        check(facts_t0 == facts_t1 and slow_after.get('parseState') == 'failed',
+              '超时文件迟到的解析结果一律丢弃（等待 worker 完成后仍无 facts、状态不变）',
+              actual=(facts_t0, facts_t1, slow_after.get('parseState')))
+    finally:
+        protocol.PARSE_TIMEOUT_SECONDS = saved_timeout
+        build_pipeline.parse_material = probe4.original
+
+    # ⑥ worker 异常隔离（G25c 严重#1）：两条复现路径下 run 仍正常完成、其余文件 success
+    def _raise_for(match, exc_factory, original):
+        def _handler(path, material_id, kind, rel_path=''):
+            if match and match in str(rel_path):
+                raise exc_factory()
+            return original(path, material_id, kind, rel_path)
+        return _handler
+
+    # 路径①：注入 RuntimeError（worker 内直接抛）
+    original_parse = build_pipeline.parse_material
+    build_pipeline.parse_material = _raise_for(
+        'boom', lambda: RuntimeError('注入的解析器崩溃'), original_parse)
+    try:
+        task5, _rid5, run5 = _scan_task_files('worker异常隔离-注入', [
+            ('boom.md', '# 崩溃文件\n\n设备台账说明。\n'),
+            ('ok1.md', '# 正常一\n\n额定容量说明。\n'),
+            ('ok2.md', '# 正常二\n\n监测数据说明。\n')])
+        _, listing = api('/api/build-materials', query='?taskId=' + task5)
+        by_name5 = {m['relPath']: m for m in listing.get('items') or []}
+        boom = by_name5.get('boom.md') or {}
+        others_ok = all((by_name5.get(n) or {}).get('parseState') == 'success'
+                        for n in ('ok1.md', 'ok2.md'))
+        check(run5.get('state') == 'succeeded',
+              'worker 异常隔离①（注入 RuntimeError）：run 仍正常完成（不再杀死整轮扫描）',
+              actual=(run5.get('state'), run5.get('error')))
+        check(boom.get('parseState') == 'failed' and 'RuntimeError' in str(boom.get('error'))
+              and others_ok,
+              'worker 异常隔离①：崩溃文件 failed（原因含异常摘要）、其余文件 success（G25c）',
+              actual=(boom.get('parseState'), boom.get('error'),
+                      [(n, (by_name5.get(n) or {}).get('parseState'))
+                       for n in ('ok1.md', 'ok2.md')]))
+        check((boom.get('coverage') or {}).get('factCount') == 0
+              and '注入的解析器崩溃' in str((boom.get('coverage') or {}).get('notes')),
+              'worker 异常隔离①：崩溃文件事实清空且 coverage 记录原因（与超时同口径）',
+              actual=boom.get('coverage'))
+    finally:
+        build_pipeline.parse_material = original_parse
+
+    # 路径②：适配器返回 None → parse_material 后处理段抛 AttributeError（真实代码路径，
+    # 不改 parsers 源文件：猴补 REGISTRY 中的适配器为其返回 None 的桩）
+    from workbench.ontology_build.parsers import base as parsers_base
+    original_handler = parsers_base.REGISTRY.get('md')
+
+    def _none_for_match(match, original):
+        def _handler(path, material_id, rel_path=''):
+            if match in str(rel_path):
+                return None            # 契约外返回值：触发 parse_material 后处理段异常
+            return original(path, material_id, rel_path)
+        return _handler
+
+    try:
+        parsers_base.REGISTRY['md'] = _none_for_match('none1', original_handler)
+        task6, _rid6, run6 = _scan_task_files('worker异常隔离-契约外返回值', [
+            ('none1.md', '# 契约外一\n\n设备台账。\n'),
+            ('ok3.md', '# 正常三\n\n额定容量。\n')])
+        _, listing = api('/api/build-materials', query='?taskId=' + task6)
+        by_name6 = {m['relPath']: m for m in listing.get('items') or []}
+        none1 = by_name6.get('none1.md') or {}
+        check(run6.get('state') == 'succeeded',
+              'worker 异常隔离②（适配器返回 None）：run 仍正常完成',
+              actual=(run6.get('state'), run6.get('error')))
+        check(none1.get('parseState') == 'failed'
+              and 'AttributeError' in str(none1.get('error'))
+              and (by_name6.get('ok3.md') or {}).get('parseState') == 'success',
+              'worker 异常隔离②：契约外返回值触发的后处理异常被隔离为该文件 failed（G25c）',
+              actual=(none1.get('parseState'), none1.get('error'),
+                      (by_name6.get('ok3.md') or {}).get('parseState')))
+        check((none1.get('coverage') or {}).get('factCount') == 0,
+              'worker 异常隔离②：崩溃文件事实清空（不保留半成品）', actual=none1.get('coverage'))
+    finally:
+        if original_handler is not None:
+            parsers_base.REGISTRY['md'] = original_handler
+
+
+# --- 回归流：V2-8 生成断点续跑与状态回退（G23） ----------------------------------------
+def flow_generate_resume():
+    """批次检查点（只重跑失败批）、阶段产物复用、失败入口、基线约束与状态回退。"""
+    status, created = api('/api/build-task-create', {'name': '生成断点续跑回归'})
+    task_id = require((created.get('task') or {}).get('id'), '续跑回归任务创建失败')
+    provider_id = require(_provider_id(), '未找到默认 LLM 提供方')
+    fixture_dir = FIXTURE_DIR / 'resume'
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    # 50 列 DDL → >40 条事实 → 2 个抽象批次（LLM_BATCH_FACTS=40）
+    columns = []
+    for index in range(1, 51):
+        columns.append("  col_%02d VARCHAR(64) COMMENT '设备监测字段%02d：额定容量与功率采样说明'" % (index, index))
+    ddl = 'CREATE TABLE device_monitor (\n  id BIGINT PRIMARY KEY,\n' + ',\n'.join(columns) + '\n);\n'
+    (fixture_dir / 'big_schema.sql').write_text(ddl, encoding='utf-8')
+    status, body = _upload_bytes(ddl.encode('utf-8'), task_id, 'big_schema.sql')
+    if status != 200:
+        raise Abort('上传 big_schema.sql 失败：%s' % _short(body))
+    status, scan = api('/api/build-scan', {'taskId': task_id})
+    run = poll_run(task_id, require(scan.get('runId'), '扫描未返回 runId'))
+    if run.get('state') != 'succeeded':
+        raise Abort('续跑搭建扫描失败：%s' % run.get('error'))
+    _, detail = api('/api/build-task', query='?taskId=' + task_id)
+    scope_rev = (detail.get('scope') or {}).get('revision') or 0
+    scope = {'goal': '设备运行管理', 'include': '设备台账、监测数据、额定容量', 'exclude': '收益结算',
+             'relations': '', 'coverage': '', 'openQuestions': []}
+    status, saved = api('/api/build-scope-save', {'taskId': task_id, 'revision': scope_rev, 'scope': scope})
+    revision = require((saved.get('scope') or {}).get('revision'), '范围保存失败')
+    fact_count = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?', (task_id,))[0]['n']
+    check(int(fact_count) > protocol.LLM_BATCH_FACTS,
+          '夹具事实数 > %d（将切出多个抽象批次）' % protocol.LLM_BATCH_FACTS, actual=fact_count)
+
+    FakeLlm.extract_fail_remaining = 1   # 第 1 个抽取请求 500：批 1 失败、批 2 成功
+    attempts_before = FakeLlm.extract_attempts
+    try:
+        status, confirmed = api('/api/build-scope-confirm',
+                                {'taskId': task_id, 'revision': revision, 'providerId': provider_id})
+        batch_id = require(confirmed.get('batchId'), '范围确认未启动生成')
+        run_id = require(confirmed.get('runId'), '范围确认未返回 runId')
+        run = poll_run(task_id, run_id)
+        attempts_first = FakeLlm.extract_attempts - attempts_before
+        # 批数随 LLM_BATCH_FACTS 自适应（2026-09-22 批大小 40→20）：夹具事实数会切出
+        # 更多批次；断言“有批次失败 → 运行 failed 且失败入口含批号与原因”，不硬编码批号。
+        check(run.get('state') == 'failed' and '批抽取失败' in str(run.get('error'))
+              and '其余' in str(run.get('error')),
+              '批次检查点：某批失败 → 运行 failed 且失败入口含批号与原因（G23）',
+              actual=(run.get('state'), run.get('error'), attempts_first))
+        check(attempts_first >= 2,
+              '失败运行首轮各批均已发起抽取调用（并发下同时发出，次数=批数）',
+              actual=attempts_first)
+        _, run_body = api('/api/build-run', query='?taskId=%s&runId=%s' % (task_id, run_id))
+        checkpoint = ((run_body.get('run') or {}).get('checkpoint') or {}).get('generate') or {}
+        batches = checkpoint.get('batches') or {}
+        failed_positions = [item.get('position') for item in (batches.get('failed') or [])]
+        check(int(batches.get('total') or 0) >= 2
+              and bool(batches.get('done')) and len(failed_positions) == 1
+              and int(batches.get('total') or 0) - len(failed_positions) == len(batches.get('done') or [])
+              and checkpoint.get('planPersisted') is True,
+              'run.checkpoint 摘要：计划持久化 + 成功批次全进 done + 恰一批失败（失败入口数据）',
+              actual=checkpoint)
+        _, task_detail = api('/api/build-task', query='?taskId=' + task_id)
+        check((task_detail.get('task') or {}).get('status') == 'scope',
+              '状态回退缺陷修复：generate 运行 failed 后任务从 generating 回退 scope',
+              actual=(task_detail.get('task') or {}).get('status'))
+        kept = db_rows('SELECT COUNT(*) AS n FROM wb_build_candidates '
+                       'WHERE task_id = ? AND batch_id = ?', (task_id, batch_id))[0]['n']
+        check(int(kept) >= 1, '成功批次候选保留（失败后批次内仍有候选）', actual=kept)
+
+        # 重试失败批次（resumeMode=auto）：只重跑批 1，成功批候选保留
+        FakeLlm.extract_fail_remaining = 0
+        attempts_before = FakeLlm.extract_attempts
+        status, resumed = api('/api/build-run-resume',
+                              {'taskId': task_id, 'runId': run_id, 'resumeMode': 'auto'})
+        check(status == 200, 'build-run-resume(auto) 受理', actual=(status, _short(resumed)))
+        run = poll_run(task_id, run_id)
+        delta = FakeLlm.extract_attempts - attempts_before
+        check(run.get('state') == 'succeeded' and delta == 1,
+              '批次续跑：只重跑失败的批 1（抽取调用恰 +1），成功批不重跑（G23）',
+              actual=(run.get('state'), run.get('error'), delta))
+        _, task_detail = api('/api/build-task', query='?taskId=' + task_id)
+        check((task_detail.get('task') or {}).get('status') == 'review',
+              '回退后重试成功且基线未变 → 任务恢复到 review',
+              actual=(task_detail.get('task') or {}).get('status'))
+        final_rows = db_rows('SELECT COUNT(*) AS n FROM wb_build_candidates '
+                             'WHERE task_id = ? AND batch_id = ?', (task_id, batch_id))[0]['n']
+        check(int(final_rows) >= 1, '续跑完成后最终候选整批替换成功', actual=final_rows)
+    finally:
+        FakeLlm.extract_fail_remaining = 0
+
+    # abstract 重跑模式：复用确定性产物、重跑全部批次（失败注入先制造一次失败运行）
+    status, regen = api('/api/build-regenerate', {'taskId': task_id})
+    run2 = poll_run(task_id, require(regen.get('runId'), '再生成未返回 runId'))
+    check(run2.get('state') == 'succeeded', '无失败注入的再生成成功', actual=run2.get('error'))
+    FakeLlm.extract_fail_remaining = 1
+    attempts_before = FakeLlm.extract_attempts
+    try:
+        status, regen2 = api('/api/build-regenerate', {'taskId': task_id})
+        run_id3 = require(regen2.get('runId'), '再生成(2)未返回 runId')
+        run3 = poll_run(task_id, run_id3)
+        check(run3.get('state') == 'failed', '注入后再生成失败（待 abstract 重试）',
+              actual=run3.get('state'))
+        FakeLlm.extract_fail_remaining = 0
+        # 复用探针：把确定性检索替换为必炸桩——若 abstract 重试重算筛选/对齐会立即失败；
+        # 成功即证明产物确实复用、确定性阶段未重算（V2-8 §7.1 阶段检查点）。
+        saved_select, saved_index = retrieval.select_scope, retrieval.build_index
+        def _must_not_recompute(*args, **kwargs):
+            raise RuntimeError('确定性阶段不应重算（应复用持久化产物）')
+        retrieval.select_scope = _must_not_recompute
+        retrieval.build_index = _must_not_recompute
+        try:
+            status, resumed = api('/api/build-run-resume',
+                                  {'taskId': task_id, 'runId': run_id3, 'resumeMode': 'abstract'})
+            check(status == 200, 'build-run-resume(abstract) 受理', actual=(status, _short(resumed)))
+            run3 = poll_run(task_id, run_id3)
+            delta = FakeLlm.extract_attempts - attempts_before
+            # 首次再生成 N 次调用（1 失败 + N-1 成功）+ abstract 模式重跑全部 N 批 = 2N。
+            # 批数 N 随 LLM_BATCH_FACTS 变化（2026-09-22 批 40→20 后 N 变大），按实际批数自适应。
+            _, run3_body = api('/api/build-run', query='?taskId=%s&runId=%s' % (task_id, run_id3))
+            cp = (((run3_body.get('run') or {}).get('checkpoint') or {}).get('generate') or {})
+            total3 = int((cp.get('batches') or {}).get('total') or 0)
+            expected_delta = 2 * total3 if total3 else delta
+            check(run3.get('state') == 'succeeded' and delta == expected_delta,
+                  'abstract 重试：复用筛选/对齐产物（探针桩未触发）且只重跑失败批（调用数按实际批数）',
+                  actual=(run3.get('state'), delta, total3, expected_delta, run3.get('error')))
+        finally:
+            retrieval.select_scope, retrieval.build_index = saved_select, saved_index
+    finally:
+        FakeLlm.extract_fail_remaining = 0
+
+    # 基线约束：制造失败运行（其基线=当时范围修订）→ 再修改范围 → resume 旧运行 → 拒绝
+    FakeLlm.extract_fail_remaining = 1
+    try:
+        status, regen3 = api('/api/build-regenerate', {'taskId': task_id})
+        run_id4 = require(regen3.get('runId'), '再生成(3)未返回 runId')
+        poll_run(task_id, run_id4)   # 制造一次失败运行（旧基线）
+    finally:
+        FakeLlm.extract_fail_remaining = 0
+    _, fresh = api('/api/build-task', query='?taskId=' + task_id)
+    scope_rev = (fresh.get('scope') or {}).get('revision') or 0
+    scope['coverage'] = '补充覆盖说明以推进范围修订'
+    status, saved = api('/api/build-scope-save', {'taskId': task_id, 'revision': scope_rev, 'scope': scope})
+    require((saved.get('scope') or {}).get('revision'), '范围保存失败(2)')
+    status, resumed = api('/api/build-run-resume', {'taskId': task_id, 'runId': run_id4})
+    check(status == 200, '基线约束：resume 受理（拒绝发生在执行侧基线核对）', actual=status)
+    run4 = poll_run(task_id, run_id4)
+    check(run4.get('state') == 'failed' and '范围已' in str(run4.get('error'))
+          and '重新确认范围' in str(run4.get('error')),
+          '基线约束：范围修改后重试旧运行 → 明确失败并提示重新确认生成（G23）',
+          actual=(run4.get('state'), run4.get('error')))
+
+    # 服务重启状态回退：generating 任务在无活跃运行时回退 scope（mark_stale_runs_interrupted）
+    uid = require(_main_user_id(), '找不到测试账号 user_id')
+
+    def seed(conn):
+        stuck = ob_store.create_task(conn, uid, '重启回退回归')
+        ob_store.touch_task(conn, stuck, uid, status='generating', stage_label='生成中')
+        return stuck
+
+    with sto.write_tx() as tx:
+        stuck_id = tx.run(seed)
+    with sto.write_tx() as tx:
+        tx.run(lambda conn: ob_store.mark_stale_runs_interrupted(conn))
+    _, stuck_detail = api('/api/build-task', query='?taskId=' + stuck_id)
+    check((stuck_detail.get('task') or {}).get('status') == 'scope',
+          '服务重启：无活跃运行的 generating 任务回退 scope（不显示假生成中）',
+          actual=(stuck_detail.get('task') or {}).get('status'))
+
+
+# --- 回归流：V2-3 解析三级分派与 LLM 兜底（G19） --------------------------------------
+def flow_llm_fallback():
+    """三级分派：kind=other 可读文本走 LLM 兜底（弱证据、限额、失败降级逐文件可见）。"""
+    status, created = api('/api/build-task-create', {'name': 'LLM兜底回归'})
+    task_id = require((created.get('task') or {}).get('id'), '兜底回归任务创建失败')
+    fixture_dir = FIXTURE_DIR / 'fallback'
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    log_text = ('2026-09-21 设备 SOC 采样开始，额定容量校验通过\n'
+                '2026-09-21 储能簇功率平滑策略执行完毕\n') * 40
+    (fixture_dir / 'export.log').write_text(log_text, encoding='utf-8')
+    (fixture_dir / 'notes.dat').write_text('[device]\ncapacity = 500\nmode = auto\n', encoding='utf-8')
+    for name in ('export.log', 'notes.dat'):
+        status, body = _upload_bytes((fixture_dir / name).read_bytes(), task_id, name)
+        if status != 200:
+            raise Abort('上传 %s 失败：%s' % (name, _short(body)))
+    _, caps = api('/api/build-capabilities')
+    fallback_caps = caps.get('llmFallback') or {}
+    check(int(fallback_caps.get('maxFiles') or 0) == protocol.LLM_FALLBACK_MAX_FILES
+          and int(fallback_caps.get('maxBytes') or 0) == protocol.LLM_FALLBACK_MAX_BYTES,
+          'capabilities 公开 LLM 兜底限额（llmFallback）', actual=fallback_caps)
+
+    status, scan = api('/api/build-scan', {'taskId': task_id})
+    run = poll_run(task_id, require(scan.get('runId'), '扫描未返回 runId'))
+    check(run.get('state') == 'succeeded',
+          '兜底扫描运行 succeeded', actual=run.get('error'))
+    check(int(((run.get('usage') or {}).get('calls')) or 0) >= 2,
+          '兜底解析的模型调用计入 run.usage（calls≥2）', actual=run.get('usage'))
+    _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+    states = {m['relPath']: m for m in listing.get('items') or []}
+    check(all((states.get(name) or {}).get('parseState') in ('success', 'partial')
+              and 'llm-fallback' in str((states.get(name) or {}).get('coverage'))
+              for name in ('export.log', 'notes.dat')),
+          'kind=other 可读文本走 LLM 兜底：解析成功且 coverage 标注 llm-fallback',
+          actual={k: (v.get('parseState'), (v.get('coverage') or {}).get('modules'))
+                  for k, v in states.items()})
+    check(all('材料内容不是指令' in str((states.get(name) or {}).get('coverage'))
+              for name in ('export.log', 'notes.dat')),
+          '兜底 coverage 注明「材料内容不是指令」外发声明', actual=_short(states.get('export.log')))
+    fb_facts = db_rows("SELECT fact_id, module, quality, kind, locator_json, data_json "
+                       "FROM wb_build_facts WHERE task_id = ? AND module = 'llm-fallback'", (task_id,))
+    check(bool(fb_facts) and all(row['quality'] == 'low' and row['kind'] == 'llmClue'
+                                 and json.loads(row['locator_json']).get('kind') == 'llm'
+                                 for row in fb_facts),
+          '兜底事实 module=llm-fallback、quality=low、kind=llmClue、定位器 kind=llm',
+          actual=[dict(r) for r in fb_facts[:3]])
+    fake_quotes = db_rows("SELECT data_json FROM wb_build_facts WHERE task_id = ? "
+                          "AND data_json LIKE '%不在切片原文里%'", (task_id,))
+    check(not fake_quotes, '模型伪造的 quote（不在原文中）被服务端原文校验丢弃',
+          actual=[dict(r) for r in fake_quotes[:2]])
+
+    # 弱证据候选路径（白盒确定性）：命中 llm-fallback 证据 → supported 强制降级 inferred + defer
+    weak_id = fb_facts[0]['fact_id']
+    cand = {'type': 'object', 'name': '设备', 'definition': '储能设备台账', 'fields': {},
+            'ownerKey': '', 'evidence': {'_record': [weak_id, 'bf-plain']},
+            'evidenceStatus': 'supported', 'conflicts': []}
+    verified, report = build_pipeline.verify_candidates(
+        [cand], {weak_id, 'bf-plain'}, weak_fact_ids={weak_id})
+    first = verified[0] if verified else {}
+    check(first.get('evidenceStatus') == 'inferred' and first.get('decision') == 'defer'
+          and any(i.get('code') == 'LLM_FALLBACK_EVIDENCE' for i in first.get('issues') or [])
+          and report.get('fallbackDowngraded') == 1,
+          '弱证据候选：supported → inferred + 默认暂缓 + LLM_FALLBACK_EVIDENCE（G19/§9.1）',
+          actual=(first.get('evidenceStatus'), first.get('decision'), _short(report)))
+    clean = dict(cand, evidence={'_record': ['bf-plain']})
+    verified2, _r2 = build_pipeline.verify_candidates([clean], {weak_id, 'bf-plain'},
+                                                      weak_fact_ids={weak_id})
+    check(verified2 and verified2[0].get('evidenceStatus') == 'supported',
+          '不含兜底证据的候选不受弱证据降级影响', actual=verified2 and verified2[0].get('evidenceStatus'))
+
+    # 限额路径（单任务累计口径）：此前扫描已累计消耗 2 个兜底文件，把文件数限额压到 1
+    # 后重试——若按“每轮”语义预算会重置为 0/1（兜底会执行）；按“单任务累计”则超限降级。
+    _, fresh = api('/api/build-materials', query='?taskId=' + task_id)
+    log_row = states.get('export.log') or {}
+    saved_files, saved_bytes = protocol.LLM_FALLBACK_MAX_FILES, protocol.LLM_FALLBACK_MAX_BYTES
+    try:
+        protocol.LLM_FALLBACK_MAX_FILES = 1
+        status, retry = api('/api/build-material-retry',
+                            {'taskId': task_id, 'materialId': log_row.get('id')})
+        run = poll_run(task_id, require(retry.get('runId'), '限额重试未返回 runId'))
+        check(run.get('state') == 'succeeded', '限额重试运行 succeeded', actual=run.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+        log_after = next((m for m in listing.get('items') or [] if m['relPath'] == 'export.log'), {})
+        check((log_after.get('coverage') or {}).get('modules') == ['text']
+              and any('限额' in str(note) for note in (log_after.get('coverage') or {}).get('notes', [])),
+              '单任务累计限额：重试不重置预算 → 超限回退文本线索降级并注明原因（G19 不静默）',
+              actual=_short(log_after))
+        scan_ckpt = ((run.get('checkpoint') or {}).get('scan') or {})
+        check(scan_ckpt.get('fallbackFiles') == 0 and scan_ckpt.get('fallbackBytes') == 0,
+              '超限运行自身未消耗兜底文件（检查点 fallbackFiles/fallbackBytes 均为 0）',
+              actual=run.get('checkpoint'))
+    finally:
+        protocol.LLM_FALLBACK_MAX_FILES, protocol.LLM_FALLBACK_MAX_BYTES = saved_files, saved_bytes
+
+    # 限额可配置（G19）：环境变量在服务启动前覆盖默认值（正整数；非法/非正值回退默认）
+    saved_env = os.environ.get('WIZ_BUILD_LLM_FALLBACK_MAX_FILES')
+    try:
+        os.environ['WIZ_BUILD_LLM_FALLBACK_MAX_FILES'] = '123'
+        check(protocol._limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', 200) == 123,
+              '环境变量覆盖兜底文件数限额（WIZ_BUILD_LLM_FALLBACK_MAX_FILES）')
+        os.environ['WIZ_BUILD_LLM_FALLBACK_MAX_FILES'] = 'abc'
+        check(protocol._limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', 200) == 200,
+              '非法环境变量取值回退默认（不 crash）')
+        os.environ['WIZ_BUILD_LLM_FALLBACK_MAX_FILES'] = '-5'
+        check(protocol._limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', 200) == 200,
+              '非正值环境变量回退默认')
+    finally:
+        if saved_env is None:
+            os.environ.pop('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', None)
+        else:
+            os.environ['WIZ_BUILD_LLM_FALLBACK_MAX_FILES'] = saved_env
+
+    # 失败路径：兜底调用注入失败 → 逐文件降级文本线索并报告原因，不阻塞其余文件
+    config_row = states.get('notes.dat') or {}
+    saved_fn = build_llm.fallback_parse
+    try:
+        build_llm.fallback_parse = lambda *args, **kwargs: {
+            'ok': False, 'error': '注入的模型不可用', 'facts': [], 'notes': [],
+            'usage': {'calls': 1, 'promptBytes': 10, 'completionBytes': 0, 'durationMs': 1},
+            'trace': {}}
+        status, retry = api('/api/build-material-retry',
+                            {'taskId': task_id, 'materialId': config_row.get('id')})
+        run = poll_run(task_id, require(retry.get('runId'), '失败注入重试未返回 runId'))
+        check(run.get('state') == 'succeeded',
+              '兜底失败不阻塞扫描运行（其余材料照常）', actual=run.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+        cfg_after = next((m for m in listing.get('items') or [] if m['relPath'] == 'notes.dat'), {})
+        check((cfg_after.get('coverage') or {}).get('modules') == ['text']
+              and any('LLM 兜底解析失败' in str(note)
+                      for note in (cfg_after.get('coverage') or {}).get('notes', [])),
+              '兜底调用失败 → 逐文件降级文本线索并报告原因（不假称解析成功）',
+              actual=_short(cfg_after))
+    finally:
+        build_llm.fallback_parse = saved_fn
+
+
+# --- 回归流：V2-2 图片/OCR（G18）+ G22 单物料重试/排除验证 ---------------------------
+def flow_image_ocr():
+    """图片物料与扫描版 PDF 走 OCR；未配置逐文件报告（ocr_unconfigured），不假称成功。
+
+    本环境（与交付环境一致）通常未安装 tesseract：测试先用白盒固定 ocr_status=未配置，
+    验证 HTTP 全链路的失败呈报与 G22 重试/排除；再用假 OCR 函数验证识别成功路径。
+    """
+    fake_reason = 'OCR 未配置（ocr_unconfigured）：测试固定（未安装 tesseract）'
+    saved_status = dict(ocr_support._STATUS)
+    saved_probe = image_parser.ocr_status
+    ocr_support._STATUS.clear()
+    ocr_support._STATUS.update({'available': False, 'reason': fake_reason})
+    try:
+        status, caps = api('/api/build-capabilities')
+        ocr = caps.get('ocr') or {}
+        check(ocr.get('available') is False and 'ocr_unconfigured' in str(ocr.get('reason')),
+              'capabilities ocr 动态探测：未配置时 reason 含状态码 ocr_unconfigured',
+              actual=ocr)
+
+        status, created = api('/api/build-task-create', {'name': '图片OCR回归'})
+        task_id = require((created.get('task') or {}).get('id'), 'OCR 回归任务创建失败')
+        fixture_dir = FIXTURE_DIR / 'ocr'
+        fixture_dir.mkdir(parents=True, exist_ok=True)
+        png_path = fixture_dir / 'device.png'
+        try:
+            from PIL import Image
+            Image.new('RGB', (8, 8), (200, 30, 30)).save(str(png_path), format='PNG')
+        except Exception as exc:  # noqa: BLE001
+            raise Abort('Pillow 不可用，无法生成 PNG 夹具：%s' % exc) from None
+        (fixture_dir / 'chart.svg').write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg">'
+            '<text>设备额定容量 500kWh</text><text x="0" y="20">SOC 采样周期 5 秒</text></svg>',
+            encoding='utf-8')
+        (fixture_dir / 'blank.svg').write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>',
+            encoding='utf-8')
+        try:
+            from pypdf import PdfWriter
+            pdf_buffer = io.BytesIO()
+            writer = PdfWriter()
+            writer.add_blank_page(width=612, height=792)
+            writer.write(pdf_buffer)
+            (fixture_dir / 'scan.pdf').write_bytes(pdf_buffer.getvalue())
+        except Exception as exc:  # noqa: BLE001
+            raise Abort('pypdf 不可用，无法生成扫描 PDF 夹具：%s' % exc) from None
+
+        uploads = {}
+        for name in ('device.png', 'chart.svg', 'blank.svg', 'scan.pdf'):
+            status, body = _upload_bytes((fixture_dir / name).read_bytes(), task_id, name)
+            if status != 200:
+                raise Abort('上传 %s 失败：%s' % (name, _short(body)))
+            uploads[name] = (body.get('materials') or [{}])[0]
+        check(uploads['device.png'].get('kind') == 'image' and uploads['chart.svg'].get('kind') == 'image',
+              'png/svg 识别为 kind=image（V2-2 支持矩阵）',
+              actual={k: v.get('kind') for k, v in uploads.items()})
+
+        status, scan = api('/api/build-scan', {'taskId': task_id})
+        run = poll_run(task_id, require(scan.get('runId'), '扫描未返回 runId'))
+        check(run.get('state') == 'succeeded',
+              '部分材料失败不阻塞扫描（单材料失败不阻塞其余）', actual=run.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+        states = {m['relPath']: m for m in listing.get('items') or []}
+        png = states.get('device.png') or {}
+        check(png.get('parseState') == 'failed' and 'ocr_unconfigured' in str(png.get('error'))
+              and 'ocr_unconfigured' in str((png.get('coverage') or {}).get('failedSegments')),
+              '位图 OCR 未配置：材料 failed 且失败原因带状态码 ocr_unconfigured（不假称成功）',
+              actual=_short(png))
+        chart = states.get('chart.svg') or {}
+        check(chart.get('parseState') == 'success'
+              and int(((chart.get('coverage') or {}).get('factCount')) or 0) >= 1,
+              'SVG 文本元素确定性提取成功（不需要 OCR）', actual=_short(chart))
+        blank = states.get('blank.svg') or {}
+        check(blank.get('parseState') == 'failed' and 'svg_empty' in str(blank.get('error')),
+              '无文本 SVG 明确失败（svg_empty），不当空文件继续', actual=_short(blank))
+        scan_pdf = states.get('scan.pdf') or {}
+        failed_segments = str((scan_pdf.get('coverage') or {}).get('failedSegments'))
+        check(scan_pdf.get('parseState') == 'partial' and 'ocr_unconfigured' in failed_segments
+              and "'page': 1" in failed_segments.replace('"page": 1', "'page': 1"),
+              '扫描版 PDF 空白页逐页报告 OCR 未配置（partial + failedSegments 含页码）',
+              actual=_short(scan_pdf))
+        svg_facts = db_rows("SELECT module, snippet FROM wb_build_facts WHERE task_id = ? "
+                            "AND module = 'svg'", (task_id,))
+        check(bool(svg_facts) and any('额定容量' in row['snippet'] for row in svg_facts),
+              'SVG 事实落库且 snippet 可回读原文', actual=[dict(r) for r in svg_facts[:3]])
+
+        # G22：单物料重试（mat-retry 只重解析该文件）与排除状态机
+        status, retry = api('/api/build-material-retry',
+                            {'taskId': task_id, 'materialId': png.get('id')})
+        run = poll_run(task_id, require(retry.get('runId'), '单物料重试未返回 runId'))
+        check(run.get('state') == 'succeeded',
+              'G22：失败物料单文件重试可执行（mat-retry）', actual=run.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task_id)
+        png_after = next((m for m in listing.get('items') or [] if m['relPath'] == 'device.png'), {})
+        check(png_after.get('parseState') == 'failed' and 'ocr_unconfigured' in str(png_after.get('error')),
+              'G22：重试后 OCR 仍未配置 → 如实仍为 failed（不假称成功）', actual=_short(png_after))
+        _, fresh = api('/api/build-materials', query='?taskId=' + task_id)
+        material_revision = fresh.get('revision')
+        status, excluded = api('/api/build-material-exclude',
+                               {'taskId': task_id, 'materialId': blank.get('id'),
+                                'excluded': True, 'revision': str(material_revision)})
+        check(status == 200 and (excluded.get('material') or {}).get('parseState') == 'excluded',
+              'G22：物料排除进入状态机 excluded', actual=(status, _short(excluded)))
+        _, fresh = api('/api/build-materials', query='?taskId=' + task_id)
+        status, restored = api('/api/build-material-exclude',
+                               {'taskId': task_id, 'materialId': blank.get('id'),
+                                'excluded': False, 'revision': str(fresh.get('revision'))})
+        check(status == 200 and (restored.get('material') or {}).get('parseState') == 'pending',
+              'G22：恢复排除后材料回到 pending 待扫描', actual=(status, _short(restored)))
+    finally:
+        ocr_support._STATUS.clear()
+        ocr_support._STATUS.update(saved_status)
+        image_parser.ocr_status = saved_probe
+
+    # 假 OCR 成功路径（白盒）：注入假识别函数验证 facts 形状与状态码
+    saved = (image_parser.ocr_status, image_parser.image_to_text)
+    png_file = FIXTURE_DIR / 'ocr' / 'device.png'
+    try:
+        image_parser.ocr_status = lambda: (True, '')
+        image_parser.image_to_text = lambda image: ('设备额定容量 500kWh\nSOC 采样周期 5 秒', '')
+        result = image_parser.parse(str(png_file), 'bm-fake-ocr', 'device.png')
+        check(not result.error and len(result.facts) == 1
+              and result.facts[0].module == 'ocr' and result.facts[0].quality == 'medium'
+              and result.facts[0].locator.get('kind') == 'image'
+              and '额定容量' in result.facts[0].snippet,
+              '假 OCR 成功路径：整图级事实 module=ocr quality=medium（G18 产物形状）',
+              actual=[f.to_dict() for f in result.facts])
+        image_parser.image_to_text = lambda image: (_ for _ in ()).throw(
+            ocr_support.OcrError('ocr_failed', 'OCR 识别失败（ocr_failed）：注入'))
+        result = image_parser.parse(str(png_file), 'bm-fake-fail', 'device.png')
+        check(result.error and 'ocr_failed' in result.error and not result.facts,
+              'OCR 识别异常 → failed 且原因带 ocr_failed（不假称成功）', actual=result.error)
+    finally:
+        image_parser.ocr_status, image_parser.image_to_text = saved
+
+
+# --- 回归流：V2-4 格式黑名单三层（G20） ---------------------------------------------
+def flow_blacklist_filter():
+    """硬>白名单>软>自定义追加；直传拒绝 422 BLACKLISTED；ZIP 展开过滤报告可见。"""
+    status, caps = api('/api/build-capabilities')
+    bl = caps.get('blacklist') or {}
+    check('exe' in (bl.get('hard') or {}).get('exts', []) and '.doc' in (bl.get('softDefaults') or []),
+          'capabilities 公开黑名单枚举（硬层后缀 + 默认软名单）', actual=_short(bl))
+
+    status, created = api('/api/build-task-create', {'name': '黑名单三层回归'})
+    task_id = require((created.get('task') or {}).get('id'), '黑名单回归任务创建失败')
+    _, detail = api('/api/build-task', query='?taskId=' + task_id)
+    revision = (detail.get('task') or {}).get('revision')
+
+    # ① 直传硬黑名单（.exe）→ 422 BLACKLISTED，报告可见且规则含「硬黑名单」
+    status, body = api('/api/build-upload-init',
+                       {'taskId': task_id, 'relPath': 'lib/exploit.exe', 'size': 10})
+    check(status == 422 and body.get('code') == 'BLACKLISTED' and '硬黑名单' in str(body.get('error')),
+          '直传 .exe 命中硬黑名单 → 422 BLACKLISTED（安全边界）', actual=(status, _short(body)))
+    _, report = api('/api/build-materials', query='?taskId=%s&view=filter' % task_id)
+    rep = report.get('report') or {}
+    check(int((rep.get('counts') or {}).get('hard') or 0) == 1
+          and (rep.get('items') or [{}])[0].get('layer') == 'hard'
+          and '硬黑名单' in str((rep.get('items') or [{}])[0].get('rule')),
+          '被过滤文件进入过滤报告（计数 + 层级 + 命中规则，G20 不静默消失）',
+          actual=_short(rep))
+
+    # ② 直传默认软黑名单（.doc）→ 422，message 指明软黑名单（任务级可覆盖）
+    status, body = api('/api/build-upload-init',
+                       {'taskId': task_id, 'relPath': 'docs/legacy.doc', 'size': 10})
+    check(status == 422 and body.get('code') == 'BLACKLISTED' and '软黑名单' in str(body.get('error')),
+          '直传 .doc 命中默认软黑名单 → 422（提示可任务级覆盖）', actual=(status, _short(body)))
+
+    # ③ 任务级过滤设置：白名单 .doc（越过软名单）+ 追加排除 .foo；revision=任务 token
+    status, saved = api('/api/build-task-filter',
+                        {'taskId': task_id, 'revision': revision,
+                         'filter': {'allowExts': ['.doc'], 'excludeExts': ['foo']}})
+    check(status == 200 and (saved.get('filter') or {}).get('allowExts') == ['.doc']
+          and (saved.get('filter') or {}).get('excludeExts') == ['.foo'],
+          'build-task-filter 保存白名单与自定义追加（后缀规范化为 .ext）', actual=(status, _short(saved)))
+    _, detail = api('/api/build-task', query='?taskId=' + task_id)
+    revision = (detail.get('task') or {}).get('revision')
+    status, stale = api('/api/build-task-filter',
+                        {'taskId': task_id, 'revision': revision[:-4] + 'beef',
+                         'filter': {}})
+    check(status == 409 and stale.get('code') == 'REVISION_CONFLICT',
+          'build-task-filter 任务 token 不匹配 → 409（§0 口径）', actual=(status, _short(stale)))
+    # 白名单越过软名单：.doc 现在可以 init（登记后随即放弃，不入库）
+    status, init_doc = api('/api/build-upload-init',
+                           {'taskId': task_id, 'relPath': 'docs/legacy.doc', 'size': 10})
+    check(status == 200, '白名单 .doc 越过软黑名单：上传会话可建立', actual=(status, _short(init_doc)))
+    if status == 200:
+        api('/api/build-upload-abort', {'uploadId': init_doc.get('uploadId')})
+    # 白名单不越过硬黑名单：.exe 仍被拒
+    status, body = api('/api/build-upload-init',
+                       {'taskId': task_id, 'relPath': 'lib/exploit2.exe', 'size': 10})
+    check(status == 422 and body.get('code') == 'BLACKLISTED',
+          '白名单不越过硬黑名单：.exe 仍 422 BLACKLISTED', actual=(status, _short(body)))
+    # 自定义追加：.foo → 422 且 message 含「任务级追加」
+    status, body = api('/api/build-upload-init',
+                       {'taskId': task_id, 'relPath': 'custom/a.foo', 'size': 10})
+    check(status == 422 and '任务级追加' in str(body.get('error')),
+          '自定义追加后缀 .foo → 422（命中规则可见）', actual=(status, _short(body)))
+
+    # ④ ZIP 展开过滤：正常条目登记，硬/软/自定义命中条目进 filtered 且报告累计
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        archive.writestr('readme.md', '# 过滤回归\n')
+        archive.writestr('lib/libfoo.so', b'\x7fELF')
+        archive.writestr('node_modules/index.js', 'module.exports = 1')
+        archive.writestr('media/song.mp3', b'ID3')
+        archive.writestr('config.foo', 'x')
+    zip_bytes = buffer.getvalue()
+    status, result = _upload_bytes(zip_bytes, task_id, 'blackpkg.zip')
+    materials = result.get('materials') or []
+    filtered = result.get('filtered') or []
+    layers = sorted(item.get('layer') for item in filtered)
+    check(status == 200 and len(materials) == 1
+          and materials[0].get('relPath') == 'blackpkg.zip/readme.md',
+          'ZIP 展开仅登记未过滤条目（readme.md）', actual=(status, [m.get('relPath') for m in materials]))
+    check(len(filtered) == 4 and layers == ['custom', 'hard', 'hard', 'soft'],
+          'ZIP 被过滤条目逐项携带 layer（硬/软/自定义各层命中）',
+          actual=[(item.get('path'), item.get('layer')) for item in filtered])
+    _, report = api('/api/build-materials', query='?taskId=%s&view=filter' % task_id)
+    counts = (report.get('report') or {}).get('counts') or {}
+    check(int(counts.get('hard') or 0) == 4 and int(counts.get('soft') or 0) == 2
+          and int(counts.get('custom') or 0) == 2 and int(counts.get('total') or 0) == 8,
+          '过滤报告跨上传累计计数（硬 4 · 软 2 · 自定义 2）', actual=counts)
+
+    # ⑤ 黑名单单元口径：优先级与硬层豁免（不走 HTTP）
+    verdict = blacklist_domain.evaluate('report.doc', spec={'softExts': []})
+    check(verdict['filtered'] is False,
+          '任务软名单覆盖为空数组时 .doc 不再被软名单过滤', actual=verdict)
+    verdict = blacklist_domain.evaluate('node_modules/report.doc', spec={'allowExts': ['.doc']})
+    check(verdict['filtered'] is True and verdict['layer'] == 'hard',
+          '白名单不能越过硬黑名单目录（node_modules）', actual=verdict)
+    verdict = blacklist_domain.evaluate('a.doc', spec={'allowExts': ['.doc'], 'excludeExts': ['.doc']})
+    check(verdict['filtered'] is False and verdict['bypassed'] is True,
+          '白名单同时命中软与自定义时放行并标记 bypassed', actual=verdict)
+
+
 # --- 白盒与小单元：D13 fencing / D02 / D08 / D19 / D12 ------------------------------
 def flow_lease_fencing(task_id):
     """D13：lease 条件写回与重试轮换（存储层白盒）+ runner 阶段边界失配。"""
@@ -1414,7 +2281,7 @@ def main():
           and not db_rows("SELECT 1 FROM wb_build_uploads WHERE rel_path LIKE '%evil%'"),
           '上传路径穿越被拒（400 INVALID_ARGUMENT）且未登记上传会话', actual=(status, evil))
     status, big = api('/api/build-upload-init',
-                      {'taskId': task_id, 'relPath': 'big.bin',
+                      {'taskId': task_id, 'relPath': 'big.dat',
                        'size': protocol.FILE_BYTES + 1024})
     check(status == 422 and big.get('code') == 'LIMIT_EXCEEDED'
           and not db_rows("SELECT 1 FROM wb_build_uploads WHERE rel_path = 'big.bin'"),
@@ -1461,7 +2328,7 @@ def main():
     blob = bytes((3 + i * 31) % 256 for i in range(4096)) * (total_bytes // 4096 + 1)
     blob = blob[:total_bytes]
     status, init = api('/api/build-upload-init',
-                       {'taskId': bound_id, 'relPath': 'notes/big.bin', 'size': len(blob)})
+                       {'taskId': bound_id, 'relPath': 'notes/big.dat', 'size': len(blob)})
     upload_id = require(init.get('uploadId'), '多分片上传 init 失败：%s' % _short(init))
     check(status == 200 and init.get('chunkBytes') == protocol.CHUNK_BYTES
           and init.get('maxChunks') == 2,
@@ -1555,6 +2422,11 @@ def main():
     flow_rules_actions_delivery()
     # D05/D10 路由层：五类写端点 revision 口径与交付令牌必填
     flow_revision_contracts()
+    flow_blacklist_filter()
+    flow_image_ocr()
+    flow_llm_fallback()
+    flow_generate_resume()
+    flow_parse_concurrency()
     flow_lease_fencing(task_id)
     return 0
 

@@ -64,7 +64,7 @@ def read_package(data: bytes) -> dict:
     try:
         zf = zipfile.ZipFile(io_bytes(data))
     except zipfile.BadZipFile:
-        raise PackageFormatError('配置包不是有效的 ZIP 文件，或已损坏。')
+        raise PackageFormatError('配置包不是有效的 ZIP 文件，或已损坏。') from None
     with zf:
         infos = zf.infolist()
         if len(infos) > MAX_ENTRIES:
@@ -89,7 +89,7 @@ def read_package(data: bytes) -> dict:
             try:
                 files[name] = zf.read(info)
             except zipfile.BadZipFile:
-                raise PackageFormatError(f'配置包内文件「{name}」已损坏。')
+                raise PackageFormatError(f'配置包内文件「{name}」已损坏。') from None
     if 'manifest.json' not in files:
         raise PackageFormatError('配置包缺少 manifest.json，不是本工作台导出的配置包。')
     return files

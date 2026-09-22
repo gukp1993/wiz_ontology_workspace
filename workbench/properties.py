@@ -65,9 +65,9 @@ def validate_properties(graph):
                 if formatting.get('mode')=='natural' and not str(formatting.get('instruction','')).strip():errors.append('自然语言格式规则不能为空')
                 for key in ('minDecimals','maxDecimals'):
                     v=formatting.get(key)
-                    if v is not None and (type(v)!=int or not 0<=v<=20):errors.append('显示小数位应为0至20的整数')
+                    if v is not None and (type(v) is not int or not 0<=v<=20):errors.append('显示小数位应为0至20的整数')
                 lo,hi=formatting.get('minDecimals',0),formatting.get('maxDecimals',2)
-                if type(lo)==int and type(hi)==int and lo>hi:errors.append('最少小数位不能大于最多小数位')
+                if type(lo) is int and type(hi) is int and lo>hi:errors.append('最少小数位不能大于最多小数位')
         if n['@type']==SHARED:continue
         domain=n.get('rdfs:domain',{}).get('@id')
         if domain not in classes:errors.append(f"{n['@id']} 必须关联存在的对象类型")

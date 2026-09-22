@@ -53,7 +53,7 @@ export function createUndoArea(current: Ref<any>, limit = 60): UndoArea {
   let scopeKey = ''
   let pending: { before: any } | null = null
 
-  function ensureScope(key: string) {
+  function _ensureScope(key: string) {
     if (scopeKey !== key) { scopeKey = key; undoStack = []; redoStack = []; sync() }
   }
   function record(entry: UndoEntry) {
@@ -89,7 +89,7 @@ export function createUndoArea(current: Ref<any>, limit = 60): UndoArea {
     },
     push(actionLabel, payload, meta) {
       const before = clone(current.value)
-      const after = payload === undefined ? clone(current.value) : clone(payload)
+      const _after = payload === undefined ? clone(current.value) : clone(payload)
       // push 语义：调用方先改后报？不——旧调用点是"改之前"调用。这里 before 取参数里的 payload 不成立，
       // 保持旧语义：push 在 mutate 之前调用，before=当前，after 由调用方在 changed 后不可知 →
       // 旧栈存 before，undo 恢复 before。为兼容，after 记为调用完成后的 current 由 App 层在 changed 时无感知，

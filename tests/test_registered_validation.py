@@ -523,7 +523,7 @@ def t_validate_does_not_mutate_data():
     validate_project(copy.deepcopy(state), copy.deepcopy(ontology))
     # 净副作用应恰好等于 derive_display_names（现存行为）：identity/属性/关系配置原样保留
     expected = projects.derive_display_names(copy.deepcopy(state), copy.deepcopy(ontology))
-    actual = projects.derive_display_names(state, ontology)  # 先跑一次 validate 再比对
+    _actual = projects.derive_display_names(state, ontology)  # 先跑一次 validate 再比对
     report = validate_project(state, ontology)
     assert state == expected, 'validate_project 修改了除 title_key 之外的数据'
     assert state['bindings']['object_bindings'][0]['identity']['kind'] == 'registered'

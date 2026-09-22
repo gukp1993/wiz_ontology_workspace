@@ -87,7 +87,7 @@ def prep(rec):
 
 def hammer(rec):
     ctx = load_ctx()
-    a = Api2(base=BASE, username='qa_int_a', password=PW)
+    _a = Api2(base=BASE, username='qa_int_a', password=PW)
     mid = ctx['modelId']
     stop = threading.Event()
     lock = threading.Lock()
@@ -135,9 +135,9 @@ def check(rec, label):
     # 服务端 commit 后响应前被杀 → 客户端未记录但内容仍是完整提交态，按 hammer 格式放行并标注
     matched_rev = ctx['submitted'].get(q)
     if matched_rev:
-        consistent = matched_rev == s.json.get('revision')
+        _consistent = matched_rev == s.json.get('revision')
     else:
-        consistent = q.startswith('H') and len(ctx['submitted']) > 0
+        _consistent = q.startswith('H') and len(ctx['submitted']) > 0
     con = sqlite3.connect('file:' + str(DB) + '?mode=ro', uri=True)
     try:
         ic = con.execute('PRAGMA integrity_check').fetchone()[0]

@@ -138,7 +138,7 @@ def run_suite(tag):
     check(len(versions.listing(created['id'])) == len(v_before), f'{tag} D04 重放不新增版本')
     ont_state2 = decode_state(encode_state(ont_state))
     ont_state2['workflow']['objective']['question'] = 'D04-compat'
-    save2 = workspaces.write_draft(ont_state2, expected_token=workspaces.current_token(created['id']))
+    _save2 = workspaces.write_draft(ont_state2, expected_token=workspaces.current_token(created['id']))
     resp2 = model_routes.post_publish({'state': encode_state(ont_state2),
                                        'revision': workspaces.current_token(created['id']),
                                        'changeType': 'compatible', 'requestId': f'rid-{tag}-1'})
@@ -176,7 +176,7 @@ def run_suite(tag):
     proj = projects.create('契约项目' + tag, created['id'], '1.0.0')
     pstate, _saved = projects.load(proj['id'])
     pstate['name'] = '契约项目改名' + tag
-    pres = projects.save_draft(pstate, expected_token=projects.current_token(proj['id']))
+    _pres = projects.save_draft(pstate, expected_token=projects.current_token(proj['id']))
     # 本体继续演进不影响项目已固定引用
     pstate2 = projects.load(proj['id'])[0]
     check(pstate2['ontologyVersion'] == '1.0.0', f'{tag} D05 项目引用固定')
@@ -208,7 +208,7 @@ def run_suite(tag):
     # --- D07 凭据三命名空间互不冲突、非重复 nonce、错钥诊断 -------------------------
     from workbench.storage import configuration as config_store
     from workbench.storage import secret_store
-    proj_asset = store.read_head('project', proj['id'])
+    _proj_asset = store.read_head('project', proj['id'])
 
     def put3(conn, namespace, resource, value):
         return config_store.put_secret(conn, namespace, 'owner-' + tag, resource, value)
@@ -271,7 +271,6 @@ def run_mysql_contract(url):
 
 
 if __name__ == '__main__':
-    from workbench.storage import engine
     storage.ensure_ready()
     run_suite('SQLite')
     mysql_url = os.environ.get('WIZ_MYSQL_TEST_URL', '').strip()

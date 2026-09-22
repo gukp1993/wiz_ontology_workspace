@@ -8,7 +8,7 @@ export interface ImportPreviewAsset { kind: 'model' | 'project' | 'flow'; packag
 export interface ImportPreview { previewToken: string; expiresAt?: string; packageHash: string; assets: ImportPreviewAsset[]; modelConfigs: { packageKey: string; sourceName: string; missingApiKey: boolean }[]; warnings: string[]; blockers: string[] }
 export interface ImportReceipt { receiptId: string; requestId: string; assets: { kind: string; packageKey: string; newId: string; newName: string; sourceName: string; releaseCount: number }[]; pendingCredentials: { declarationId: string; name: string; kind?: string; usage?: string[] }[]; warnings: string[]; importedAt?: string; replayed?: boolean }
 
-const CHUNK_SIZE = 512 * 1024
+const _CHUNK_SIZE = 512 * 1024
 
 /** 导出预览：blockers 非空时 exportToken 为 null。 */
 export function exportPreview(modelIds: string[], projectIds: string[], extraFlowIds: string[]): Promise<ExportPreview> {

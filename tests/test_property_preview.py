@@ -609,7 +609,7 @@ if __name__ == '__main__':
         main()
     except SystemExit:
         raise
-    except Exception as exc:  # noqa: BLE001 — 意外异常停服并留现场
+    except Exception:  # noqa: BLE001 — 意外异常停服并留现场
         import traceback
         traceback.print_exc()
         shutdown()

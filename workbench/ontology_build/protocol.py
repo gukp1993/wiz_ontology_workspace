@@ -3,6 +3,7 @@
 所有模块只从这里取状态字符串、限额与 ID 前缀；接口文档 08 分册与前端必须与此一致。
 本模块不 import 存储层，保持可被解析器/前端契约测试单独加载。
 """
+import os
 import re
 
 # --- 限额（工程保守默认，能力接口原样展示；不得宣称更大容量） ---
@@ -10,19 +11,62 @@ CHUNK_BYTES = 512 * 1024
 # 分片 base64 文本上限：由 CHUNK_BYTES 独立推出（4*ceil(chunk/3)），
 # 与通用参数上限（512 字符）无关；否则 >384 字节的分片必然被 400 拒收（D01）。
 CHUNK_BASE64_CHARS = ((CHUNK_BYTES + 2) // 3) * 4
-FILE_BYTES = 50 * 1024 * 1024
-TASK_BYTES = 200 * 1024 * 1024
-ZIP_EXPANDED_BYTES = 300 * 1024 * 1024
-ZIP_MAX_ENTRIES = 10000
+# 2026-09-21 实测试点临时放宽（用户指令，仅本工作树实例）：容纳 177MB 项目 zip 全量上传；
+# 正式默认值与可配置化待样本校准后另行定稿（开发计划 §1 规模未定项）。
+FILE_BYTES = 256 * 1024 * 1024
+TASK_BYTES = 512 * 1024 * 1024
+ZIP_EXPANDED_BYTES = 512 * 1024 * 1024
+ZIP_MAX_ENTRIES = 20000
 PARSE_TIMEOUT_SECONDS = 120
+# LIMITS 暴露给能力接口的键（parseConcurrency 为 V2-10/G25 新增，值随 env 覆盖变化）
 UPLOAD_TTL_SECONDS = 30 * 60
 MAX_CANDIDATES_PER_BATCH = 500
 MAX_FACTS_PER_MATERIAL = 20000
-LLM_BATCH_FACTS = 40
+# 2026-09-22 实测修正：40 条/批会让模型为每批产出 40 组候选 JSON，输出超 max_tokens
+# 被截断（真实复现：40 条 → finish_reason=length）。降到 20 条，输出量减半且更稳。
+LLM_BATCH_FACTS = 20
 RUN_WORKERS = 2
 SNIPPET_LIMIT = 500
 PROMPT_VERSION = 'v1'
-PARSER_VERSION = 'v1'
+# 2026-09-22：结构化格式解析支持上线（六新 kind + JSON-LD/CSV 等专用解析器），
+# 解析行为变化 → 版本提升；旧批次基线以 v1 记录，可据此区分。
+PARSER_VERSION = 'v2'
+# V2-3（G19）LLM 兜底解析限额：单任务兜底文件数 / 字节数（跨多次扫描/单物料重试累计，
+# 不因重试重置——已消耗量按任务全部 scan 运行检查点累计，见 storage.scan_fallback_usage）；
+# 超限回退文本线索降级并在扫描报告注明。可配置：环境变量在服务启动前覆盖默认值
+# （正整数；未设置/非法用默认，改动需重启服务生效），capabilities 的 llmFallback
+# 展示当前生效值。
+LLM_FALLBACK_SLICE_CHARS = 6000
+LLM_FALLBACK_MAX_SLICES = 16
+
+
+def _limit_from_env(name, default):
+    """从环境变量读取正整数限额；未设置/非法/非正值返回默认（可配置限额的唯一入口）。"""
+    raw = str(os.environ.get(name) or '').strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+LLM_FALLBACK_MAX_FILES = _limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', 200)
+LLM_FALLBACK_MAX_BYTES = _limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_BYTES', 50 * 1024 * 1024)
+# V2-10（G25）解析并发度：默认 min(8, CPU 核数)，环境变量 WIZ_BUILD_PARSE_CONCURRENCY
+# 覆盖（正整数，非法/非正值回退默认）；扫描 run 内线程池的 worker 上限，worker 只解析
+# 不写库（落库串行在 run 主线程，08 §4）。
+PARSE_CONCURRENCY = _limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', min(8, os.cpu_count() or 2))
+
+# 抽取批次的并发度（2026-09-22）：批次之间无依赖（各自独立调模型、结果按序落库），
+# 串行等待是纯浪费——实测单批 57.7 秒、2 批 190 秒。并发默认 4，env 可覆盖；
+# 落库仍按批次序号串行（保 facts 顺序确定性，与 V2-10 解析并发同一原则）。
+# 默认 3：实测 provider 有账号级 RPM 限流（GLM 并发 2 稳定、4 路起零星 429、
+# 16 路多数失败；并发能力上限 50 与 RPM 是两件事）。调度器按结果自适应调档
+# （连续成功升一路、撞 429 降一路并冷却），故给一个中间起点让上探/回落都有空间。
+# env WIZ_BUILD_LLM_CONCURRENCY 可覆盖（设 1 = 纯串行）。
+LLM_CONCURRENCY = _limit_from_env('WIZ_BUILD_LLM_CONCURRENCY', 3)
 
 LIMITS = {
     'chunkBytes': CHUNK_BYTES,
@@ -31,6 +75,7 @@ LIMITS = {
     'zipExpandedBytes': ZIP_EXPANDED_BYTES,
     'zipMaxEntries': ZIP_MAX_ENTRIES,
     'parseTimeoutSeconds': PARSE_TIMEOUT_SECONDS,
+    'parseConcurrency': PARSE_CONCURRENCY,
 }
 
 # --- 状态 ---
@@ -44,7 +89,10 @@ TASK_STAGE_LABELS = {
     'delivered': '已创建本体',
 }
 MATERIAL_PARSE_STATES = ('pending', 'running', 'success', 'partial', 'failed', 'excluded')
-MATERIAL_KINDS = ('code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'zip', 'other')
+# 结构化格式解析支持（需求《结构化格式解析支持_v1》v1.1 §3）：json/yaml/properties/csv/ini/toml
+# 为新增专用 kind（登记表 kind→解析器一对一，进三级分派第①层，不再走 LLM 兜底/文本线索降级）。
+MATERIAL_KINDS = ('code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'image', 'zip', 'other',
+                  'json', 'yaml', 'properties', 'csv', 'ini', 'toml')
 RUN_KINDS = ('scan', 'dialog', 'generate')
 RUN_STATES = ('queued', 'running', 'succeeded', 'failed', 'cancelled', 'interrupted')
 GENERATE_STAGES = ('retrieve', 'align', 'abstract', 'verify', 'adapt')
@@ -122,13 +170,28 @@ def safe_rel_path(rel_path):
 
 
 _CODE_EXT = {
-    'java', 'kt', 'scala', 'js', 'jsx', 'ts', 'tsx', 'vue', 'py', 'pyw', 'json', 'xml',
-    'yaml', 'yml', 'properties', 'gradle', 'sql', 'go', 'rs', 'cs', 'php', 'rb', 'sh',
+    'java', 'kt', 'scala', 'js', 'jsx', 'ts', 'tsx', 'vue', 'py', 'pyw', 'xml',
+    'gradle', 'sql', 'go', 'rs', 'cs', 'php', 'rb', 'sh',
+}
+# 结构化格式后缀 → 新 kind（需求 §2/§3/§5 矩阵；detect_kind 在魔数判定之后、_CODE_EXT 之前
+# 命中本表）。`.json/.yaml/.yml/.properties` 原先经 _CODE_EXT 归 code 并在 code 解析器内部降级，
+# 本表上线后改走专用解析层；`.jsonid` 为用户真实样本的非标准扩展名（JSON-LD 内容），按 json 处理；
+# `.jsonl/.ndjson` 由 json 解析器按后缀内部走逐行模式（json_parser.is_line_mode）。
+_STRUCTURED_KIND_EXT = {
+    'json': 'json', 'jsonld': 'json', 'jsonid': 'json',
+    'jsonl': 'json', 'ndjson': 'json',
+    'yaml': 'yaml', 'yml': 'yaml',
+    'properties': 'properties',
+    'csv': 'csv', 'tsv': 'csv',
+    'ini': 'ini', 'cfg': 'ini', 'conf': 'ini',
+    'toml': 'toml',
 }
 _DOC_EXT = {
     'docx': 'docx', 'doc': 'docx-convert-hint', 'pdf': 'pdf', 'xlsx': 'xlsx',
     'xls': 'xlsx-convert-hint', 'md': 'md', 'markdown': 'md', 'txt': 'md',
 }
+# V2-2（G18）：图片物料（jpg/jpeg/png/gif/bmp/tiff/tif/webp/svg）走 OCR/矢量文本解析
+_IMAGE_EXT = {'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'webp', 'svg'}
 
 
 def detect_kind(rel_path, head=b''):
@@ -138,7 +201,7 @@ def detect_kind(rel_path, head=b''):
     """
     name = str(rel_path or '').rsplit('/', 1)[-1].lower()
     ext = name.rsplit('.', 1)[-1] if '.' in name else ''
-    magic = bytes(head[:8])
+    magic = bytes(head[:12])
     if magic.startswith(b'PK\x03\x04'):
         if ext == 'docx':
             return 'docx'
@@ -151,6 +214,19 @@ def detect_kind(rel_path, head=b''):
         return 'pdf'
     if magic.startswith(b'\xd0\xcf\x11\xe0'):
         return 'docx' if ext in ('doc', 'docx') else ('xlsx' if ext in ('xls', 'xlsx') else 'other')
+    if ext in _IMAGE_EXT and (
+            magic.startswith(b'\x89PNG') or magic.startswith(b'\xff\xd8\xff')
+            or magic.startswith((b'GIF87a', b'GIF89a'))
+            or (magic.startswith(b'BM') and ext in ('bmp',))
+            or magic.startswith((b'II*\x00', b'MM\x00*'))
+            or (magic[:4] == b'RIFF' and magic[8:12] == b'WEBP')
+            or ext == 'svg'):
+        return 'image'
+    if magic.startswith(b'\x89PNG') or magic.startswith(b'\xff\xd8\xff') \
+            or magic.startswith((b'GIF87a', b'GIF89a')) \
+            or magic.startswith((b'II*\x00', b'MM\x00*')) \
+            or (magic[:4] == b'RIFF' and magic[8:12] == b'WEBP'):
+        return 'image'
     if ext == 'sql':
         return 'ddl'
     if ext in _DOC_EXT:
@@ -160,8 +236,13 @@ def detect_kind(rel_path, head=b''):
         if mapped == 'xlsx-convert-hint':
             return 'xlsx'
         return mapped
+    # 结构化格式（json/yaml/properties/csv/ini/toml）：魔数判定之后、代码/其他之前。
+    if ext in _STRUCTURED_KIND_EXT:
+        return _STRUCTURED_KIND_EXT[ext]
     if ext in _CODE_EXT:
         return 'code'
+    if ext in _IMAGE_EXT:
+        return 'image'
     return 'other'
 
 

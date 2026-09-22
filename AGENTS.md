@@ -81,7 +81,9 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 - main日常工作台保留127.0.0.1:18765；分支分配其他未占用端口，禁止8765，不能抢占/停止他人服务。
 - 分支从**自己的工作树**执行start.sh，所有setup/start/status/stop/restart/rebuild沿用同一份环境记录，显式指定 `WIZ_WORKBENCH_PORT` 和独立的 `WIZ_WORKBENCH_ROOT`。此处ROOT仅用于隔离开发/验收实例，不映射真实业务根。
-- 核对有效数据库地址；继承的 `WIZ_DATABASE_URL` 等覆盖项必须移除或改为该任务隔离库，不能只设置ROOT却仍连接真实库。目录、附件、根密钥、凭据缓存和测试账号也按任务隔离。真实数据复制/导入需另有明确授权，默认合成数据。
+- 核对有效数据库地址；继承的 `WIZ_DATABASE_URL` 等覆盖项必须移除或改为该任务隔离库，不能只设置ROOT却仍连接真实库。目录、附件、根密钥、凭据缓存和测试账号也按任务隔离。真实数据复制/导入的范围见下方 2026-09-21 规则：新建开发 worktree 默认同步 main 库快照；自动化测试的临时隔离根仍默认空库/合成数据。
+- **新建 worktree 默认同步 main 库，数据根在工作树文件夹内（2026-09-21 新增并修订，用户指令）**：为用户创建开发 worktree 时，`WIZ_WORKBENCH_ROOT` 直接设为**工作树根目录**，数据完全自含于该分支文件夹、与 main 仓库运行布局一致：库在 `<worktree>/data/workbench.sqlite3`，根密钥在 `<worktree>/keys/wb-root.key`（0700/0600）；不再使用仓库外平级数据根目录（旧模式废弃，如遇存量须迁入并改登记）。库内容的固定来源：①用 `python3 -m workbench.storage.transfer backup --output <worktree>/data/workbench.sqlite3` 生成 main 库的 WAL 一致性快照直接落位（CLI 无 restore 子命令，快照即完整库；**禁止直接 cp 正在写入的库文件**）；②复制 `<main数据根>/keys/wb-root.key`——不复制根密钥则副本中加密凭据（模型密钥、连接密码）全部不可解密。要点：快照是时点数据，不自动跟随 main；账号口令与 main 相同，用户要求时可在副本内重置（不影响 main）；数据自含于分支文件夹、各自独立管理，但含真实数据与根密钥副本，workbench-tasks 登记必须标注"含真实数据，不可自动丢弃"——正因数据在工作树内，`git worktree remove` 不带 --force 会被未跟踪文件拒绝（这是保护），任何删除或 --force 前必须经用户确认数据处置；自动化测试的临时隔离根（WIZ_WORKBENCH_ROOT）不适用本条，仍用空库；用户明确要求空库或合成数据时从其指令。
+- **新建 worktree 必须全量拷贝 main 数据库与配置，不得建空库（2026-09-22 新增，用户指令，加强上条）**：创建开发 worktree 与临时集成 worktree 时，所有配置与数据库一律从 main 拷贝一份，数据根必须完整包含：①main 库快照（`python3 -m workbench.storage.transfer backup --output <worktree数据根>/data/workbench.sqlite3`，**禁止直接 cp 正在写入的库文件**）；②`<main数据根>/keys/wb-root.key` 根密钥副本（否则副本内加密凭据全部不可解密）；③`data/ontology-build-blobs` 等运行资产随迁——目标是模型提供方与密钥、数据连接、各项用户级配置随库即刻可用，新 worktree 与 main 行为一致。2026-09-21 实践教训：仅建空库会导致「模型不可用/配置缺失」，事后补配需跨根重加密（根密钥换用 + AAD 重加密或配置包导出导入），成本高于随快照随迁。例外重申（与上条一致）：自动化测试的临时隔离根（测试自身播种、用完即弃）与用户明确要求空库/合成数据时，仍按上条原规则执行。含真实数据副本的 worktree 在 workbench-tasks 登记中标注"含真实数据，不可自动丢弃"，处置须经用户确认（细则见上条，不重复展开）。
 - 每个worktree保留自己的 `.runtime/`、frontend/dist、node_modules；Python依赖变化时使用独立环境，不升级其他任务共享解释器。`npm run dev`的后端代理当前默认18765，未显式核对/改为任务端口前不得用它验收分支；优先由分支后端托管自己构建的dist。
 - 启动交付必须显示实际分支、commit、URL、数据根和运行状态（可由脚本输出或执行者报告，不声称当前脚本已有全部输出）。Git分支本身不会让服务自动切换代码；切换/合并后按需重新构建并重启。
 - 同一host不同端口可能共享Cookie，分支浏览器验收使用独立配置/隔离上下文，防止登录态互相覆盖。
@@ -111,6 +113,8 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 ## 细粒度任务拆分与多 agent 并行原则（2026-09-20）
 
+- **默认并行执行（2026-09-22，用户指令）**：执行任何任务时默认先做并行拆分——在文件归属互斥、接口与资源不冲突、可独立验证的前提下，用尽可能多的子代理并行推进；协调者负责拆分、冲突检查（文件/接口/端口/资源）与串行收口（组合回归、提交、交接报告）。强耦合、同文件或强依赖任务保持串行，不为并行牺牲可验证性；并行不改变既有授权与停止点（验收/集成/合并仍需用户明确指令）。
+
 **后续开发计划和执行指令必须先拆任务再安排实施：在可独立交付、可验证的前提下尽可能细分，优先让无依赖、无写入冲突的任务由多个 agent 并行处理。** 不仅按“前端/后端”粗分，也不为了增加任务数量拆成无法独立验证的零碎改动。
 
 1. **拆分粒度**：每个子任务只负责一个明确结果，例如一个协议定义、一项存储能力、一条业务流程、一个页面状态或一组独立验收场景。需求分析、协议、实现、测试、集成分别列出；小而紧密耦合的修改保持在同一任务，不机械按文件或行数拆分。
@@ -126,10 +130,12 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 - `workbench/` — 后端。`server.py`（安全边界+鉴权门+路由分派，业务在 `model_routes.py`/`project_routes.py`）；`auth.py`（口令与会话、请求用户上下文）+ `auth_routes.py`（登录/注册/退出/登录态）；`paths.py`（CODE_ROOT/DATA_ROOT 唯一定义，核心模块不得从演示模块取路径）；`locking.py`（全局写锁唯一定义）；`storage/`（**在线权威存储库**，见架构边界第 13 条）；`projects.py`（项目存储/升级预检）+ `project_validation.py`（校验组织+分职责函数）+ `project_mapping.py`（共用纯辅助）；`model_format.py`（本体 JSON schema ↔ JSON-LD 双向转换）、`contracts.py`、`versions.py`（发布登记，DB）、`workspaces.py`（本体资产/草稿，DB）、`flows.py`（编排，DB）、`dbdrivers.py`（连接探测，仅固定只读操作）、`secrets.py`/`api_credentials.py`/`llm_providers.py`/`catalogs.py`（凭据与缓存，DB）；`migrations/`（Alembic）；`demo/`（演示执行器）
 - `frontend/src/` — Vue3 单页。`app/`：`http.ts`（唯一请求与错误解析层，409 带 currentRevision/.data）、`saveCoordinator.ts`（保存队列）、`navigation.ts`、`workspace.ts`；`ontology/`：`modelFormat.ts`（前后端协议层，与 model_format.py 镜像，两边必须同步改）+ 本体页；`project/`：`bindingModel.ts`（来源制适配层）+ `api.ts`（stripCatalogs 唯一实现）+ 项目页；`shared/` 通用控件；`tools/` 辅助页。页面不得自写 fetch/错误解析
-- `ontology/` — 全部数据（见下方存储规则），**用户数据，勿手改勿删**；`ontology/vault/` 是连接密码受保护存储（服务自动管理）
+- `ontology/` — 全部用户数据，**勿手改勿删**；2026-09-21 已整体退出 git 跟踪（`.gitignore` 忽略 `/ontology/`），本地文件保留作 SQLite 迁移前的迁移输入与备份，在线权威数据在 `data/workbench.sqlite3`；`ontology/vault/` 是连接密码受保护存储（服务自动管理）
 - `tests/` — 回归套件 + `fixtures/validation_golden.json`（项目校验金样）+ `ts_hooks.mjs`（Node 跑 TS 的解析钩子）
-- 2026-09-15 已按用户要求删除根目录 `待删除_非运行资料/`、`tools/`、`service/`；`outputs/` 已不存在。不要重建旧兼容入口或引用已删归档作为必要步骤。`resources/` 保留来源参考所需 source.jsonId；`workbench/demo` 仍是运行依赖。`发布包/` 是精简交付副本，不含真实数据或密钥；不在包内开发。
-- `文档/` — 设计方案（以 `通用储能本体工作台设计方案_v3.md` 为准）；`文档/交付物/` 实施说明与指令；`文档/prototypes/` 原型；`文档/迁移清单_20260915.md` 目录迁移记录
+- 2026-09-15 已按用户要求删除根目录 `待删除_非运行资料/`、`tools/`、`service/`；`outputs/`、`发布包/` 已不存在。不要重建旧兼容入口或引用已删归档作为必要步骤。`workbench/demo` 仍是运行依赖。
+- 2026-09-21 已按用户要求删除根目录 `resources/`（source.jsonId 已随 2026-09-18 SQLite 存储迁移入库为 source-reference 附件，运行时接口读库内副本，仅 `transfer import` 迁移 CLI 引用文件路径且有 is_dir 守卫；需要时从 git 历史找回）与 `backup-20260918-202932/`（存储迁移日快照+根密钥副本，git 忽略未入库）。
+- `.idea/` 等 IDE 本地配置已退出 git 跟踪（2026-09-21），不入库。
+- `文档/` — 根级三份跨期文档：设计方案（以 `通用储能本体工作台设计方案_v3.md` 为准）、`迁移清单_20260915.md`、`架构优化实施说明_20260915.md`；`文档/需求/` 各期需求四件套归档；`文档/交付物/` 实施说明与指令；`文档/接口文档/` 前后端契约；`文档/评审与纪要/` 评审与审查记录；`文档/概念与说明/` 概念与使用说明；`文档/历史归档_20260916前/` 2026-09-15 目录迁移时留存的早期文档快照；`文档/导出/` 导入测试物料；`文档/prototypes/` 早期原型
 
 ## 接口文档与前后端契约（2026-09-18，强制）
 
@@ -145,7 +151,7 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 ## 架构边界（改动前必读）
 
 1. **双区状态**：本体区（ontology/workflow/metrics/rules/layout）与项目区（bindings/implementations/connections/parameters/project）是**两条独立的状态、草稿、发布线**。API 上分开：`/api/save|publish` 只管本体；`/api/project-*` 只管项目。
-2. **存储规则（V3）**：编辑只写 `ontology/drafts/{models,projects}/<id>/revisions/`（多文件修订 + current.json 原子指针）；发布写 `ontology/releases/{models,projects}/`（不可变，本体版本带 manifest.yaml 与变更类型标记）。`ontology/models/`、`ontology/projects/<id>/` 基础目录**只作初始化输入，代码永不回写**。旧 `drafts/draft.json` 同理。
+2. **存储规则（V3，文件时代历史规则）**：编辑只写 `ontology/drafts/{models,projects}/<id>/revisions/`（多文件修订 + current.json 原子指针）；发布写 `ontology/releases/{models,projects}/`（不可变，本体版本带 manifest.yaml 与变更类型标记）。`ontology/models/`、`ontology/projects/<id>/` 基础目录**只作初始化输入，代码永不回写**。旧 `drafts/draft.json` 同理。（2026-09-21 注：在线权威存储已切 SQLite——见第 13 条；本节描述的文件树已退出 git 跟踪、本地保留作迁移备份，新环境不再自带。）
 3. **表单格式转换**：API 边界上本体是 JSON schema 形态（objectTypes/linkTypes/...），前端用 decodeState/decodeOntology 转成 `@graph` JSON-LD 编辑再 encode 回去。直接改 schema 形态的 JSON 时必须同步维护 `definitionOrder`，否则保存报错。字段映射表在 `model_format.py` 的 FIELDS/REFS/JSON_FIELDS 与 `frontend/src/modelFormat.ts`，**两处必须一致**。显示名称标记 mg:isDisplayName/isDisplayName 字段已纳入协议（两端镜像），项目层 title_key 由 projects.derive_display_names 按引用版本自动推导。
 4. **契约（guide_version 3）**：workflow.functions 中 guide_version=3 的记录是 V3 通用契约（结构化签名 refs：kind=object/property/base + 稳定 id），由 `contracts.signature_errors` 校验；旧 guide_version 1/2 是历史定义，只读展示、永不改写。属性来源/输入绑定里的引用全部用稳定 id，改显示名不断链。
 5. **发布与变更分类**：发布走 `contracts.classify`（兼容/破坏性/待确认），破坏性→大版本号；引用失效时禁止人工改标为兼容。空 metrics/rules **不写入**版本快照（versions.publish）。
@@ -157,13 +163,21 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 11. **整体交互迭代（2026-09 新增）**：导航重组为两工作区 4+5 页（本体：工作概览/对象建模/共享属性库/校验与发布；项目：项目概览/数据连接/对象映射/计算实现/校验与发布），辅助页归并 `tools`，旧 hash 全量 alias（见 `app/navigation.ts`）。**保存直通**：`app/saveCoordinator.ts` 每区一个 Saver（串行队列、revision 管理、409 currentRevision 换基线重试、900ms touch 合并、beforeunload/flush）；组件表单"保存"按钮经 `inject('commit-now')` 立即持久化，即时编辑走 touch 自动保存；顶栏无保存/发布按钮，仅五态状态条，发布移入两区"校验与发布"页（发布前强制 commit-now 再取服务端最新草稿）。画布在 `ontology/ObjectCanvas.vue`（zoom/pan 不触发保存）；对象建模 `ontology/ObjectWorkspace.vue` 内嵌 PropertyManager 编辑属性；校验页"去处理"按 validate items 的 kind/id 结构化跳转。后端 409 响应带 `currentRevision`，`save_draft` 失败不再假成功。测试新增 `tests/test_save_iteration.py`。事实全文见 `文档/交付物/工作台整体交互迭代实施说明_20260914.md` 与 `文档/交付物/工作台整体交互迭代_并行任务板.md`。
 12. **架构优化（2026-09-15 新增）**：前后端按业务模块组织（见目录节）；`paths.py` 统一 CODE_ROOT/DATA_ROOT，核心存储模块不得 import 演示模块（`tests/test_paths_isolation.py` 守护）；项目校验拆在 `project_validation.py`（`projects.validate_project` 兼容转发），**改校验规则必须同步加金样样例**（`tests/make_validation_golden.py` 生成，`tests/test_validation_split.py` 回放）并保持 errors/warnings/items 顺序逐字节等价；保存协调器行为由 `tests/save_queue.test.mjs` 15 项锁定（提交基线取本客户端最近确认 revision、error 状态 retry/commitNow 强制发送、失败后编辑 retry 提交最新内容、beforeunload 非 saved 一律拦截），改 `saveCoordinator.ts` 必须先加用例；HTTP 层只做安全边界+分派，新接口加进 `server.py` 的 `GET_ROUTES/POST_ROUTES` 表（白名单即表键），业务写在 `model_routes`/`project_routes`，探测类接口永不持 `locking.LOCK`；前端请求一律经 `app/http` + 两区 `api.ts`（catalogs 剥除只在 `project/api.stripCatalogs`）。本轮修复并回归验证：versions.py 遗留裸 ROOT（真实根 500）、保存队列三缺陷等。事实与耗时对比见 `文档/架构优化实施说明_20260915.md`。
 
-13. **SQLite 存储库（2026-09-18 新增，已实施）**：工作台在线权威存储为 SQLite（默认 `<DATA_ROOT>/data/workbench.sqlite3`，目录 0700），`workbench/storage/` 一套 SQLAlchemy Core 实现（SQLite 已验证，MySQL 预留：方言差异收口在 schema.py 的 with_variant；**运行时未实测，不得宣称已支持**）。本体/项目/编排三类资产的草稿与发布、目录缓存、模型配置、连接密码/API 凭据/模型密钥（AES-GCM，根密钥在库外 `<DATA_ROOT>/keys/`）全部入库；`ontology/` 旧文件目录只作迁移输入与备份，**在线服务无文件回退**。要点：
+13. **SQLite 存储库（2026-09-18 新增，已实施）**：工作台在线权威存储为 SQLite（默认 `<DATA_ROOT>/data/workbench.sqlite3`，目录 0700），`workbench/storage/` 一套 SQLAlchemy Core 实现（SQLite 已验证，MySQL 预留：方言差异收口在 schema.py 的 with_variant；**运行时未实测，不得宣称已支持**）。本体/项目/编排三类资产的草稿与发布、目录缓存、模型配置、连接密码/API 凭据/模型密钥（AES-GCM，根密钥在库外 `<DATA_ROOT>/keys/`）全部入库；`ontology/` 旧文件目录只作迁移输入与备份，**在线服务无文件回退**（2026-09-21 起该文件树已退出 git 跟踪、`.gitignore` 忽略 `/ontology/`，本地保留；新环境初始化只依赖 transfer CLI 与库内数据）。要点：
     - revision 是不透明 token（`r-<uuid>`），与内容 hash 分离；CAS+generation 保证并发（409 带 currentRevision，A→B→A 旧 token 必拒）；发布为单事务，requestId 幂等。
     - 初始化/迁移/备份必须显式 CLI：`python3 -m workbench.storage.transfer init|inspect|import|verify|export|backup`。服务启动与请求路径**绝不隐式 DDL/导入/回退文件**；真实根未初始化直接拒启。隔离根（WIZ_WORKBENCH_ROOT 已设）允许惰性建空库（测试专用）。
     - 改 `storage/schema.py` 必须新增 Alembic 迁移（程序化，`workbench/migrations/`）；存储契约测试 `tests/test_storage_contract.py`（45 项，含故障注入；设 WIZ_MYSQL_TEST_URL 加跑 MySQL），迁移演练 `tests/test_storage_transfer.py`。
     - 实施事实与冻结契约全文见 `文档/需求/20260918_SQLite存储迁移与MySQL预留/开发计划.md` §9。
 
 14. **登录与账号体系（2026-09-18 新增，已实施）**：`/api/*` 除 4 个免登录认证端点（`auth-state/auth-login/auth-register/auth-logout`）外**全部要求登录**，未登录 401 `UNAUTHENTICATED`；身份来自 Cookie `wiz_session`（HttpOnly+SameSite=Strict，库中只存令牌摘要，30 天滑动续期）。**数据按账号完全隔离**：本体/项目/编排/模型配置与密钥/连接与 API 凭据全部按 `owner_user_id` 归属，跨账号 id 一律按不存在处理（404/空）；归属过滤收口在 `storage/assets.py`（对外函数必带 `owner_user_id`）与 `storage/configuration.py`（用户级设置走 `wb_user_settings`），域层统一 `auth.require_user_id()`。口令只存 PBKDF2-HMAC-SHA256 哈希（600000 轮；本机 Python 3.9 无 `hashlib.scrypt`，勿改回）。界面未登录只渲染登录页（`app/LoginView.vue` + `main.ts` 引导层），任意接口 401 自动回登录页；浏览器本地偏好按 `u:<用户名>:` 前缀隔离。迁移运维一律用 CLI：`transfer create-user` / `transfer assign-owner`（后者对 LLM 密钥按新 AAD **重加密**，不能直接 UPDATE owner_key）；协议全文见 `文档/接口文档/06-认证与账户接口.md`，实施记录见 `文档/需求/20260918_登录与账号体系/开发计划.md` §5。
+
+## 代码规范（2026-09-21 起）
+
+**Python（workbench/ tests/）**：基准 PEP 8 + Google Python Style Guide，工具 Ruff（配置 `ruff.toml`，`~/Library/Python/3.9/bin/ruff check workbench tests` 或安装后 `ruff check`）。启用错误级规则（E4/E7/E9/F/B）；E501 行长、紧凑单行写法（E701/E702）、E402 延迟导入、B023 闭包循环变量为**登记的明确偏离**（配置内注明理由），既有代码不重排。未使用变量/参数一律 `_` 前缀豁免。
+
+**前端（frontend/src/）**：基准 Vue 官方风格指南（vuejs.org/style-guide）A–C 级语义规则，工具 ESLint + eslint-plugin-vue + @vue/eslint-config-typescript（配置 `frontend/eslint.config.js`，`cd frontend && npm run lint`）。模板格式化类规则（换行/缩进/属性顺序/自闭合）关闭——仓库不引入 Prettier、不重排既有排版；类型安全由 vue-tsc 严格检查兜底（`no-explicit-any` 不阻断，渐进治理）；`legacyGraph/` 为迁入的 JS 代码保持 `<script setup>` 无 lang。新增/修改代码遵循两份配置；改配置规则必须在配置内注明理由。
+
+**已知债务（专项治理前不作为缺陷）**：Vue `no-mutating-props` 既有 69 处（行为级重构需配合浏览器回归分批处理）；TS 显式 `any` 既有约 1400 处（渐进收紧）；Python B023 35 处（经测试验证的安全用法）。
 
 ## 前端约定
 
@@ -176,7 +190,7 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 - 契约/绑定引用一律用稳定 id（系统生成），手写数据文件时勿自造 id
 - 工作目录必须在仓库根运行 `python3 -m workbench.server`（模块按根定位）
-- 历史遗留：`metrics.yaml`/`rules.yaml` 为旧格式兼容文件，允许为空；`resources/imports/` 仅保留运行接口仍读取的原始 source.jsonId，不是当前本体草稿；其他历史存档已按用户要求删除
+- 历史遗留：`metrics.yaml`/`rules.yaml` 为旧格式兼容文件，允许为空；`resources/` 已于 2026-09-21 按用户要求删除（source.jsonId 已入库，git 历史可查），不是当前本体草稿；其他历史存档已按用户要求删除
 - 改前端后需 `npm run build`，后端直接托管 dist（无自动刷新）
 - 用户数据（ontology/ 下一切）是用户真实资产：清理/重建需用户明确确认；演示用临时数据一律用完即删且不写入用户草稿
 

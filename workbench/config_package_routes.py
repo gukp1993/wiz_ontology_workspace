@@ -5,12 +5,10 @@ TokenError → 过期 410 TOKEN_EXPIRED、不存在/跨账号 404；
 PackageFormatError → 格式不支持 415、结构/预算问题 422；
 ImportConflict → 409。上传/预检/压缩不持全局 LOCK；仅 import 持 LOCK（写事务）。
 """
-import json
 
 from workbench import auth, locking
 from workbench import config_packages as core
-from workbench.config_package_format import PackageFormatError
-from workbench.config_packages import ChunkConflict, ImportConflict, TokenError
+from workbench.config_packages import ChunkConflict, TokenError
 
 
 def _bad(message, code='INVALID_ARGUMENT', status=400):

@@ -95,7 +95,7 @@ watch(() => props.focusId, id => {
 
 const dirty = computed(() => mode.value === 'edit' && JSON.stringify(draft.value) !== baseline)
 const guard = { isDirty: () => dirty.value, discard: () => closeEditor() }
-watch(mode, m => { m === 'edit' ? guardApi.register(guard) : guardApi.unregister(guard) })
+watch(mode, m => { if (m === 'edit') guardApi.register(guard); else guardApi.unregister(guard) })
 onBeforeUnmount(() => guardApi.unregister(guard))
 
 function closeEditor() { mode.value = 'list'; assistOpen.value = false } // 辅助面板随编辑器收起（binding 置空由 watch 兜底）
@@ -152,7 +152,7 @@ async function openConvert(id: string) {
   refsId.value = ''
 }
 // 行内/抽屉「编辑」入口：V2 直接进表单；历史格式先走既有转换确认。
-function editAction(id: string) { const a: any = actionById(id); if (!a) return; isActionV2(a) ? openEdit(id) : openConvert(id) }
+function editAction(id: string) { const a: any = actionById(id); if (!a) return; if (isActionV2(a)) openEdit(id); else openConvert(id) }
 function editFromDetail() { if (detail.value) editAction(detail.value.id) }
 
 async function submit(apply: () => void, action?: { actionLabel: string; target?: { kind: string; id: string } }): Promise<boolean> {

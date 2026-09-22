@@ -136,7 +136,7 @@ import MultiPickModal from './components/MultiPickModal.vue'
 const props = defineProps({
   items: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['back', 'repick'])
+const _emit = defineEmits(['back', 'repick'])
 const canvasEl = ref(null)
 const q = ref('')
 const pickOpen = ref(false)

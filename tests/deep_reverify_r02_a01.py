@@ -15,15 +15,13 @@ import copy
 import json
 import os
 import sys
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import deep_project_client as C  # noqa: E402
 from deep_project_client import Api, Recorder, blank_state, brief  # noqa: E402
 import deep_verdicts as V  # noqa: E402
-from deep_reverify_scenarios import scenario_a01, scenario_r02, a01_legal_state  # noqa: E402
+from deep_reverify_scenarios import scenario_a01, scenario_r02  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASE = os.environ.get('Q03_BASE', 'http://127.0.0.1:18951')

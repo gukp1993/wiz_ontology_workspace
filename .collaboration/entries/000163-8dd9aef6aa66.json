@@ -1,0 +1,28 @@
+{
+  "ticket": "9261fa2d92364b1ca3c86e9f063640c5",
+  "task": "build-governance 工作树实例搭建 + 从 main 同步数据（用户指令）",
+  "status": "implemented",
+  "summary": "用户报 admin/admin 登录失败。核实：新工作树按约定只登记未启动（无 venv/无库/无服务），18881 从未跑过；18765 的 admin 真实密码并非 admin（此前靠已登录会话）。按用户指令从 main 同步：worktree 建 .venv（--system-site-packages）；main 库一致性快照放入隔离数据根；复制根密钥使副本内加密凭据可解密；前端 dist 复制自 main 同 commit 构建产物；副本内重置 admin 密码为 admin（仅隔离副本）；启动 18881 并验证登录成功。main 18765 完全未动（密码/数据原样）。",
+  "decisions": [
+    "同步方式用 transfer backup 一致性快照直接落位为工作树库（CLI 无 restore 子命令，快照即完整库）；根密钥随行复制，否则副本内模型密钥/连接密码不可解密。",
+    "admin/admin 只在隔离副本内重置生效；main 真实库密码重置属真实数据操作，未获指令不做。数据根现含真实数据与根密钥，登记改为不可自动丢弃。"
+  ],
+  "verification": [
+    "curl POST 18881/api/auth-login admin/admin 返回 admin(isAdmin=true)；前端首页 200；快照含 main 全部数据（11 资产/2 账号）；18765 未受影响。"
+  ],
+  "next": [
+    "用户可访问 http://127.0.0.1:18881 用 admin/admin 登录（数据为 main 同步时点快照，不自动跟随 main）。",
+    "若还要把 main 18765 的 admin 密码改为 admin，属真实库重置，需用户明确指令（CLI 已具备）。",
+    "后续清理该工作树时数据根含真实数据与根密钥，须用户确认处置。"
+  ],
+  "references": [
+    "实例：http://127.0.0.1:18881；工作树：worktree/build-governance；数据根：wiz_kq_builder_v2-build-governance-data（含 keys/wb-root.key 副本）",
+    "登记：.git/workbench-tasks/build-governance.json（env_ready_dev_pending）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T07:00:42.658671+00:00",
+  "sequence": 163,
+  "filename": "000163-8dd9aef6aa66.json",
+  "record_hash": "423031c951eb7c39d8cd6da211993bf3f0efbcce8cd05c1036d02959433cfe2c",
+  "context_advanced": false
+}

@@ -112,7 +112,7 @@ async function runTrial(){
     trialResult.value=r.ok?{ok:true,text:'试算结果：'+r.value}:{ok:false,text:r.error||'试算失败'}
   }catch(e:any){trialResult.value={ok:false,text:e.message}}finally{trialBusy.value=false}
 }
-function usage(id:string){return (props.projectState.bindings?.object_bindings||[]).flatMap((b:any)=>Object.entries(b.properties||{}).filter(([k,v]:any)=>v?.kind==='computed'&&v.implementation===id).map(([k])=>(objects.value.find((o:any)=>o.value===b.object_type)?.label||b.object_type)+' · '+(localProperties(graph.value,'mg:'+b.object_type).find((p:any)=>(p['mg:apiName']||p['@id'].slice(3))===k)?.['rdfs:label']||k)))}
+function usage(id:string){return (props.projectState.bindings?.object_bindings||[]).flatMap((b:any)=>Object.entries(b.properties||{}).filter(([_k,v]:any)=>v?.kind==='computed'&&v.implementation===id).map(([k])=>(objects.value.find((o:any)=>o.value===b.object_type)?.label||b.object_type)+' · '+(localProperties(graph.value,'mg:'+b.object_type).find((p:any)=>(p['mg:apiName']||p['@id'].slice(3))===k)?.['rdfs:label']||k)))}
 // 引用摘要有界展示：引用数随项目规模增长不可控，列表行不展示；详情/编辑警告最多列 3 处、超出计总数。
 function usageSummary(id:string){const u=usage(id);return u.length?u.slice(0,3).join('、')+(u.length>3?` 等 ${u.length} 处`:''):''}
 

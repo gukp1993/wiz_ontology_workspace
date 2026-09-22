@@ -20,10 +20,8 @@
   python3 -m workbench.storage.transfer backup --output FILE [--url URL]
 """
 import argparse
-import base64
 import hashlib
 import json
-import shutil
 import sys
 from pathlib import Path
 
@@ -38,7 +36,7 @@ from workbench.storage import indexing
 from workbench.storage import engine as dbengine
 from workbench.storage.engine import (resolve_url, schema_status, write_tx,
                                       read_connection, utcnow, content_hash, read_head,
-                                      read_snapshot, head_by_external)
+                                      read_snapshot)
 
 MODEL_DRAFT_FILES = (('ontology', 'ontology.json'), ('workflow', 'workflow.json'),
                      ('metrics', 'metrics.yaml'), ('rules', 'rules.yaml'), ('layout', 'layout.json'))
@@ -257,7 +255,7 @@ def import_model(conn, entry, batch, now, report):
             imported += 1
     # 发布（先于项目引用导入）
     if entry['release_index']:
-        for order, ver in enumerate(entry['release_index'].get('versions', [])):
+        for _order, ver in enumerate(entry['release_index'].get('versions', [])):
             version = str(ver.get('version'))
             directory = Path('ontology/releases/models') / entry['id'] / version
             full = directory if directory.is_absolute() else entry['_root'] / directory
@@ -484,7 +482,6 @@ def import_flow(conn, entry, batch, now, report):
 
 def import_configuration(conn, root, batch, now, report):
     """目录缓存 / 三类凭据 / 模型配置与默认项。密钥只入密文，报告不含明文。"""
-    from workbench.storage import secret_store
     imported = 0
     model_uids = {row['external_id']: row['asset_uid'] for row in _all_assets(conn, 'model')}
     project_uids = {row['external_id']: row['asset_uid'] for row in _all_assets(conn, 'project')}
@@ -588,7 +585,6 @@ def import_configuration(conn, root, batch, now, report):
 
 
 def _all_assets(conn, kind):
-    from workbench.storage.engine import head_by_external  # noqa: F401
     rows = conn.execute(sql_text('SELECT asset_uid, external_id, name FROM wb_assets '
                                        'WHERE kind = :k'), {'k': kind}).mappings().all()
     return [dict(r) for r in rows]
@@ -837,7 +833,7 @@ def cmd_export(args):
     out.mkdir(parents=True, exist_ok=True)
     counts = {'models': 0, 'projects': 0, 'flows': 0, 'credentials': 0}
     with read_connection(url) as conn:
-        for kind, dirname in (('model', 'models'), ('project', 'projects'), ('flow', 'flows')):
+        for kind, _dirname in (('model', 'models'), ('project', 'projects'), ('flow', 'flows')):
             for row in _all_assets(conn, kind):
                 head = read_head(conn, row['asset_uid'])
                 if head is None or not head['snapshot_id']:

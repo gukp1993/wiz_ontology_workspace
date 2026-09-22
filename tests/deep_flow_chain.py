@@ -218,7 +218,7 @@ def _p7_check_rejects_and_gate(api, rec):
 
     # 循环依赖
     fid2, _, _ = create_flow(api, f'Q03编排-环 {UNIQ}')
-    rev2 = (api.get(f'/api/flow-state?flow={fid2}')['json'] or {}).get('revision')
+    _rev2 = (api.get(f'/api/flow-state?flow={fid2}')['json'] or {}).get('revision')
     st2 = cycle_state(fid2, f'Q03编排-环 {UNIQ}')
     r = api.post('/api/flow-check', {'state': st2})
     cj = r['json'] if isinstance(r['json'], dict) else {}

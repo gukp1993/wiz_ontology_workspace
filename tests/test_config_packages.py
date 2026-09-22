@@ -17,7 +17,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -301,7 +300,7 @@ def test_format_safety():
     ok('格式①', '坏 ZIP/穿越路径/缺 manifest 拒绝')
 
     # manifest 校验：format/formatVersion/逐文件 hash
-    files = {'manifest.json': manifest, 'models/m1/draft.json': b'{}'}
+    _files = {'manifest.json': manifest, 'models/m1/draft.json': b'{}'}
     bad_hash = json.loads(manifest)
     bad_hash['files'] = {'manifest.json': {'sha256': '0' * 64},
                          'models/m1/draft.json': {'sha256': '0' * 64}}
@@ -345,7 +344,7 @@ def test_format_safety():
     ok('格式④', 'T03 副本归属纯函数（顺序无关/歧义 None/共享副本）')
 
     # T09：不同类型同名不是冲突（allocate 按类型独立判断）
-    taken_model = {name_key('同名X')}
+    _taken_model = {name_key('同名X')}
     n5, _ = allocate_name('同名X', set())  # 项目类型未占用
     check(n5 == '同名X', 'T09：不同类型同名互不影响')
 
@@ -524,14 +523,14 @@ def main():
                     from workbench.storage.engine import read_snapshot
                     rel_snapshot = json.loads(read_snapshot(conn, r['snapshot_id'])['payload_json'])
                     out['p1_v1_ref'] = (rel_snapshot or {}).get('ontologyId')
-                    rel_ref = store.get_project_ref(conn, r['snapshot_id'])
+                    _rel_ref = store.get_project_ref(conn, r['snapshot_id'])
                     out['p1_v1_manifest_ref'] = None
             # 发布 manifest 的引用也应与 payload 一致（T02）
             for r in store.release_rows(conn, p1['asset_uid']):
                 if r['version_label'] == 'v1':
                     out['p1_v1_manifest_ref'] = (r['manifest'] or {}).get('ontologyId'), (r['manifest'] or {}).get('ontologyVersion')
             # T03：P2 引用 F 的另一个副本（同名连接不同配置 → 拆分）
-            p2 = store.get_asset(conn, 'project', new_p2, owner_b)
+            _p2 = store.get_asset(conn, 'project', new_p2, owner_b)
             p2_draft = store.read_current('project', new_p2, owner_user_id=owner_b)
             out['p2_flow_ref'] = p2_draft['snapshot']['payload']['bindings']['object_bindings'][0]['properties']['p_flow_ref'].get('flow')
             out['f_copy_ids'] = [a['newId'] for a in f_copies]
@@ -627,9 +626,9 @@ def main():
         from workbench.storage.engine import read_connection
         try:
             storage.ensure_ready()
-            with read_connection() as conn:
+            with read_connection() as _conn:
                 b_uid = auth_client.user_id_from_db(TMP, 'userB')
-                f_assets = {a['newId']: a for a in result['assets'] if a['kind'] == 'flow'}
+                _f_assets = {a['newId']: a for a in result['assets'] if a['kind'] == 'flow'}
                 target_id = f_copies[0]['newId']
                 old_hash = store.read_current('flow', f_copies[1]['newId'], owner_user_id=b_uid)['snapshot']['content_hash']
             state = flows.read_draft(target_id)
@@ -637,7 +636,7 @@ def main():
             assert state['name'] == [a['newName'] for a in result['assets'] if a['newId'] == target_id][0]
             state['description'] = 'T01 保存验证'
             save_result = flows.save_draft(state)  # 内部按当前 head 推进
-            with read_connection() as conn:
+            with read_connection() as _conn:
                 new_hash = store.read_current('flow', target_id, owner_user_id=b_uid)['snapshot']['content_hash']
                 unchanged = store.read_current('flow', f_copies[1]['newId'], owner_user_id=b_uid)['snapshot']['content_hash']
             return {'flowId': state['flowId'], 'revision': save_result['revision'],
@@ -739,7 +738,7 @@ def main():
         from workbench.storage.engine import read_connection
         try:
             storage.ensure_ready()
-            with read_connection() as conn:
+            with read_connection() as _conn:
                 b_uid = auth_client.user_id_from_db(TMP, 'userB')
             auth.bind_request({'userId': b_uid})
             state = __import__('workbench.workspaces', fromlist=['read_draft']).read_draft(new_model_id)

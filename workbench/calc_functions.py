@@ -301,7 +301,7 @@ def _to_number(value):
     try:
         f = float(value)
     except (TypeError, ValueError):
-        raise _EvalError('数值参数不能转换为数字')
+        raise _EvalError('数值参数不能转换为数字') from None
     if f != f or f in (float('inf'), float('-inf')):
         raise _EvalError('数值超出范围')
     return f
@@ -311,7 +311,7 @@ def _round_half(value, digits):
     try:
         q = Decimal(str(value)).quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError):
-        raise _EvalError('舍入失败')
+        raise _EvalError('舍入失败') from None
     return float(q)
 
 
@@ -398,7 +398,7 @@ def evaluate(expr, param_types, values, output_type):
     except _EvalError as exc:
         return {'ok': False, 'error': str(exc)}
     if static_type != 'error' and static_type != output_type:
-        return {'ok': False, 'error': f'结果类型与输出类型不匹配'}
+        return {'ok': False, 'error': '结果类型与输出类型不匹配'}
     if isinstance(value, float) and (value != value or value in (float('inf'), float('-inf'))):
         return {'ok': False, 'error': '计算结果超出范围'}
     return {'ok': True, 'value': value}

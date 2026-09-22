@@ -1,4 +1,5 @@
 // 单页属性表单与链接缺连接回归；只使用内存夹具及临时编译目录。
+// 2026-09-22 合并 main 后适配 lint 改名（unused 符号加 _ 前缀）：api._setRuleInput/_selectImplementation/_implInputRows，断言语义不变。
 // 2026-09-21（T9 修复，全绿口径）：PropertySources 现行为——
 // ① 未配置属性先进 none 态（「＋ 取值配置」/ freshDbDraft 再展开表单）；新建来源只有
 //   数据源（field/database/redis）、函数编排、登记信息三条链路；
@@ -92,13 +93,13 @@ try{
  b.properties.history={kind:'computed',implementation:rule.id,output:'series'}
  api.openEditor('history');page=await html()
  assert.doesNotMatch(page,/实现输出/,'旧规则绑定只读展示，不再提供实现输出编辑表单');assert.match(page,/此属性保留了旧的取值规则/)
- assert.match(page,/查询储能簇 SOC 采样序列/);assert.equal(api.declaredShapeOf(rule.id,'series'),'timeSeries');assert.equal(api.implInputRows.value.length,2)
+ assert.match(page,/查询储能簇 SOC 采样序列/);assert.equal(api.declaredShapeOf(rule.id,'series'),'timeSeries');assert.equal(api._implInputRows.value.length,2)
  await api.saveDraft();assert.equal(saved,5);assert.equal(b.properties.history.implementation,rule.id,'保存不破坏遗留规则绑定结构')
  b.properties.history={kind:'computed',implementation:reusable.id,output:'series',inputs:{model_name:'clusters',attr_name:'',model_id:'{id}'}}
  api.openEditor('history');await api.saveDraft();assert.equal(saved,5);assert.match(api.editError.value,/attr_name/,'V2 规则必填入参拦截')
- api.setRuleInput('attr_name','soc');await api.saveDraft();assert.equal(saved,6);assert.equal(b.properties.history.inputs.attr_name,'soc')
- api.openEditor('history');assert.equal(api.draft.value.inputs.attr_name,'soc');api.setRuleInput('attr_name','temperature');api.closeEditor();assert.equal(b.properties.history.inputs.attr_name,'soc','取消不会改动已保存参数')
- api.openEditor('history');api.selectImplementation(reusable.id) // 存活 api：非声明式复用规则初始化旧三参数（model_name 取实例表）
+ api._setRuleInput('attr_name','soc');await api.saveDraft();assert.equal(saved,6);assert.equal(b.properties.history.inputs.attr_name,'soc')
+ api.openEditor('history');assert.equal(api.draft.value.inputs.attr_name,'soc');api._setRuleInput('attr_name','temperature');api.closeEditor();assert.equal(b.properties.history.inputs.attr_name,'soc','取消不会改动已保存参数')
+ api.openEditor('history');api._selectImplementation(reusable.id) // 存活 api：非声明式复用规则初始化旧三参数（model_name 取实例表）
  assert.equal(api.draft.value.inputs.model_name,'clusters');assert.equal(api.draft.value.inputs.model_id,'{id}');assert.equal(api.draft.value.output,'series');api.closeEditor()
  const manager=await mount(await loadComponent('QueryRuleManager'));manager.api.open(rule);page=await manager.html();assert.match(page,/规则名称 \*/);assert.doesNotMatch(page,/保存时绑定属性|规则适用对象|规则名称（选填）/);assert.equal(manager.api.draft.value.schemaVersion,4);assert.equal(manager.api.draft.value.mode,'sqlSteps');assert.equal(rule.schemaVersion,1)
  b.properties.history={kind:'computed',implementation:rule.id,output:'series'};await manager.api.save();assert.equal(projectState.implementations.find(i=>i.id===rule.id).schemaVersion,4);assert.deepEqual(b.properties.history.inputs,{model_name:'m_storage_cluster_phase',attr_name:'soc',model_id:'{id}'})
@@ -121,35 +122,35 @@ try{
  // 缺陷1：V4 按 inputs 声明初始化 binding 参数；runtime 参数不进入初始化；保存重开不丢
  const seedRule=(apiName,implId)=>{b.properties[apiName]={kind:'computed',implementation:implId,output:'series'}}
  seedRule('note',reusable.id)
- api.openEditor('note');api.selectImplementation(v4Text.id)
+ api.openEditor('note');api._selectImplementation(v4Text.id)
  assert.deepEqual(api.draft.value.inputs,{device_id:''},'按声明初始化，不塞旧三参数')
  page=await html();assert.match(page,/此属性保留了旧的取值规则/,'旧规则绑定只读展示（声明展示行随旧表单移除）')
  await api.saveDraft();assert.equal(saved,7);assert.match(api.editError.value,/请填写输入参数 device_id/)
- api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,8)
+ api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,8)
  assert.deepEqual(b.properties.note,{kind:'computed',implementation:v4Text.id,output:'series',inputs:{device_id:'{id}'}})
  api.openEditor('note');assert.equal(api.draft.value.inputs.device_id,'{id}','保存重开后参数不丢失');api.closeEditor()
  // V3 声明式入参同样按 inputs 初始化
  const v3declared={id:'v3decl',kind:'queryRule',schemaVersion:3,name:'V3 声明入参',connection:'db',inputs:[{name:'model_name',type:'string',description:'表名',source:'binding'},{name:'startTime',type:'dateTime',source:'runtime'}],steps:[{id:'q',name:'查询',table:'t',cardinality:'one',where:[{field:'id',op:'eq',value:'{{inputs.model_name}}'}],select:[{as:'value',field:'soc'}]}],result:{type:'scalar',valueType:'double',step:'q',value:'value'}}
  projectState.implementations.push(v3declared)
- api.openEditor('note');api.selectImplementation(v3declared.id)
+ api.openEditor('note');api._selectImplementation(v3declared.id)
  assert.deepEqual(api.draft.value.inputs,{model_name:''},'V3 按声明初始化');api.closeEditor()
  // 缺陷2：V4 返回值类型与属性数据类型比对（文本/数值/是/否/日期时间一致逻辑，数值属性兼容 double）
  seedRule('power',v4Text.id)
- api.openEditor('power');api.selectImplementation(v4Text.id);api.setRuleInput('device_id','{id}')
+ api.openEditor('power');api._selectImplementation(v4Text.id);api._setRuleInput('device_id','{id}')
  await api.saveDraft();assert.equal(saved,8);assert.match(api.editError.value,/取值规则值类型与属性数据类型不匹配/,'文本规则绑数值属性必须拦截')
- api.selectImplementation(v4Double.id);api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,9,'数值规则绑数值属性可保存')
+ api._selectImplementation(v4Double.id);api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,9,'数值规则绑数值属性可保存')
  seedRule('flag',v4Bool.id)
- api.openEditor('flag');api.selectImplementation(v4Bool.id);api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,10,'是/否规则绑布尔属性可保存')
+ api.openEditor('flag');api._selectImplementation(v4Bool.id);api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,10,'是/否规则绑布尔属性可保存')
  seedRule('commissioned',v4Date.id)
- api.openEditor('commissioned');api.selectImplementation(v4Date.id);api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,11,'日期时间规则绑日期属性可保存')
- api.openEditor('note');api.selectImplementation(v4Bool.id);api.setRuleInput('device_id','{id}')
+ api.openEditor('commissioned');api._selectImplementation(v4Date.id);api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,11,'日期时间规则绑日期属性可保存')
+ api.openEditor('note');api._selectImplementation(v4Bool.id);api._setRuleInput('device_id','{id}')
  await api.saveDraft();assert.equal(saved,11);assert.match(api.editError.value,/取值规则值类型与属性数据类型不匹配/,'布尔规则绑文本属性必须拦截');api.closeEditor()
  // 时序：文本序列绑文本序列属性成功；绑数值序列 / 单值绑序列 均拦截
  seedRule('tsnote',v4TextSeries.id)
- api.openEditor('tsnote');api.selectImplementation(v4TextSeries.id);api.setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,12,'文本时间序列规则绑文本序列属性可保存')
- api.openEditor('history');api.selectImplementation(v4TextSeries.id);api.setRuleInput('device_id','{id}')
+ api.openEditor('tsnote');api._selectImplementation(v4TextSeries.id);api._setRuleInput('device_id','{id}');await api.saveDraft();assert.equal(saved,12,'文本时间序列规则绑文本序列属性可保存')
+ api.openEditor('history');api._selectImplementation(v4TextSeries.id);api._setRuleInput('device_id','{id}')
  await api.saveDraft();assert.equal(saved,12);assert.match(api.editError.value,/取值规则值类型与属性数据类型不匹配/,'文本序列绑数值序列必须拦截')
- api.selectImplementation(v4Text.id);api.setRuleInput('device_id','{id}')
+ api._selectImplementation(v4Text.id);api._setRuleInput('device_id','{id}')
  await api.saveDraft();assert.equal(saved,12);assert.match(api.editError.value,/函数输出数据类型与属性要求不匹配/,'单值绑序列属性必须拦截');api.closeEditor()
  assert.ok(implCountAfterV4>0)
 

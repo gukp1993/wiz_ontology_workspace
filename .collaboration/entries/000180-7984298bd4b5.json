@@ -1,0 +1,30 @@
+{
+  "ticket": "ed3819c31d8945998d1f2f292e22605a",
+  "task": "build-governance V2-10 解析并发（G25）测试agent复测 第二轮",
+  "status": "verified",
+  "summary": "V2-10 整改复测通过：三项整改全部闭合，无新问题。方式=/tmp 新导出树（3dc51dc），未触碰工作区他人改动。D：3dc51dc 恰 3 文件无夹带、README 仅 +1 行；修复=future.result() except 链补 except Exception → _scan_write_pool_failure 与超时同口径；注释已如实化。R1 独立复测 13/13：路径A RuntimeError、路径B base.parse 层返回 None 触发 AttributeError、路径C 我新增超长消息边界——均 run succeeded、崩溃文件 failed+原因、事实清空、其余 success。R2 白盒 12/12（上轮唯一失败的异常隔离已 PASS；G25b 峰值4/6.23→2.42s、env 7 形态；G25c 迟到时序 timeout@1.01 worker_done@3.01 后 facts 不变；G25d cancelled 保留+重扫 reused=2；G25e write_tx 全来自 build-run-*、解析线程 0 写）；G25a 补测内容+rowid 物理序一致。R3 回归：test_ontology_build 前两次 47/48 遇偶发 RST、后两次 250/250；parsers 95/95、purge 17/17、storage 60/60、runner 34/34、finish_guard 27/27、vue-tsc 0。R5 支持预存定性：双树同率探针（1200 请求×2）旧 21.5% vs 新 20.2%；机制=未登录 POST 401 早返回 57.3% RST vs 已登录 POST 0% vs 未登录 GET 0%。报告 /tmp/v2_test_report_v2_10.md 第二轮章节。",
+  "decisions": [],
+  "verification": [
+    "R1 独立复测 13/13：路径A RuntimeError / 路径B base.parse 返回 None 触发 AttributeError / 路径C 超长消息(800字含换行) —— run 均 succeeded、崩溃文件 failed+原因含类名、factCount=0、其余 success",
+    "R2 白盒 12/12：G25b 峰值并发4 且 6.23→2.42s、env 7 形态；G25c 超时+迟到丢弃时序证据；G25d 取消保留+重扫 reused=2；G25e write_tx 25 次全来自 build-run-*、build-parse-* 0 次",
+    "G25a 补测：并发 1 vs 4，17 条事实内容 + rowid 物理插入序逐元素一致",
+    "回归：test_ontology_build 250/250（第3、4次；前两次遇偶发 RST 47/48）、parsers 95/95、purge 17/17、storage_contract 60/60、runner_isolation 34/34、finish_guard 27/27、vue-tsc exit 0",
+    "R5 双树探针（1200 请求×2 树）：旧树 RST 21.5% vs 新树 20.2%；机制：未登录 POST 401 早返回 57.3% RST、已登录 POST 0%、未登录 GET 0%"
+  ],
+  "next": [
+    "测试通过，待用户明确授权后由集成负责人集成合并 main（本轮验收基线 3dc51dc；区间含另一任务线 c55d94a/361df10 的已提交内容，集成时按其独立验收结论处理）",
+    "遗留建议（不阻塞、非 V2-10 范围）：未登录 POST 早返回分支的 ConnectionResetError（server.py do_POST 401 先于读 body），建议单独排期修复——早返回分支可 close=True 或先丢弃 body"
+  ],
+  "references": [
+    "/tmp/v2_test_report_v2_10.md（第二轮章节）",
+    "worktree build-governance@3dc51dc（pipeline.py +51/−4、tests +73、README +1）",
+    "workbench/ontology_build/pipeline.py:499-505（except Exception 隔离）、:521-547（_scan_write_pool_failure/_pool_failure_message）",
+    "workbench/server.py do_POST 鉴权段（RST 机制证据）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T02:06:43.784899+00:00",
+  "sequence": 180,
+  "filename": "000180-7984298bd4b5.json",
+  "record_hash": "e80c5bb660fdb034951d8931af7905a450e95a585853a72f36f7a679c433da70",
+  "context_advanced": false
+}

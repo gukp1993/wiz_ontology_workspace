@@ -24,7 +24,7 @@ import sqlalchemy as sa
 from sqlalchemy import event, text
 
 from workbench.paths import DATA_ROOT
-from workbench.storage.schema import METADATA, GUARD_KEYS
+from workbench.storage.schema import GUARD_KEYS
 
 DB_FILENAME = 'workbench.sqlite3'
 BUSY_TIMEOUT_MS = 5000
@@ -210,7 +210,7 @@ class WriteTx:
         last_exc = None
         for attempt in range(attempts):
             conn = self.connection()
-            setattr(conn, '_wiz_write', True)  # begin 事件据此发 BEGIN IMMEDIATE
+            conn._wiz_write = True  # begin 事件据此发 BEGIN IMMEDIATE
             trans = conn.begin()
             try:
                 result = body(conn)

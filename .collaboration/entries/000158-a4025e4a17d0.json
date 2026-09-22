@@ -1,0 +1,35 @@
+{
+  "ticket": "4bd5a22a06f04c098e7b5018a8c2ec9d",
+  "task": "repo-cleanup 仓库架构整理与代码规范（worktree/repo-cleanup）",
+  "status": "implemented",
+  "summary": "按用户指令在 worktree/repo-cleanup（分支 codex/repo-cleanup，base b4a56a9）完成三项：①文档重组——备份/改历史归档_20260916前（git mv 原样保留）、归位 AGENTS 断链引用的 11 份文档、根级 10 个散落 md 分组为 评审与纪要/ 与 概念与说明/、删重复的 imp/；②仓库精简——ontology/ 991 个旧文件存储时代文件退出 git 跟踪（磁盘全保留，.gitignore 改 /ontology/；代码无运行时文件回退），.idea/ 退出跟踪，tracked 1758→855（-51%），AGENTS/README 同步；③代码规范——Python 基准 PEP8+Google Style（Ruff）149 项清零（含修复 2 个真 bug）；Vue 基准官方风格指南语义规则（eslint-plugin-vue+TS）152 项清零（含模板解析错误/重复键/computed 副作用各 1）。规范与已知债务写入 AGENTS「代码规范」节。",
+  "decisions": [
+    "ontology/ 退出跟踪而非删除：本地文件全保留作迁移备份，合并需用户在验收时确认",
+    "规范策略『语义规则严格、格式化不重排』：E501/E701/E702/E402/B023 与 Vue 模板格式化规则显式关闭并注明理由，类型安全由 vue-tsc 兜底",
+    "legacyGraph/ 保持 JS 本质不强制迁 TS",
+    "已知债务登记：no-mutating-props 69 处、TS any 约 1400 处、B023 35 处，专项治理另安排"
+  ],
+  "verification": [
+    "后端 tests/run.py all 48/49（唯一失败 pypdf 环境缺口，main 同样失败，与本改动无关）；quick 3/3",
+    "ruff check workbench tests = All checks passed",
+    "npm run lint 0 error；npm run build（vue-tsc 0 错误 + vite）通过",
+    "前端 6 个 mjs 套件全过（save_queue/http_layer/flow_model/business_rule_model/action_model/undo_history）",
+    "git diff --cached 核验：ontology 991 个 D 均为 --cached 退出跟踪磁盘完好；无 data/keys/worktree 误入"
+  ],
+  "next": [
+    "交 Codex 独立验收（提交 b8627db/d7f79ce/ec0c0aa）；验收通过停在待用户授权集成",
+    "ontology/ 退出跟踪与 .idea/ 清理请用户验收时确认；主工作台更新另行授权",
+    "已知债务专项治理另行安排"
+  ],
+  "references": [
+    "文档/需求/20260921_仓库架构整理与代码规范/开发计划.md",
+    "ruff.toml、frontend/eslint.config.js",
+    "提交 b8627db、d7f79ce、ec0c0aa"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-21T06:42:00.636182+00:00",
+  "sequence": 158,
+  "filename": "000158-a4025e4a17d0.json",
+  "record_hash": "304d08adae45248517189c9822a2accc9b2bbaf66d42b3c7f40bcdc5eafa1815",
+  "context_advanced": false
+}

@@ -281,11 +281,11 @@ def _exec_python(node, values, ctx):
     try:
         ast.parse(str(code or ''))
     except SyntaxError as exc:
-        raise NodeFailure(f'Python 代码语法无法解析（第 {exc.lineno} 行）', logs)
+        raise NodeFailure(f'Python 代码语法无法解析（第 {exc.lineno} 行）', logs) from exc
     try:
         provider = llm_providers.resolve(str(impl.get('providerId') or ''))
     except ValueError as exc:
-        raise NodeFailure(str(exc), logs)
+        raise NodeFailure(str(exc), logs) from exc
     started = time.monotonic()
     verdict = llm_client.evaluate_json({'code': code, 'inputs': values}, provider,
                                        timeout=max(1, _node_timeout(node) // 1000))
@@ -309,7 +309,7 @@ def _exec_calc(node, values, ctx):
         try:
             provider = llm_providers.resolve(str(impl.get('providerId') or ''))
         except ValueError as exc:
-            raise NodeFailure(str(exc), logs)
+            raise NodeFailure(str(exc), logs) from exc
         verdict = llm_client.evaluate_json({'instruction': impl.get('llmInstruction'), 'inputs': values},
                                            provider, timeout=max(1, _node_timeout(node) // 1000))
         trace = verdict.get('trace') or {}
@@ -379,7 +379,7 @@ def _exec_sql(node, values, ctx):
     try:
         import pymysql
     except ImportError:
-        raise NodeFailure('服务端未安装 PyMySQL（pip install PyMySQL），无法执行 SQL 节点', logs)
+        raise NodeFailure('服务端未安装 PyMySQL（pip install PyMySQL），无法执行 SQL 节点', logs) from None
     try:
         conn = pymysql.connect(host=cfg['host'], port=int(cfg['port']), user=cfg.get('username') or '',
                                password=secret, database=cfg.get('database') or None, charset='utf8mb4',
@@ -454,7 +454,7 @@ def _exec_redis(node, values, ctx):
     try:
         import redis
     except ImportError:
-        raise NodeFailure('服务端未安装 redis 驱动（pip install redis），无法执行 Redis 节点', logs)
+        raise NodeFailure('服务端未安装 redis 驱动（pip install redis），无法执行 Redis 节点', logs) from None
     try:
         client = redis.Redis(host=cfg['host'], port=int(cfg['port']), password=secret or None,
                              db=int(cfg.get('dbIndex') or 0), socket_connect_timeout=min(5, timeout_s),

@@ -264,7 +264,7 @@ def precheck_values(state, plan, entry_inputs, overrides):
             raise PlanError(422, f'节点「{req["nodeIdName"]}」的输入「{req["inputLabel"]}」'
                                  f'引用入口参数「{req["label"]}」，请提供该入口值')
 
-    index = {n['id']: n for n in state.get('nodes', []) if isinstance(n, dict)}
+    _index = {n['id']: n for n in state.get('nodes', []) if isinstance(n, dict)}
     resolved = {}
     for item in plan['externalInputs']:
         node_overrides = overrides.get(item['nodeId'], {}) if isinstance(overrides, dict) else {}

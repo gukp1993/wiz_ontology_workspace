@@ -8,10 +8,9 @@
 不调用会自行提交的 workspaces.create；这里直接走 storage.ontology_build 的
 事务内建资产函数（create_ontology_asset）。
 """
-from workbench import auth, storage
+from workbench import auth
 from workbench.ontology_build import ontology_adapter as adapter
 from workbench.ontology_build import protocol
-from workbench.ontology_build import tasks as task_domain
 from workbench.storage import engine as sto
 from workbench.storage import ontology_build as store
 
@@ -209,7 +208,7 @@ def prepare_payload(conn, task_id, batch_id=None):
             selected, _merge_aliases(conn, task_id, owner_id, batch['batch_id']))
     except adapter.AdapterError as exc:
         # 装配异常同样按 422 阻断清单上报（D09：绝不以裸 ValueError 形态漏成 400）
-        raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': str(exc)}])
+        raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': str(exc)}]) from exc
     issues = adapter.verify_structure(ontology, workflow)
     if issues:
         raise DeliveryBlocked([{'code': 'STRUCTURE_INVALID', 'message': text} for text in issues])

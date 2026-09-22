@@ -127,6 +127,7 @@ POST_ROUTES = {
     # 从物料自动构建本体（08 分册）：长任务一律返回 runId，后台执行不持锁
     '/api/build-task-create': build_routes.post_task_create,
     '/api/build-task-rename': build_routes.post_task_rename,
+    '/api/build-task-filter': build_routes.post_task_filter,
     '/api/build-task-delete': build_routes.post_task_delete,
     '/api/build-upload-init': build_routes.post_upload_init,
     '/api/build-upload-chunk': build_routes.post_upload_chunk,
@@ -314,6 +315,11 @@ class Handler(SimpleHTTPRequestHandler):
             user = self._resolve_user(path, free=path in AUTH_FREE_POST)
             auth.bind_request(user)
             if user is None and path not in AUTH_FREE_POST:
+                # 排空请求体：内核缓冲有未读入站数据时关 TCP 会发 RST，
+                # 客户端读响应会撞 ConnectionResetError（实测 1/3 概率偶发）。
+                _drain = int(self.headers.get('Content-Length', 0) or 0)
+                if 0 < _drain <= 2_000_000:
+                    self.rfile.read(_drain)
                 return self._unauthorized()
             length = int(self.headers.get('Content-Length', 0))
             if length > 2_000_000:
@@ -410,7 +416,7 @@ if __name__ == '__main__':
     try:
         storage.ensure_ready()
     except storage.StorageUnavailable as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from exc
     # WIZ_WORKBENCH_PORT 仅用于自动化测试并行实例；生产固定 18765。
     # 8765 保留给机器上其他服务（如 graph_recall_test_server），本工作台绝不经由该端口提供访问。
     port = int(os.environ.get('WIZ_WORKBENCH_PORT') or 18765)

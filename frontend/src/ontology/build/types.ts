@@ -26,13 +26,30 @@ export interface BuildTask {
   currentBatch: string
   /** 已交付本体的 id，未交付为 '' */
   deliveryOntologyId: string
+  /** 任务级过滤设置（08 §13 黑名单三层；'.' 前缀小写后缀；softExts=null=用默认软名单） */
+  filter: TaskFilterSpec
   createdAt: string
   updatedAt: string
 }
 
+/** 08 §13：任务级过滤设置（黑名单三层中的「可配置」部分；硬黑名单不受影响）。 */
+export interface TaskFilterSpec {
+  /** 用户后缀白名单：越过软名单与自定义追加，不越过硬黑名单 */
+  allowExts: string[]
+  /** 软名单整体覆盖；null = 用默认软名单 */
+  softExts: string[] | null
+  /** 任务级追加排除后缀 */
+  excludeExts: string[]
+}
+
 // ── §1.2 Material ──────────────────────────────────────────────────────────
-/** 材料识别类型（识别后填入；未识别时服务端可能给空串，展示走 materialKindLabel 兜底）。 */
-export type MaterialKind = 'code' | 'ddl' | 'docx' | 'pdf' | 'xlsx' | 'md' | 'zip' | 'other'
+/** 材料识别类型（识别后填入；未识别时服务端可能给空串，展示走 materialKindLabel 兜底）。
+ *  image 为 V2-2（G18）新增：位图 OCR / SVG 文本。
+ *  json/yaml/properties/csv/ini/toml 为结构化格式解析支持（需求说明_结构化格式解析支持_v1 §2/§5）新增的
+ *  六个专用解析器 kind；服务端可能给表外新值，展示一律走 materialKindLabel 兜底。 */
+export type MaterialKind =
+  | 'code' | 'ddl' | 'docx' | 'pdf' | 'xlsx' | 'md' | 'image' | 'zip' | 'other'
+  | 'json' | 'yaml' | 'properties' | 'csv' | 'ini' | 'toml'
 export type UploadState = 'open' | 'complete' | 'aborted'
 export type ParseState = 'pending' | 'running' | 'success' | 'partial' | 'failed' | 'excluded'
 
@@ -105,7 +122,14 @@ export type RunState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelle
 /** scan: retrieve/align；generate: retrieve/align/abstract/verify/adapt。 */
 export type RunStage = 'retrieve' | 'align' | 'abstract' | 'verify' | 'adapt'
 
-export interface RunProgress { done: number; total: number }
+export interface RunProgress {
+  done: number
+  total: number
+  /** 批次并发等待心跳（仅抽取阶段等待期间出现）：当前等待批号 / 未返回批数 / 已等待秒数 */
+  waitingPosition?: number
+  waitingCount?: number
+  waitedSeconds?: number
+}
 export interface RunUsage { calls: number; promptBytes: number; completionBytes: number; durationMs: number }
 export interface RunError { message: string; retryable: boolean }
 export interface RunBaseline {
@@ -133,8 +157,43 @@ export interface BuildRun {
   error: RunError | string | null
   usage: RunUsage
   batchId: string
+  /** V2-8（08 §1.5）：生成检查点摘要——失败入口「第 N 步失败（原因）[从该步重试]」的数据来源 */
+  checkpoint?: RunCheckpoint | null
   createdAt: string
   updatedAt: string
+}
+
+/** 检查点摘要（V2-8；不含 factId 明细）：generate 为批次/阶段检查点；
+ *  scan 携带本轮兜底消耗（G19 单任务累计限额的对账来源，08 §4.3）。 */
+export interface RunCheckpoint {
+  generate?: {
+    batchId: string
+    scopeRevision: number
+    materialRevision: number
+    /** 确定性阶段（筛选/对齐）产物是否已持久化（重试复用、不重算） */
+    planPersisted: boolean
+    modelFacts: number
+    relevant: number
+    related: number
+    excluded: number
+    batches: {
+      size: number
+      total: number
+      done: number[]
+      failed: { position: number; error: string }[]
+    }
+    /** 生成进度实时可观测：每批完成时随检查点追加的中文日志行（服务端上限 500 条，超限移除最早；
+     *  旧运行/扫描运行可能无此字段，前端按缺失=空处理）。 */
+    log?: string[]
+    /** 模型说明/管线注记（_note() 积累，随批次检查点透传；旧数据可能无此字段）。 */
+    notes?: string[]
+  }
+  scan?: {
+    materials: number
+    /** 本轮自身兜底消耗（跨运行求和 = 单任务累计，08 §4.3） */
+    fallbackFiles: number
+    fallbackBytes: number
+  }
 }
 
 // ── §1.8 Delivery ──────────────────────────────────────────────────────────
@@ -155,15 +214,40 @@ export interface BuildLimits {
   zipExpandedBytes: number
   zipMaxEntries: number
   parseTimeoutSeconds: number
+  /** V2-10（G25）：扫描解析并发度（默认 min(8, CPU)，env 可覆盖） */
+  parseConcurrency: number
 }
 export interface OcrCapability { available: boolean; reason: string }
 export interface BuildProviderRef { id: string; name: string; model: string }
+
+/** 08 §13：能力接口公开的黑名单枚举（硬层完整；软层为默认值，任务可覆盖）。 */
+export interface BlacklistInfo {
+  hard: { exts: string[]; dirs: string[]; note: string }
+  softDefaults: string[]
+}
+
+/** 解析器支持矩阵条目（08 §2.1 `parserMatrix`；需求 §5 的矩阵即本结构：
+ *  支持项（后缀/解析层/定位粒度/说明）与排除项（硬黑名单 .env*、软黑名单二进制格式）同列表呈现）。 */
+export interface ParserMatrixItem {
+  /** 适用后缀（含点，如 ['.json', '.jsonld']；页面以「、」拼接展示） */
+  exts: string[]
+  /** 支持方式 / 说明（如「专用（json）」「硬黑名单排除」） */
+  label: string
+  /** 定位粒度（如「JSON 路径 / 节点 @id」；排除项为「—」） */
+  locator: string
+  /** 备注（采样/降级等口径说明，可为空串） */
+  note: string
+}
 
 export interface BuildCapabilities {
   limits: BuildLimits
   ocr: OcrCapability
   /** 为 null 时范围对话/生成不可启动（422），页面必须引导先去配置模型 */
   provider: BuildProviderRef | null
+  /** 黑名单三层枚举（08 §13；2026-09-21 新增） */
+  blacklist?: BlacklistInfo
+  /** 解析器支持矩阵（08 §2.1 / 需求 §5；**可选**：未接线的旧后端不下发，页面整块隐藏） */
+  parserMatrix?: ParserMatrixItem[]
   parserVersion: string
   promptVersion: string
 }
@@ -248,8 +332,16 @@ export const KIND_LABELS: Record<MaterialKind, string> = {
   pdf: 'PDF',
   xlsx: 'Excel',
   md: 'Markdown',
+  image: '图片（OCR）',
   zip: '压缩包',
   other: '其他',
+  // 结构化格式（需求 §5 矩阵与标签表同步项）
+  json: 'JSON / JSON-LD',
+  yaml: 'YAML',
+  properties: 'Properties',
+  csv: 'CSV / TSV',
+  ini: 'INI / CONF',
+  toml: 'TOML',
 }
 
 /** 阶段中文名（scan 只用 retrieve/align，generate 用全部五项）。 */
@@ -284,8 +376,16 @@ export const KIND_LOCATOR_LABELS: Record<MaterialKind, string> = {
   pdf: '页码 / 原文区域',
   xlsx: '工作表 / 单元格',
   md: '标题路径 / 行号',
+  image: '整图 / 图片区域',
   zip: '压缩包内路径',
   other: '待识别',
+  // 结构化格式定位粒度（需求 §5 矩阵「定位粒度」列）
+  json: 'JSON 路径 / 节点 @id',
+  yaml: '键路径',
+  properties: '行号',
+  csv: '行号 + 列统计',
+  ini: '节 + 键路径',
+  toml: '键路径',
 }
 
 /** 徽章色调：ok=绿、warn=橙、bad=红、info=蓝（页面按自己的 scoped 样式渲染）。 */
@@ -482,4 +582,36 @@ export interface DeliveryResult {
   ontologyId: string
   taskId: string
   deliveredAt: string
+}
+
+// ── 08 §12.1 物料分组（顶层目录汇总） ─────────────────────────────────────
+export interface MaterialGroup {
+  /** 顶层目录名；空串 = 根目录文件（页面显示「(根目录)」） */
+  folder: string
+  total: number
+  byParseState: Record<string, number>
+  bytes: number
+}
+
+// ── 08 §13 黑名单三层：过滤事件与报告 ─────────────────────────────────────
+/** 被过滤文件事件（layer：hard=安全边界 / soft=默认软名单 / custom=任务追加）。 */
+export interface FilterEvent {
+  path: string
+  layer: 'hard' | 'soft' | 'custom'
+  rule: string
+  size: number
+}
+
+export interface FilterReport {
+  items: FilterEvent[]
+  counts: { hard: number; soft: number; custom: number; total: number }
+  truncated: boolean
+}
+
+/** GET /api/build-materials?view=filter 响应（08 §13.4）。 */
+export interface MaterialFilterView {
+  filter: TaskFilterSpec
+  softDefaults: string[]
+  report: FilterReport
+  revision: number
 }

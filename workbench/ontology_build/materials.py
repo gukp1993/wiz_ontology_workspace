@@ -11,7 +11,6 @@
 """
 import base64
 import binascii
-import fnmatch
 import hashlib
 import os
 import re
@@ -22,6 +21,7 @@ import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
+from workbench.ontology_build import blacklist
 from workbench.ontology_build import protocol
 from workbench.paths import DATA_ROOT
 from workbench.storage import engine as sto
@@ -37,6 +37,21 @@ class UploadError(ValueError):
 
     code = 'INVALID_ARGUMENT'
     status = 400
+
+
+class Blacklisted(UploadError):
+    """命中格式黑名单被过滤（HTTP 422 BLACKLISTED，V2-4/G20）。
+
+    `event` 携带过滤事件（path/layer/rule/size），路由层在独立短事务里登记进
+    任务过滤报告后再上抛——过滤必须可见，不许静默消失。
+    """
+
+    code = 'BLACKLISTED'
+    status = 422
+
+    def __init__(self, message, event=None):
+        super().__init__(message)
+        self.event = event if isinstance(event, dict) else None
 
 
 class UploadConflict(UploadError):
@@ -88,24 +103,16 @@ _DATA_SUBDIR = 'data'
 _LEN_KEY = '_len'
 CLEANUP_BATCH = 200
 ZIP_MAX_DEPTH = 2
-LARGE_BINARY_BYTES = 8 * 1024 * 1024
+# 大型未知二进制阈值与“已知文档/文本后缀”表收口到 blacklist 模块（V2-4）；
+# 这里保留别名，既有引用（含 D12 预算测试）不改动。
+LARGE_BINARY_BYTES = blacklist.LARGE_BINARY_BYTES
+_DOC_EXTS = blacklist.DOC_EXTS
+_TEXT_EXTS = blacklist.TEXT_EXTS
 _IO_BLOCK = 256 * 1024
 # D12 解压炸弹口径：单条目声明展开量超过该值且压缩比超过 ZIP_BOMB_RATIO 即整包拒绝
 # （小文件的天然高比例不算炸弹；1 MiB × 200:1 以下属正常文本/SQL 压缩）。
 ZIP_BOMB_RATIO_MIN_BYTES = 1024 * 1024
 ZIP_BOMB_RATIO = 200
-
-# ZIP 默认排除策略（相对材料自身路径匹配；命中的条目记入 excluded_paths，不进入材料清单）
-_EXCLUDE_DIRS = frozenset({'node_modules', '.git', 'dist', 'build', 'target', '__pycache__'})
-_EXCLUDE_GLOBS = ('*.min.js', '*.map', '*.lock', '.env*', '*.pem', '*.key', '*.p12', '*.jks',
-                  '*.jar', '*.war')
-_DOC_EXTS = frozenset({'docx', 'doc', 'pdf', 'xlsx', 'xls', 'pptx', 'ppt', 'md', 'markdown',
-                       'txt', 'csv', 'rtf'})
-_TEXT_EXTS = frozenset({'java', 'kt', 'kts', 'scala', 'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx',
-                        'vue', 'py', 'json', 'xml', 'yaml', 'yml', 'properties', 'gradle', 'sql',
-                        'go', 'rs', 'cs', 'php', 'rb', 'sh', 'html', 'htm', 'css', 'less', 'scss',
-                        'ini', 'cfg', 'conf', 'toml', 'rst', 'log', 'bat', 'cmd', 'ps1', 'proto',
-                        'graphql', 'hbs', 'ejs', 'jsp', 'ftl', 'tpl'})
 
 _WINDOWS_DRIVE = re.compile(r'^[A-Za-z]:')
 _SAFE_EXT = re.compile(r'^[a-z0-9]{1,8}$')
@@ -257,16 +264,48 @@ def _reconcile_open_uploads(conn, owner_user_id, task_id):
             _discard_upload(conn, row)
 
 
+def task_filter_spec(row):
+    """任务行 → blacklist.evaluate 可用的过滤设置（storage 视图已规范化）。"""
+    return store.filter_spec_view(row)
+
+
+def _filter_event(rel_path, verdict, size=0):
+    return {'path': str(rel_path or ''), 'layer': verdict['layer'], 'rule': verdict['rule'],
+            'size': int(size or 0)}
+
+
+def _reject_filtered(rel_path, verdict, size=0):
+    """命中黑名单 → 422 BLACKLISTED；软/自定义给出可调整提示，硬黑名单申明安全边界。"""
+    layer = verdict['layer']
+    if layer == blacklist.LAYER_HARD:
+        message = '文件「%s」被硬黑名单过滤：%s' % (rel_path, verdict['rule'])
+    elif layer == blacklist.LAYER_CUSTOM:
+        message = '文件「%s」被任务级追加排除后缀过滤：%s；可在任务过滤设置中调整后重试。' % (
+            rel_path, verdict['rule'])
+    else:
+        message = '文件「%s」被默认软黑名单过滤：%s；可在任务过滤设置中覆盖后重试。' % (
+            rel_path, verdict['rule'])
+    return Blacklisted(message, event=_filter_event(rel_path, verdict, size))
+
+
 def upload_init(conn, owner_user_id, task_id, rel_path, size):
-    """创建上传会话与临时文件；超限/路径非法直接拒绝，不留下任何登记。"""
+    """创建上传会话与临时文件；超限/路径非法/命中黑名单直接拒绝，不留下任何登记。
+
+    黑名单（V2-4）：判定优先级 硬 > 白名单 > 软 > 自定义追加；命中即 422 BLACKLISTED。
+    过滤事件由路由层在独立短事务登记进任务过滤报告（本事务随即回滚，事件不能写在这里）。
+    """
     owner_id = str(owner_user_id or '')
     safe_path = protocol.safe_rel_path(rel_path)
-    if store.require_task(conn, task_id, owner_id) is None:
+    row = store.require_task(conn, task_id, owner_id)
+    if row is None:
         raise UploadNotFound('生成任务不存在')
+    verdict = blacklist.evaluate(safe_path, spec=task_filter_spec(row))
+    if verdict['filtered']:
+        raise _reject_filtered(safe_path, verdict)
     try:
         total = int(size)
     except (TypeError, ValueError):
-        raise UploadError('文件大小无效')
+        raise UploadError('文件大小无效') from None
     if total <= 0:
         raise UploadError('文件大小无效')
     if total > protocol.FILE_BYTES:
@@ -290,7 +329,7 @@ def upload_init(conn, owner_user_id, task_id, rel_path, size):
         os.close(handle)
         os.chmod(str(part), 0o600)
     except OSError as exc:
-        raise UploadError('无法创建上传临时文件：%s' % exc)
+        raise UploadError('无法创建上传临时文件：%s' % exc) from exc
     return {'uploadId': upload_id, 'chunkBytes': protocol.CHUNK_BYTES,
             'maxChunks': _max_chunks(total), 'received': 0}
 
@@ -306,20 +345,20 @@ def _decode_chunk(data_b64):
         try:
             raw = data_b64.encode('ascii')
         except UnicodeEncodeError:
-            raise UploadError('分片数据不是合法 base64')
+            raise UploadError('分片数据不是合法 base64') from None
     else:
         raise UploadError('分片数据不是合法 base64')
     try:
         return base64.b64decode(raw, validate=True)
     except (binascii.Error, ValueError):
-        raise UploadError('分片数据不是合法 base64')
+        raise UploadError('分片数据不是合法 base64') from None
 
 
 def _chunk_index(index):
     try:
         value = int(index)
     except (TypeError, ValueError):
-        raise UploadError('分片序号无效')
+        raise UploadError('分片序号无效') from None
     if value < 0:
         raise UploadError('分片序号无效')
     return value
@@ -388,7 +427,7 @@ def upload_chunk(conn, owner_user_id, upload_id, index, chunk_hash, data_b64):
             out.seek(offset)
             out.write(data)
     except OSError as exc:
-        raise UploadError('分片写入失败：%s' % exc)
+        raise UploadError('分片写入失败：%s' % exc) from exc
     os.chmod(str(part), 0o600)
     chunks[str(position)] = actual
     lengths[str(position)] = len(data)
@@ -420,7 +459,7 @@ def upload_complete(conn, owner_user_id, upload_id, final_hash):
         digest = _sha256_file(part)
     except OSError as exc:
         _discard_upload(conn, row)
-        raise UploadError('材料临时文件不可读：%s' % exc)
+        raise UploadError('材料临时文件不可读：%s' % exc) from exc
     if digest != str(final_hash or '').strip().lower():
         # D07 口径：整体摘要与请求携带的 finalHash 不符，最可能是客户端算错了摘要——
         # 这是**可纠正的请求错误**（422 HASH_MISMATCH），不得销毁会话或临时文件，
@@ -443,7 +482,7 @@ def upload_complete(conn, owner_user_id, upload_id, final_hash):
             os.chmod(str(stored), 0o600)
         except OSError as exc:
             _remove_file(part)
-            raise UploadError('材料写入存储失败：%s' % exc)
+            raise UploadError('材料写入存储失败：%s' % exc) from exc
         blob_id = store.create_blob(conn, owner_id, task_id, rel_path, size, digest,
                                     '%s/%s' % (BLOB_SUBDIR, name))
     store.upload_chunks(conn, upload_id, owner_id, {}, received)
@@ -468,9 +507,10 @@ def _complete_zip(conn, row, part, digest):
         os.chmod(str(staged), 0o600)
     except OSError as exc:
         _remove_file(part)
-        raise UploadError('压缩包写入存储失败：%s' % exc)
+        raise UploadError('压缩包写入存储失败：%s' % exc) from exc
     try:
-        materials, excluded = expand_zip(conn, owner_id, row['task_id'], staged, row['rel_path'])
+        materials, excluded, filtered = expand_zip(conn, owner_id, row['task_id'], staged,
+                                                   row['rel_path'])
     except UploadError:
         _remove_file(staged)
         _discard_upload(conn, row)
@@ -482,6 +522,9 @@ def _complete_zip(conn, row, part, digest):
     payload = {'materials': materials}
     if excluded:
         payload['excludedPaths'] = excluded
+    if filtered:
+        # V2-4：被过滤条目的逐项命中规则（展开事件已在 expand_zip 内登记进任务过滤报告）
+        payload['filtered'] = filtered
     return payload
 
 
@@ -531,6 +574,49 @@ def material_blob_path(conn, owner_user_id, material_id):
 
 
 # --- ZIP 安全展开 -----------------------------------------------------------------
+
+def delete_task_blob_files(blob_paths):
+    """删除任务登记的 blob 文件（08 §12.2）：任何解析结果都必须落在 blob 目录内防逃逸。
+
+    登记形态兼容（G24 修复，两侧口径统一）：
+    * **生产/现行形态**：`ontology-build-blobs/<名>`（相对数据目录 data_dir，与
+      upload_complete/_register_extracted 的登记、material_blob_path 的读取同一口径）；
+    * **旧形态**：裸相对名（相对 blob 目录，历史行/早期测试夹具）。
+    两种形态都按候选基准解析，取「落在 blob 目录内且真实存在」者；找不到按 missing
+    计数（可能已被清理）。缺失静默；删除失败逐条记录不抛出——文件清理失败不回滚
+    数据库级联删除。返回 {deleted, missing, errors}。
+    """
+    base = blob_dir().resolve()
+    data_base = data_dir().resolve()
+    result = {'deleted': 0, 'missing': 0, 'errors': []}
+    for rel in blob_paths or []:
+        raw = str(rel or '').replace('\\', '/').strip()
+        if not raw:
+            result['missing'] += 1
+            continue
+        # 两种登记形态按序解析（都要求最终落在 blob 目录内，杜绝逃逸）：
+        #   data_base/raw → 生产形态 'ontology-build-blobs/<名>'（相对数据目录）；
+        #   base/raw      → 旧形态裸相对名（相对 blob 目录，历史行/早期夹具）。
+        target = None
+        for root in (data_base, base):
+            try:
+                resolved = (root / raw).resolve()
+                resolved.relative_to(base)
+            except (ValueError, OSError):
+                continue
+            if resolved.is_file():
+                target = resolved
+                break
+        if target is None:
+            result['missing'] += 1
+            continue
+        try:
+            target.unlink()
+            result['deleted'] += 1
+        except OSError as exc:
+            result['errors'].append('%s: %s' % (rel, exc))
+    return result
+
 
 def zip_bomb_guard(path):
     """打开 Office/压缩包前的低成本防爆检查（只读目录，不解压）。
@@ -595,21 +681,9 @@ def _reject_special_entry(info, name):
         raise ZipInvalid('压缩包包含符号链接或特殊文件条目：%s' % name)
 
 
-def _is_excluded(rel_path, size=0):
-    parts = [part.lower() for part in str(rel_path or '').split('/') if part]
-    if not parts:
-        return True
-    if any(part in _EXCLUDE_DIRS for part in parts):
-        return True
-    name = parts[-1]
-    for pattern in _EXCLUDE_GLOBS:
-        if fnmatch.fnmatch(name, pattern):
-            return True
-    if int(size or 0) > LARGE_BINARY_BYTES:
-        ext = name.rsplit('.', 1)[-1] if '.' in name else ''
-        if ext not in _DOC_EXTS and ext not in _TEXT_EXTS:
-            return True
-    return False
+def _is_excluded(rel_path, size=0, spec=None):
+    """三层黑名单判定（V2-4）：返回是否被过滤（命中规则见 blacklist.evaluate）。"""
+    return blacklist.evaluate(rel_path, spec=spec, size=size)['filtered']
 
 
 def _suffixed_path(rel_path, index):
@@ -661,9 +735,9 @@ def _write_member(archive, info, dest, expected, budget=None):
         _remove_file(dest)
         raise
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError, zlib.error, EOFError,
-            OSError) as exc:
+            OSError):
         _remove_file(dest)
-        raise ZipInvalid('压缩包条目解压失败：%s' % info.filename)
+        raise ZipInvalid('压缩包条目解压失败：%s' % info.filename) from None
     finally:
         if handle is not None:
             os.close(handle)
@@ -671,11 +745,12 @@ def _write_member(archive, info, dest, expected, budget=None):
     return written, digest.hexdigest()
 
 
-def _walk_zip(archive_path, prefix, staging, depth, budget, extracted, excluded, used):
+def _walk_zip(archive_path, prefix, staging, depth, budget, extracted, excluded, used,
+              spec=None, events=None):
     try:
         archive = zipfile.ZipFile(str(archive_path))
     except (zipfile.BadZipFile, OSError) as exc:
-        raise ZipInvalid('压缩包无法读取：%s' % exc)
+        raise ZipInvalid('压缩包无法读取：%s' % exc) from exc
     with archive:
         for info in archive.infolist():
             raw_name = str(info.filename or '')
@@ -688,8 +763,14 @@ def _walk_zip(archive_path, prefix, staging, depth, budget, extracted, excluded,
             _reject_special_entry(info, raw_name)
             inner = _member_rel_path(raw_name)
             size = int(info.file_size or 0)
-            if inner is None or _is_excluded(inner, size) or size > protocol.FILE_BYTES:
+            # V2-4：三层黑名单判定；命中条目连同 layer/rule 记入过滤事件（G20 可见），
+            # 不进入材料清单，也绝不静默消失。
+            verdict = blacklist.evaluate(inner or display, spec=spec, size=size) if inner else {
+                'filtered': True, 'layer': 'hard', 'rule': '压缩包条目路径非法', 'bypassed': False}
+            if inner is None or verdict['filtered'] or size > protocol.FILE_BYTES:
                 excluded.append(display)
+                if verdict['filtered'] and events is not None:
+                    events.append(_filter_event(inner or display, verdict, size))
                 continue
             try:
                 combined = protocol.safe_rel_path('%s/%s' % (prefix, inner))
@@ -708,10 +789,14 @@ def _walk_zip(archive_path, prefix, staging, depth, budget, extracted, excluded,
             if kind == 'zip':
                 if depth >= ZIP_MAX_DEPTH:
                     excluded.append(display)
+                    events.append(_filter_event(display, {
+                        'filtered': True, 'layer': 'hard',
+                        'rule': '嵌套归档深度超过上限 %d 层' % ZIP_MAX_DEPTH}, written))
                     _remove_file(staged)
                     continue
                 try:
-                    _walk_zip(staged, display, staging, depth + 1, budget, extracted, excluded, used)
+                    _walk_zip(staged, display, staging, depth + 1, budget, extracted, excluded,
+                              used, spec=spec, events=events)
                 finally:
                     _remove_file(staged)
                 continue
@@ -735,7 +820,7 @@ def _register_extracted(conn, owner_user_id, task_id, extracted, source_group):
                 os.chmod(str(dest), 0o600)
             except OSError as exc:
                 _remove_file(item['path'])
-                raise UploadError('解压文件写入存储失败：%s' % exc)
+                raise UploadError('解压文件写入存储失败：%s' % exc) from exc
             item['stored'] = dest
             blob_id = store.create_blob(conn, owner_user_id, task_id, item['rel_path'],
                                         item['size'], item['hash'],
@@ -755,8 +840,10 @@ def _rollback_extracted(extracted):
 def expand_zip(conn, owner_user_id, task_id, zip_path, rel_path):
     """安全展开 ZIP：逐条校验 → 解压到临时目录 → 逐份登记 blob + material。
 
-    返回 (materials, excluded_paths)。结构性不安全（绝对路径、..、符号链接、不可读）抛
-    ZipInvalid 并丢弃全部已解压内容，不登记半份材料。
+    返回 (materials, excluded_paths, filter_events)。结构性不安全（绝对路径、..、符号链接、
+    不可读）抛 ZipInvalid 并丢弃全部已解压内容，不登记半份材料。命中三层黑名单的条目
+    进 excluded_paths（字符串，兼容）并附 filter_events（layer/rule，G20），事件在同一
+    写事务内登记进任务过滤报告。
     """
     owner_id = str(owner_user_id or '')
     base_path = protocol.safe_rel_path(rel_path)
@@ -768,13 +855,16 @@ def expand_zip(conn, owner_user_id, task_id, zip_path, rel_path):
     try:
         source_group = _sha256_file(source)[:16]
     except OSError as exc:
-        raise UploadError('压缩包不可读：%s' % exc)
+        raise UploadError('压缩包不可读：%s' % exc) from exc
+    spec = task_filter_spec(store.require_task(conn, task_id, owner_id) or {})
     staging = _ensure_dir(temp_dir() / ('expand-' + sto.new_id()))
-    extracted, excluded, used = [], [], set()
+    extracted, excluded, used, events = [], [], set(), []
     budget = {'bytes': 0, 'entries': 0, 'real': 0}
     try:
-        _walk_zip(source, base_path, staging, 1, budget, extracted, excluded, used)
-        return _register_extracted(conn, owner_id, task_id, extracted, source_group), excluded
+        _walk_zip(source, base_path, staging, 1, budget, extracted, excluded, used,
+                  spec=spec, events=events)
+        store.append_filter_events(conn, task_id, owner_id, events)
+        return _register_extracted(conn, owner_id, task_id, extracted, source_group), excluded, events
     except BaseException:
         _rollback_extracted(extracted)
         raise

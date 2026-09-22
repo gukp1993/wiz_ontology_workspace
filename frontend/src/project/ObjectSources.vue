@@ -108,7 +108,7 @@ const dirty=computed(()=>{
   return false
 })
 const guard={isDirty:()=>dirty.value,discard:()=>closeEditor()}
-watch(editingOpen,open=>{emit('edit-state',open);open?formGuard?.register(guard):formGuard?.unregister(guard)})
+watch(editingOpen,open=>{emit('edit-state',open);if(open)formGuard?.register(guard);else formGuard?.unregister(guard)})
 onBeforeUnmount(()=>formGuard?.unregister(guard))
 function openIdentity(){
   identityDraft.value={mode:bindingIdentityOf(props.b),connection:String(props.b.connection||''),table:String(props.b.table||''),primary_key:String(props.b.primary_key||''),instances:registeredInstancesOf(props.b)}
