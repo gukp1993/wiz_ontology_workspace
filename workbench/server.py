@@ -312,6 +312,11 @@ class Handler(SimpleHTTPRequestHandler):
             user = self._resolve_user(path, free=path in AUTH_FREE_POST)
             auth.bind_request(user)
             if user is None and path not in AUTH_FREE_POST:
+                # 排空请求体：内核缓冲有未读入站数据时关 TCP 会发 RST，
+                # 客户端读响应会撞 ConnectionResetError（实测 1/3 概率偶发）。
+                _drain = int(self.headers.get('Content-Length', 0) or 0)
+                if 0 < _drain <= 2_000_000:
+                    self.rfile.read(_drain)
                 return self._unauthorized()
             length = int(self.headers.get('Content-Length', 0))
             if length > 2_000_000:
