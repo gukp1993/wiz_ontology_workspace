@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`c6aa16a1c05e0524`
+上下文版本：`d21a2afdc52afbab`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,80 +22,58 @@
 
 ## 最近交接（新 → 旧）
 
-### 20260920_从物料自动构建本体 需求说明v2 撰写 · zcode · 已确认决定
+### auto_build-五阶段方案审核 · codex · 已确认决定
 
-时间：2026-09-21T15:58:18.317292+00:00；记录：`.collaboration/entries/000186-6791663efcd5.json`
+时间：2026-09-22T06:13:40.153468+00:00；记录：`.collaboration/entries/000184-3abd0f203dc9.json`
 
-按用户指令把 2026-09-21 已确认的九项决定并入需求说明 v2，输出 文档/需求/20260920_从物料自动构建本体/需求说明_v2.md（15 节，含 §2 v2 变更记录 9 条，每条标注来源）。新增 §5.2-§5.5（上传续传/大文件夹引导/黑名单三层/解析三级分派）、§7.1 生成断点续跑、§11 级联删除（标注已上线）、G17-G24 验收条。待定项单独成节（URL 静态抽取、方法论 §7.2 候选增量），标注未拍板不作为承诺，并注明与 V2-8 重叠部分的边界。v1 文件未改动；纯文档交付，未改代码。
+五阶段职责可保留，建议修改后复审。确认跨批引用误合并、冲突默认纳入、同值事实去重丢失、拆批半失败判成功、非连续续跑漏回调。仅交付审核文档；未改原方案和业务代码，未合并或更新服务。
 
-- 决定：九项决定全部入 v2：①物料入口唯一（不做本地路径/CLI 导入）②图片/OCR（pytesseract，扫描版 PDF 升级正式支持）③解析三级分派（专用解析器→LLM 兜底 quality=low/llm-fallback/inferred→文本线索）④黑名单三层（硬>白名单>软>自定义追加）⑤上传断点续传（同 index 同 hash 幂等）；⑥大文件夹软引导（后缀过滤后计数，默认 20 可配置，不硬阻断）⑦单物料扫描重试（只重解析该文件）/排除（excluded）⑧生成断点续跑（批次检查点+阶段检查点+失败入口，重试沿用同一 scope revision）⑨任务删除级联物理清理（输入任务名确认，本体草稿保留，已上线）；LLM 兜底解析产物按弱证据处理：默认暂缓进候选清单，转拟纳入需补充确认依据（§9.1）；兜底请求声明材料内容不是指令；待定项保持隔离：URL 静态抽取（方案已评估待用户决定）与方法论 §7.2 候选增量（接地/逐类分批/频率门等）均标注未拍板，不写入验收条件
-- 验证：自查：V2-1…V2-9 在 §2 变更记录齐全且正文逐条落位（grep 计数通过）；15 个章节，主题对齐 v1 编号体系；自查：待定项仅出现在 §1 边界声明与 §14.1，均带未拍板/不作为承诺标记，未混入 G17-G24 验收条件；长度 36.9KB（v1 22.5KB），新增内容与九条决定一一对应；未修改 v1 与任何其他文件
-- 下一步：v2 交 Codex/用户评审；待定项（URL 抽取、方法论候选增量）待用户逐项拍板后才可入验收范围；实施与验收状态以开发计划与验收报告为准，本文不重复声明
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/需求说明_v2.md；文档/需求/20260920_从物料自动构建本体/需求说明.md（v1 未改动）；文档/需求/20260920_从物料自动构建本体/自动化构建本体方法论_20260921.md §7.2
+- 验证：源码基线578acd7d47e2e457757e088110f2582ae261cbb0。；纯函数合成数据复现引用误合并、冲突include、同值去重丢失；Future替身复现非连续续跑漏回调及429不重排。；拆批部分失败由控制流核实。未访问真实数据或外部模型，未做完整回归或浏览器验收。
+- 下一步：先修订方案与正确性复验场景；开发集成按后续授权。
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/五阶段方案审核意见_Codex_20260922.md
+
+### retrieve筛选优化-剖析与基准基建（codex/build-progress-log） · zcode · 已实施，待验收
+
+时间：2026-09-22T04:35:04.133748+00:00；记录：`.collaboration/entries/000183-29b8b3b3c3ef.json`
+
+R1/R3/R5/R7 剖析与基建交付：①新增 tests/retrieve_fixture.py（生产对齐合成夹具，默认 276k 条≈26 条/物料、四类 kind、五档长度、PRIMARY_SCOPE 弱词 85+hints 14 对齐 P2 扫描口径；纯标准库确定性，ruff 通过，不 import workbench）；②剖析报告 retrieve优化剖析报告_v1.md：基线=3dc51dc 快照（git show 导出仓库外加载，未改任何仓库文件），实测+外推——基线 build_index 占总耗时 96.7-98.8% 且呈幂指数≈2.0-2.4 膨胀（token 桶 fact_id not in bucket 线性查重随桶长线性增长），276k 外推 40-60 分钟与生产实测 40 分钟同量级吻合；优化后(retrieval.py@964493a) 276k 实测 45.29s（R3≤5min 达成）、峰值 RSS 919.6MB、texts 282.6MB 驻留未变（O1 未实施）。select 基线与优化版持平（合并正则≈逐词 in）；意外热点=依赖扩展全桶扫描二次项（select 13%→42% 随规模升）。③基准脚本 tests/benchmark_retrieve.py 已由实施线先期提交（d6ed223），本轮按写入归属未覆盖；发现其 --mode profile 空表缺陷（pstats 行带缩进致 startswith('ncalls') 恒假）与 --concurrency 占位缺口，留给脚本 owner。
+
+- 决定：不覆盖在途线已提交的 tests/benchmark_retrieve.py 与等价金样（owner 归属）；剖析基线按需求锁定 3dc51dc 快照而非测量时 HEAD（HEAD 已前移但 retrieval.py 未再变，git diff 核实）；夹具 scope include 采用生产口吻长尾句（弱 gram 必须落在 include——select 第三循环只扫 include 弱词+hints，goal/relations 弱词被基线丢弃）；初轮矩阵部分 wall 点受并发残留干扰已识别，引用数字均经空机复测；RSS/profile 占比对争用不敏感沿用原矩阵
+- 验证：ruff check tests/retrieve_fixture.py 通过（含 E4/E7/E9/F/B）；夹具自检：同 seed 确定性、分批==整建、分布符合设计（3000 条）；三方等价哨兵：inst==base 逐字节一致（计时副本可信）、head==base selection 逐字节一致（3 组 scope×2000 条）、head tokens 桶为空；关键 wall 点空机复测：base 20k index 9.1s（原 22.5s 判为干扰剔除）、base 40k 47.0s 双跑、head 276k 45.29s；幂律拟合 6 点：p≈2.01（残差包络 28-60 分钟区间）
+- 下一步：脚本 owner：benchmark_retrieve.py profile 空表一行修复 + --concurrency 占位（V2-10 复用）；O1 单遍融合未实施——报告 §3.4/§6.4 已留对照基线（texts 282.6MB 驻留、双遍）；依赖扩展二次项（select 42.7s 中约半）为 O0-O3 未覆盖的后续算法轮次候选；剖析脚本现居 /tmp/prof（仓库外），是否入库由集成负责人/用户决定
+- 依据/文档：worktree/build-governance/tests/retrieve_fixture.py；文档/需求/20260920_从物料自动构建本体/retrieve优化剖析报告_v1.md；worktree/build-governance/tests/benchmark_retrieve.py（在途线 d6ed223，未改动）
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
-### 三实例构建任务物理删除完成 + 生成失败诊断 + 文档原型并行重做中 · zcode · 已实施，待验收
+### ontology-build-retrieve-optimize（retrieve 算法优化，worktree/build-governance） · zcode · 已实施，待验收
 
-时间：2026-09-21T15:55:31.998810+00:00；记录：`.collaboration/entries/000185-b16c4c614c3c.json`
+时间：2026-09-22T03:32:02.816815+00:00；记录：`.collaboration/entries/000182-ba6ddcc2eb3a.json`
 
-①按用户指令删除全部构建任务与物料文件：18881 三任务（测试/创智源储能生成实测/储能jsonId生成实测）走新版级联API（创智源10819物料/276256事实/4974blob），另清6137个孤儿blob文件；ui_fix 两任务（测试+测试2）与 main 一任务（测试）因旧代码无物理purge，用直接SQL按12表级联+磁盘blob文件删除（main删58物料/4024事实/57blob）。终态三实例均0任务0blob文件。main库已先备份至 data/workbench-before-build-task-purge-20260921.sqlite3(11.4MB)。②顺带诊断用户报的「测试(测试2)抽象慢+报错」：run 07:36起07:52败，stage=abstract，error=LLM调用失败无法连接接口(超时或网络不可达)，16分钟为超时重试耗时；且run已failed但任务状态卡在「生成中」未回退——状态机缺陷，佐证「生成断点续跑」需求。③两个后台子代理并行撰写 需求说明_v2.md 与 交互原型_v2.html（当前工作台风格），完成后验收、提交。
+retrieve 优化 O0/O2/O3 实现完成（协调者并行拆分后我的范围）：O0 build_index 增 with_tokens=False（默认跳过 tokens 死工作，键恒存在空 dict）；O2 四词表合并正则（re.escape+交替）单趟命中探测，展示词按原词表顺序原 term-in-text 判定经 _hits 复算（S1 边界：不用 findall 拼 reasons）；O3 定级早停。调用点零改动（pipeline.run_generate 不变即生效）。等价金样 15/15 逐字节一致（内嵌 3dc51dc 基线快照），全量回归 250/250×2 + 全部相关套件绿。O1 单遍融合按协调指示挂起，待并行剖析 agent 的归因报告（文本驻留 vs 子串扫描占比）决策；texts 共享无重复构建已由金样断言 12 确认。范围说明：R1 剖析/R3 性能/R5 内存数字归并行专项 agent；原派发的 200k 基线跑批已按协调意图中途停止（避免同机双份跑批互扰）。
 
-- 决定：删除授权来自用户本轮明确指令（含真实数据的创智源/jsonId任务一并物理删除）；main/ui_fix 旧代码无purge，采用直接SQL按已验证的12表清单级联+磁盘blob清理，main先备份
-- 验证：18881 任务列表空；三实例 wb_build_tasks=0；三实例 ontology-build-blobs 目录均空；18765 测试任务 run 错误原文已留存本记录：LLM调用失败无法连接接口(超时或网络不可达), stage=abstract；main 预备份存在且完整(11.4MB)
-- 下一步：等两个子代理交付 v2 文档与原型，验收后提交；「run失败但任务状态卡生成中」的状态回退缺陷列入待修（可走 ui_fix）
-- 依据/文档：/tmp/purge_tasks.py；data/workbench-before-build-task-purge-20260921.sqlite3
+- 决定：合并正则仅作早停探测，展示词一律 _hits 原序复算（S1：findall 非重叠匹配与逐词成员判定在重叠词上不等价）；O1 挂起而非实施：等并行剖析归因数据；texts 共享无重复构建的核对部分已完成（金样断言）；全部实现收在 retrieval.py 内部 + 新增测试/基准文件，调用点与 pipeline.py/protocol.py 零改动
+- 验证：tests/test_retrieve_equivalence.py 15/15：手构造 18 条×8 组 scope + 合成 8000×3 组 scope，selection（三列表含顺序+reasons 逐字+counts）json sort_keys 逐字节一致；O0 断言（默认无 tokens/显式恢复/桶结构与 searchable_text 同基线）；tests/test_ontology_build.py 250/250（连续 2 次）；parsers 95/95、struct_parsers 143/143、parser_wiring 97/97、struct_e2e 87/87、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；ruff 全过；V2-8 复用探针桩（test_ontology_build:1377-1398）无需变更：未新增检索入口（S3 满足）；基准脚本 tests/benchmark_retrieve.py 入库（bench/profile 两模式，RETRIEVE_BENCH_RESULT 可读输出）；R1/R3/R5 数字归并行 agent
+- 下一步：待并行剖析 agent 交付 R1 归因报告后决策 O1 实施或降级（协调者转发）；R3 性能目标（≤5 分钟）与 R5 内存水位由并行 agent 数字补录开发计划；分支归属说明供协调者知晓：retrieve 实现本体经由共享检出被并行线捆包提交为 964493a（retrieval.py 与我工作区实现逐字节一致，已核对）；开发计划记录原落 build-progress-log（cb64855），已以 plumbing 快进补录 build-governance（78cf7df，不影响共享检出）；金样/基准脚本 d6ed223 两分支皆有
+- 依据/文档：codex/build-governance：78cf7df（开发计划记录）/964493a（实现本体，retrieval.py 含我的实现）/d6ed223（金样+基准脚本）；codex/build-progress-log：cb64855（同一开发计划变更，与 78cf7df 内容一致）；workbench/ontology_build/retrieval.py、tests/test_retrieve_equivalence.py、tests/benchmark_retrieve.py
 
-### 生成阶段失败支持单步重新处理需求（讨论） · zcode · 已确认决定
+### build-governance 生成进度实时可观测·前端（F1/F2/F3） · zcode · 已实施，待验收
 
-时间：2026-09-21T15:39:34.155789+00:00；记录：`.collaboration/entries/000184-5639d6f17685.json`
+时间：2026-09-22T03:27:44.998585+00:00；记录：`.collaboration/entries/000181-c16847392deb.json`
 
-用户提出：生成阶段某一步失败需支持该步重新处理。评估：方向正确，是方法论§7缺口④的用户版细化。现状：run级resume（attempt+build-run-resume）已存在，但粒度待核（jsonId实测attempt2仍死在同一批，无法区分是全量重跑还是检查点正常）；已知痛点=一批失败整run死。设计三层粒度：①批次级——失败批标记，重试只跑失败批，成功批候选保留；②阶段级——五子阶段结果落检查点，retrieve/align为确定性产物可持久化复用（27.6万事实retrieve实测40分钟，重跑代价高），LLM失败重跑应从abstract起跳不重算确定性阶段；③UI——生成页失败时显示「第N步失败[从该步重试]」而非只有重新生成。边界：重试沿用同一范围基线（scope revision），改范围仍是重新生成。与已提候选「批次级失败降级」合并为一条增量：生成断点续跑（批次检查点+阶段检查点+失败重试入口）。契约冻结前需核对runner的resume粒度实现细节。
+进度页新增批次状态行（✓批N/✗批N：原因）与可折叠生成日志区（checkpoint.generate.log+notes，默认展开、折叠显最新一条、nextTick 自动滚底、上滚暂停吸附、空数据不渲染）；types.ts RunCheckpoint.generate 增可选 log/notes。仅改 BuildProgressPage.vue 与 types.ts 两文件，未动任何 .py 与其它 .vue，未提交 git。
 
-- 决定：生成阶段失败支持单步重试（用户 2026-09-21 提出），与批次级失败降级合并为「生成断点续跑」增量候选，方案=批次检查点+阶段检查点+失败重试入口
-- 下一步：契约冻结前核对 runner.py 的 resume 实现粒度（批次是否已检查点）；待用户恢复文档后与其他增量一并冻结
-- 依据/文档：workbench/ontology_build/runner.py；文档/需求/20260920_从物料自动构建本体/自动化构建本体方法论_20260921.md §7.2
+- 验证：cd frontend && npx vue-tsc --noEmit -p tsconfig.json → 0 错误；cd frontend && npm run build → 成功（19.1s，仅既有 chunk 警告）；node --import ./tests/ts_hooks.mjs tests/ontology_build_frontend.test.mjs → 通过 exit 0；node --import ./tests/ts_hooks.mjs tests/ontology_build_review_edit.test.mjs → 19/19 通过 exit 0
+- 下一步：等后端 checkpoint.generate.log/notes 接线后浏览器联调真实数据；Codex 独立验收
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/需求说明_生成进度实时可观测_v1.md（主仓库未入本分支）
 
-### 文件夹超20文件分批/zip引导需求（讨论） · zcode · 已确认决定
+### build-governance V2-10 解析并发（G25）测试agent复测 第二轮 · zcode · 已验证
 
-时间：2026-09-21T15:38:23.862392+00:00；记录：`.collaboration/entries/000183-c1162fb6ed3b.json`
+时间：2026-09-22T02:06:43.784899+00:00；记录：`.collaboration/entries/000180-7984298bd4b5.json`
 
-用户提出：文件夹超过20个文件时引导分批上传或压缩zip上传。本侧评估与建议：纯前端改动（选中文件夹时文件数已知，BuildMaterialsPage 上传区），实现为软引导弹层——命中阈值时给出两个主选项「压缩为 zip 上传（推荐）」「仍要直接上传」，不硬阻断；计数以「后缀过滤后」为准（与已上线的过滤输入联动，选中500过滤后18不提示）；阈值20作默认常量可配置。与断点续传、单物料重试（已存在）同属物料页体验增量。待恢复文档后与已拍板三项（OCR/LLM兜底/黑名单）一并落契约。
+V2-10 整改复测通过：三项整改全部闭合，无新问题。方式=/tmp 新导出树（3dc51dc），未触碰工作区他人改动。D：3dc51dc 恰 3 文件无夹带、README 仅 +1 行；修复=future.result() except 链补 except Exception → _scan_write_pool_failure 与超时同口径；注释已如实化。R1 独立复测 13/13：路径A RuntimeError、路径B base.parse 层返回 None 触发 AttributeError、路径C 我新增超长消息边界——均 run succeeded、崩溃文件 failed+原因、事实清空、其余 success。R2 白盒 12/12（上轮唯一失败的异常隔离已 PASS；G25b 峰值4/6.23→2.42s、env 7 形态；G25c 迟到时序 timeout@1.01 worker_done@3.01 后 facts 不变；G25d cancelled 保留+重扫 reused=2；G25e write_tx 全来自 build-run-*、解析线程 0 写）；G25a 补测内容+rowid 物理序一致。R3 回归：test_ontology_build 前两次 47/48 遇偶发 RST、后两次 250/250；parsers 95/95、purge 17/17、storage 60/60、runner 34/34、finish_guard 27/27、vue-tsc 0。R5 支持预存定性：双树同率探针（1200 请求×2）旧 21.5% vs 新 20.2%；机制=未登录 POST 401 早返回 57.3% RST vs 已登录 POST 0% vs 未登录 GET 0%。报告 /tmp/v2_test_report_v2_10.md 第二轮章节。
 
-- 决定：文件夹>20文件引导分批或zip上传（用户 2026-09-21 提出）；实现取软引导弹层+过滤后计数+阈值可配，待用户如无异议按此落契约
-- 下一步：待恢复文档后统一冻结：已拍板三项+断点续传+本条引导
-- 依据/文档：frontend/src/ontology/build/BuildMaterialsPage.vue
-
-### 三项解析增量方向拍板 + URL 抽取可行性讨论（用户指令：先不更新文档） · zcode · 已确认决定
-
-时间：2026-09-21T15:30:03.098239+00:00；记录：`.collaboration/entries/000182-8d2d647b72fe.json`
-
-用户拍板三项按本侧方向：①图片/OCR 支持（pytesseract，未配置/失败逐页报告）；②解析器优先+LLM兜底三级分派（专用解析器→LLM兜底仅文本类且quality=low+inferred+失败回退文本线索→文本线索）；③格式黑名单三层（硬黑名单安全不可改/默认软黑名单任务级可覆盖/自定义追加，优先级硬>白名单>软>追加，被过滤文件扫描报告可见）。用户同时指示：先不更新文档（方法论§7.2与契约草案暂停），先讨论。新议题：URL内容抽取——已答：可行，推荐第一版=静态URL单页按需抓取（fetcher+SSRF防护+复用解析管线+内容照常快照落blob，与「必须上传服务端」决策不冲突，URL是第二入口非替代）；JS渲染页第一版不支持如实报告；不爬站；微信公众号/登录墙如实报不支持。文档更新待用户恢复指令。
-
-- 决定：图片/OCR、LLM兜底三级分派、三层黑名单三项方向获用户拍板（2026-09-21）；文档更新（方法论§7.2/契约草案）按用户指令暂停，待恢复
-- 下一步：URL 抽取是否纳入候选待用户表态；文档更新与契约冻结等用户恢复指令后一并做
-- 依据/文档：workbench/ontology_build/parsers/zipguard.py；文档/需求/20260920_从物料自动构建本体/需求说明.md §4
-
-### 物料入口决策：维持上传服务端唯一通道（用户拍板） · zcode · 已确认决定
-
-时间：2026-09-21T15:26:53.956903+00:00；记录：`.collaboration/entries/000181-6c83449d7133.json`
-
-用户确认：物料入口维持「必须上传服务端」唯一通道，不做本地路径导入/CLI 导入。保留理由（本轮讨论已陈述）：blob 快照使任务与源目录解耦（内容哈希复用/断言双基线/证据可复现依赖快照）、安全边界简单（无文件系统路径暴露面）。备选将来若上传体验成痛点，可考虑优化上传通道本身（并发分片/二进制 body），当前不做。本轮讨论线决策状态小结：①图片/OCR 支持（pytesseract 方案）方向已议待正式拍板；②解析器+LLM兜底三级分派、格式黑名单两层方案已评估待拍板；③本地路径导入已拍板不做。
-
-- 决定：物料入口维持上传服务端唯一通道（用户 2026-09-21 拍板），不做本地路径导入；上传通道优化（并发分片等）仅为将来备选，当前不实施
-- 下一步：待用户对图片OCR支持、LLM兜底、黑名单三项候选逐项拍板后立契约
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/需求说明.md §4.1
-
-### 真实模型两轮生成实测跑通（用户素材）+ MAX_TOKENS 修正 · zcode · 已实施，待验收
-
-时间：2026-09-21T15:20:54.330657+00:00；记录：`.collaboration/entries/000180-accee8fe9e57.json`
-
-按用户指令完成真实模型实测：chuangzhiyuan2.zip（177MB）经限额放宽后 API 全链路上传/扫描（10819 份解析成功、27.6 万事实），储能范围确认后真实 MiniMax-M3 生成 88 个候选（对象 19/属性 24/链接 3/动作 20）；jsonId 物料实测产出 101 个候选。两轮预检均正确拦截依赖问题（链接端点未抽出/属性宿主暂缓）——这正是评审页的人工处理步骤。修复 MAX_TOKENS 4000→16000（推理模型思考预算）。18881 已重启加载三项新功能。
-
-- 决定：MAX_TOKENS 4000→16000：MiniMax-M3 思考 token 计入输出预算，抽取类结构化输出 4000 必然截断（真实实测坐实），已在工作树分支修复并提交 425a28d。；检索规模瓶颈实测：27.6 万事实的范围筛选纯 Python 约 40 分钟（CPU 满载）——作为规模校准专项的首个数据点记录，本轮不做优化。
-- 验证：v2 驱动日志（call_00bedb3f…）：jsonId 13/13 批完成 101 候选；创智源 25/25 批 1000 facts 完成 88 候选（对象 19/属性 24/链接 3/动作 20）。；重启后 18881 实测：分组接口返回 1 组 10819 份；admin/admin 登录 200；新前端（过滤/分组/停止）已随构建部署。；工作树回归：MAX_TOKENS 修改后 test_ontology_build 47/48（1 失败为已知 pypdf/连接重置环境缺口，复跑通过）。
-- 下一步：用户在 18881 评审页处理两轮实测的依赖问题（纳入缺失对象或暂缓关联项）后即可交付；评审页展示 88+101 个候选的字段级证据。；三项新功能（后缀过滤/分组浏览/停止与删除级联）已随重启生效，用户可直接使用。；真实模型质量与检索性能数据点已登记开发计划 §11，供规模校准专项使用。
-- 依据/文档：提交：425a28d（MAX_TOKENS）、f0b3eb6（开发计划登记）；分支 codex/build-governance；实测任务：创智源储能生成实测（88 候选）、储能jsonId生成实测（101 候选）均在 18881；开发计划 §11（真实模型实测记录与发现）
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+- 验证：R1 独立复测 13/13：路径A RuntimeError / 路径B base.parse 返回 None 触发 AttributeError / 路径C 超长消息(800字含换行) —— run 均 succeeded、崩溃文件 failed+原因含类名、factCount=0、其余 success；R2 白盒 12/12：G25b 峰值并发4 且 6.23→2.42s、env 7 形态；G25c 超时+迟到丢弃时序证据；G25d 取消保留+重扫 reused=2；G25e write_tx 25 次全来自 build-run-*、build-parse-* 0 次；G25a 补测：并发 1 vs 4，17 条事实内容 + rowid 物理插入序逐元素一致；回归：test_ontology_build 250/250（第3、4次；前两次遇偶发 RST 47/48）、parsers 95/95、purge 17/17、storage_contract 60/60、runner_isolation 34/34、finish_guard 27/27、vue-tsc exit 0；R5 双树探针（1200 请求×2 树）：旧树 RST 21.5% vs 新树 20.2%；机制：未登录 POST 401 早返回 57.3% RST、已登录 POST 0%、未登录 GET 0%
+- 下一步：测试通过，待用户明确授权后由集成负责人集成合并 main（本轮验收基线 3dc51dc；区间含另一任务线 c55d94a/361df10 的已提交内容，集成时按其独立验收结论处理）；遗留建议（不阻塞、非 V2-10 范围）：未登录 POST 早返回分支的 ConnectionResetError（server.py do_POST 401 先于读 body），建议单独排期修复——早返回分支可 close=True 或先丢弃 body
+- 依据/文档：/tmp/v2_test_report_v2_10.md（第二轮章节）；worktree build-governance@3dc51dc（pipeline.py +51/−4、tests +73、README +1）；workbench/ontology_build/pipeline.py:499-505（except Exception 隔离）、:521-547（_scan_write_pool_failure/_pool_failure_message）；workbench/server.py do_POST 鉴权段（RST 机制证据）
 
 ### 方法论 v1.1 修订：并入 Palantir 指导 + §7 重写为代码事实对照 · zcode · 已实施，待验收
 
@@ -106,6 +84,17 @@
 - 验证：grep 校验文档标题结构完整（0-7章+附录，无断节）；4.7 编号瑕疵已修正；§7.1 九行对照全部依据上轮已核实代码事实（含 llm.py:43-45/414-423、alignment.py:12-13 行号）；候选增量均标待拍板；7.3 边界声明与限制令核对一致，未新增白名单议题
 - 下一步：候选增量八项待用户逐项拍板后才进需求线排期；P0 三项与生成实测失败根因直接相关，拍板后可与三项管理增量同分支排期
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/自动化构建本体方法论_20260921.md；https://www.palantir.com/docs/foundry/ontology/ontology-best-practices/
+
+### ontology-build-v2-10-r2（V2-10 测试第一轮整改，worktree/build-governance） · zcode · 已实施，待验收
+
+时间：2026-09-22T01:58:40.631818+00:00；记录：`.collaboration/entries/000179-c93d4abcce14.json`
+
+测试第一轮 3 项（1 严重+2 一般）全部修复，单一提交 3dc51dc：严重#1 _collect_pool_result.future.result() 超时分支之外补 except Exception（不含 BaseException）——worker 内异常（注入失败、适配器契约外返回值在后处理段触发的 AttributeError）转该文件 failed+异常摘要+清空事实（与超时同口径），继续收集下一文件、不再杀死整个 run（新增 _scan_write_pool_failure/_pool_failure_message）；同提交把「0.5s 短片边界取消即时生效」注释改为如实描述（0.5s 轮询只保证主线程及时回到取消检查点，实际取消生效时间由当前文件解析速度决定，最坏 ≤120s）。一般#2 README 变更记录补 V2-10 一行（git diff --cached 复核仅 1 行新增）。测试新增 6 项断言覆盖两条复现路径（RuntimeError 注入 + 猴补 REGISTRY 适配器返回 None 触发 parse_material 后处理 AttributeError，未改 parsers 源文件），均断言 run succeeded、崩溃文件 failed 且原因含异常类名、事实清空、其余文件 success。
+
+- 决定：异常隔离在 pipeline 侧实现（parsers/__init__.py 属另一任务线，未触碰）；落库口径与超时路径一致（failed + 清空既有事实 + failedSegments 记异常类名）；未夹带其他改动：偶发 ECONNRESET 属基线既有缺陷（探针量化见 verification），本轮仅报告不修改以守「不夹带」纪律
+- 验证：tests/test_ontology_build.py 250/250（连续 2 次全绿 v210_r1/r2 + cr_2/cr_3 共 4 次；本轮共 7 次运行）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；偶发失败定性（预存缺陷，非本轮引入）：约 1/3 运行在「未登录 POST」分支（main() 第 2262 行）报 ConnectionResetError。机制：server.py:313 鉴权门在未登录时不读取请求体即返回 401 并关连接，客户端读响应体时撞 OS 级 RST。定向探针（200 轮未登录 POST，两树同机对比）：当前树 60/200 ECONNRESET、基线树 c482547 66/200（同为 ~30%）——同量级；另有 V2-10 之前 R6 轮日志 /tmp/obt.log 同址复现佐证；vue-tsc 0 错误、npm run build 通过（本轮前端零改动）；ruff 改动文件全过
+- 下一步：待测试 agent 第二轮复验（G25c 两条复现路径 + README 行）；建请协调者裁定：偶发 ECONNRESET 是否安排单独修复（建议方案：测试客户端对「未登录 401」响应体读取失败容忍为重试一次，或服务端在 401 前 drain 请求体——影响面小但均属本轮范围外，未擅自实施）
+- 依据/文档：worktree/build-governance 分支 codex/build-governance：3dc51dc（本轮单一提交）；workbench/ontology_build/pipeline.py _collect_pool_result/_scan_write_pool_failure；探针脚本 /tmp/rst_probe.py（临时，未入库）
 
 ### 创建 ui_fix 开发 worktree 并登记隔离环境 · codex · 已确认决定
 
@@ -118,6 +107,27 @@
 - 下一步：等用户下达 ui_fix 的具体修复范围与任务；开发前在 worktree/ui_fix 内准备依赖并启动 18882 实例。；若修复涉及前端，需先 ./start.sh setup 或建分支 venv，并 npm ci && npm run build 后由分支后端托管自身 dist。；集成合并与清理仍需用户明确指令；本环境含真实数据副本，删除前必须经用户确认。
 - 依据/文档：/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/ui_fix；.git/workbench-tasks/ui_fix.json；worktree/ui_fix/.runtime/task.env
 
+### build-governance V2-10 解析并发（G25）测试agent独立验收 第一轮 · zcode · 受阻
+
+时间：2026-09-22T01:49:11.197507+00:00；记录：`.collaboration/entries/000178-bd63e5fd19ea.json`
+
+V2-10（G25 a-f）独立验收完成，结论不通过（1 严重）。在 /tmp/v2_10_verify 干净导出树（e03257d）内验收，未触碰工作区他人未提交改动。G25a 符合（rowid 物理序补验顺序维度，内容与顺序双一致）；G25b 符合（峰值并发4、6.04→2.42s、env 7 形态回退、实例 1/8/回退8）；G25d 符合（取消保留已完成+迟到不补写+重扫 reused=2；cb65d4f 修复生效 reused=5/parsed=1）；G25e 符合（0 锁错误；写事务全来自 build-run-*，解析线程 0 写）；G25f 符合（serial 3.44/3.98 vs parallel 4.05/4.08；CPU 竞争 5.60/6.11 佐证 13.67 离群成因；纯解析仅占 3%，GIL+落库串行致小文件无加速）。G25c 部分符合：超时/迟到完全符合（超时落库 t+1.01s、worker 完成 t+3.01s、之后 facts 不变）；worker 异常路径不符合——future.result() 仅捕 FutureTimeoutError（pipeline.py:471-476），异常杀死整个 run、其余材料停 pending/running，与注释承诺矛盾；两条复现（注入 RuntimeError；适配器返回 None 触发后处理 AttributeError，parsers/__init__:127-135 后处理在 try 外）。一般#2 README 未登记 V2-10；一般#3 取消注释称 0.5s 生效，实测延迟=当前文件剩余时长。回归 244/244、95/95、17/17、60/60、34/34、27/27、vue-tsc 0 错。报告 /tmp/v2_test_report_v2_10.md
+
+- 验证：G25a：独立脚本 g25_equiv.py 双实例对比——内容集合 21 条逐字段一致 + rowid 物理插入序逐元素一致 + 落库序==材料登记序；G25b/G25c/G25d/G25e：g25_whitebox.py 11/12（唯一失败=异常隔离缺陷）；超时时序证据 timeout@1.01s < worker_done@3.01s 且 facts 不变；write_tx 线程追踪 parsers 0 写；G25f：基准复跑 2 轮（3.44/4.05、3.98/4.08）+ CPU 竞争轮（5.60/6.11）；重解析对照 200×5000行 3.44 vs 3.78、xlsx 2.30 vs 2.34；回归：test_ontology_build 244/244、parsers 95/95、purge 17/17、storage_contract 60/60、runner_isolation 34/34、finish_guard 27/27、vue-tsc exit 0；缺陷复现：注入 RuntimeError 与畸形适配器 None 返回均致 run failed 且其余材料 pending/running（G25c 违反）
+- 下一步：开发修复严重#1：_collect_pool_result 把 future.result() 的异常纳入隔离（该文件 failed 继续下一个），并评估 parse_material 后处理段纳入 except 或返回值类型校验；修复后按两条复现路径+全量回归交回复测；补登记 README 变更记录 V2-10 一行（capabilities.limits.parseConcurrency）；修正 _collect_pool_result 取消注释（0.5s 短片边界→当前文件收集完成后生效，最坏≤120s）；观察项不阻塞：并发在当前文件构成下无加速（GIL+落库串行占比97%）；基准脚本 concurrency 形参未用；同路径重传生成第二行材料（既有行为）
+- 依据/文档：/tmp/v2_test_report_v2_10.md；worktree build-governance@e03257d（V2-10 七提交）；workbench/ontology_build/pipeline.py:454-488（_collect_pool_result）；workbench/ontology_build/parsers/__init__.py:127-141（parse_material 后处理在 try 外）
+
+### ontology-build-v2-10-parse-concurrency（V2-10/G25，worktree/build-governance） · zcode · 已实施，待验收
+
+时间：2026-09-22T01:32:25.390535+00:00；记录：`.collaboration/entries/000177-3e98e93a65fe.json`
+
+V2-10 解析并发（线程池）六项任务全部完成：68adc85 契约先行（08 §2.1 limits.parseConcurrency + §4 并发模型冻结）；feebad2 线程池核心（run 内 ThreadPoolExecutor，第①级专用解析器单文件粒度池内并行、worker 只解析不写库、主线程按物料登记顺序收集并逐个短事务落库；LLM 兜底与 index 串行；取消 shutdown(wait=False, cancel_futures=True)；0.5s 短片轮询收集使取消即时生效；单文件等待超时标 failed「解析超时」并清空事实、迟到结果一律丢弃）；a766747 capabilities 暴露 parseConcurrency（默认 min(8,CPU)，env WIZ_BUILD_PARSE_CONCURRENCY 覆盖）；3731593 前端能力面板；cb65d4f 六组专项回归（等价指纹/峰值并发/取消保留/超时丢弃/env 回退）+ G25d 暴露的重扫复用缺陷修复（_start_scan 全量 pending 重置使 08 §4 复用承诺从未生效）；494f8fd G25f 基准脚本 + 开发计划 §12.4 数字记录。
+
+- 决定：收集用 0.5s 短片轮询（总等待≤120s）：取消请求可在短片边界生效，不被长等待阻塞；G25d 验收暴露 _start_scan 重置缺陷：任务级扫描保留 success 材料供复用，单物料重试仍强制重解析（G22 不变）；LLM 兜底保持主线程串行（远程调用+单任务预算计数语义），第①级进池
+- 验证：tests/test_ontology_build.py 244/244（新增 flow_parse_concurrency 18 项：等价指纹逐字节一致、峰值并发≥2、取消后 facts 稳定、超时迟到结果丢弃、env 覆盖/回退）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；vue-tsc 0 错误、npm run build 通过；ruff 本组改动文件全过；G25f：1200 小文件串行 3.33–5.04s vs 并发8 3.45–3.93s（小文本 GIL 主导无显著加速，含一组负载离群值；详见开发计划 §12.4）
+- 下一步：待测试 agent 独立验收（G25a–f）；工作树内存在另一并行任务（结构化格式解析 v1）的未提交文件（parsers/ 7 个新文件 + __init__/protocol/blacklist/pipeline 未提交修改）——非本任务范围，未代为提交/修改；本任务回归已在其当前状态下 244/244 通过；tests/test_ontology_build_task_purge.py:115 基线即有 F841 维持未动
+- 依据/文档：worktree/build-governance 分支 codex/build-governance：68adc85/feebad2/a766747/3731593/cb65d4f/494f8fd；文档/接口文档/08-从物料自动构建本体接口.md §2.1/§4；文档/需求/20260920_从物料自动构建本体/开发计划.md §12.4
+
 ### 自动化构建本体方法论交付（用户指令，综合 OpenSPG+semantica） · zcode · 已实施，待验收
 
 时间：2026-09-21T13:34:49.885309+00:00；记录：`.collaboration/entries/000177-d5a21dfc0072.json`
@@ -128,23 +138,13 @@
 - 下一步：候选增量七项待用户逐项拍板后才可进入需求线排期；正式 semantica 技术画像仍归 W11/储能fdev，本侧两份调研为其输入
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/自动化构建本体方法论_20260921.md；文档/需求/20260920_从物料自动构建本体/OpenSPG自动化图谱构建机制调研_20260921.md；文档/本体自动化构建评审_20260921/semantica源码调研_自动化图谱构建机制_20260921.md
 
-### OpenSPG 自动化图谱构建调研报告落盘归档（用户指令：输出md文档） · zcode · 已确认决定
+### 接线冻结复盘：零写入确认 + 三个展示层缺口追加（供接线归属方参考） · zcode · 已确认决定
 
-时间：2026-09-21T09:00:18.342232+00:00；记录：`.collaboration/entries/000176-045548a71b0c.json`
+时间：2026-09-22T01:31:40.962640+00:00；记录：`.collaboration/entries/000176-ca4b6e71e4c6.json`
 
-按用户指令把 OpenSPG 调研整理为正式 md 文档，归档至 文档/需求/20260920_从物料自动构建本体/OpenSPG自动化图谱构建机制调研_20260921.md（318 行，commit bbf7a61）。文档含：调研基线（KAG v0.8.0 fdab15b + openspg main ceeb3ef）、TL;DR 五条结论、两仓库分工、双链构建流程、5 种文件解析与 5 种切分策略、8 类 LLM 环节详解、核心算法（SPG schema/两模式抽取/实体归一三段式/融合/KGDSL 推理/互索引）、七道本体准确性机制、局限清单、对本工作台物料构建需求的七条启示、源码证据索引附录。
+对 000174（接线冻结裁决）的追加记录。冻结的核对 agent 已完成只读报告：①零写入确认——全程未调用 Edit/Write、无 pycache 残留、计划中的测试文件未创建，无任何内容丢失；②四处接线经独立复算全部完成无缺口（protocol 六kind+_STRUCTURED_KIND_EXT 表、parsers 登记一对一、get_capabilities parserMatrix 9行、前端类型与标签+矩阵表）；③发现三个展示层小缺口，未修（按冻结令仅报告）：a) BuildMaterialsPage accept 列表缺 .tsv 与 .jsonid（检测表与矩阵均已支持，仅选择器提示不齐）；b) BuildReviewPage 独立本地映射 LOCATOR_KIND_LABELS 仅含 6 旧 kind，六新 kind 在评审页显示原始前缀（json · $.a.b）而非中文定位名——types.ts 两张表已更新，此处第三张小表漏改；c) alignment.py subject_key 对六新 kind 走通用分支（按文件成组，可用非缺陷，节级/路径级聚合可选优化）。④口径澄清：任务书写的 .ini/.env/.conf→ini 与需求 v1.1（.env* 硬黑名单）冲突，实现按需求正确处理，勿按任务书改。以上三条建议由接线归属会话（sess_65cdf0e3 线）在提交前顺手处理（提交须先 git add 七个未跟踪解析器文件）。
 
-- 决定：归档位置定为需求线目录 文档/需求/20260920_从物料自动构建本体/（该调研直接服务该需求线）；如需移至其他目录由用户指令；提交范围严格限定本人文件：调研文档 + 本会话在途交接条目 000167-000172；不提交 codex 在途工作（000173、semantica源码调研、评审README修改）与其他 zcode 会话 000174（生成实测 blocked），session_context.md 留待下一轮 render 汇总
-- 验证：git show bbf7a61：6 文件 456 行（1 份调研文档 318 行 + 5 条本人交接条目），未含他人文件；文档内全部源码结论沿用已人工抽查的文件:行号证据（default_chain 链序、ner.py schema 注入、kag_postprocessor 向量链接等均已复核吻合）
-- 下一步：codex 在途 semantica 调研（000173）与本篇 OpenSPG 调研互为补充，技术画像汇总时可一并引用；如需把调研启示落入 20260920 需求增量，属新任务待用户指令
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/OpenSPG自动化图谱构建机制调研_20260921.md；commit bbf7a61；/tmp/kag-research 与 /tmp/openspg-research（临时克隆）
-
-### semantica 源码调研 md 文档交付（用户指令） · zcode · 已实施，待验收
-
-时间：2026-09-21T08:59:48.622757+00:00；记录：`.collaboration/entries/000175-011c540884ce.json`
-
-按用户「输出md文档给我」指令交付 文档/本体自动化构建评审_20260921/semantica源码调研_自动化图谱构建机制_20260921.md：前两轮 semantica 源码调研结论整理成正式文档（七节+附录：整体流程/文件解析/LLM 参与/核心算法/准确性机制/三处文档与实现不符/借鉴点，全部结论带文件:行号）。文档头部声明性质为调研材料，供白名单第三项 semantica 技术画像（W11 源码面）引用，不占用其冻结的四段产出结构。README 同步新增「调研材料」节登记该文档。纯文档交付，未改代码。
-
-- 验证：文档 7 节内容全部来自本轮会话已核实的源码事实（浅克隆 /tmp/semantica-research，v0.6.8 线），无新增未经核对的表述；README 链接指向同目录文档，相对路径有效；写入时发现共享上下文新增两条他人记录：000173 codex 的 GitHub 调研、000174 另一 zcode 会话的生成实测——均未纳入本次提交
-- 下一步：semantica 技术画像正式交付仍归 W11/储能fdev 认领位，本侧文档仅作其源码面输入；如需与工作台生成链路的逐项对照或正式画像报告，待用户明确指令
-- 依据/文档：文档/本体自动化构建评审_20260921/semantica源码调研_自动化图谱构建机制_20260921.md；文档/本体自动化构建评审_20260921/README.md
+- 决定：三个展示层缺口（accept 后缀/BuildReviewPage 本地映射/alignment subject_key）交由接线归属任务线处理，本会话不触碰
+- 验证：冻结 agent 独立复算：包可导入、登记一对一、detect_kind 逐条与需求 §5 核对全对、parserMatrix 9 行、DEDICATED_KINDS 含六新 kind、blacklist 与 §4 一致、08 分册契约先行完整
+- 下一步：接线归属线：提交前处理 a/b（展示层小项），注意 git add 未跟踪文件；本会话只等 V2-10 开发收尾→转测试 agent 验收
+- 依据/文档：.collaboration/entries/000174（接线冻结裁决）；workbench/ontology_build/parsers/__init__.py；frontend/src/ontology/build/BuildReviewPage.vue:139
