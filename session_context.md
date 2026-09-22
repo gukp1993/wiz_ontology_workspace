@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`57fcf80d6457c723`
+上下文版本：`e5c27d519963f131`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,15 +22,35 @@
 
 ## 最近交接（新 → 旧）
 
-### auto-build-output-v3 · zcode · 需求已交付
+### auto-build-output-v3 · zcode · 已实施，待验收
 
-时间：2026-09-22T13:08:13.096971+00:00；记录：`.collaboration/entries/000211-ba5367e9b162.json`
+时间：2026-09-22T13:52:30.658299+00:00；记录：`.collaboration/entries/000214-c17dee5bf734.json`
 
-已交付独立验收指令并提交（74066ee）：验收对象更新为 74066ee（文档提交；验收入口为 <worktree>/文档/需求/20260920_从物料自动构建本体/验收指令_控输出v3_20260922.md，自包含可复制总指令+§3 A–G 清单+§4 七项重点复核+边界与交付格式）。代码面 SHA 仍为 f72fb98（74066ee 仅加文档）。等 Codex 验收，停在待授权集成。
+验收修复 5 项全部完成并提交 1df156f（基线 e365141，验收结论 entry 000212 有条件通过）。P1-1 实验 commit_failure 重复回调幂等返回 False（state 场景11 + 脚本B 契约3.5 双适配器，漏网原因防复发）；P1-2 容量三通道冻结口径（dispatch=soft(在途+1)−2KiB / write=无在途 soft(0)+16KiB / >1MiB 硬拒；在线/实验写入通道一致；claim 保险丝转 CHECKPOINT_BUDGET_EXCEEDED 受阻收口）——验收反例 O-cap3/O-cap4 复现修复；P2-1 在线 amend 拒初建 + facade 兜底路径首次真实覆盖；P2-2 陈旧 docstring 清零（grep=0）；P2-3 resume 预检 _safe_schema_version 安全解析→422（'x'/'2.5'/99/'' 四态 + 同源修复 _v2_run_view 轮询不裸抛）。验证：定向 6/6 全绿（state 90/acceptance 7契约/storage 85/execution 15场景/budget_http/budget_resume）+ 全量回归 77/77 + ruff 全过。停在待复验，未合并 main。
 
-- 决定：验收指令明确：R1-R5 自测与 D17/D18 自测均非验收结论；G2 三项应核为 质量门未过/收益门未测/成本不可证，若报告称达标即不通过
-- 下一步：Codex 验收 74066ee（差异仅文档）；通过后待用户授权集成合并 main
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收指令_控输出v3_20260922.md
+- 决定：容量三通道为最终冻结口径（整合计划§13.6 记录）：dispatch(在途+1) 守卫、write 允许终态预留区（1MiB−8KiB 内）、硬上限 1MiB 不放松；跨终态回调整合差异（succeeded 后收 failure：实验抛/在线 False）作为已知差异如实登记未对齐（两者都不改写终态）；P2-3 属实现向文档对齐（400→422），不构成协议变更，未改接口文档
+- 验证：python3 tests/run.py all → 77/77 全绿（/tmp/all_reg5.log）；定向：state 90 / acceptance 7契约双适配器 / storage 85 / execution 15场景 / budget_http / budget_resume 全过；验收反例实证：dispatch(0)=1013760 < soft(1)=1015808（余量2048覆盖claim）；write(0)=1040384=1MiB−8KiB；>1MiB 仍拒；ruff check workbench/ experiments/ tests/ → All checks passed
+- 下一步：交验收方复验（对象 1df156f）；复验通过后待用户授权集成合并 main
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/修复指令_控输出v3验收问题_20260922.md；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §13.6
+
+### 本体生成控输出 v3 验收问题修复指令交付 · zcode · 需求已交付
+
+时间：2026-09-22T13:35:15.897976+00:00；记录：`.collaboration/entries/000213-b0fea050f0c3.json`
+
+用户要求交付修复指令。已写入 worktree 未跟踪文件 文档/需求/20260920_从物料自动构建本体/修复指令_控输出v3验收问题_20260922.md（自包含：总指令/环境边界/5 项冻结要求与建议实现/新增测试映射/验证清单/交付要求/复验口径），待实施者随修复提交入库。P1-1 实验 commit_failure 幂等返 False；P1-2 容量在途口径统一+16KiB 终态预留落地+执行器兜底转 blocked（四条冻结要求）；P2 三项（amend 拒初建+facade 兜底集成测试、docstring 清零、路由预检安全解析 422）。授权边界=原 worktree 修复+自测+提交，停在待复验；不含集成/合并。
+
+- 下一步：实施者按指令修复并自测提交，交复验；复验口径=反例重放+脚本B/预算存储/执行器矩阵+全量回归；P1-2 具体实现路线为建议（guard 收紧 soft(1)、终态宽限 soft(0)+16KiB、claim 兜底），允许等价替代但四条冻结要求缺一不可
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/修复指令_控输出v3验收问题_20260922.md；验收结论 entry 000212-16f646c003a2
+
+### 本体生成控输出 v3（codex/auto_build）独立验收 · zcode · 已验证
+
+时间：2026-09-22T13:30:05.421049+00:00；记录：`.collaboration/entries/000212-16f646c003a2.json`
+
+用户直接指令 zcode 执行独立验收（角色按用户指定优先）。验收 SHA=e365141（代码面 f72fb98，HEAD 未前进；较指令文档的 41efcc1 仅多两个文档/交接提交，无代码差异）。结论：有条件通过——主体与声明相符，但 2×P1+3×P2 需原分支修复后复验。P1-1：ExperimentState.commit_failure 重复回调抛 ValueError 而非冻结语义 False（在线侧返回 False；2ee24cd 只改在线侧；D17 脚本B幂等契约只测 commit_success）。P1-2：容量软阈值边界——在线 _plan_guard 按 inflight=0 放行、claim_job 按新文档在途=1 抛 CheckpointCapacityError 且执行器无捕获，未按冻结契约转 blocked/CHECKPOINT_BUDGET_EXCEEDED（约 8KiB 窗口，resume 不可自愈）；ExperimentState claim 用 inflight=0 与在线口径不一致。P2：在线 amend_plan 无既有计划检查可初建（实验侧拒绝，双实现不一致，无现行生产路径）；docstring 陈旧仍写幂等返回 True；post_run_resume 内联预检非整数 schemaVersion 裸抛 int() 得 500 而非 422。
+
+- 验证：§3-B 全量回归 all 独立复跑 77/77（exit 0）；§3-C 前端 typecheck+build 复跑通过（/tmp/acc_v3_frontend.log）；§3-E 脚本A budget_e2e 直跑内部 28/28；脚本B 6 契约×online/experiment 双适配器全过；§3-A+§4 反例脚本 47 项（/tmp/acc_v3_counterexamples.py）：契约抽查四项全过；45 过 2 不符即 P1-1 与 amend P2；取消语义 5 项、路由守卫 6 例全过；§3-D 5 截图复核通过（合成种子 G3 展示验收，页面自带标注）；§3-F D18 抽查数字全部回溯一致，G2 三结论为未通过/未测/不可证未夸大；§3-G 红线全过：默认关闭+legacy；D18 证据无密钥命中；e365141 不在 main；18765/18890 PID 未动；工作树真实库 mtime 未触碰
+- 下一步：原分支修复 P1-1、P1-2 后交复验（建议顺带三项 P2）；复验范围可限定反例重放 E-bool3/O-cap3/O-cap4/O-amend1 + 脚本B/预算存储矩阵重跑；验收通过后停在待用户授权集成；本轮未改业务代码、未合并 main、未 push、未启停 18765/18890
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/验收指令_控输出v3_20260922.md；证据：/tmp/acc_v3_regression_all.log、/tmp/acc_v3_frontend.log、/tmp/acc_v3_matrices.log、/tmp/acc_v3_counterexamples.py
 
 ### auto-build-output-v3/D18_报告 · zcode · 已实施，待验收
 
@@ -132,27 +152,4 @@ D11 三类合成材料与人工金样格式已实施：新建 tests/fixtures/ont
 - 验证：python3 tests/run.py --test tests/test_ontology_token_pilot_fixtures.py → 退出码 0，通过 102/102（直跑退出码 0 同结果）；ruff check tests/test_ontology_token_pilot_fixtures.py → All checks passed；确定性生成器重跑两次字节一致（12 项 sha256 与 manifest 全部匹配，防漂移断言在测试内）；泄漏扫描：samples/+golden/ 无 sk-/api_key/AKIA/password/secret 等样式、http(s) 仅 example.org 保留域、无邮箱与 .com/.cn/.net 域名样式
 - 下一步：D13 evaluate.py 消费金样（schemaVersion=1）做生成评测；D14 CLI 引用 manifest；D18 若拿到原 8KB 真实文件须另行登记 hash 并补对应金样
 - 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §11/§8 D11；workbench/ontology_build/batch_contracts.py（87d1473，normalized candidate）；文档/接口文档/08-从物料自动构建本体接口.md §1.3；tests/fixtures/ontology_token_pilot/README.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### auto-build-output-v3/D03-semantic-units · zcode · 已实施，待验收
-
-时间：2026-09-22T08:48:54.198862+00:00；记录：`.collaboration/entries/000200-8dc0a80b74c5.json`
-
-D03 语义目标与来源 selector：新建 workbench/ontology_build/semantic_units.py（纯函数，只依赖 stdlib+batch_contracts）与 tests/test_ontology_build_semantic_units.py（11 场景 68 断言）。build_targets 按冻结优先级分组（nodeId→jsonld_node、ddl 表、code 限定符号、doc 章节/pdf 按页、json/yaml/toml 最近对象路径保留下标、fallback 相邻窗口/孤立 single_fact 低置信），每 fact 恰一个 whole target 绝不丢弃；targetId=t-+sha256(factId+canonical_selector)[:16]；targets_for_facts/context_fact_ids 过滤与上下文辅助。
-
-- 决定：context_fact_ids 契约口径澄清（待 C 确认）：groups 冻结形状只有 targetIds 无 factId，故钉死语义为 targets=同次 build_targets 全量 targets（targetId→factId 解析表）、groups=本叶任务主目标组（可为主组子集）；上下文=同 subjectKey 且不属于主组的邻近事实，机械保证与主组 factId 不相交（不算覆盖）。batch_contracts.py 未改，如需把该口径写入 D00 冻结注释属协议变更请求，由 C 统一处理。；yaml/toml 与 json 同遍历口径（接口 08 §1.3），locator.path 非空时共用 json_object 分组；xlsx/ini/csv/properties/text/image/llm 等冻结清单外定位按规则⑥落相邻窗口，不发明新 kind。；pdf 无 section 字段，按真实定位字段 page 作章节粒度（subjectKey 记 page:<n>）。；fact 缺 id 或非 dict 抛 ValueError 拒绝静默丢弃（每个 fact 至少一个 target 的诚实实现）。
-- 验证：python3 tests/run.py --test tests/test_ontology_build_semantic_units.py → 退出码 0（68/68 通过）；python3 tests/test_ontology_build_semantic_units.py 直跑 → 退出码 0；ruff check 两文件 → 0 错误（仓库 ruff.toml）
-- 下一步：待 Codex 独立验收 P(D03)；D04 batch_plan.py 可基于本模块真实交付开工；context_fact_ids 口径如获 C 确认，建议在 batch_contracts.py 目标节补一行注释（协议变更走 C）
-- 依据/文档：workbench/ontology_build/batch_contracts.py（87d1473 冻结契约，未改）；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §4.1/§8；文档/接口文档/08-从物料自动构建本体接口.md §1.3
-
-### auto-build-output-v3 D15 前端类型与v1/v2展示 · zcode · 已实施，待验收
-
-时间：2026-09-22T08:46:11.238326+00:00；记录：`.collaboration/entries/000199-93f6fdfd5e69.json`
-
-D15 完成。types.ts：新增 08 §14.3 schema2 检查点类型组（Budget/Jobs/Coverage/Blocking/V2 + V2View 判别臂），RunCheckpoint.generate 改 schema1|schema2 联合 + isSchemaV2 守卫；RunUsage 新增可空 token 字段，旧四字段不变。BuildProgressPage.vue：schema1 批次展示保留且仅 !isSchemaV2 渲染；新增 schema2 目标进度块（已处理目标 X/Y·成功叶任务·待处理/失败/受阻·因输出超限拆分 K 次）、估算方式标注、预算三项（空=未配置）、blocking 原因+分类处置指引，blocking 时重试按钮改「重新规划生成」；usage 增 completionTokens（null 显「含未知」）等；进度条按目标覆盖计数。仅改两份授权文件，typecheck 退出码 0。
-
-- 决定：RunUsage 新字段声明为可选（?: number|null）：容忍 D16 接线前/旧运行字段缺省，字段名与可空性仍与 08 §14.3 逐字一致；schema2 的 log/notes 日志块继续渲染（不随批次 chips 门控）：08 §14.3 明确 schema2 保留 log/notes，隐藏会违背「生成进度实时可观测」；与指令字面「仅 !isSchemaV2 渲染」的出入在此声明；blocking 处置指引按 batch_contracts.py 错误码分三类（配置项/计划指纹与规模/预算耗尽）+未知码保守文案
-- 验证：cd frontend && npm run typecheck → 退出码 0；npx eslint types.ts BuildProgressPage.vue → 退出码 0；git diff 核对仅触及授权两文件
-- 下一步：D16 接线后真实联调；D17 浏览器验收；schema2 数据未到达时目标进度块不显示属预期，mock 不算联调通过
-- 依据/文档：文档/接口文档/08-从物料自动构建本体接口.md §14（@87d1473）；frontend/src/ontology/build/types.ts；frontend/src/ontology/build/BuildProgressPage.vue
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。

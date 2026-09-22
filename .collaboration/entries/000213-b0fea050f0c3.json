@@ -1,0 +1,22 @@
+{
+  "ticket": "bd56c76d2e484c55962c3bb44efe5ec7",
+  "task": "本体生成控输出 v3 验收问题修复指令交付",
+  "status": "ready",
+  "summary": "用户要求交付修复指令。已写入 worktree 未跟踪文件 文档/需求/20260920_从物料自动构建本体/修复指令_控输出v3验收问题_20260922.md（自包含：总指令/环境边界/5 项冻结要求与建议实现/新增测试映射/验证清单/交付要求/复验口径），待实施者随修复提交入库。P1-1 实验 commit_failure 幂等返 False；P1-2 容量在途口径统一+16KiB 终态预留落地+执行器兜底转 blocked（四条冻结要求）；P2 三项（amend 拒初建+facade 兜底集成测试、docstring 清零、路由预检安全解析 422）。授权边界=原 worktree 修复+自测+提交，停在待复验；不含集成/合并。",
+  "decisions": [],
+  "verification": [],
+  "next": [
+    "实施者按指令修复并自测提交，交复验；复验口径=反例重放+脚本B/预算存储/执行器矩阵+全量回归",
+    "P1-2 具体实现路线为建议（guard 收紧 soft(1)、终态宽限 soft(0)+16KiB、claim 兜底），允许等价替代但四条冻结要求缺一不可"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/修复指令_控输出v3验收问题_20260922.md",
+    "验收结论 entry 000212-16f646c003a2"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T13:35:15.897976+00:00",
+  "sequence": 213,
+  "filename": "000213-b0fea050f0c3.json",
+  "record_hash": "17388eca4ad8b67a5cba450a45cd76ebc609eb85ea6f30d93d0bfbd4e2862c18",
+  "context_advanced": false
+}
