@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`75296000eb23c647`
+上下文版本：`9810609b6a947c1e`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,18 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### auto-build-output-v3 最终合并需求与并行执行指令 · codex · 需求已交付
+
+时间：2026-09-22T07:55:11.397868+00:00；记录：`.collaboration/entries/000194-fa15f2751f11.json`
+
+按用户最新要求停止由Codex直接开发，合并指定v1在线预算计划与v2试点，交付v3唯一技术基线及最终执行指令。任务D00-D19共20项，明确依赖、文件唯一owner、4槽滚动并行、共享核心/两存储适配器、阶段门与隔离验收。所有开发子agent确认未落盘代码。
+
+- 决定：旧两组v1及v2加历史入口提示；统一ratio0.50、首批2、动态输入预留、只缩不扩及共同3次请求额度。；范围包含试验和默认关闭的分支在线接线；核心fake/恢复是接线前置，HTTP浏览器归最终验收；实验B/D可用compact测G2，在线启用受效果门约束。；接手参考更新为8d38f63及修复22a60e5，修复尚待独立验收；不合并main、不启用主服务、不迁移真实库。
+- 验证：检查D00-D19恰好20项、文档相对链接与代码围栏、git diff --check通过。；子agent只读审核发现阶段门循环，已修正；只交付文档，未跑业务测试或真实模型。
+- 下一步：用户将最终执行指令交实施harness，核对实际SHA与owner后按DAG开发自测提交，交Codex独立验收。
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md；文档/需求/20260920_从物料自动构建本体/本体生成控输出_最终执行指令_v3.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### auto_build-token-pilot-v2 整合试点方案 · codex · 需求已交付
 
@@ -143,13 +155,3 @@ retrieve 优化 O0/O2/O3 实现完成（协调者并行拆分后我的范围）�
 - 验证：tests/test_retrieve_equivalence.py 15/15：手构造 18 条×8 组 scope + 合成 8000×3 组 scope，selection（三列表含顺序+reasons 逐字+counts）json sort_keys 逐字节一致；O0 断言（默认无 tokens/显式恢复/桶结构与 searchable_text 同基线）；tests/test_ontology_build.py 250/250（连续 2 次）；parsers 95/95、struct_parsers 143/143、parser_wiring 97/97、struct_e2e 87/87、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；ruff 全过；V2-8 复用探针桩（test_ontology_build:1377-1398）无需变更：未新增检索入口（S3 满足）；基准脚本 tests/benchmark_retrieve.py 入库（bench/profile 两模式，RETRIEVE_BENCH_RESULT 可读输出）；R1/R3/R5 数字归并行 agent
 - 下一步：待并行剖析 agent 交付 R1 归因报告后决策 O1 实施或降级（协调者转发）；R3 性能目标（≤5 分钟）与 R5 内存水位由并行 agent 数字补录开发计划；分支归属说明供协调者知晓：retrieve 实现本体经由共享检出被并行线捆包提交为 964493a（retrieval.py 与我工作区实现逐字节一致，已核对）；开发计划记录原落 build-progress-log（cb64855），已以 plumbing 快进补录 build-governance（78cf7df，不影响共享检出）；金样/基准脚本 d6ed223 两分支皆有
 - 依据/文档：codex/build-governance：78cf7df（开发计划记录）/964493a（实现本体，retrieval.py 含我的实现）/d6ed223（金样+基准脚本）；codex/build-progress-log：cb64855（同一开发计划变更，与 78cf7df 内容一致）；workbench/ontology_build/retrieval.py、tests/test_retrieve_equivalence.py、tests/benchmark_retrieve.py
-
-### build-governance 生成进度实时可观测·前端（F1/F2/F3） · zcode · 已实施，待验收
-
-时间：2026-09-22T03:27:44.998585+00:00；记录：`.collaboration/entries/000181-c16847392deb.json`
-
-进度页新增批次状态行（✓批N/✗批N：原因）与可折叠生成日志区（checkpoint.generate.log+notes，默认展开、折叠显最新一条、nextTick 自动滚底、上滚暂停吸附、空数据不渲染）；types.ts RunCheckpoint.generate 增可选 log/notes。仅改 BuildProgressPage.vue 与 types.ts 两文件，未动任何 .py 与其它 .vue，未提交 git。
-
-- 验证：cd frontend && npx vue-tsc --noEmit -p tsconfig.json → 0 错误；cd frontend && npm run build → 成功（19.1s，仅既有 chunk 警告）；node --import ./tests/ts_hooks.mjs tests/ontology_build_frontend.test.mjs → 通过 exit 0；node --import ./tests/ts_hooks.mjs tests/ontology_build_review_edit.test.mjs → 19/19 通过 exit 0
-- 下一步：等后端 checkpoint.generate.log/notes 接线后浏览器联调真实数据；Codex 独立验收
-- 依据/文档：文档/需求/20260920_从物料自动构建本体/需求说明_生成进度实时可观测_v1.md（主仓库未入本分支）
