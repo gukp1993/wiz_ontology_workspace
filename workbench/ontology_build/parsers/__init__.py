@@ -8,14 +8,22 @@ REGISTRY / parse 已冻结，本包不改动它）。适配器只产出带精确
     code  → code.parse       Java/Spring/MyBatis/JPA、JS/TS/Vue、Python
     ddl   → ddl.parse        SQL DDL（MySQL 常见方言优先）
     docx  → docx_parser.parse  DOCX 段落/标题/表格（.doc 明确拒绝并提示转换）
-    pdf   → pdf_parser.parse   文本型 PDF（扫描页逐页失败报告，无 OCR）
+    pdf   → pdf_parser.parse   文本型 PDF；扫描页走 OCR 路径（未配置逐页报告，V2-2）
     xlsx  → xlsx_parser.parse  XLSX 多 sheet/表头/单元格/公式文本与缓存值
     md    → markdown_parser.parse  MD 标题层级/段落/表格/代码块
+    image → image_parser.parse  位图 OCR（pytesseract 可选依赖）+ SVG 文本提取（V2-2）
     other → textline.parse   未知类型文本线索降级（明确标注覆盖不足）
+    json  → json_parser.parse  JSON / JSON-LD（@graph 节点）/ JSONL 逐行（结构化格式，2026-09-22）
+    yaml  → yaml_parser.parse  YAML（safe_load 后复用 JSON 树遍历器；结构化格式）
+    properties → properties_parser.parse  Java .properties（Unicode 转义解码、行号定位）
+    csv   → csv_parser.parse   CSV/TSV（分隔符嗅探、列统计、>100 行采样注记）
+    ini   → ini_parser.parse   INI/CFG/CONF（节+键路径、真实行号）
+    toml  → toml_parser.parse  TOML 最小子集（不覆盖语法诚实降级，quality=medium）
     zip   → 不在此包解析：ZIP 由材料层安全展开成条目后再按扩展名分派（见 materials.py）
 
 安全边界（所有适配器共同遵守）：
-* 纯标准库 + 可选 pypdf/PyPDF2（PDF 专用；缺失时返回 failure 且绝不 pip install）。
+* 纯标准库 + PyYAML（工作台既有核心依赖，YAML 专用）+ 可选 pypdf/PyPDF2（PDF 专用）；
+  缺失时返回 failure 且绝不 pip install。
 * 绝不执行材料：不 eval/exec、不运行代码或 SQL、不执行公式/宏、不打开外链、不访问网络。
 * docx/xlsx 在解析前先调用 `materials.zip_bomb_guard`（若该模块缺失则跳过守卫，不因此失败）；
   该守卫依据 ZIP 目录里的声明值（条目数、声明展开总量、单条目压缩比），声明值可被打包方伪造，
@@ -28,12 +36,19 @@ REGISTRY / parse 已冻结，本包不改动它）。适配器只产出带精确
 from workbench.ontology_build import protocol as protocol  # 再导出：供 parsers 使用方统一从此处取常量
 from workbench.ontology_build.parsers import base
 from workbench.ontology_build.parsers import code
+from workbench.ontology_build.parsers import csv_parser
 from workbench.ontology_build.parsers import ddl
 from workbench.ontology_build.parsers import docx_parser
+from workbench.ontology_build.parsers import image_parser
+from workbench.ontology_build.parsers import ini_parser
+from workbench.ontology_build.parsers import json_parser
 from workbench.ontology_build.parsers import markdown_parser
 from workbench.ontology_build.parsers import pdf_parser
+from workbench.ontology_build.parsers import properties_parser
 from workbench.ontology_build.parsers import textline
+from workbench.ontology_build.parsers import toml_parser
 from workbench.ontology_build.parsers import xlsx_parser
+from workbench.ontology_build.parsers import yaml_parser
 
 # 登记表（base.REGISTRY 是唯一来源；这里只做一次显式登记）
 base.register('code', code.parse)
@@ -42,7 +57,16 @@ base.register('docx', docx_parser.parse)
 base.register('pdf', pdf_parser.parse)
 base.register('xlsx', xlsx_parser.parse)
 base.register('md', markdown_parser.parse)
+base.register('image', image_parser.parse)
 base.register('other', textline.parse)
+# 结构化格式（2026-09-22）：kind→解析器一对一；`.jsonl/.ndjson` 由 json_parser 按 rel_path
+# 后缀内部走逐行模式（json_parser.is_line_mode），此处仍登记同一个 parse 入口。
+base.register('json', json_parser.parse)
+base.register('yaml', yaml_parser.parse)
+base.register('properties', properties_parser.parse)
+base.register('csv', csv_parser.parse)
+base.register('ini', ini_parser.parse)
+base.register('toml', toml_parser.parse)
 
 # ZIP 守卫在展开后按条目解析；未展开的 zip 走明确的 failure，而不是猜内容
 ZIP_KINDS = ('zip',)

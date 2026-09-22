@@ -69,9 +69,88 @@ def task_view(row):
         'scopeRevision': int(row['scope_revision']),
         'currentBatch': row['current_batch'] or '',
         'deliveryOntologyId': row['delivery_ontology_id'] or '',
+        # V2-4（08 §13）：任务级过滤设置（'.' 前缀小写后缀；softExts=None 表示用默认软名单）
+        'filter': filter_spec_view(row),
         'createdAt': row['created_at'],
         'updatedAt': row['updated_at'],
     }
+
+
+def filter_spec_view(row):
+    """filter_json 列 → 任务过滤设置视图；缺列/坏 JSON 按未配置处理（迁移前旧行兼容）。"""
+    try:
+        raw = row['filter_json']
+    except (KeyError, IndexError):
+        return {'allowExts': [], 'softExts': None, 'excludeExts': []}
+    value = _loads(raw if raw is not None else '{}', {})
+    soft = value.get('softExts')
+    return {
+        'allowExts': [str(item) for item in value.get('allowExts') or []],
+        'softExts': [str(item) for item in soft] if isinstance(soft, list) else None,
+        'excludeExts': [str(item) for item in value.get('excludeExts') or []],
+    }
+
+
+def filter_report_view(row):
+    """filter_report_json 列 → 被过滤文件报告视图（G20：计数 + 清单 + 命中规则）。"""
+    try:
+        raw = row['filter_report_json']
+    except (KeyError, IndexError):
+        return {'items': [], 'counts': {'hard': 0, 'soft': 0, 'custom': 0, 'total': 0},
+                'truncated': False}
+    value = _loads(raw if raw is not None else '{}', {})
+    items = [item for item in value.get('items') or [] if isinstance(item, dict)]
+    counts = value.get('counts') if isinstance(value.get('counts'), dict) else {}
+    return {
+        'items': items,
+        'counts': {
+            'hard': int(counts.get('hard') or 0),
+            'soft': int(counts.get('soft') or 0),
+            'custom': int(counts.get('custom') or 0),
+            'total': int(counts.get('total') or 0),
+        },
+        'truncated': bool(value.get('truncated')),
+    }
+
+
+def set_task_filter(conn, task_id, owner_user_id, spec, now=None):
+    """写入任务过滤设置（不推进任务 revision；调用方先用 touch_task 做 CAS）。"""
+    conn.execute(sto.text('UPDATE wb_build_tasks SET filter_json = :f, updated_at = :n '
+                          'WHERE task_id = :t AND owner_user_id = :o'),
+                 {'f': _dumps(spec), 'n': now or sto.utcnow(), 't': task_id,
+                  'o': owner_user_id or ''})
+
+
+def append_filter_events(conn, task_id, owner_user_id, events, max_items=500, now=None):
+    """登记被过滤文件事件（G20）：计数累加、清单保留最近 max_items 条、超限置 truncated。
+
+    事件形状：{'path': str, 'layer': 'hard'|'soft'|'custom', 'rule': str, 'size': int}；
+    同一任务累计（跨多次上传/展开），最近事件排在前面。失败不抛——过滤报告是辅助可见性，
+    不应让上传/展开主流程回滚（与 blob 文件删除失败不回滚同一原则）。
+    """
+    try:
+        row = _task_row(conn, task_id, owner_user_id)
+        if row is None:
+            return
+        report = filter_report_view(row)
+        merged = list(events or []) + report['items']
+        counts = {'hard': 0, 'soft': 0, 'custom': 0, 'total': 0}
+        for item in merged:
+            layer = str(item.get('layer') or '')
+            key = layer if layer in ('hard', 'soft', 'custom') else 'hard'
+            counts[key] = counts.get(key, 0) + 1
+            counts['total'] += 1
+        payload = {
+            'items': merged[:max_items],
+            'counts': counts,
+            'truncated': bool(report.get('truncated') or len(merged) > max_items),
+        }
+        conn.execute(sto.text('UPDATE wb_build_tasks SET filter_report_json = :r, updated_at = :n '
+                              'WHERE task_id = :t AND owner_user_id = :o'),
+                     {'r': _dumps(payload), 'n': now or sto.utcnow(), 't': task_id,
+                      'o': owner_user_id or ''})
+    except Exception:
+        return
 
 
 def get_task(conn, task_id, owner_user_id):
@@ -280,6 +359,41 @@ def list_materials(conn, task_id, owner_user_id):
                                  'AND owner_user_id = :o ORDER BY created_at, material_id'),
                         {'t': task_id, 'o': owner_user_id or ''}).mappings().all()
     return [material_view(r) for r in rows]
+
+
+def list_material_groups(conn, task_id, owner_user_id):
+    """按 relPath 顶层目录分组统计（08 §12.1）：folder='' 表示根目录文件。"""
+    rows = conn.execute(sto.text('SELECT rel_path, parse_state, size FROM wb_build_materials '
+                                 'WHERE task_id = :t AND owner_user_id = :o'),
+                        {'t': task_id, 'o': owner_user_id or ''}).mappings().all()
+    groups = {}
+    total = 0
+    for row in rows:
+        rel = row['rel_path'] or ''
+        folder = rel.split('/', 1)[0] if '/' in rel else ''
+        group = groups.setdefault(folder, {'folder': folder, 'total': 0, 'byParseState': {}, 'bytes': 0})
+        group['total'] += 1
+        group['byParseState'][row['parse_state']] = group['byParseState'].get(row['parse_state'], 0) + 1
+        group['bytes'] += int(row['size'] or 0)
+        total += 1
+    return sorted(groups.values(), key=lambda item: -item['total']), total
+
+
+def list_materials_page(conn, task_id, owner_user_id, folder=None, offset=0, limit=100):
+    """分页取物料；folder=None 全量（兼容），folder='src' 等为顶层组精确过滤（''=根目录组）。"""
+    where = 'task_id = :t AND owner_user_id = :o'
+    params = {'t': task_id, 'o': owner_user_id or ''}
+    if folder is not None:
+        where += (" AND (CASE WHEN instr(rel_path, '/') > 0 "
+                  "THEN substr(rel_path, 1, instr(rel_path, '/') - 1) ELSE '' END) = :folder")
+        params['folder'] = folder
+    total = int(conn.execute(sto.text('SELECT COUNT(*) FROM wb_build_materials WHERE ' + where),
+                             params).scalar() or 0)
+    rows = conn.execute(sto.text('SELECT * FROM wb_build_materials WHERE ' + where +
+                                 ' ORDER BY rel_path, material_id LIMIT :l OFFSET :f'),
+                        dict(params, l=max(1, min(int(limit or 100), 500)),
+                             f=max(0, int(offset or 0)))).mappings().all()
+    return [material_view(r) for r in rows], total
 
 
 def update_material(conn, material_id, owner_user_id, parse_state=None, coverage=None,
@@ -499,9 +613,64 @@ def run_view(row):
         'usage': _loads(row['usage_json'], {}),
         'batchId': row['batch_id'] or '',
         'cancelRequested': bool(row['cancel_requested']),
+        # V2-8（08 §1.5/§5）：检查点摘要（不含 factId 明细，避免轮询响应膨胀）——
+        # 生成页「第 N 步失败（原因）[从该步重试]」与批次/阶段续跑入口的数据来源。
+        'checkpoint': run_checkpoint_view(row),
         'createdAt': row['created_at'],
         'updatedAt': row['updated_at'],
     }
+
+
+def run_checkpoint_view(row):
+    """checkpoint_json → 对外摘要（`{generate:…}` / `{scan:…}`，与前端 RunCheckpoint 同形）；
+    未持久化检查点返回 None。"""
+    try:
+        raw = row['checkpoint_json']
+    except (KeyError, IndexError):
+        return None
+    checkpoint = _loads(raw if raw is not None else '{}', {})
+    view = {}
+
+    def _string_list(value):
+        """类型防御：仅接受字符串数组（生成日志/notes 由管线写入），其余一律视为缺失。"""
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, str)]
+
+    gen = checkpoint.get('generate')
+    if isinstance(gen, dict):
+        plan = gen.get('plan') if isinstance(gen.get('plan'), dict) else {}
+        batches = gen.get('batches') if isinstance(gen.get('batches'), dict) else {}
+        failed = [item for item in batches.get('failed') or [] if isinstance(item, dict)]
+        view['generate'] = {
+            'batchId': str(gen.get('batchId') or ''),
+            'scopeRevision': int(gen.get('scopeRevision') or 0),
+            'materialRevision': int(gen.get('materialRevision') or 0),
+            'planPersisted': bool(plan.get('modelFactIds')),
+            'modelFacts': len(plan.get('modelFactIds') or []),
+            'relevant': int(plan.get('relevant') or 0),
+            'related': int(plan.get('related') or 0),
+            'excluded': int(plan.get('excluded') or 0),
+            'batches': {
+                'size': int(batches.get('size') or 0),
+                'total': int(batches.get('total') or 0),
+                'done': [int(p) for p in batches.get('done') or []],
+                'failed': [{'position': int(item.get('position') or 0),
+                            'error': str(item.get('error') or '')} for item in failed],
+            },
+            # 生成进度实时可观测：批次日志行与 notes 随 checkpoint 透传（上限截断在管线侧）
+            'log': _string_list(gen.get('log')),
+            'notes': _string_list(gen.get('notes')),
+        }
+    scan = checkpoint.get('scan')
+    if isinstance(scan, dict):
+        # V2-3（G19）：本轮兜底消耗量——单任务累计预算的对账来源（08 §4.3）
+        view['scan'] = {
+            'materials': int(scan.get('materials') or 0),
+            'fallbackFiles': int(scan.get('fallbackFiles') or 0),
+            'fallbackBytes': int(scan.get('fallbackBytes') or 0),
+        }
+    return view or None
 
 
 def get_run(conn, run_id, owner_user_id):
@@ -573,6 +742,30 @@ def rotate_run_lease(conn, run_id, owner_user_id):
     return new_lease if result.rowcount == 1 else ''
 
 
+def scan_fallback_usage(conn, task_id, owner_user_id, exclude_run_id=None):
+    """任务级 LLM 兜底已消耗量累计（V2-3/G19：限额是**单任务累计**口径，不随重试重置）。
+
+    汇总该任务全部 scan 运行检查点里的 `scan.fallbackFiles` / `scan.fallbackBytes`
+    （每个检查点只记**该轮自身**的兜底消耗，求和即任务累计）；`exclude_run_id` 排除
+    当前运行自身（其消耗尚未落库，由本轮预算实时累加）。
+    """
+    rows = conn.execute(sto.text("SELECT run_id, checkpoint_json FROM wb_build_runs "
+                                 "WHERE task_id = :t AND owner_user_id = :o AND kind = 'scan'"),
+                        {'t': task_id, 'o': owner_user_id or ''}).mappings().all()
+    files = used_bytes = 0
+    for row in rows:
+        if exclude_run_id is not None and str(row['run_id']) == str(exclude_run_id):
+            continue
+        checkpoint = _loads(row['checkpoint_json'] if row['checkpoint_json'] is not None else '{}', {})
+        scan = checkpoint.get('scan') if isinstance(checkpoint.get('scan'), dict) else {}
+        try:
+            files += int(scan.get('fallbackFiles') or 0)
+            used_bytes += int(scan.get('fallbackBytes') or 0)
+        except (TypeError, ValueError):
+            continue
+    return {'files': files, 'bytes': used_bytes}
+
+
 def run_state(conn, run_id, owner_user_id):
     """轻量读：外部工作期间检查取消/中断（不返回详情）。"""
     row = conn.execute(sto.text('SELECT state, cancel_requested, lease_token, baseline_json '
@@ -582,12 +775,22 @@ def run_state(conn, run_id, owner_user_id):
 
 
 def mark_stale_runs_interrupted(conn, now=None):
-    """服务启动时把所有 queued/running 标为 interrupted（绝不假装仍在运行）。"""
+    """服务启动时把所有 queued/running 标为 interrupted（绝不假装仍在运行）。
+
+    V2-8 配套修复：generate 运行标中断后，任务若仍停在「generating」且已无任何
+    活跃运行，则同步回退为「scope」（与取消/失败的回退口径一致，08 §12.3），
+    任务列表不得显示假「生成中」。
+    """
     now = now or sto.utcnow()
     result = conn.execute(sto.text("UPDATE wb_build_runs SET state = 'interrupted', "
                                    "error = '服务重启，执行已中断；可重试', retryable = 1, "
                                    'updated_at = :n WHERE state IN (\'queued\', \'running\')'),
                           {'n': now})
+    conn.execute(sto.text("UPDATE wb_build_tasks SET status = 'scope', stage_label = '确定范围', "
+                          'updated_at = :n WHERE status = \'generating\' AND deleted_at IS NULL '
+                          'AND task_id NOT IN (SELECT task_id FROM wb_build_runs '
+                          "WHERE state IN ('queued', 'running'))"),
+                 {'n': now})
     return int(result.rowcount or 0)
 
 
@@ -848,6 +1051,41 @@ def insert_delivery(conn, task_id, owner_user_id, request_id, payload_digest, on
                  {'d': delivery_id, 't': task_id, 'o': owner_user_id or '', 'r': request_id,
                   'p': payload_digest, 'nid': ontology_id, 'n': now})
     return delivery_id
+
+
+# --- 任务级联物理清理（08 §12.2）------------------------------------------------
+
+def purge_task(conn, task_id, owner_user_id):
+    """物理删除任务及全部关联行；返回 (各类删除计数, blob 相对路径列表)。
+
+    只删行不删文件：blob 文件由调用方在事务提交后经 materials.delete_task_blob_files
+    删除（文件删除失败不回滚数据库）。已交付的本体草稿在 wb_assets 侧，不受影响。
+    """
+    row = _task_row(conn, task_id, owner_user_id)
+    if row is None:
+        raise sto.NotFound('生成任务不存在')
+    blob_paths = [r['blob_path'] for r in conn.execute(
+        sto.text('SELECT DISTINCT blob_path FROM wb_build_blobs '
+                 'WHERE task_id = :t AND owner_user_id = :o'),
+        {'t': task_id, 'o': owner_user_id or ''}).mappings().all()]
+    counts = {}
+    for table in ('wb_build_materials', 'wb_build_facts', 'wb_build_messages',
+                  'wb_build_runs', 'wb_build_batches', 'wb_build_candidates',
+                  'wb_build_review_ops', 'wb_build_uploads', 'wb_build_deliveries',
+                  'wb_build_blobs'):
+        result = conn.execute(sto.text('DELETE FROM ' + table +
+                                       ' WHERE task_id = :t AND owner_user_id = :o'),
+                              {'t': task_id, 'o': owner_user_id or ''})
+        counts[table] = int(result.rowcount or 0)
+    result = conn.execute(sto.text('DELETE FROM wb_build_scopes '
+                                   'WHERE task_id = :t AND owner_user_id = :o'),
+                          {'t': task_id, 'o': owner_user_id or ''})
+    counts['wb_build_scopes'] = int(result.rowcount or 0)
+    result = conn.execute(sto.text('DELETE FROM wb_build_tasks '
+                                   'WHERE task_id = :t AND owner_user_id = :o'),
+                          {'t': task_id, 'o': owner_user_id or ''})
+    counts['wb_build_tasks'] = int(result.rowcount or 0)
+    return counts, blob_paths
 
 
 # --- 交付复用：新建本体资产（与 workspaces 同事务） -------------------------------

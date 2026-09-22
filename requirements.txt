@@ -15,3 +15,11 @@ cryptography>=42,<46
 # 版本在本任务 worktree 的 .venv（Python 3.9.6 / macOS）实测可用：pypdf 6.19.0，
 # 其传递依赖 typing_extensions 由 pip 自动安装。
 pypdf>=6.1,<7
+
+# 「从物料自动构建本体」图片/OCR（V2-2，可选能力，2026-09-21）：
+# workbench/ontology_build/parsers/image_parser.py 用 Pillow 读图、pytesseract 调本地
+# tesseract 识别图内文字；扫描版 PDF 整页 OCR 另需页面渲染依赖（PyMuPDF 优先，其次
+# pdf2image+poppler）。全部为可选依赖：未安装时相关材料按 ocr_unconfigured 逐文件
+# 报告失败（G18 不假称解析成功），其余功能不受影响，运行时绝不 pip install。
+Pillow>=10,<12
+pytesseract>=0.3.10,<0.4

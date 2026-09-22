@@ -1,0 +1,28 @@
+{
+  "ticket": "1c708714ac05441eaf544ea0a1335d47",
+  "task": "跨会话接线双写处置：本会话接线 agent 冻结（提交权归结构化解析任务线）",
+  "status": "decision",
+  "summary": "核实：build-governance 工作树上正在写四处接线（protocol kind/后缀映射、parsers/__init__ 登记、get_capabilities、前端标签 + blacklist 二进制组 + 08 分册 + pipeline DEDICATED_KINDS）的是另一 ZCode 会话 sess_65cdf0e3（结构化格式解析任务线）的 agent（agent_8a760d31，rollout 实测 09:27 仍活跃调用）。该工作包属该任务线：其需求文档、解析器实现 agent 与其计划中明确的『V2-10 落定后统一接线→全量回归→18881 复验→提交』均属该线。本会话派出的接线 agent 已在感知到并写后主动等待；本侧随即下达冻结令：禁写入/禁提交/禁新建测试/禁revert，转为只读核对报告；接线与提交权归结构化解析线，本会话不重复提交同一文件集。功能现状核对通过：parsers 包可导入、六新 kind 全注册、detect_kind 七后缀映射正确、blacklist SOFT_BINARY_EXTS 与需求 §4 一致、pipeline DEDICATED_KINDS 已含六新 kind。V2-10 线不受影响。",
+  "decisions": [
+    "四处接线及提交权归结构化格式解析任务线（sess_65cdf0e3 线）；本会话接线 agent 冻结为只读",
+    "同文件同时间单 owner 原则在跨会话同样适用：本会话不再触碰四处接线文件，V2-10 的文件面不变"
+  ],
+  "verification": [
+    "rollout/agents 目录实测：agent_8a760d31 属 sess_65cdf0e3；写作时间窗 09:19-09:24、09:27 仍有活跃调用",
+    "功能快检：import parsers 通过；MATERIAL_KINDS 六新kind在位；detect_kind 七后缀全对；diff 复审（pipeline DEDICATED_KINDS/protocol 映射/blacklist）注释与需求引用规范"
+  ],
+  "next": [
+    "等本会话接线 agent 的只读缺口报告；如有缺口转用户决定补方",
+    "结构化解析线自行完成回归/18881 复验/提交；V2-10 继续收尾（基准第二组+G25f数字+交接）后转测试 agent"
+  ],
+  "references": [
+    "worktree/build-governance（未提交接线改动集）",
+    ".collaboration/entries/000208（结构化解析线接线计划）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T01:28:35.556731+00:00",
+  "sequence": 174,
+  "filename": "000174-1698abfaec75.json",
+  "record_hash": "62f298d68a33b99cb3923e03671ba6b7d1e3c0af932a592036bcc874986e48b0",
+  "context_advanced": false
+}
