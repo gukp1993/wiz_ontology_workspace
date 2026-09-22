@@ -6,7 +6,8 @@
 * 硬黑名单是安全边界：二进制可执行/库文件、密钥凭据、构建/依赖目录、
   大型未知二进制。任何配置（白名单、任务覆盖）都不能越过。
 * 默认软黑名单：音频/视频、嵌套归档（zip 之外的 7z/rar/tar.gz 等）、
-  .doc（提示转 .docx）、.db/.sqlite/.mdb。任务可用自己的软名单整体覆盖。
+  .doc（提示转 .docx）、.db/.sqlite/.mdb、二进制交换格式（parquet/proto/avro/msgpack，
+  2026-09-22 结构化格式支持 §4/§12.7 追加）。任务可用自己的软名单整体覆盖。
 * 任务级自定义追加：用户在本任务内追加的排除后缀。
 * 用户后缀白名单（08 §12.1 前端后缀过滤同源口径）：命中白名单的后缀
   越过软黑名单与自定义追加，但绝不越过硬黑名单。
@@ -38,7 +39,12 @@ SOFT_MEDIA_EXTS = frozenset({
 SOFT_ARCHIVE_EXTS = frozenset({'7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst'})  # zip 之外的嵌套归档
 SOFT_LEGACY_DOC_EXTS = frozenset({'doc'})     # 提示转换为 .docx
 SOFT_DATABASE_EXTS = frozenset({'db', 'sqlite', 'sqlite3', 'mdb'})  # 二进制数据库文件
-SOFT_EXTS = SOFT_MEDIA_EXTS | SOFT_ARCHIVE_EXTS | SOFT_LEGACY_DOC_EXTS | SOFT_DATABASE_EXTS
+# 二进制交换格式（2026-09-22，需求《结构化格式解析支持_v1》§4：软黑名单默认项、可查看、
+# 不进 LLM 兜底）。按后缀排除；非文本前缀（如 PAR1）的魔数辅助判定仍由大型未知二进制硬规则
+# （>8MB 非文档/非文本）兜底。`.xls` 不并入本组：维持既有「建议转 .xlsx」路径不变。
+SOFT_BINARY_EXTS = frozenset({'parquet', 'proto', 'avro', 'msgpack'})
+SOFT_EXTS = (SOFT_MEDIA_EXTS | SOFT_ARCHIVE_EXTS | SOFT_LEGACY_DOC_EXTS | SOFT_DATABASE_EXTS
+             | SOFT_BINARY_EXTS)
 
 # 层级取值（过滤事件 layer 字段；空串 = 未被过滤）
 LAYER_HARD = 'hard'

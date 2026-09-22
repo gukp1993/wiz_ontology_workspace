@@ -26,7 +26,9 @@ LLM_BATCH_FACTS = 40
 RUN_WORKERS = 2
 SNIPPET_LIMIT = 500
 PROMPT_VERSION = 'v1'
-PARSER_VERSION = 'v1'
+# 2026-09-22：结构化格式解析支持上线（六新 kind + JSON-LD/CSV 等专用解析器），
+# 解析行为变化 → 版本提升；旧批次基线以 v1 记录，可据此区分。
+PARSER_VERSION = 'v2'
 # V2-3（G19）LLM 兜底解析限额：单任务兜底文件数 / 字节数（跨多次扫描/单物料重试累计，
 # 不因重试重置——已消耗量按任务全部 scan 运行检查点累计，见 storage.scan_fallback_usage）；
 # 超限回退文本线索降级并在扫描报告注明。可配置：环境变量在服务启动前覆盖默认值
@@ -76,7 +78,10 @@ TASK_STAGE_LABELS = {
     'delivered': '已创建本体',
 }
 MATERIAL_PARSE_STATES = ('pending', 'running', 'success', 'partial', 'failed', 'excluded')
-MATERIAL_KINDS = ('code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'image', 'zip', 'other')
+# 结构化格式解析支持（需求《结构化格式解析支持_v1》v1.1 §3）：json/yaml/properties/csv/ini/toml
+# 为新增专用 kind（登记表 kind→解析器一对一，进三级分派第①层，不再走 LLM 兜底/文本线索降级）。
+MATERIAL_KINDS = ('code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'image', 'zip', 'other',
+                  'json', 'yaml', 'properties', 'csv', 'ini', 'toml')
 RUN_KINDS = ('scan', 'dialog', 'generate')
 RUN_STATES = ('queued', 'running', 'succeeded', 'failed', 'cancelled', 'interrupted')
 GENERATE_STAGES = ('retrieve', 'align', 'abstract', 'verify', 'adapt')
@@ -154,8 +159,21 @@ def safe_rel_path(rel_path):
 
 
 _CODE_EXT = {
-    'java', 'kt', 'scala', 'js', 'jsx', 'ts', 'tsx', 'vue', 'py', 'pyw', 'json', 'xml',
-    'yaml', 'yml', 'properties', 'gradle', 'sql', 'go', 'rs', 'cs', 'php', 'rb', 'sh',
+    'java', 'kt', 'scala', 'js', 'jsx', 'ts', 'tsx', 'vue', 'py', 'pyw', 'xml',
+    'gradle', 'sql', 'go', 'rs', 'cs', 'php', 'rb', 'sh',
+}
+# 结构化格式后缀 → 新 kind（需求 §2/§3/§5 矩阵；detect_kind 在魔数判定之后、_CODE_EXT 之前
+# 命中本表）。`.json/.yaml/.yml/.properties` 原先经 _CODE_EXT 归 code 并在 code 解析器内部降级，
+# 本表上线后改走专用解析层；`.jsonid` 为用户真实样本的非标准扩展名（JSON-LD 内容），按 json 处理；
+# `.jsonl/.ndjson` 由 json 解析器按后缀内部走逐行模式（json_parser.is_line_mode）。
+_STRUCTURED_KIND_EXT = {
+    'json': 'json', 'jsonld': 'json', 'jsonid': 'json',
+    'jsonl': 'json', 'ndjson': 'json',
+    'yaml': 'yaml', 'yml': 'yaml',
+    'properties': 'properties',
+    'csv': 'csv', 'tsv': 'csv',
+    'ini': 'ini', 'cfg': 'ini', 'conf': 'ini',
+    'toml': 'toml',
 }
 _DOC_EXT = {
     'docx': 'docx', 'doc': 'docx-convert-hint', 'pdf': 'pdf', 'xlsx': 'xlsx',
@@ -207,6 +225,9 @@ def detect_kind(rel_path, head=b''):
         if mapped == 'xlsx-convert-hint':
             return 'xlsx'
         return mapped
+    # 结构化格式（json/yaml/properties/csv/ini/toml）：魔数判定之后、代码/其他之前。
+    if ext in _STRUCTURED_KIND_EXT:
+        return _STRUCTURED_KIND_EXT[ext]
     if ext in _CODE_EXT:
         return 'code'
     if ext in _IMAGE_EXT:

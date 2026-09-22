@@ -74,7 +74,10 @@ _DATA_TYPES = {value.casefold(): value for value in protocol.PROPERTY_DATA_TYPES
 _VALUE_TYPES = {value.casefold(): value for value in protocol.VALUE_TYPES}
 # V2-3 解析三级分派：这些 kind 有专用解析器（第①级）；其余（other）先走 LLM 兜底（第②级），
 # 兜底不可用/失败/超限再降级文本线索（第③级）。zip 在上传展开期已拆分，不会进入扫描解析。
-DEDICATED_KINDS = frozenset({'code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'image'})
+# 结构化格式（2026-09-22，需求《结构化格式解析支持_v1》§3/S6）同属第①级：进池内并行解析，
+# 不走 _parse_with_dispatch 的 LLM 兜底/文本线索降级（坏文件由其解析器显式失败）。
+DEDICATED_KINDS = frozenset({'code', 'ddl', 'docx', 'pdf', 'xlsx', 'md', 'image',
+                             'json', 'yaml', 'properties', 'csv', 'ini', 'toml'})
 
 
 class PipelineError(Exception):
@@ -420,8 +423,22 @@ def _scan_plan(conn, owner_id, task_id, run_id, wanted, force=False):
         coverage = material.get('coverage') if isinstance(material.get('coverage'), dict) else {}
         fact_count = int(coverage.get('factCount') or 0)
         path = material_store.material_blob_path(conn, owner_id, material['id'])
+        # 解析器集合会演进（如 2026-09-22 新增结构化格式解析器）：上传时检测并存库的 kind
+        # 只是缓存，扫描时按**实际内容**重新检测（后缀 + 头 8 字节魔数），
+        # 否则升级前上传的材料重扫也到不了新解析器（存量材料无法受益）。
+        kind = material['kind']
+        if path:
+            try:
+                with open(str(path), 'rb') as handle:
+                    head = handle.read(8)
+            except OSError:
+                head = b''
+            try:
+                kind = protocol.detect_kind(material['relPath'], head=head)
+            except Exception:
+                kind = material['kind']
         items.append({
-            'id': material['id'], 'relPath': material['relPath'], 'kind': material['kind'],
+            'id': material['id'], 'relPath': material['relPath'], 'kind': kind,
             'path': str(path) if path else '', 'factCount': fact_count,
             'size': int(material.get('size') or 0),
             'modules': list(coverage.get('modules') or []),

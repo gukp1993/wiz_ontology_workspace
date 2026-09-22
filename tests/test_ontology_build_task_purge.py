@@ -112,7 +112,7 @@ def row_count(table, task_id):
 
 
 def main():
-    root = new_isolated_root('main')
+    new_isolated_root('main')
 
     print('--- 正常级联清理 ---')
     ctx = build_task_with_payload(UID, '待清理任务')

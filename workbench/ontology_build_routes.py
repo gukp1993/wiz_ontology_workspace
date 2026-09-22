@@ -22,6 +22,37 @@ _OPS = ('generate', 'scan', 'dialog')
 # provider 缺失时的统一可读文案（422 INVALID_STATE 的 message；对话端点写进 assistantError）
 NO_PROVIDER_MESSAGE = '尚未配置可用的 LLM 提供方：请到「更多工具 → LLM 配置」添加后再重试'
 
+# 解析器支持矩阵（08 §2.1/§12.7；需求《结构化格式解析支持_v1》§5）：静态支持矩阵，不查库。
+# 前 7 项 = 三级分派第①层专用解析器（kind → 后缀）；后 2 项 = 排除说明（硬/软黑名单），
+# locator 用 '—' 表示「不产出定位事实」。exts 一律含点小写，供能力页原样展示。
+# 调整解析支持时必须同步本表、protocol.detect_kind 与 parsers/__init__.py 的登记。
+PARSER_MATRIX = (
+    {'exts': ('.json', '.jsonld', '.jsonid'), 'label': '专用（json）',
+     'locator': 'JSON 路径 / 节点 @id', 'note': 'JSON-LD 语义模式（@graph 节点高质量事实）'},
+    {'exts': ('.jsonl', '.ndjson'), 'label': '专用（json 逐行）',
+     'locator': '行号+键路径', 'note': ''},
+    {'exts': ('.yaml', '.yml'), 'label': '专用（yaml）',
+     'locator': '键路径', 'note': 'PyYAML safe_load，与 JSON 同一遍历口径'},
+    {'exts': ('.properties',), 'label': '专用（properties）',
+     'locator': '行号', 'note': '\\uXXXX 按 Java 规范解码；编码复用既有探测链'},
+    {'exts': ('.csv', '.tsv'), 'label': '专用（csv）',
+     'locator': '行号+列统计', 'note': '>100 行采样并注记截断范围'},
+    {'exts': ('.ini', '.cfg', '.conf'), 'label': '专用（ini）',
+     'locator': '节+键路径', 'note': '重复节/解析错误进 failedSegments'},
+    {'exts': ('.toml',), 'label': '专用（toml 子集）',
+     'locator': '键路径', 'note': '多行字符串/日期时间/[[数组表]]/虚键不支持，逐条诚实降级'},
+    {'exts': ('.env*',), 'label': '硬黑名单排除',
+     'locator': '—', 'note': '凭据边界（G20），不可配置；不产出事实'},
+    {'exts': ('.parquet', '.proto', '.avro', '.msgpack'), 'label': '软黑名单/魔数排除',
+     'locator': '—', 'note': '二进制格式不可解析，如实报告，不进 LLM 兜底'},
+)
+
+
+def _parser_matrix():
+    """能力接口用的解析器支持矩阵（静态数据；列表化以免调用方改动元组）。"""
+    return [{'exts': list(item['exts']), 'label': item['label'],
+             'locator': item['locator'], 'note': item['note']} for item in PARSER_MATRIX]
+
 
 # ── 参数工具 ───────────────────────────────────────────────────────────────
 
@@ -140,6 +171,8 @@ def get_capabilities(query):
             'sliceChars': protocol.LLM_FALLBACK_SLICE_CHARS,
             'enabled': bool(ref),
         },
+        # 结构化格式（08 §2.1/§12.7）：解析器支持矩阵，7 支持项 + 2 排除说明，静态数据
+        'parserMatrix': _parser_matrix(),
         'provider': ref,
         'parserVersion': protocol.PARSER_VERSION,
         'promptVersion': protocol.PROMPT_VERSION,

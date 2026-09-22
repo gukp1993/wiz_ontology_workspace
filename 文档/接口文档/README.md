@@ -18,6 +18,7 @@
 
 | 日期 | 变更 | 影响接口 | 登记人 |
 | --- | --- | --- | --- |
+| 2026-09-22 | **08 分册结构化格式专用解析接线（需求《结构化格式解析支持》v1.1）**：材料 `kind` 新增 `json/yaml/properties/csv/ini/toml`；`detect_kind` 后缀表新增 `.json/.jsonld/.jsonid`→json、`.jsonl/.ndjson`→json（逐行）、`.yaml/.yml`→yaml、`.properties`→properties、`.csv/.tsv`→csv、`.ini/.cfg/.conf`→ini、`.toml`→toml（魔数判定优先级不变）；六个专用解析器进入三级分派第①层（不进 LLM 兜底/文本线索降级，坏文件显式失败）；capabilities 新增 `parserMatrix`（7 支持项 + 2 排除说明）；默认软黑名单追加 `parquet/proto/avro/msgpack`。详见 08 §2.1/§12.7/§13.1 | `/api/build-capabilities`（新增 parserMatrix、blacklist.softDefaults 增项）、材料 `kind` 枚举 | zcode |
 | 2026-09-21 | **08 分册验收整改（R6-1，G24 严重）**：任务删除的 blob 物理文件双前缀缺陷修复——删除侧按数据目录/blob 目录双基准解析（兼容生产登记 `ontology-build-blobs/<名>` 与旧裸相对名），穿越登记按缺失处理、绝不删除目录外文件。详见 08 §12.2 | `/api/build-task-delete`（文件删除语义） | zcode |
 | 2026-09-21 | **08 分册验收整改（R6-2，G19/G23）**：G19 兜底限额改**单任务累计**口径（跨扫描/重试累计不重置，按各 scan 运行检查点 `scan.fallbackFiles/fallbackBytes` 求和）并**可配置**（环境变量 `WIZ_BUILD_LLM_FALLBACK_MAX_FILES`/`_MAX_BYTES`，正整数，启动前生效）；Run `checkpoint` 新增 scan 形态 `{materials,fallbackFiles,fallbackBytes}`；G23 `resumeMode=abstract` 落实为**真实复用**持久化的筛选/对齐产物（不重算确定性阶段）。详见 08 §4.3/§1.5/§5 | `/api/build-scan`、`/api/build-material-retry`（限额口径）、`/api/build-run`（checkpoint.scan）、`/api/build-run-resume`（abstract 复用实现） | zcode |
 | 2026-09-21 | **08 分册 V2-5/V2-6（G17/G21）**：新增 §12.5 上传断点续传（浏览器记录已确认分片，失败重试从下一未确认分片继续；`UPLOAD_EXPIRED` 自动重建会话；页面刷新丢失 uploadId 按新上传处理）与 §12.6 大文件夹软引导（后缀过滤后计数 >20 建议压缩 zip，不硬阻断）。均为前端行为，无新端点、无后端改动 | 无接口变化 | zcode |
