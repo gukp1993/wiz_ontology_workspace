@@ -374,7 +374,7 @@ def _(root):
     context = _make_context(plan, model, root)
 
     real_state = context['persistence']._inner
-    original_save = real_state.save_plan
+    original_save = real_state.amend_plan
     calls = {'n': 0}
 
     def flaky_save(task_key, doc):
@@ -383,7 +383,7 @@ def _(root):
             raise RuntimeError('注入的持久化失败')
         return original_save(task_key, doc)
 
-    real_state.save_plan = flaky_save
+    real_state.amend_plan = flaky_save
     try:
         executor.run_plan(context)
         raise AssertionError('持久化失败应上抛')

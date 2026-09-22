@@ -255,6 +255,34 @@ class ExperimentState(object):
                 '(task_key, plan_json, fingerprint, updated_at) VALUES (?, ?, ?, ?)',
                 (str(task_key), _dumps(plan_doc), fingerprint, self._clock()))
 
+    def amend_plan(self, task_key, plan_doc):
+        """计划内事件修正（执行器 apply_event 后落库）：整体替换 doc，容量守卫同一口径。
+
+        与 save_plan 的差异：save_plan 只承认「同指纹重存」为幂等（拒绝异指纹覆盖）；
+        amend_plan 供执行器在**已建计划**内推进状态（attempt 记账/重排队/blocking），
+        结构与容量校验与 save_plan 同口径，但允许 doc 随状态推进变化。
+        """
+        if not isinstance(plan_doc, dict):
+            raise ValueError('计划 doc 必须是 dict')
+        errors = batch_state.validate_plan_doc(plan_doc)
+        if errors:
+            raise ValueError('计划结构校验失败：%s' % ';'.join(
+                '%s: %s' % (item.get('code'), item.get('message')) for item in errors[:3]))
+        if not contracts.checkpoint_fits({'generate': plan_doc}, 0):
+            raise CheckpointCapacityError(
+                'checkpoint 超过软阈值（inflight=0，上限 %d 字节）：task=%r'
+                % (contracts.checkpoint_soft_limit_bytes(0), task_key))
+        with self._write_tx():
+            row = self._conn.execute(
+                'SELECT task_key FROM pilot_plans WHERE task_key = ?',
+                (str(task_key),)).fetchone()
+            if row is None:
+                raise ValueError('计划 %r 不存在：amend_plan 不允许初建（用 save_plan）'
+                                 % (task_key,))
+            self._conn.execute(
+                'UPDATE pilot_plans SET plan_json = ?, updated_at = ? WHERE task_key = ?',
+                (_dumps(plan_doc), self._clock(), str(task_key)))
+
     def claim_job(self, task_key, job_id, run_attempt):
         """先持久化 started attempt + job running（含执行权核验）再返回，失败必须抛出。
 

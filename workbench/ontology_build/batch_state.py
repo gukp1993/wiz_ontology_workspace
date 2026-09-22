@@ -396,6 +396,24 @@ def _event_job_created(doc, event):
     root_id = str(event.get('rootId') or parent_id or job_id).strip()
     if root_id != job_id and root_id not in jobs:
         raise ValueError('根作业不存在：%s' % root_id)
+    # 拆分登记制（D04/_plan_more 路径）：装箱不可行的 pending 目标先按字段拆分——
+    # 子作业通过 job_created 携带 primaryTargets（新 selector 子目标）与 expandedParentIds
+    # （被展开的父目标）；同事件内登记子目标、标父 expandedInto、从 pending 移除父目标。
+    raw_targets = event.get('primaryTargets')
+    new_ids = []
+    if isinstance(raw_targets, list):
+        for item in raw_targets:
+            _register_split_target(doc, item, new_ids)
+    for parent_tid in event.get('expandedParentIds') or []:
+        parent_tid = str(parent_tid)
+        target = doc.get('targets', {}).get(parent_tid)
+        if target is None:
+            raise ValueError('expandedParentIds 引用不存在目标：%s' % parent_tid)
+        marked = [tid for tid in new_ids if tid not in (target.get('expandedInto') or [])]
+        if marked:
+            target['expandedInto'] = list(target.get('expandedInto') or []) + marked
+        doc['pendingTargetIds'] = [tid for tid in (doc.get('pendingTargetIds') or [])
+                                   if tid != parent_tid]
     doc['jobs'][job_id] = _new_job_record(doc, event, job_id, parent_id, root_id,
                                           str(event.get('splitPath') or 'root'))
     _recompute_coverage(doc)

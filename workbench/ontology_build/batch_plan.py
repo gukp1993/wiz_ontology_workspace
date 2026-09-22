@@ -678,6 +678,11 @@ def _field_split(target, fields, facts, plan_epoch, parent_job_id, parent_path, 
         # 本子作业对父目标的 selector 认领份额（覆盖守恒按 selector 验证的依据）
         child['splitSelectors'] = {str(target.get('targetId') or ''):
                                    [dict(selector) for selector in selectors]}
+        # 拆分登记制（D00 裁定）：子目标定义随事件提交，供落库侧原子登记并标父 expandedInto
+        child['primaryTargets'] = [dict(item) for item in sub_targets]
+        parent_tid = str(target.get('targetId') or '')
+        if parent_tid:
+            child['expandedParentIds'] = [parent_tid]
         mapping[str(target.get('targetId') or '')].extend(
             copy.deepcopy(child['splitSelectors'][str(target.get('targetId') or '')]))
         children.append(child)

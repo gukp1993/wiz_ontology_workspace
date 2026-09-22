@@ -62,8 +62,25 @@ class PersistenceFacade(object):
         return self._inner.load(self._task_key)
 
     def save(self, doc):
+        """计划落库（apply_event 后）：不存在则初建（save_plan），已存在则修正（amend_plan）。
+
+        在线实现的 save_plan 会拒绝二次覆盖（防串写），执行器在计划已建后的事件
+        （attempt 记账/重排队/blocking）必须走 amend_plan；这里按「先试 amend、
+        计划不存在再初建」的顺序保持两种适配器语义一致（实验 save_plan 同指纹幂等）。
+        """
         if self._online:
-            return self._inner.save_plan(doc, self._lease())
+            try:
+                return self._inner.amend_plan(doc, self._lease())
+            except Exception as exc:   # noqa: BLE001 - 按异常语义判别「计划不存在」
+                if '不存在' not in str(exc):
+                    raise
+                return self._inner.save_plan(doc, self._lease())
+        if hasattr(self._inner, 'amend_plan'):
+            try:
+                return self._inner.amend_plan(self._task_key, doc)
+            except ValueError as exc:
+                if '不存在' not in str(exc):
+                    raise
         return self._inner.save_plan(self._task_key, doc)
 
     def claim(self, job_id, run_attempt):
@@ -541,9 +558,11 @@ def _plan_more(context):
         targets = doc.get('targets') or {}
         depth_cap = contracts.MAX_SPLIT_DEPTH
         for tid in infeasible:
-            target = targets.get(tid)
+            target = dict(targets.get(tid) or {})
             if not target:
                 continue
+            if target.get('expandedInto'):
+                continue   # 已展开：子目标已登记，等待其自身处理（不再重复拆分）
             decision = batch_plan.split_or_block(
                 [dict(target, targetId=tid)], context['facts_by_id'], 0,
                 profile=context['profile'],

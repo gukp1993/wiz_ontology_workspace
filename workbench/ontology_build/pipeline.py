@@ -1180,8 +1180,18 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
                                 '或关闭 WIZ_BUILD_ADAPTIVE_BATCHING 后重试。'
                                 % '；'.join('%s: %s' % (code, field)
                                             for code, field in errors))
-        return _run_generate_v2(owner_user_id, task_id, run_id, batch_id, provider,
-                                resume_mode, v2_profile)
+        # 旧计划兼容（08 §14.5）：无 schemaVersion 或 =1 的 auto 续跑保持原冻结 legacy 路径，
+        # 绝不把旧批次伪装成 v2 叶状态；abstract 显式重抽象才在 v2 下建立新 epoch。
+        existing = _tx(lambda conn: _generate_doc_of_run(conn, owner_id, run_id))
+        has_plan = isinstance(existing, dict) and bool(existing)
+        stored_version = existing.get('schemaVersion') if has_plan else None
+        # 仅「已有旧计划（无版本或 v1）的 auto 续跑」走 legacy；新运行与 v2 计划走 v2 路径
+        # （abstract 对旧计划=显式新 epoch，也走 v2 重建）。
+        if has_plan and stored_version in (None, 1) and resume_mode == 'auto':
+            pass   # → 走下方 legacy 路径（旧计划的 auto 续跑保持原冻结语义）
+        else:
+            return _run_generate_v2(owner_user_id, task_id, run_id, batch_id, provider,
+                                    resume_mode, v2_profile)
     context = _tx(lambda conn: _generate_context(conn, owner_id, task_id, run_id))
     scope, facts, task = context['scope'], context['facts'], context['task']
     saved = (context['checkpoint'] or {}).get('generate') or {}
@@ -1595,6 +1605,14 @@ def _generate_context(conn, owner_id, task_id, run_id):
 
 
 # --- 生成控输出 v3：schema2 目标计划路径（08 §14；WIZ_BUILD_ADAPTIVE_BATCHING=1 启用） ---
+
+
+def _generate_doc_of_run(conn, owner_id, run_id):
+    """读运行的 schema2/1 计划文档（无则 None）；用于 v2/legacy 路由判定。"""
+    raw = store.run_checkpoint_doc(conn, run_id, owner_id)
+    if isinstance(raw, dict) and isinstance(raw.get('generate'), dict):
+        return raw['generate']
+    return raw if isinstance(raw, dict) and raw else None
 
 
 def _v2_codec():

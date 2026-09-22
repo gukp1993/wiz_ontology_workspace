@@ -644,6 +644,9 @@ def final_state_check(plan_doc):
 # class Persistence（鸭子类型契约；两实现 + 执行器共享，禁止复制调度器）：
 #   load(task_key) -> plan_doc|None                      # 读完整计划（在线=checkpoint，实验=行）
 #   save_plan(task_key, plan_doc) -> None                # 初次建计划，原子；容量守卫在调用方
+#   amend_plan(task_key, plan_doc) -> None               # 计划内事件修正（attempt 记账/重排队/
+#       blocking 设置）：同事务核验执行权后整体替换 planned 文档；容量守卫在实现内。
+#       （save_plan 只用于初建；执行器所有的「apply_event 后落库」都走 amend_plan。）
 #   claim_job(task_key, job_id, run_attempt) ->
 #       {'ok': bool, 'attemptId': str, 'requestedMaxTokens': int}
 #       ①先持久化 started attempt + job running（含执行权核验）再返回，失败必须抛出。

@@ -153,7 +153,10 @@ class OnlinePersistence(object):
         local = str(candidate.get('key') or candidate.get('name') or '').strip()
         if not local:
             local = 'slot-%d' % int(index)
-        digest = hashlib.sha256(local.encode('utf-8')).hexdigest()[:10]
+        # planEpoch 入哈希：跨 epoch（abstract 重建/新计划）候选 id 不冲突；
+        # 同 epoch 内确定性不变（重复回调幂等依据）。
+        digest = hashlib.sha256(('%s|%s' % (int(plan_epoch or 0), local)).encode('utf-8')
+                                ).hexdigest()[:10]
         payload['id'] = 'bc-' + str(job_id or '')[2:14] + '-' + digest
         origin = candidate.get('origin')
         origin = dict(origin) if isinstance(origin, dict) else {}
@@ -201,6 +204,33 @@ class OnlinePersistence(object):
             if _generate_doc_of(row) is not None:
                 raise PersistenceError('schema2 计划已存在（save_plan 只用于初次建计划，'
                                        '重排/重建须新建运行）')
+            self._update_checkpoint(conn, plan_doc, expected_lease)
+
+        with sto.write_tx() as tx:
+            tx.run(body)
+
+    def amend_plan(self, plan_doc, expected_lease=None):
+        """计划内事件修正（attempt 记账/重排队/blocking）：核验执行权后整体替换。
+
+        与 save_plan 的差异：save_plan 是「初建、已有计划拒绝覆盖」；amend_plan 用于已存在
+        计划内的合法状态推进（执行器 apply_event 后落库的唯一通道）。结构/容量校验与
+        save_plan 同一口径；拒绝（lease 失配/取消/终态）抛异常，绝不静默丢弃事件。
+        """
+        expected_lease = self._resolve_lease(expected_lease)
+        if not isinstance(plan_doc, dict):
+            raise PersistenceError('amend_plan 需要 schema2 计划 dict')
+        errors = batch_state.validate_plan_doc(plan_doc)
+        if errors:
+            raise PersistenceError('计划结构校验未通过：%s' % errors[0].get('message'))
+        self._ensure_fits(plan_doc)
+
+        def body(conn):
+            row = store.get_run(conn, self._run_id, self._owner)
+            if row is None:
+                raise PersistenceError('运行不存在或不属于当前账号：%s' % self._run_id)
+            reason = self._reject_reason(row, expected_lease)
+            if reason:
+                self._raise_for_reason(reason)
             self._update_checkpoint(conn, plan_doc, expected_lease)
 
         with sto.write_tx() as tx:
