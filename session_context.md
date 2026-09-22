@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`9f989fafc5e51f37`
+上下文版本：`4dfacb7f05149380`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,61 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### ontology-build-v2-10-parse-concurrency（V2-10/G25，worktree/build-governance） · zcode · 已实施，待验收
+
+时间：2026-09-22T01:32:25.390535+00:00；记录：`.collaboration/entries/000177-3e98e93a65fe.json`
+
+V2-10 解析并发（线程池）六项任务全部完成：68adc85 契约先行（08 §2.1 limits.parseConcurrency + §4 并发模型冻结）；feebad2 线程池核心（run 内 ThreadPoolExecutor，第①级专用解析器单文件粒度池内并行、worker 只解析不写库、主线程按物料登记顺序收集并逐个短事务落库；LLM 兜底与 index 串行；取消 shutdown(wait=False, cancel_futures=True)；0.5s 短片轮询收集使取消即时生效；单文件等待超时标 failed「解析超时」并清空事实、迟到结果一律丢弃）；a766747 capabilities 暴露 parseConcurrency（默认 min(8,CPU)，env WIZ_BUILD_PARSE_CONCURRENCY 覆盖）；3731593 前端能力面板；cb65d4f 六组专项回归（等价指纹/峰值并发/取消保留/超时丢弃/env 回退）+ G25d 暴露的重扫复用缺陷修复（_start_scan 全量 pending 重置使 08 §4 复用承诺从未生效）；494f8fd G25f 基准脚本 + 开发计划 §12.4 数字记录。
+
+- 决定：收集用 0.5s 短片轮询（总等待≤120s）：取消请求可在短片边界生效，不被长等待阻塞；G25d 验收暴露 _start_scan 重置缺陷：任务级扫描保留 success 材料供复用，单物料重试仍强制重解析（G22 不变）；LLM 兜底保持主线程串行（远程调用+单任务预算计数语义），第①级进池
+- 验证：tests/test_ontology_build.py 244/244（新增 flow_parse_concurrency 18 项：等价指纹逐字节一致、峰值并发≥2、取消后 facts 稳定、超时迟到结果丢弃、env 覆盖/回退）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；vue-tsc 0 错误、npm run build 通过；ruff 本组改动文件全过；G25f：1200 小文件串行 3.33–5.04s vs 并发8 3.45–3.93s（小文本 GIL 主导无显著加速，含一组负载离群值；详见开发计划 §12.4）
+- 下一步：待测试 agent 独立验收（G25a–f）；工作树内存在另一并行任务（结构化格式解析 v1）的未提交文件（parsers/ 7 个新文件 + __init__/protocol/blacklist/pipeline 未提交修改）——非本任务范围，未代为提交/修改；本任务回归已在其当前状态下 244/244 通过；tests/test_ontology_build_task_purge.py:115 基线即有 F841 维持未动
+- 依据/文档：worktree/build-governance 分支 codex/build-governance：68adc85/feebad2/a766747/3731593/cb65d4f/494f8fd；文档/接口文档/08-从物料自动构建本体接口.md §2.1/§4；文档/需求/20260920_从物料自动构建本体/开发计划.md §12.4
+
+### 接线冻结复盘：零写入确认 + 三个展示层缺口追加（供接线归属方参考） · zcode · 已确认决定
+
+时间：2026-09-22T01:31:40.962640+00:00；记录：`.collaboration/entries/000176-ca4b6e71e4c6.json`
+
+对 000174（接线冻结裁决）的追加记录。冻结的核对 agent 已完成只读报告：①零写入确认——全程未调用 Edit/Write、无 pycache 残留、计划中的测试文件未创建，无任何内容丢失；②四处接线经独立复算全部完成无缺口（protocol 六kind+_STRUCTURED_KIND_EXT 表、parsers 登记一对一、get_capabilities parserMatrix 9行、前端类型与标签+矩阵表）；③发现三个展示层小缺口，未修（按冻结令仅报告）：a) BuildMaterialsPage accept 列表缺 .tsv 与 .jsonid（检测表与矩阵均已支持，仅选择器提示不齐）；b) BuildReviewPage 独立本地映射 LOCATOR_KIND_LABELS 仅含 6 旧 kind，六新 kind 在评审页显示原始前缀（json · $.a.b）而非中文定位名——types.ts 两张表已更新，此处第三张小表漏改；c) alignment.py subject_key 对六新 kind 走通用分支（按文件成组，可用非缺陷，节级/路径级聚合可选优化）。④口径澄清：任务书写的 .ini/.env/.conf→ini 与需求 v1.1（.env* 硬黑名单）冲突，实现按需求正确处理，勿按任务书改。以上三条建议由接线归属会话（sess_65cdf0e3 线）在提交前顺手处理（提交须先 git add 七个未跟踪解析器文件）。
+
+- 决定：三个展示层缺口（accept 后缀/BuildReviewPage 本地映射/alignment subject_key）交由接线归属任务线处理，本会话不触碰
+- 验证：冻结 agent 独立复算：包可导入、登记一对一、detect_kind 逐条与需求 §5 核对全对、parserMatrix 9 行、DEDICATED_KINDS 含六新 kind、blacklist 与 §4 一致、08 分册契约先行完整
+- 下一步：接线归属线：提交前处理 a/b（展示层小项），注意 git add 未跟踪文件；本会话只等 V2-10 开发收尾→转测试 agent 验收
+- 依据/文档：.collaboration/entries/000174（接线冻结裁决）；workbench/ontology_build/parsers/__init__.py；frontend/src/ontology/build/BuildReviewPage.vue:139
+
+### build-governance 结构化格式解析接线（三级分派） · zcode · 已实施，待验收
+
+时间：2026-09-22T01:29:08.503338+00:00；记录：`.collaboration/entries/000175-0d31cbe3b96e.json`
+
+六个结构化解析器接线完成：08 分册契约先行（§2.1 parserMatrix、§12.7 增量、§13.1 软黑名单、README 变更记录）→ protocol.py 加 MATERIAL_KINDS 六 kind 与 _STRUCTURED_KIND_EXT 后缀表（魔数之后、_CODE_EXT 之前）→ parsers/__init__.py 注册六解析器（签名与 base 约定一致，无适配层）→ routes 加 PARSER_MATRIX/_parser_matrix 进 get_capabilities → blacklist.py 加 SOFT_BINARY_EXTS → 按协调者裁决改 pipeline.py DEDICATED_KINDS。新测试 92/92；未 commit。
+
+- 决定：补充要求已落实：.jsonid→json（真实样本 储能_V20260814_0002 (3).jsonId），测试含大小写混排断言；协调者裁决由本 agent 改 pipeline.py DEDICATED_KINDS（一行+注释），未动 _parse_with_dispatch/线程池；PK/PDF/OLE 魔数优先级与 .xls 转换提示路径均保持不变
+- 验证：tests/test_ontology_build_parser_wiring.py 92/92（后缀映射含 .jsonid、既有后缀回归、魔数优先级、六格式全链路 facts>0 与 locator、坏 JSON 显式 failure 零事实、六 kind ∈ DEDICATED_KINDS、四二进制后缀软黑名单、parserMatrix 9 项结构）；materials_views 10/10；struct_parsers 143/143；另一 agent 的 struct_e2e（真实隔离 HTTP 扫描九样本）87/87；ruff check 改动文件与新测试：All checks passed；未运行 test_ontology_build.py 与 tests/run.py all（并发纪律）
+- 下一步：夹具冲突需 test_ontology_build.py owner 处理：cb65d4f 的 V2-3 兜底用例用 config.ini 作 kind=other（L1367/1368/1388/1393/1469-1482），本轮 .ini 归 ini 后会失败；建议换 .log/.bat/.ps1/.cmd（已核实仍归 other）；能力页前端渲染 parserMatrix 未实施（不在本 agent 允许文件清单）；待 Codex 验收；未提交 git
+- 依据/文档：workbench/ontology_build/protocol.py detect_kind/_STRUCTURED_KIND_EXT；workbench/ontology_build/parsers/__init__.py REGISTRY 注册段；workbench/ontology_build_routes.py PARSER_MATRIX 与 pipeline.py DEDICATED_KINDS；workbench/ontology_build/blacklist.py SOFT_BINARY_EXTS；tests/test_ontology_build_parser_wiring.py；文档/接口文档/08-从物料自动构建本体接口.md §2.1/§12.7
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### 跨会话接线双写处置：本会话接线 agent 冻结（提交权归结构化解析任务线） · zcode · 已确认决定
+
+时间：2026-09-22T01:28:35.556731+00:00；记录：`.collaboration/entries/000174-1698abfaec75.json`
+
+核实：build-governance 工作树上正在写四处接线（protocol kind/后缀映射、parsers/__init__ 登记、get_capabilities、前端标签 + blacklist 二进制组 + 08 分册 + pipeline DEDICATED_KINDS）的是另一 ZCode 会话 sess_65cdf0e3（结构化格式解析任务线）的 agent（agent_8a760d31，rollout 实测 09:27 仍活跃调用）。该工作包属该任务线：其需求文档、解析器实现 agent 与其计划中明确的『V2-10 落定后统一接线→全量回归→18881 复验→提交』均属该线。本会话派出的接线 agent 已在感知到并写后主动等待；本侧随即下达冻结令：禁写入/禁提交/禁新建测试/禁revert，转为只读核对报告；接线与提交权归结构化解析线，本会话不重复提交同一文件集。功能现状核对通过：parsers 包可导入、六新 kind 全注册、detect_kind 七后缀映射正确、blacklist SOFT_BINARY_EXTS 与需求 §4 一致、pipeline DEDICATED_KINDS 已含六新 kind。V2-10 线不受影响。
+
+- 决定：四处接线及提交权归结构化格式解析任务线（sess_65cdf0e3 线）；本会话接线 agent 冻结为只读；同文件同时间单 owner 原则在跨会话同样适用：本会话不再触碰四处接线文件，V2-10 的文件面不变
+- 验证：rollout/agents 目录实测：agent_8a760d31 属 sess_65cdf0e3；写作时间窗 09:19-09:24、09:27 仍有活跃调用；功能快检：import parsers 通过；MATERIAL_KINDS 六新kind在位；detect_kind 七后缀全对；diff 复审（pipeline DEDICATED_KINDS/protocol 映射/blacklist）注释与需求引用规范
+- 下一步：等本会话接线 agent 的只读缺口报告；如有缺口转用户决定补方；结构化解析线自行完成回归/18881 复验/提交；V2-10 继续收尾（基准第二组+G25f数字+交接）后转测试 agent
+- 依据/文档：worktree/build-governance（未提交接线改动集）；.collaboration/entries/000208（结构化解析线接线计划）
+
+### build-governance V2六项增量 测试agent复测 第二轮 · zcode · 已验证
+
+时间：2026-09-21T19:27:47.864344+00:00；记录：`.collaboration/entries/000173-e440d8494ad8.json`
+
+第二轮复测通过：第一轮问题清单四项全部闭合。严重#1（G24 blob 残留）双确认闭合——测试方独立脚本 9/9（生产形态真删/旧形态兼容/4 种穿越防逃逸/missing 如实计数）+ 干净隔离实例端到端 8/8（级联删除后 blob 目录为空）；#2 单任务累计断言经前提核实（首扫 2 文件兜底、限额压 1 后重试）确认真能区分两种口径且按需求口径命中（断言 198/199）；#3 环境变量可配置实测闭合（合法 77 生效、非法回退默认，断言 200-202 + capabilities 实例实测）；#4 以必炸桩探针实证 abstract 真复用（断言 218，types.ts 同步、vue-tsc 0 错）。三 commit 与自述一致无夹带（7d59dd4 仅协作归档）。回归：test_ontology_build 226/226、task_purge 17/17、抽测 parsers 95/95、storage_contract 60/60、finish_guard 27/27、materials_views 10/10、runner_isolation 34/34 全过。无新问题。验收状态：待用户授权集成。完整报告：/tmp/v2_test_report_round1.md 第二轮章节
+
+- 验证：R2 独立复测 9/9：生产形态 deleted=1 且物理文件删除；穿越/绝对路径 4 形态 deleted=0 目录外文件完好；missing=3 如实；R5 干净实例 8/8：2 材料+.key 422+过滤报告→级联删除→blob 目录空、任务 404；回归：test_ontology_build 226/226（含新断言 198/199/200-202/218）、task_purge 17/17、五套件抽查 95/60/27/10/34 全过、vue-tsc 0 错；#3 实例实测：WIZ_BUILD_LLM_FALLBACK_MAX_FILES=77 生效、MAX_BYTES=notanumber 回退 52428800；R1 逐 commit 核对：8c6c9d9/5b95df8/7d59dd4 与自述一致，无夹带
+- 下一步：测试通过，待用户明确授权后由集成负责人集成合并 main（本轮验收基线 7d59dd4）；第一轮建议/观察项维持不阻塞（HARD_GLOBS 注记、.git 普通文件边缘、SVG 实体防护、0003 基线守卫风格）
+- 依据/文档：/tmp/v2_test_report_round1.md（第二轮章节）；worktree/build-governance@7d59dd4（73bd704+3 提交）；workbench/ontology_build/materials.py delete_task_blob_files 双基准解析；tests/test_ontology_build_task_purge.py 生产形态场景 8-12
 
 ### ontology-build-v2-governance（第一轮验收整改 R6，worktree/build-governance） · zcode · 已实施，待验收
 
@@ -97,55 +152,3 @@ V2 六项增量全部实施并逐项提交（基于 425a28d，分支 codex/build
 - 验证：18765=PID 9300 cwd=main 仓库 HTTP 200；18881=PID 9356 cwd=worktree/build-governance，curl admin/admin 登录返回 admin(isAdmin=true)；worktree/data 11 资产、1161 blob、keys/wb-root.key 0600 就位；旧平级目录已清除。；期间一次执行链因 rmdir 失败后台化导致 task.env 未更新、实例错位——已现场盘点（进程 cwd/ps env/三库对照）后全部纠正，终态以 curl 与 cwd 双重验证。
 - 下一步：用户照常使用：18765=main（原密码），18881=build-governance 副本（admin/admin，数据为快照+其上传）。；后续新建 worktree 按 AGENTS 修订版执行：数据根=工作树根，backup 快照+根密钥随行。；两个实例的会话 Cookie 同源 127.0.0.1 不同端口可能互相覆盖（AGENTS 已有告诫），浏览器验收分实例用隔离上下文。
 - 依据/文档：commit 2496b9b（AGENTS §3 修订）；登记 .git/workbench-tasks/build-governance.json；实例 18881 数据：worktree/build-governance/data/workbench.sqlite3 + data/ontology-build-blobs（1161 文件）+ keys/wb-root.key
-
-### AGENTS.md 新增规范：新建 worktree 默认同步 main 库快照 · zcode · 已确认决定
-
-时间：2026-09-21T07:07:36.522234+00:00；记录：`.collaboration/entries/000164-7ee869e3e45d.json`
-
-按用户指令在 AGENTS.md §3 启动与数据隔离写入规范（commit 0f287be，main）：新建开发 worktree 时隔离数据根默认用 transfer backup 生成 main 库 WAL 一致性快照直接落位（禁止 cp 活跃库文件），并复制根密钥（0700/0600，否则副本加密凭据不可解密）；快照为时点数据；副本内可按用户要求重置口令；数据根含真实数据与根密钥须登记为不可自动丢弃、清理须用户确认；自动化测试临时隔离根不适用本条仍用空库。原「默认合成数据」句同步改写为指向新规则并保留测试例外。来源背景：build-governance 工作树空库实践（admin 无法登录、加密凭据不可解密）。
-
-- 决定：规范定为开发 worktree 的默认行为（用户指令），并显式划出例外：自动化测试临时根仍空库；用户明确要求空库/合成数据时从其指令。；同步用 transfer backup 一致性快照而非 cp 活跃库文件；根密钥必须随行，否则副本内加密凭据不可用。
-- 验证：git show 0f287be 仅含 AGENTS.md 1 文件 2 增 1 删；落点为 §3 启动与数据隔离；commit 信息含动机与操作细节。
-- 下一步：后续新建 worktree 按此规范执行（快照+根密钥+登记标注不可自动丢弃）；既有 build-governance 数据根已是该形态。
-
-### build-governance 工作树实例搭建 + 从 main 同步数据（用户指令） · zcode · 已实施，待验收
-
-时间：2026-09-21T07:00:42.658671+00:00；记录：`.collaboration/entries/000163-8dd9aef6aa66.json`
-
-用户报 admin/admin 登录失败。核实：新工作树按约定只登记未启动（无 venv/无库/无服务），18881 从未跑过；18765 的 admin 真实密码并非 admin（此前靠已登录会话）。按用户指令从 main 同步：worktree 建 .venv（--system-site-packages）；main 库一致性快照放入隔离数据根；复制根密钥使副本内加密凭据可解密；前端 dist 复制自 main 同 commit 构建产物；副本内重置 admin 密码为 admin（仅隔离副本）；启动 18881 并验证登录成功。main 18765 完全未动（密码/数据原样）。
-
-- 决定：同步方式用 transfer backup 一致性快照直接落位为工作树库（CLI 无 restore 子命令，快照即完整库）；根密钥随行复制，否则副本内模型密钥/连接密码不可解密。；admin/admin 只在隔离副本内重置生效；main 真实库密码重置属真实数据操作，未获指令不做。数据根现含真实数据与根密钥，登记改为不可自动丢弃。
-- 验证：curl POST 18881/api/auth-login admin/admin 返回 admin(isAdmin=true)；前端首页 200；快照含 main 全部数据（11 资产/2 账号）；18765 未受影响。
-- 下一步：用户可访问 http://127.0.0.1:18881 用 admin/admin 登录（数据为 main 同步时点快照，不自动跟随 main）。；若还要把 main 18765 的 admin 密码改为 admin，属真实库重置，需用户明确指令（CLI 已具备）。；后续清理该工作树时数据根含真实数据与根密钥，须用户确认处置。
-- 依据/文档：实例：http://127.0.0.1:18881；工作树：worktree/build-governance；数据根：wiz_kq_builder_v2-build-governance-data（含 keys/wb-root.key 副本）；登记：.git/workbench-tasks/build-governance.json（env_ready_dev_pending）
-
-### 仓库架构整理与代码规范（codex/repo-cleanup）B项整改复验 · zcode · 已验证
-
-时间：2026-09-21T07:12:37.428738+00:00；记录：`.collaboration/entries/000162-514cd6dad452.json`
-
-用户指令「继续验收」，对整改提交做第2轮独立复验，判定【通过】，总体验收由不通过转为通过。复验 HEAD abab867，聚焦 B 项整改（业务提交 b8627db..eeb7097 内容未变，首轮 A/C/D 通过结论继续有效）：df941aa 整改提交 996 行改动=991 ontology+5 .idea 索引删除、零混入其他改动；git ls-tree -r HEAD 树级 ontology/.idea 均 0（提交对象级证据）；tracked 865（=864+abab867 新增交接条目，构成吻合）；磁盘 ontology 991、.idea 5 文件（含 .idea/.gitignore）全部保留；data/keys 全程 b4a56a9..HEAD 零接触；.gitignore 规则在。开发计划 §7 整改记录如实（根因=拆分提交前 git reset 撤销 rm --cached 暂存、git add -u 无法恢复删除暂存，与首轮验收推断一致），验收指令两处期望值已修正（交付物顶层md 8、tracked ≈864）并与本轮实测吻合。quick 3/3 哨兵通过，工作树 clean。复验记录已提交 5a47ede。
-
-- 决定：B 项整改复验通过：以 git ls-tree 树级证据为准（非索引瞬时态），996 纯删除+磁盘保留+data/keys 零接触三条件齐备；历史提交信息错位不要求改写（本地未合并分支允许但验收以最终树为准），错误数字以开发计划 §7 整改记录与 df941aa 提交信息更正为准；A/C/D 沿用首轮结论：整改为纯 git 索引操作无代码变更，首轮 all 48/49（pypdf 环境缺口经 main 对照）、TS 6/6、语义抽查 6/6、ruff/eslint/build 均不受影响
-- 验证：df941aa 纯度：git show --name-status 统计 996 行=991^D ontology+5^D .idea，非删除 0；树级：git ls-tree -r HEAD | grep -c ^ontology/ = 0；^\.idea/ = 0；git ls-files 总数 865；磁盘：find ontology -type f = 991；ls -1A .idea = 5 文件；git diff b4a56a9..HEAD --stat -- data/ keys/ = 0；文档：独立验收指令.md:41 期望 8（原≥12）、:58 期望 ≈864（原855左右）；开发计划 §7 整改记录含根因与数字更正；哨兵：python3 tests/run.py quick 3/3；git status clean
-- 下一步：状态：待用户授权集成。合并 main、清理工作树、更新主服务均待用户明确指令；集成时注意 .collaboration entries 本分支与 main 各自新增需合并日志（同序号不同内容：本树 000158-000162 与 main 000158-000164）；合并后 main 工作树磁盘 ontology/ 不受影响（本地文件保留），新克隆环境将不再自带旧文件树（新环境初始化只依赖 transfer CLI 与库内数据）
-- 依据/文档：文档/需求/20260921_仓库架构整理与代码规范/独立验收记录_20260921.md（含复验记录节）；复验提交 5a47ede；整改提交 df941aa/09ae5e2/abab867；首轮验收 b3e912b；基线 b4a56a9
-
-### 为自动化构建增量/治理创建 worktree（用户明确指令） · zcode · 已确认决定
-
-时间：2026-09-21T06:43:09.984017+00:00；记录：`.collaboration/entries/000162-eb5ae3cbf932.json`
-
-按用户指令从最新已提交 main（452d0ae）创建分支 codex/build-governance 与工作树 worktree/build-governance/，登记端口 18881（已核实空闲）、隔离数据根 wiz_kq_builder_v2-build-governance-data（空）、环境文件 .runtime/task.env、公共登记 .git/workbench-tasks/build-governance.json（created_awaiting_dev）。用途：自动化构建增量/治理（会议增量与 R02/R10 断言挂测试集候选）。仅创建与登记：未装依赖、未建 venv、未建库、未启动服务、未开发；main 未提交内容未带入；既有 assist-fill-production 与 repo-cleanup 工作树未触碰。
-
-- 决定：分支名经用户选择定为 build-governance 方向（codex/build-governance）；工作树按 2026-09-20 约定落在主仓库 worktree/ 目录下；端口选用 18881 避开 18765/8765 与历史任务端口。
-- 验证：git worktree list 含新树且指向 452d0ae[codex/build-governance]；分支名预先核实未占用；/worktree/ 在 .gitignore 第 21 行；登记 JSON 通过 python3 -m json.tool 校验。
-- 下一步：等用户下达开发指令后在原工作树实施；开发授权后步骤：worktree 内建 .venv、source .runtime/task.env、transfer init 建隔离库、起 18881 隔离实例；验收通过停在待用户授权集成。
-- 依据/文档：工作树：/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/build-governance；登记：.git/workbench-tasks/build-governance.json；环境：worktree/build-governance/.runtime/task.env
-
-### 项目能力补齐推进计划表交付 · codex · 需求已交付
-
-时间：2026-09-21T06:36:30.147063+00:00；记录：`.collaboration/entries/000161-b85426020157.json`
-
-交付P00-P13分阶段推进表，先核对基线和储能试点，再决定说明语义、依赖固定、绑定验证及后续消费能力；历史恢复、MCP与动作执行保持待决策/延期，不启动实施。
-
-- 验证：核对依赖顺序、完成标准与授权停止点；未改代码、未创建worktree、未更新服务。
-- 依据/文档：文档/需求/20260921_项目能力补齐推进计划/推进计划表.md
