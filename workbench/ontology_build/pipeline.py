@@ -31,6 +31,10 @@
   数量与说明），不做静默截断。
 """
 
+import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
+
 from workbench.ontology_build import alignment
 from workbench.ontology_build import llm
 from workbench.ontology_build import materials as material_store
@@ -155,6 +159,10 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False, pro
       任务全部 scan 运行检查点累计，重试/再扫描不重置。
     * 无材料 / 全部失败 → 抛 PipelineError（run 记失败），但**已完成材料的结果保留**。
     * 长解析期间不持锁；每个材料完成即推进 progress {'done': n, 'total': m}。
+    * 解析并发（V2-10/G25）：第①级专用解析器文件在 run 内线程池并行解析（worker 只解析
+      不写库），主线程按物料登记顺序收集结果并逐个短事务落库——facts 内容与顺序同串行版
+      完全一致；并发度 protocol.PARSE_CONCURRENCY（默认 min(8, CPU)，env 可覆盖）；
+      取消/超时语义见 08 §4。
     """
     owner_id = str(owner_user_id or '')
     wanted = {str(item) for item in material_ids} if material_ids else None
@@ -174,82 +182,108 @@ def run_scan(owner_user_id, task_id, run_id, material_ids=None, force=False, pro
     fallback_budget = {'files': int(seeded.get('files') or 0),
                        'bytes': int(seeded.get('bytes') or 0)}
     fallback_used = {'files': 0, 'bytes': 0}
-    for index, item in enumerate(plan, start=1):
-        if item['reusable']:
-            reused += 1
-            facts_total += int(item['factCount'])
-            for name in item['modules']:
-                if name not in modules:
-                    modules.append(name)
-            details.append({'id': item['id'], 'relPath': item['relPath'], 'parseState': 'reused',
-                            'facts': int(item['factCount']), 'error': ''})
-        else:
-            # parse_state 是业务内容（R4-01）：同事务核对取消/执行权后再写
-            runner.content_tx(owner_id, run_id,
-                              lambda conn, item=item:
-                              _scan_mark_running(conn, owner_id, run_id, item['id']))
-            if not item['path']:
-                outcome = {'state': 'failed', 'facts': 0, 'modules': [],
-                           'error': '材料文件缺失（已被清理或未登记为 blob）'}
-            else:
-                try:
-                    result, usage = _parse_with_dispatch(owner_id, run_id, item, provider,
-                                                         fallback_budget, fallback_used, usage)
-                except Exception as exc:  # noqa: BLE001 - 单材料异常降级为该材料失败
-                    result = None
-                    outcome = {'state': 'failed', 'facts': 0, 'modules': [],
-                               'error': '解析材料失败（%s）：%s' % (exc.__class__.__name__, exc)}
-                else:
-                    # 事实与 parse_state/coverage 都是业务内容（R4-01）：同事务核对后再写
-                    outcome = runner.content_tx(
-                        owner_id, run_id,
-                        lambda conn, item=item, result=result:
-                        _scan_write(conn, owner_id, run_id, task_id, item, result))
-            details.append({'id': item['id'], 'relPath': item['relPath'],
-                            'parseState': outcome['state'], 'facts': int(outcome['facts']),
-                            'error': outcome.get('error') or ''})
-            facts_total += int(outcome['facts'])
-            for name in outcome.get('modules') or []:
-                if name not in modules:
-                    modules.append(name)
-            if outcome['state'] == 'failed':
-                failed += 1
-            else:
-                parsed += 1
-        runner.stage(owner_id, run_id, 'parse', label, {'done': index, 'total': total})
 
-    runner.stage(owner_id, run_id, 'index', protocol.SCAN_STAGE_LABELS['index'],
-                 {'done': total, 'total': total})
-    checkpoint = {'scan': {'materials': total, 'parsed': parsed, 'reused': reused, 'failed': failed,
+    # V2-10（G25）：解析并发、落库串行——run 内创建线程池（worker 只解析、不写库），
+    # 三级分派第①级专用解析器文件按单文件粒度全部提交；主线程按物料登记顺序逐个
+    # 收集结果并逐个短事务落库（facts 内容与顺序同串行版完全一致）。黑名单/后缀过滤
+    # 在上传登记时已串行完成；LLM 兜底（第②级）不进线程池（主线程串行，预算计数
+    # 语义不变）；index 阶段串行。run 结束（完成/失败/取消）必须 shutdown——按
+    # shutdown(wait=False, cancel_futures=True) 关闭：未开始任务取消、执行中 worker
+    # 完成当前文件（≤单文件超时），超时/迟到结果一律丢弃不再落库。
+    executor = ThreadPoolExecutor(max_workers=max(1, int(protocol.PARSE_CONCURRENCY)),
+                                  thread_name_prefix='build-parse')
+    parse_futures = {}
+    try:
+        for item in plan:
+            if item['reusable'] or not item['path'] or item['kind'] not in DEDICATED_KINDS:
+                continue
+            parse_futures[item['id']] = executor.submit(parse_material, item['path'], item['id'],
+                                                        item['kind'], item['relPath'])
+        for index, item in enumerate(plan, start=1):
+            if item['reusable']:
+                reused += 1
+                facts_total += int(item['factCount'])
+                for name in item['modules']:
+                    if name not in modules:
+                        modules.append(name)
+                details.append({'id': item['id'], 'relPath': item['relPath'], 'parseState': 'reused',
+                                'facts': int(item['factCount']), 'error': ''})
+            else:
+                # parse_state 是业务内容（R4-01）：同事务核对取消/执行权后再写
+                runner.content_tx(owner_id, run_id,
+                                  lambda conn, item=item:
+                                  _scan_mark_running(conn, owner_id, run_id, item['id']))
+                if not item['path']:
+                    outcome = {'state': 'failed', 'facts': 0, 'modules': [],
+                               'error': '材料文件缺失（已被清理或未登记为 blob）'}
+                elif item['kind'] in DEDICATED_KINDS:
+                    # 第①级：收集池内已提交的解析结果（主线程，等待带单文件超时）
+                    outcome = _collect_pool_result(owner_id, run_id, task_id, item, parse_futures)
+                else:
+                    # 第②/③级：LLM 兜底或文本线索降级——主线程串行（不进线程池）
+                    try:
+                        result, usage = _parse_with_dispatch(owner_id, run_id, item, provider,
+                                                             fallback_budget, fallback_used, usage)
+                    except Exception as exc:  # noqa: BLE001 - 单材料异常降级为该材料失败
+                        result = None
+                        outcome = {'state': 'failed', 'facts': 0, 'modules': [],
+                                   'error': '解析材料失败（%s）：%s' % (exc.__class__.__name__, exc)}
+                    else:
+                        # 事实与 parse_state/coverage 都是业务内容（R4-01）：同事务核对后再写
+                        outcome = runner.content_tx(
+                            owner_id, run_id,
+                            lambda conn, item=item, result=result:
+                            _scan_write(conn, owner_id, run_id, task_id, item, result))
+                details.append({'id': item['id'], 'relPath': item['relPath'],
+                                'parseState': outcome['state'], 'facts': int(outcome['facts']),
+                                'error': outcome.get('error') or ''})
+                facts_total += int(outcome['facts'])
+                for name in outcome.get('modules') or []:
+                    if name not in modules:
+                        modules.append(name)
+                if outcome['state'] == 'failed':
+                    failed += 1
+                else:
+                    parsed += 1
+            runner.stage(owner_id, run_id, 'parse', label, {'done': index, 'total': total})
+
+        runner.stage(owner_id, run_id, 'index', protocol.SCAN_STAGE_LABELS['index'],
+                     {'done': total, 'total': total})
+        checkpoint = {'scan': {'materials': total, 'parsed': parsed, 'reused': reused,
+                           'failed': failed,
                            'facts': facts_total, 'modules': modules,
                            'fallbackFiles': fallback_used['files'],
                            'fallbackBytes': fallback_used['bytes'],
                            'note': '结构索引按材料解析覆盖摘要登记；token 级检索索引在生成阶段的 '
                                    'retrieve 步按需构建（避免把全部事实一次性读进内存）。'}}
-    _tx(lambda conn: (runner.check_cancelled(conn, run_id, owner_id),
-                      store.update_run(conn, run_id, owner_id, usage=usage,
-                                       checkpoint=checkpoint,
-                                       lease=runner.lease_of(owner_id, run_id) or None)))
+        _tx(lambda conn: (runner.check_cancelled(conn, run_id, owner_id),
+                          store.update_run(conn, run_id, owner_id, usage=usage,
+                                           checkpoint=checkpoint,
+                                           lease=runner.lease_of(owner_id, run_id) or None)))
 
-    if total == 0:
-        raise PipelineError('没有可解析的材料：请先上传材料并确认未被排除')
-    if parsed == 0 and reused == 0:
-        first_error = next((item['error'] for item in details if item['error']), '')
-        raise PipelineError('全部材料解析失败%s' % ('：%s' % first_error if first_error else ''))
-    return {'runId': run_id, 'kind': 'scan', 'state': 'succeeded', 'materials': total,
-            'parsed': parsed, 'reused': reused, 'failed': failed, 'facts': facts_total,
-            'modules': modules, 'details': details, 'usage': usage}
+        if total == 0:
+            raise PipelineError('没有可解析的材料：请先上传材料并确认未被排除')
+        if parsed == 0 and reused == 0:
+            first_error = next((item['error'] for item in details if item['error']), '')
+            raise PipelineError('全部材料解析失败%s' % ('：%s' % first_error if first_error else ''))
+        return {'runId': run_id, 'kind': 'scan', 'state': 'succeeded', 'materials': total,
+                'parsed': parsed, 'reused': reused, 'failed': failed, 'facts': facts_total,
+                'modules': modules, 'details': details, 'usage': usage}
+    finally:
+        # 完成/失败/取消都走这里：不等待（可能超时仍在跑的）worker，未开始任务取消
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _parse_with_dispatch(owner_id, run_id, item, provider, fallback_budget, fallback_used, usage):
-    """三级分派：专用解析器 / LLM 兜底 / 文本线索降级。返回 (ParseResult, usage)。
+    """三级分派第②/③级（主线程串行，V2-10 起**不进线程池**）：LLM 兜底 / 文本线索降级。
 
-    fallback_budget 是单任务累计执行计数器（含此前运行消耗，只用于限额判定）；
-    fallback_used 记本次运行的兜底消耗（落检查点，跨运行求和 = 任务累计）。
+    仅 kind=other 会走到这里（第①级专用解析器已在池内并行解析，见 run_scan）；
+    兜底是远程模型调用并叠加单任务预算计数，串行避免限流与预算竞态。
+    返回 (ParseResult, usage)。fallback_budget 是单任务累计执行计数器（含此前运行
+    消耗，只用于限额判定）；fallback_used 记本次运行的兜底消耗（落检查点，
+    跨运行求和 = 任务累计）。
     """
     result = parse_material(item['path'], item['id'], item['kind'], item['relPath'])
-    if item['kind'] in DEDICATED_KINDS:
-        return result, usage
     # kind=other：先尝试 LLM 兜底（可读出文本才有意义），失败/不可用降级文本线索。
     if provider is None:
         _annotate_downgrade(result, 'LLM 兜底解析不可用（未配置模型提供方），已按文本线索降级。')
@@ -415,6 +449,64 @@ def _scan_write(conn, owner_id, run_id, task_id, item, result):
                           error=result.error or '')
     return {'state': state, 'facts': len(facts), 'modules': coverage.get('modules') or [],
             'error': result.error or ''}
+
+
+def _collect_pool_result(owner_id, run_id, task_id, item, parse_futures):
+    """主线程收集池内解析结果（V2-10）：按登记顺序、单文件等待超时、迟到结果丢弃。
+
+    * 等待按 0.5s 短片轮询（总时长 ≤ protocol.PARSE_TIMEOUT_SECONDS）：取消请求可在
+      短片边界生效（stage/content_tx 的事务内取消检查），不被长等待阻塞响应。
+    * 超时 → 该文件经 content_tx 标 failed（原因「解析超时」）并清空既有事实；
+      **迟到的解析结果一律丢弃、不再落库**（防重复 facts），需要内容走单文件重试。
+    * worker 异常（parse_material 理论上不抛，防御）→ 该文件 failed，不传染其他文件。
+    """
+    future = parse_futures[item['id']]
+    deadline = time.monotonic() + protocol.PARSE_TIMEOUT_SECONDS
+    result = None
+    timed_out = True
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            result = future.result(timeout=min(remaining, 0.5))
+            timed_out = False
+            break
+        except FutureTimeoutError:
+            continue
+    if timed_out:
+        return runner.content_tx(owner_id, run_id,
+                                 lambda conn, item=item:
+                                 _scan_write_timeout(conn, owner_id, run_id, task_id, item))
+    try:
+        outcome = runner.content_tx(owner_id, run_id,
+                                    lambda conn, item=item, result=result:
+                                    _scan_write(conn, owner_id, run_id, task_id, item, result))
+    except Exception as exc:  # noqa: BLE001 - worker 异常只影响该文件
+        outcome = {'state': 'failed', 'facts': 0, 'modules': [],
+                   'error': '解析材料失败（%s）：%s' % (exc.__class__.__name__, exc)}
+    return outcome
+
+
+def _scan_write_timeout(conn, owner_id, run_id, task_id, item):
+    """解析超时的落库（同一写事务内核对取消/fencing）：failed + 清空既有事实。
+
+    迟到结果永不落库：超时后不再读取该 future（结果随 executor 丢弃）；
+    清空既有事实与「失败不当空内容继续」口径一致（failedSegments 留超时原因）。
+    """
+    runner.check_cancelled(conn, run_id, owner_id)
+    message = ('解析超时（超过 %d 秒）：已放弃等待；该文件迟到的解析结果将被丢弃、'
+               '不再落库，如需内容请对该文件执行「重试解析」。' % protocol.PARSE_TIMEOUT_SECONDS)
+    store.replace_material_facts(conn, task_id, owner_id, item['id'], [])
+    coverage = {'modules': [],
+                'notes': [message],
+                'failedSegments': [{'kind': 'file',
+                                    'locator': {'kind': 'text', 'file': item['relPath']},
+                                    'reason': '解析超时'}],
+                'factCount': 0}
+    store.update_material(conn, item['id'], owner_id, parse_state='failed', coverage=coverage,
+                          error='解析超时')
+    return {'state': 'failed', 'facts': 0, 'modules': [], 'error': '解析超时'}
 
 
 # --- 候选校验与协议适配（确定性，不调用模型） -------------------------------------

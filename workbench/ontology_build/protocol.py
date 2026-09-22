@@ -49,6 +49,10 @@ def _limit_from_env(name, default):
 
 LLM_FALLBACK_MAX_FILES = _limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_FILES', 200)
 LLM_FALLBACK_MAX_BYTES = _limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_BYTES', 50 * 1024 * 1024)
+# V2-10（G25）解析并发度：默认 min(8, CPU 核数)，环境变量 WIZ_BUILD_PARSE_CONCURRENCY
+# 覆盖（正整数，非法/非正值回退默认）；扫描 run 内线程池的 worker 上限，worker 只解析
+# 不写库（落库串行在 run 主线程，08 §4）。
+PARSE_CONCURRENCY = _limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', min(8, os.cpu_count() or 2))
 
 LIMITS = {
     'chunkBytes': CHUNK_BYTES,
