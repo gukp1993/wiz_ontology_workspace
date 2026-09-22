@@ -1039,9 +1039,12 @@ _FILL_INSTRUCTION = (
 )
 
 
-def _fill_cell_summary(cell):
-    """列表行字段的摘要条目（敏感单元格跳过，由调用方过滤）。"""
-    entry = {'path': cell['path'], 'label': cell.get('label') or cell['path'],
+def _fill_cell_summary(path, cell):
+    """列表行字段的摘要条目（敏感单元格跳过，由调用方过滤）。
+
+    cell 是 assist_forms.list_def 的规范化行字段（无 path/label 键），其路径由调用方随行给出。
+    """
+    entry = {'path': path, 'label': cell.get('label') or path,
              'type': cell['type']}
     if cell.get('enum') is not None:
         entry['enum'] = cell['enum']
@@ -1076,7 +1079,8 @@ def _contract_summary(contract):
     lists = []
     for list_id in contract.list_ids():
         ldef = contract.list_def(list_id)
-        rows = [_fill_cell_summary(cell) for cell in (ldef.get('fields') or {}).values()
+        rows = [_fill_cell_summary(cell_path, cell)
+                for cell_path, cell in (ldef.get('fields') or {}).items()
                 if not (cell.get('ai') or {}).get('sensitive')]
         lists.append({'id': list_id, 'rowIdScope': ldef.get('rowIdScope'), 'rowFields': rows})
     groups = contract.atomic_groups() or {}

@@ -499,6 +499,9 @@ def _generate_fill(payload, request_id, token_payload, draft, intent, raw_answer
     cand = assist_schema._Candidates(context)
     operations, ref_invalid = _verify_operation_refs(
         parsed['operations'], contract, context, cand, normalized)
+    # 等值过滤（A14）：与当前草稿完全相同的 set/clear/row.update 不算有效变更，
+    # 剔除后由 status=empty + 摘要如实告知（不产生前端「已填写 N 项」的假成功）。
+    operations = [op for op in operations if not _fill_unchanged(op, contract, normalized)]
 
     # ---- 会话提交（答案消费 + 新问题归属本轮） -------------------------------------
     round_id = _ROUND_ID_PREFIX + secrets.token_hex(8)
@@ -552,6 +555,40 @@ def _generate_fill(payload, request_id, token_payload, draft, intent, raw_answer
             'unresolved': unresolved,
             'summary': _fill_summary(operations, parsed['questions'], unresolved),
             'meta': _provider_meta(started)}
+
+
+def _fill_unchanged(operation, contract, draft):
+    """等值操作判定（需求 §4.5/A14：无有效变更须明确 empty，不假称成功）。
+
+    set：值与当前草稿同值（含 None ≡ 缺失）；row.update：行内字段全部同值；
+    clear：目标当前已为空（无值/空串）；row.remove 一律视为有效变更。
+    """
+    if not isinstance(draft, dict):
+        return False
+    op = operation.get('op')
+    if op == 'set':
+        spec_ok = True
+        try:
+            contract.field_def(operation.get('field'))
+        except KeyError:
+            spec_ok = False
+        if not spec_ok:
+            return False
+        return draft.get(operation.get('field')) == operation.get('value')
+    if op == 'clear':
+        value = draft.get(operation.get('field'))
+        return value is None or value == ''
+    if op == 'row.update':
+        rows = draft.get(operation.get('field'))
+        if not isinstance(rows, list):
+            return False
+        for row in rows:
+            if isinstance(row, dict) and row.get('rowId') == operation.get('rowId'):
+                fields = operation.get('fields') or {}
+                if isinstance(fields, dict) and fields:
+                    return all(row.get(key) == value for key, value in fields.items())
+        return False
+    return False
 
 
 def _fill_summary(operations, questions, unresolved):

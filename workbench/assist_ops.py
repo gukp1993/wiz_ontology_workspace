@@ -79,6 +79,9 @@ _BASIS_KEYS = {'intent': frozenset(('kind', 'quote')),
                'question': frozenset(('kind', 'questionId'))}
 _LEAF_TYPES = ('text', 'textarea', 'enum', 'boolean', 'ref')
 
+# 行字段值中的认证/凭据保留名（与 assist_fields.FORBIDDEN_KEYS 同边界）
+_RESERVED_ROW_NAMES = {'apiKey', 'api_key', 'credentialId', 'secret', 'password', 'auth.type', 'auth.credentialId', 'auth.name', 'auth.in'}
+
 
 def _preview(value):
     """异常信息里的模型值预览（截断，防超长内容进日志/响应）。"""
@@ -167,6 +170,15 @@ def _check_row_fields(row_fields, ldef, list_id):
         reason = _check_scalar_value(spec, value, '列表「%s」行字段「%s」' % (list_id, key_text))
         if reason:
             return None, reason
+        # 保留命名空间（04 §5.0：auth.* 与凭据相关名不在任何白名单）：行字段值等同键语义
+        # （actionParams 的 name、redis keyParams 的 name 等），命中一律拒绝（与 assist_fields.
+        # FORBIDDEN_KEYS 同一边界，防止把凭据以外观合法的参数名写进绑定）。
+        if isinstance(value, str):
+            lowered = value.strip()
+            if lowered == 'auth' or lowered.startswith('auth.') \
+                    or lowered in _RESERVED_ROW_NAMES:
+                return None, ('行字段「%s」使用了认证/凭据保留名（auth.* 等不在任何白名单，'
+                              '请勿通过自动填写写入）' % key_text)
         normalized[key_text] = value
     return normalized, None
 
