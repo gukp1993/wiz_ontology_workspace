@@ -650,13 +650,55 @@ class FormContract:
         return _normalize_leaf(self._leaf_node(path), self._ref_providers)
 
     def atomic_groups(self):
-        """原子组名 → 该组完整成员点路径列表（缺一即整组无效）。"""
+        """原子组名 → 该组完整成员点路径列表（缺一即整组无效）。
+
+        叶子字段声明的 atomicGroup：成员即各叶子自身路径；组节点声明的 atomicGroup：
+        成员展开为组内全部叶子点路径（组路径本身不可经 set/clear 寻址——T2 assist_ops
+        冻结口径「原子组必须展开为组内叶子路径全集」，否则组校验永远不命中）。
+        """
         groups = {}
+
+        def expand(children, base):
+            rows = []
+            for f in children or []:
+                if not isinstance(f, dict) or not isinstance(f.get('id'), str):
+                    continue
+                path = (base + '.' + f['id']) if base else f['id']
+                if f.get('type') == 'group':
+                    rows.extend(expand(f.get('fields'), path))
+                else:
+                    rows.append(path)
+            return rows
+
         for path, node in self._index.items():
             name = node.get('atomicGroup')
-            if name:
+            if not name:
+                continue
+            if node.get('type') == 'group':
+                groups.setdefault(name, []).extend(expand(node.get('fields'), path))
+            else:
                 groups.setdefault(name, []).append(path)
         return groups
+
+    def leaf_specs(self):
+        """全部可寻址叶子字段的规范化定义列表（prompt 契约摘要用；T4 fill 只读消费）。
+
+        每项 = _normalize_leaf 规范化定义 + path/label；组/列表节点本身与列表行字段
+        不在其中（行字段经 list_def 取）。
+        """
+        out = []
+        for path, node in self._index.items():
+            if node.get('type') in ('group', 'list'):
+                continue
+            spec = _normalize_leaf(node, self._ref_providers)
+            spec['path'] = path
+            spec['label'] = node.get('label') or path
+            out.append(spec)
+        return out
+
+    def list_ids(self):
+        """已声明的列表 id（保序）。"""
+        return list(self._lists)
 
     def list_def(self, list_id):
         """{'id','rowIdScope','fields': {行字段路径: 规范化定义}}；未声明 → KeyError(list_id)。"""

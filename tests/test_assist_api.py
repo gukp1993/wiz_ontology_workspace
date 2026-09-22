@@ -10,7 +10,8 @@
 - 401 未登录 / 400 形态与白名单 / 404 目标不存在；
 - 409 CONTEXT_STALE：篡改令牌、draft 变化、权威状态变化；
 - 422 MODEL_NOT_CONFIGURED：未配置提供方；
-- 200 happy path（桩返回合法建议 JSON）；
+- 200 happy path（mode=fill 携 protocol:2 走 autofill/1，桩返回合法 operations JSON；
+  2026-09-22 整表自动填写改版后旧 suggestions 协议已停用，本文件 fill 用例按新协议最小迁移）；
 - 502 MODEL_BAD_RESPONSE（桩返回非 JSON）；
 - 504 MODEL_TIMEOUT（provider timeout=1s，桩延迟 3s）；
 - 只读不变式：建议生成前后本体草稿 revision 与内容不变。
@@ -178,7 +179,7 @@ def main():
     token = body['contextToken']
     code, body = request('POST', '/api/assist-generate',
                          {'requestId': 'r1', 'contextToken': token, 'mode': 'fill',
-                          'draft': {}, 'intent': '帮我写对象定义'})
+                          'protocol': 2, 'draft': {}, 'intent': '帮我写对象定义'})
     check(code == 422 and body.get('code') == 'MODEL_NOT_CONFIGURED', '无模型 generate 422', (code, body))
     ok(3, '未配置模型 422 MODEL_NOT_CONFIGURED')
 
@@ -196,23 +197,27 @@ def main():
 
     # 5) 篡改令牌 → 409
     code, body = request('POST', '/api/assist-generate',
-                         {'requestId': 'r2', 'contextToken': token[:-2] + 'xx', 'mode': 'fill', 'draft': {}})
+                         {'requestId': 'r2', 'contextToken': token[:-2] + 'xx', 'mode': 'fill',
+                          'protocol': 2, 'draft': {}})
     check(code == 409 and body.get('code') == 'CONTEXT_STALE', '篡改令牌 409', (code, body))
     ok(5, '篡改令牌 409 CONTEXT_STALE')
 
-    # 6) happy path：桩返回合法建议 → 200 ok；且只读不变式
-    suggestion = {'id': 'a1', 'label': '业务定义', 'fieldKeys': ['comment'],
-                  'proposed': {'comment': '由若干电池包并联组成、可整体参与充放电的储能单元。'},
-                  'ifQuestion': None, 'reason': '根据你的描述整理', 'evidenceRefs': []}
-    STUB_STATE['content'] = json.dumps({'questions': [], 'suggestions': [suggestion],
-                                        'issues': [], 'explanation': None}, ensure_ascii=False)
+    # 6) happy path：桩返回合法 operations（autofill/1）→ 200 ok；且只读不变式
+    fill_output = {'operations': [
+        {'op': 'set', 'field': 'comment',
+         'value': '由若干电池包并联组成、可整体参与充放电的储能单元。',
+         'basis': {'kind': 'intent', 'quote': '储能簇是一组电池包，可以整体充放电'}}],
+        'questions': [], 'unresolved': []}
+    STUB_STATE['content'] = json.dumps(fill_output, ensure_ascii=False)
     _code, before = request('GET', '/api/state')
     code, body = request('POST', '/api/assist-generate',
-                         {'requestId': 'r3', 'contextToken': token, 'mode': 'fill', 'draft': {},
+                         {'requestId': 'r3', 'contextToken': token, 'mode': 'fill',
+                          'protocol': 2, 'draft': {},
                           'intent': '储能簇是一组电池包，可以整体充放电'})
     check(code == 200 and body.get('status') == 'ok', 'generate 200 ok', (code, body))
-    check(body['suggestions'] and body['suggestions'][0]['state'] == 'ready'
-          and body['suggestions'][0]['id'].startswith('s_'), '建议 ready 且服务端重编 id', body.get('suggestions'))
+    check(body.get('protocol') == 'autofill/1', 'fill 响应携带 autofill/1 协议标识', body.get('protocol'))
+    check(body['operations'] and body['operations'][0]['field'] == 'comment',
+          '合法操作下发', body.get('operations'))
     check(body.get('contextFingerprint') == fp, '指纹一致', (fp, body.get('contextFingerprint')))
     check(STUB_STATE['hits'] >= 1, '模型桩被真实调用')
     _code, after = request('GET', '/api/state')
@@ -222,14 +227,15 @@ def main():
     # 7) draft 变化 → 409
     code, body = request('POST', '/api/assist-generate',
                          {'requestId': 'r4', 'contextToken': token, 'mode': 'fill',
-                          'draft': {'label': ' changed'}, 'intent': 'x'})
+                          'protocol': 2, 'draft': {'label': ' changed'}, 'intent': 'x'})
     check(code == 409 and body.get('code') == 'CONTEXT_STALE', 'draft 变化 409', (code, body))
     ok(7, 'draft 变化 409 CONTEXT_STALE')
 
     # 8) 模型输出非 JSON → 502
     STUB_STATE['content'] = '这不是JSON'
     code, body = request('POST', '/api/assist-generate',
-                         {'requestId': 'r5', 'contextToken': token, 'mode': 'fill', 'draft': {}})
+                         {'requestId': 'r5', 'contextToken': token, 'mode': 'fill',
+                          'protocol': 2, 'draft': {}})
     check(code == 502 and body.get('code') == 'MODEL_BAD_RESPONSE', '非 JSON 输出 502', (code, body))
     ok(8, '模型输出非 JSON 502 MODEL_BAD_RESPONSE')
 
@@ -243,16 +249,18 @@ def main():
     token_slow = body['contextToken']
     STUB_STATE['delay'] = 3
     code, body = request('POST', '/api/assist-generate',
-                         {'requestId': 'r6', 'contextToken': token_slow, 'mode': 'fill', 'draft': {}})
+                         {'requestId': 'r6', 'contextToken': token_slow, 'mode': 'fill',
+                          'protocol': 2, 'draft': {}})
     STUB_STATE['delay'] = 0
     check(code == 504 and body.get('code') == 'MODEL_TIMEOUT', '超时 504', (code, body))
     ok(9, '模型超时 504 MODEL_TIMEOUT')
 
     # 10) 空建议 → 200 empty
-    STUB_STATE['content'] = json.dumps({'questions': [], 'suggestions': [], 'issues': [],
-                                        'explanation': None}, ensure_ascii=False)
+    STUB_STATE['content'] = json.dumps({'operations': [], 'questions': [], 'unresolved': []},
+                                       ensure_ascii=False)
     code, body = request('POST', '/api/assist-generate',
-                         {'requestId': 'r7', 'contextToken': token, 'mode': 'fill', 'draft': {}})
+                         {'requestId': 'r7', 'contextToken': token, 'mode': 'fill',
+                          'protocol': 2, 'draft': {}})
     check(code == 200 and body.get('status') == 'empty', '空建议 200 empty', (code, body))
     ok(10, '有效请求无建议 200 status=empty')
 

@@ -33,7 +33,7 @@ import json
 import secrets
 import time
 
-from workbench import assist_fields, auth
+from workbench import assist_fields, assist_forms, auth
 from workbench import catalogs as catalog_store
 from workbench import flows as flow_store
 from workbench import llm_providers
@@ -593,7 +593,8 @@ def build_context(space, project_id, target_kind, target_id, purpose, draft,
 
     payload：{'contextToken', 'contextFingerprint', 'context'}（contextToken 已签名，
     T2 路由直接返回）；token_payload：签入令牌的字段 dict（uid/space/projectId/
-    targetKind/targetId/fp/dh/exp/purpose），供测试与 check_generate 使用。
+    targetKind/targetId/fp/dh/exp/purpose，autofill/1 增量：fv=契约 schemaVersion、
+    fd=契约 schemaDigest，04 §6.1），供测试与 check_generate 使用。
     只读：不写任何修订、不持全局写锁、不产生存储变更。
     """
     if space not in ('ontology', 'project'):
@@ -604,6 +605,10 @@ def build_context(space, project_id, target_kind, target_id, purpose, draft,
     if spec['space'] != space:
         raise ValueError('目标类型与工作区不匹配：' + str(target_kind))
     cleaned, draft_kind = assist_fields.normalize_draft(target_kind, draft)
+    # autofill/1（04 §6.1）：契约 schemaVersion/digest 签入令牌——续轮 digest 不匹配即
+    # CONTEXT_STALE（service 层 fill 分支核对）；契约随 formId+draft.kind 唯一确定，
+    # 全部 10 个 targetKind 均有契约文件（tests/test_autofill_contracts.py 守护）。
+    form_contract = assist_forms.FormContract(target_kind, draft_kind)
     target_id = str(target_id or '').strip()
     uid = auth.require_user_id()
 
@@ -644,6 +649,8 @@ def build_context(space, project_id, target_kind, target_id, purpose, draft,
                      'targetId': target_id,
                      'fp': fingerprint,
                      'dh': assist_fields.canonical_hash(cleaned),
+                     'fv': form_contract.schema_version,
+                     'fd': form_contract.digest,
                      'exp': time.time() + assist_fields.TOKEN_TTL,
                      'purpose': purpose, 'ontologyId': str(ontology_id or 'storage')}
     return {'contextToken': sign_token(token_payload),

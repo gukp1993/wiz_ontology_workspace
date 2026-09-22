@@ -179,8 +179,8 @@ def t1_normal_build_ontology():
     assert all(set(d) <= {'kind', 'id', 'label', 'hint'} for d in ctx['definitions'])
     assert ctx['catalog'] == [] and ctx['flows'] == []
     assert '储能单元' in ctx['title'], ctx['title']
-    # 字段载荷契约（T0 冻结键）
-    assert set(tp) == {'uid', 'space', 'projectId', 'ontologyId', 'targetKind', 'targetId', 'fp', 'dh', 'exp', 'purpose'}
+    # 字段载荷契约（T0 冻结键；2026-09-22 autofill/1 增量：fv=契约 schemaVersion、fd=契约 digest，04 §6.1）
+    assert set(tp) == {'uid', 'space', 'projectId', 'ontologyId', 'targetKind', 'targetId', 'fp', 'dh', 'exp', 'purpose', 'fv', 'fd'}
     assert tp['uid'] == UID and tp['space'] == 'ontology' and tp['projectId'] == ''
     assert tp['targetKind'] == 'object' and tp['targetId'] == 'mg:Station' and tp['purpose'] == 'fill'
     assert tp['exp'] > time.time()
