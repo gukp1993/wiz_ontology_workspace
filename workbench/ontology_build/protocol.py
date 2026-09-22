@@ -22,7 +22,9 @@ PARSE_TIMEOUT_SECONDS = 120
 UPLOAD_TTL_SECONDS = 30 * 60
 MAX_CANDIDATES_PER_BATCH = 500
 MAX_FACTS_PER_MATERIAL = 20000
-LLM_BATCH_FACTS = 40
+# 2026-09-22 实测修正：40 条/批会让模型为每批产出 40 组候选 JSON，输出超 max_tokens
+# 被截断（真实复现：40 条 → finish_reason=length）。降到 20 条，输出量减半且更稳。
+LLM_BATCH_FACTS = 20
 RUN_WORKERS = 2
 SNIPPET_LIMIT = 500
 PROMPT_VERSION = 'v1'
@@ -56,6 +58,11 @@ LLM_FALLBACK_MAX_BYTES = _limit_from_env('WIZ_BUILD_LLM_FALLBACK_MAX_BYTES', 50 
 # 覆盖（正整数，非法/非正值回退默认）；扫描 run 内线程池的 worker 上限，worker 只解析
 # 不写库（落库串行在 run 主线程，08 §4）。
 PARSE_CONCURRENCY = _limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', min(8, os.cpu_count() or 2))
+
+# 抽取批次的并发度（2026-09-22）：批次之间无依赖（各自独立调模型、结果按序落库），
+# 串行等待是纯浪费——实测单批 57.7 秒、2 批 190 秒。并发默认 4，env 可覆盖；
+# 落库仍按批次序号串行（保 facts 顺序确定性，与 V2-10 解析并发同一原则）。
+LLM_CONCURRENCY = _limit_from_env('WIZ_BUILD_LLM_CONCURRENCY', 4)
 
 LIMITS = {
     'chunkBytes': CHUNK_BYTES,

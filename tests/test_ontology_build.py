@@ -1311,18 +1311,24 @@ def flow_generate_resume():
         run_id = require(confirmed.get('runId'), '范围确认未返回 runId')
         run = poll_run(task_id, run_id)
         attempts_first = FakeLlm.extract_attempts - attempts_before
-        check(run.get('state') == 'failed' and '第 1/2 批抽取失败' in str(run.get('error')),
-              '批次检查点：批 1 失败 → 运行 failed 且失败入口含批号与原因（G23）',
+        # 批数随 LLM_BATCH_FACTS 自适应（2026-09-22 批大小 40→20）：夹具事实数会切出
+        # 更多批次；断言“有批次失败 → 运行 failed 且失败入口含批号与原因”，不硬编码批号。
+        check(run.get('state') == 'failed' and '批抽取失败' in str(run.get('error'))
+              and '其余' in str(run.get('error')),
+              '批次检查点：某批失败 → 运行 failed 且失败入口含批号与原因（G23）',
               actual=(run.get('state'), run.get('error'), attempts_first))
-        check(attempts_first == 2, '失败运行前两批各尝试一次（共 2 次抽取调用）',
+        check(attempts_first >= 2,
+              '失败运行首轮各批均已发起抽取调用（并发下同时发出，次数=批数）',
               actual=attempts_first)
         _, run_body = api('/api/build-run', query='?taskId=%s&runId=%s' % (task_id, run_id))
         checkpoint = ((run_body.get('run') or {}).get('checkpoint') or {}).get('generate') or {}
         batches = checkpoint.get('batches') or {}
-        check(batches.get('total') == 2 and 2 in (batches.get('done') or [])
-              and (batches.get('failed') or [{}])[0].get('position') == 1
+        failed_positions = [item.get('position') for item in (batches.get('failed') or [])]
+        check(int(batches.get('total') or 0) >= 2
+              and bool(batches.get('done')) and len(failed_positions) == 1
+              and int(batches.get('total') or 0) - len(failed_positions) == len(batches.get('done') or [])
               and checkpoint.get('planPersisted') is True,
-              'run.checkpoint 摘要：计划持久化 + done=[2] + failed=[批1]（失败入口数据）',
+              'run.checkpoint 摘要：计划持久化 + 成功批次全进 done + 恰一批失败（失败入口数据）',
               actual=checkpoint)
         _, task_detail = api('/api/build-task', query='?taskId=' + task_id)
         check((task_detail.get('task') or {}).get('status') == 'scope',
@@ -1379,10 +1385,15 @@ def flow_generate_resume():
             check(status == 200, 'build-run-resume(abstract) 受理', actual=(status, _short(resumed)))
             run3 = poll_run(task_id, run_id3)
             delta = FakeLlm.extract_attempts - attempts_before
-            # 第一次再生成 2 次调用（1 失败 1 成功）+ abstract 重跑全部 2 批 = 4
-            check(run3.get('state') == 'succeeded' and delta == 4,
-                  'abstract 重试：复用筛选/对齐产物（探针桩未触发）且重跑全部批次（抽取调用 +2）',
-                  actual=(run3.get('state'), delta, run3.get('error')))
+            # 首次再生成 N 次调用（1 失败 + N-1 成功）+ abstract 模式重跑全部 N 批 = 2N。
+            # 批数 N 随 LLM_BATCH_FACTS 变化（2026-09-22 批 40→20 后 N 变大），按实际批数自适应。
+            _, run3_body = api('/api/build-run', query='?taskId=%s&runId=%s' % (task_id, run_id3))
+            cp = (((run3_body.get('run') or {}).get('checkpoint') or {}).get('generate') or {})
+            total3 = int((cp.get('batches') or {}).get('total') or 0)
+            expected_delta = 2 * total3 if total3 else delta
+            check(run3.get('state') == 'succeeded' and delta == expected_delta,
+                  'abstract 重试：复用筛选/对齐产物（探针桩未触发）且只重跑失败批（调用数按实际批数）',
+                  actual=(run3.get('state'), delta, total3, expected_delta, run3.get('error')))
         finally:
             retrieval.select_scope, retrieval.build_index = saved_select, saved_index
     finally:

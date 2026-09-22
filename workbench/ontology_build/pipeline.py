@@ -48,6 +48,55 @@ from workbench.storage import ontology_build as store
 DIALOG_STAGE = 'dialog'
 DIALOG_STAGE_LABEL = '范围对话'
 MAX_MODEL_FACTS = protocol.LLM_BATCH_FACTS * 25   # 单次生成最多发给模型的事实数
+
+# 批次并发的落库等待预算：单批正常 30–90 秒（推理开销），provider timeout 之上留缓冲；
+# 超时只标记该批失败（迟到结果丢弃，与 V2-10 迟到丢弃同一原则），不阻塞其余批次。
+_BATCH_WAIT_SLACK_SECONDS = 60
+
+
+def _batch_wait_timeout(provider):
+    try:
+        base = int((provider or {}).get('timeout') or 60)
+    except (TypeError, ValueError):
+        base = 60
+    return max(30, base) + _BATCH_WAIT_SLACK_SECONDS
+
+
+def _merge_usage(left, right):
+    """合并两次调用的 usage（拆批重试后仍需如实累计调用次数与字节量）。"""
+    merged = {}
+    for key in ('calls', 'promptBytes', 'completionBytes', 'durationMs'):
+        total = int((left or {}).get(key) or 0) + int((right or {}).get(key) or 0)
+        if total:
+            merged[key] = total
+    return merged
+
+
+def _extract_batch_with_split(provider, scope, batch, depth=0):
+    """抽取一批候选；输出被截断（超 max_tokens）时自动对半拆批重试（最多 2 层）。
+
+    真实复现：40 条/批时模型为每条事实产出候选 JSON，输出必然超预算 → 整批失败；
+    拆小后单次输出量减半。两条子批都失败才判该批失败（错误取其一并注明已拆批）。
+    """
+    result = llm.extract_candidates(provider, scope, batch)
+    if result.get('ok'):
+        return result
+    error = str(result.get('error') or '')
+    if depth >= 2 or len(batch) <= 1 or '截断' not in error:
+        return result
+    middle = max(1, len(batch) // 2)
+    left = _extract_batch_with_split(provider, scope, batch[:middle], depth + 1)
+    right = _extract_batch_with_split(provider, scope, batch[middle:], depth + 1)
+    usage = _merge_usage(left.get('usage'), right.get('usage'))
+    if not left.get('ok') and not right.get('ok'):
+        return {'ok': False, 'candidates': [], 'usage': usage,
+                'error': '截断后拆批重试仍失败：%s' % (left.get('error') or right.get('error') or '')}
+    return {'ok': True,
+            'candidates': list(left.get('candidates') or []) + list(right.get('candidates') or []),
+            'usage': usage,
+            'rejectedRefs': int(left.get('rejectedRefs') or 0) + int(right.get('rejectedRefs') or 0),
+            'notes': list(left.get('notes') or []) + list(right.get('notes') or [])}
+
 # 人工排除决定回放的有效窗口（D04）：store.list_batches 默认只取最近 20 批，直接用默认值会
 # 把更早批次里的人工否决静默丢掉（保护再次失效）。这里放宽到任务级不设限的实用上限
 # （单个任务要超过 1000 个生成批次才可能落到窗口之外）。
@@ -1057,39 +1106,62 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
                          % '、'.join(str(item.get('position')) for item in failed_batches))
     usage = _usage()
     rejected_total = 0
-    for position, batch in enumerate(batches, start=1):
+    # 批次级并发（2026-09-22）：批次之间无依赖，串行等待是纯浪费（实测 2 批 190 秒、
+    # 单批 57.7 秒）。池内并发调用模型，**主线程按批次序号逐个收集并落库**——
+    # facts/候选顺序与串行版完全一致（与 V2-10「解析并发、落库串行」同一确定性原则）。
+    pending_batches = [(position, batch) for position, batch in enumerate(batches, start=1)
+                       if position not in done_positions]
+    for position, _batch in enumerate(batches, start=1):
         if position in done_positions:
             runner.stage(owner_id, run_id, 'abstract', label,
                          {'done': position, 'total': len(batches), 'facts': len(model_facts),
                           'candidates': len(accumulated), 'resumed': 1})
-            continue
-        result = llm.extract_candidates(provider, scope, batch)
-        _add_usage(usage, result.get('usage'))
-        failed_batches = [item for item in failed_batches
-                          if int(item.get('position') or 0) != position]
-        if not result.get('ok'):
-            failed_batches.append({'position': position,
-                                   'error': str(result.get('error') or '未知错误')[:400]})
-        else:
-            done_positions.add(position)
-            rejected_total += int(result.get('rejectedRefs') or 0)
-            verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys(),
-                                                   weak_fact_ids=weak_fact_ids)
-            if verified:
-                accumulated.extend(verified)
-                # 候选是业务内容（R4-01）：同事务核对取消/执行权后再追加，
-                # 已取消/已被接管的旧 worker 在这里被拒绝，绝不污染新 attempt 的批次。
-                runner.content_tx(owner_id, run_id,
-                                  lambda conn, items=verified:
-                                  _append_candidates(conn, owner_id, task_id, batch_id, items))
-        # 批次检查点（V2-8）：成功/失败都持久化——崩溃或失败后重试只补缺口
-        _tx(lambda conn, done=set(done_positions), failed=list(failed_batches):
-            (runner.check_cancelled(conn, run_id, owner_id),
-             store.update_run(conn, run_id, owner_id, checkpoint=_checkpoint(done, failed),
-                              lease=runner.lease_of(owner_id, run_id) or None)))
-        runner.stage(owner_id, run_id, 'abstract', label,
-                     {'done': position, 'total': len(batches), 'facts': len(model_facts),
-                      'candidates': len(accumulated)})
+    extract_pool = None
+    extract_futures = {}
+    if pending_batches:
+        workers = max(1, min(int(protocol.LLM_CONCURRENCY), len(pending_batches)))
+        extract_pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix='build-extract')
+        for position, batch in pending_batches:
+            extract_futures[position] = extract_pool.submit(
+                _extract_batch_with_split, provider, scope, batch)
+    try:
+        for position, _batch in pending_batches:
+            try:
+                result = extract_futures[position].result(timeout=_batch_wait_timeout(provider))
+            except FutureTimeoutError:
+                # 迟到结果丢弃（与 V2-10 同一原则）：该批按失败处理，不等待、不落库
+                result = {'ok': False, 'candidates': [],
+                          'error': '批次等待超时（迟到结果丢弃，可「重试失败批次」）'}
+            _add_usage(usage, result.get('usage'))
+            failed_batches = [item for item in failed_batches
+                              if int(item.get('position') or 0) != position]
+            if not result.get('ok'):
+                failed_batches.append({'position': position,
+                                       'error': str(result.get('error') or '未知错误')[:400]})
+            else:
+                done_positions.add(position)
+                rejected_total += int(result.get('rejectedRefs') or 0)
+                verified, _report = verify_candidates(result.get('candidates') or [], by_id.keys(),
+                                                       weak_fact_ids=weak_fact_ids)
+                if verified:
+                    accumulated.extend(verified)
+                    # 候选是业务内容（R4-01）：同事务核对取消/执行权后再追加，
+                    # 已取消/已被接管的旧 worker 在这里被拒绝，绝不污染新 attempt 的批次。
+                    runner.content_tx(owner_id, run_id,
+                                      lambda conn, items=verified:
+                                      _append_candidates(conn, owner_id, task_id, batch_id, items))
+            # 批次检查点（V2-8）：成功/失败都持久化——崩溃或失败后重试只补缺口
+            _tx(lambda conn, done=set(done_positions), failed=list(failed_batches):
+                (runner.check_cancelled(conn, run_id, owner_id),
+                 store.update_run(conn, run_id, owner_id, checkpoint=_checkpoint(done, failed),
+                                  lease=runner.lease_of(owner_id, run_id) or None)))
+            runner.stage(owner_id, run_id, 'abstract', label,
+                         {'done': position, 'total': len(batches), 'facts': len(model_facts),
+                          'candidates': len(accumulated)})
+    finally:
+        if extract_pool is not None:
+            # 取消/失败时未开始的批次直接取消；执行中的批次不等待（迟到结果一律丢弃）
+            extract_pool.shutdown(wait=False, cancel_futures=True)
     errors = ['第 %d 批抽取失败：%s' % (item['position'], item.get('error') or '未知错误')
               for item in failed_batches]
     for message in errors:
