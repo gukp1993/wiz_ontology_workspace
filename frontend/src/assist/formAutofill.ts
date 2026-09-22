@@ -329,7 +329,7 @@ export interface AutofillEngine {
   /** 给宿主状态条的文案：已填 N 项，尚未保存／另有 M 项待补充；空串 = 不显示 */
   statusBarText: ComputedRef<string>
   // ── 动作 ──
-  open(binding: AutofillHostBinding): Promise<void>
+  open(binding: AutofillHostBinding, opts?: { reveal?: boolean }): Promise<void>
   /** 关闭抽屉：作废在途请求（代际失效），不撤销已回填草稿，不清会话/输入 */
   close(): void
   /** 重新展开：作废在途请求（代际失效） */
@@ -487,13 +487,15 @@ export function createAutofillEngine(api: AssistApi): AutofillEngine {
     }
   }
 
-  /** 打开面板：切目标整卡重置（不复用另一目标的输入/答案/结果）；同目标保留输入并重取上下文校验一致性 */
-  async function open(binding: AutofillHostBinding): Promise<void> {
+  /** 打开面板：切目标整卡重置（不复用另一目标的输入/答案/结果）；同目标保留输入并重取上下文校验一致性。
+   *  opts.reveal=false：只取上下文不展开（受控宿主的常驻挂载，T10 F1/F2 修复）——面板保持收起，
+   *  展开交宿主的 :open 驱动；缺省保持旧行为（挂载即展开）。 */
+  async function open(binding: AutofillHostBinding, opts?: { reveal?: boolean }): Promise<void> {
     gen++ // 作废在途请求（含切目标/重新打开）
     if (status.value === 'generating' || status.value === 'applying') status.value = 'open'
     const sameTarget = !!host && sameTargetAs(host, binding)
     host = binding
-    collapsed.value = false
+    collapsed.value = opts?.reveal === false ? true : false
     error.value = null
     notice.value = ''
     clearHelp()
@@ -614,9 +616,13 @@ export function createAutofillEngine(api: AssistApi): AutofillEngine {
     }
     if (resp.status === 'empty') {
       questions.value = []
-      unresolved.value = []
       answers.value = {}
       awaitingAnswers = false
+      // 服务端 empty 分两种（T10 F3，需求 §4.3/A14）：真的内容一致 / 无可填内容时
+      // unresolved 为空，显示「内容已一致，无需修改」；若 empty 同时带回 unresolved
+      // （模型明确拒绝并给了原因，如原子组不完整），必须如实展示这些原因，不能吞掉
+      // 换一句误导性的「无需修改」——面板据 unresolved 非空展示「未能填写」清单。
+      unresolved.value = Array.isArray(resp.unresolved) ? resp.unresolved : []
       status.value = 'empty'
       return
     }

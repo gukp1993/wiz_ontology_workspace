@@ -628,7 +628,8 @@ try {
     assert.match(drawer, /配置「power」的取值来源/, '未取到上下文时展示目标兜底标题（contextTitle）')
     assert.match(drawer, /aria-controls="ps-assist-trigger"/, '抽屉经 trigger-id 与入口按钮反向接线')
     const hostSrc = readFileSync(resolve('frontend/src/project/PropertySources.vue'), 'utf8')
-    assert.match(hostSrc, /<AssistPanel v-if="assistVisible && assistBinding"[^>]*class="ps-assist-panel"[^>]*trigger-id="ps-assist-trigger"/, '面板挂载点带样式类与 trigger-id')
+    // 2026-09-22 T10 F2 修复：宿主常驻挂载（输入保留）——可见性由 :open 驱动，binding 为挂载前提。
+    assert.match(hostSrc, /<AssistPanel v-if="assistBinding" :open="assistVisible"[^>]*class="ps-assist-panel"[^>]*trigger-id="ps-assist-trigger"/, '面板常驻挂载点带样式类与 trigger-id（:open 受控）')
     assert.ok(!/建议卡|勾选|采纳/.test(page), '旧建议卡/勾选/采纳 UI 已移除')
   })
 

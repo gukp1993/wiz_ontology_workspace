@@ -412,7 +412,7 @@ async function removeRule(id: string) {
       <small class="muted">历史数据保留展示，不参与校验与保存；如需调整可复制到上方「规则内容」后编辑。</small>
     </div>
   </div>
-  <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="lib-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="rule-assist-trigger" @close="onAssistPanelClosed"/>
+  <AssistPanel v-if="assistBinding" :open="assistOpen" ref="assistPanelRef" class="lib-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="rule-assist-trigger" @close="onAssistPanelClosed"/>
   <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
   <div class="detail-footer">
     <div class="tools"><button type="button" class="primary" :disabled="saving" @click="saveEdit">{{ saving ? '保存中…' : '保存定义' }}</button><button type="button" @click="cancelEdit">取消</button></div>

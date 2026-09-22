@@ -1318,7 +1318,7 @@ if(psPendingOf(props.b.object_type)){
 <p class="ps-foot-note">说明与取值配置一起保存写入当前项目草稿；取消放弃本次修改。</p>
 </div>
 <!-- 自动填写抽屉（T3 状态机 + T7 宿主 binding）：回填只改本地草稿，保存仍由用户显式触发 -->
-<AssistPanel v-if="assistVisible && assistBinding" ref="assistPanelRef" class="ps-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="ps-assist-trigger" @close="closeAssist"/>
+<AssistPanel v-if="assistBinding" :open="assistVisible" ref="assistPanelRef" class="ps-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="ps-assist-trigger" @close="closeAssist"/>
 </div>
 </div></template>
 <style scoped>

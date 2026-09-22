@@ -538,7 +538,9 @@ def _generate_fill(payload, request_id, token_payload, draft, intent, raw_answer
         deduped.append(item)
     unresolved = deduped[:assist_schema.MAX_UNRESOLVED]
 
-    status = 'ok' if (operations or parsed['questions']) else 'empty'
+    # 04 §6.3：empty 仅当「全部无效且无问题」——有 unresolved（模型明确拒绝并给出原因，
+    # 如原子组不完整/无依据）时仍是 ok，前端据此展示原因而非「内容已一致」（T10 F3）。
+    status = 'ok' if (operations or parsed['questions'] or unresolved) else 'empty'
     return {'protocol': 'autofill/1',
             'status': status,
             'requestId': request_id,

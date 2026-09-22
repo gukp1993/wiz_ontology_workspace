@@ -765,7 +765,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
         <Field label="对象名称" class="full" :model-value="objectDraft?.label || ''" required example="储能簇" @update:model-value="setObjectField('label', $event)"/>
         <Field label="业务定义" type="textarea" class="full" :model-value="objectDraft?.comment || ''" required example="说明它是什么，用什么业务边界区分。" help="只需名称和业务定义即可保存；属性与链接在对象内补充。" @update:model-value="setObjectField('comment', $event)"/>
       </div>
-      <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="ow-assist-trigger-object" @close="onAssistPanelClosed"/>
+      <AssistPanel v-if="assistBinding" :open="assistOpen" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="ow-assist-trigger-object" @close="onAssistPanelClosed"/>
       <div class="detail-footer">
         <div class="tools"><button type="button" class="primary" :disabled="editorSaving" @click="saveObject">{{ editorSaving ? '保存中…' : '保存' }}</button><button type="button" @click="closeEditor">取消</button></div>
         <span>只影响当前本体草稿；已发布版本不变。</span>
@@ -806,7 +806,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
         <Field label="业务定义" type="textarea" :model-value="linkDraft?.comment || ''" example="用业务语言说明这条关系的含义" @update:model-value="setLinkField('comment', $event)"/>
       </details>
       <p class="relation-sentence">{{ typeName(linkDraft?.from) }} → {{ linkDraft?.label || '链接名称' }} → {{ typeName(linkDraft?.to) }}</p>
-      <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="ow-assist-trigger-link" @close="onAssistPanelClosed"/>
+      <AssistPanel v-if="assistBinding" :open="assistOpen" ref="assistPanelRef" class="ow-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="ow-assist-trigger-link" @close="onAssistPanelClosed"/>
       <div class="detail-footer">
         <div class="tools"><button type="button" class="primary" :disabled="editorSaving" @click="saveLink">{{ editorSaving ? '保存中…' : '保存' }}</button><button type="button" @click="closeEditor">取消</button></div>
         <span>只影响当前本体草稿；已发布版本不变。</span>

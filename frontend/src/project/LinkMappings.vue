@@ -499,7 +499,7 @@ defineExpose({dirty,discard:closeEditor})
 <p v-if="cardinalityHint" :class="cardinalityHint.cls">{{cardinalityHint.text}}</p>
 <p class="field-help">只选两端对象已登记的表，沿实例匹配路径找到对象；不手填表名。配置「去配置」离开时草稿会保留，回到本页签自动恢复。</p>
 <p v-if="message" class="inline-error" role="alert">{{message}}</p>
-<AssistPanel v-if="assistOpen&&assistBinding" ref="assistPanelRef" class="lm-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="lm-assist-trigger" @close="onAssistPanelClosed"/>
+<AssistPanel v-if="assistBinding" :open="assistOpen" ref="assistPanelRef" class="lm-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="lm-assist-trigger" @close="onAssistPanelClosed"/>
 <div class="lm-actions"><button class="primary" :disabled="saving" @click="save">{{saving?'保存中…':'保存'}}</button><button :disabled="saving" @click="closeEditor">取消</button><small class="field-help">保存写入当前项目草稿；取消放弃本次修改。</small></div>
 </template>
 </template>

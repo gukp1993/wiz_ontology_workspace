@@ -514,7 +514,7 @@ const viewNotice = computed(() => viewReason.value === 'flow'
         </div>
 
         <!-- 自动填写面板（T8 改版）：内嵌弹窗、随卡片滚动；仅可编辑接口配置提供，回填只改本地草稿 -->
-        <AssistPanel v-if="editable && assistVisible && assistBinding" ref="assistPanel" class="ab-assist-panel"
+        <AssistPanel v-if="assistBinding && editable" :open="assistVisible" ref="assistPanel" class="ab-assist-panel"
                      :binding="assistBinding" :api="assistApi" trigger-id="ab-assist-trigger" @close="closeAssist"/>
 
         <!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改；auth.* 拒绝逐条说明 -->

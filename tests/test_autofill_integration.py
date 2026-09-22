@@ -757,8 +757,9 @@ def main():
                       for op in body['operations']),
           'D3 只改用户要求的字段，未提及字段不出现在 operations', body.get('operations'))
     # D4 同字段冲突 → 整组 unresolved（不后项覆盖）。
-    # 注：服务端 status 判定为「有 operations 或 questions 才 ok」（04 §6.3 全部无效且无问题 → empty），
-    # 因此本场景 status=empty 但 unresolved 带原因；前端空态分支须展示这些原因（见本文件头 ⑧ 说明）。
+    # 2026-09-22 协调者修复（T10 F3）：status 判定改为「有 operations/questions/**unresolved**
+    # 才 ok」，与 04 §6.3「全部无效且**无问题** → empty」一致——本场景带 1 条 unresolved
+    # （模型明确拒绝并给原因）应为 ok，前端据此展示原因而不是「内容已一致」。
     stub_fill(operations=[{'op': 'set', 'field': 'name', 'value': 'A',
                            'basis': {'kind': 'intent', 'quote': '改名称'}},
                           {'op': 'set', 'field': 'name', 'value': 'B',
@@ -768,7 +769,7 @@ def main():
     check(body['operations'] == [] and len(body['unresolved']) == 1
           and '同字段' in body['unresolved'][0]['reason'],
           'D4 同字段多条写操作整组 unresolved（不后项覆盖；同因去重为 1 条）', body)
-    check(body['status'] == 'empty', 'D4 全部无效且无问题 → status=empty（04 §6.3）',
+    check(body['status'] == 'ok', 'D4 全部无效但有 unresolved（有原因）→ status=ok（04 §6.3 修订）',
           body.get('status'))
     # D5 引用不存在 → unresolved（候选外对象）
     # from 取候选内、且与本轮草稿不同的值（起点 = 供应商）：同值的 set 现按 A14 等值

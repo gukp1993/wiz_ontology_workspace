@@ -383,7 +383,7 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <p class="field-help">实例清单随本表单一并保存；编号是实例身份，保存后不可直接修改。切换来源方式或登记实例都只在保存后生效，取消则全部放弃。</p>
 </template>
 <p v-if="message" class="inline-error" role="alert">{{message}}</p>
-<AssistPanel v-if="assistOpen&&assistBinding" ref="assistPanelRef" class="os-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="os-assist-trigger-identity" @close="onAssistPanelClosed"/>
+<AssistPanel v-if="assistBinding" :open="assistOpen" ref="assistPanelRef" class="os-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="os-assist-trigger-identity" @close="onAssistPanelClosed"/>
 <div class="os-actions"><button class="primary" :disabled="saving" @click="saveIdentity">{{saving?'保存中…':'保存'}}</button><button :disabled="saving" @click="closeEditor">取消</button><small class="field-help">保存写入当前项目草稿；取消放弃本次修改。</small></div>
 </template>
 <!-- ========== 编辑态：补充来源表单 ========== -->

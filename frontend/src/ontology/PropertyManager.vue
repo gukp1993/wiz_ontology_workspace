@@ -450,7 +450,7 @@ async function doSave() {
   </div>
 
   <!-- 自动填写抽屉（T3 状态机 + T6 宿主 binding）：回填只改本地草稿，保存与影响确认仍由用户显式触发 -->
-  <AssistPanel v-if="assistVisible && assistBinding" ref="assistPanel" :binding="assistBinding" :api="assistApi" trigger-id="pm-assist-trigger" @close="closeAssist"/>
+  <AssistPanel v-if="assistBinding" :open="assistVisible" ref="assistPanel" :binding="assistBinding" :api="assistApi" trigger-id="pm-assist-trigger" @close="closeAssist"/>
 
   <!-- 影响确认（20260920 需求 11）：字段前后值 + 受影响对象 → 属性；勾选后才提交当前草稿。 -->
   <div v-if="impactOpen" class="modal-backdrop" @click.self="cancelImpact">

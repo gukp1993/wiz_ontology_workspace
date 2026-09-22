@@ -375,7 +375,7 @@ function setField(key: 'name' | 'description' | 'effect', value: string) { draft
     <Field label="预期效果" type="textarea" class="full" :model-value="draft.effect" rows="4" example="设备退出充放电运行状态。" help="操作成功后期望出现的业务状态变化（选填）；不是接口响应结构，不会执行指令。" @update:model-value="setField('effect', $event)"/>
   </div>
   <p class="field-help">不需要先选择作用对象（在对象建模中关联），也不维护参数清单——修改名称、调整归属等操作所需信息由项目实现配置。</p>
-  <AssistPanel v-if="assistOpen && assistBinding" ref="assistPanelRef" class="lib-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="action-assist-trigger" @close="onAssistPanelClosed"/>
+  <AssistPanel v-if="assistBinding" :open="assistOpen" ref="assistPanelRef" class="lib-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="action-assist-trigger" @close="onAssistPanelClosed"/>
   <p v-if="message" class="inline-error" role="alert">{{ message }}</p>
   <div class="detail-footer"><div class="tools"><button type="button" class="primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存定义' }}</button><button type="button" @click="closeEditor">取消</button></div>
     <span>保存直接写入本体草稿；已发布版本需重新发布后更新。</span></div>

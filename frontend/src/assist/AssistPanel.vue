@@ -30,6 +30,9 @@ const props = defineProps<{
   api?: AssistApi
   examples?: string[]
   triggerId?: string
+  /** 宿主受控开合（T10 F2）：宿主常驻挂载面板时以本属性驱动显隐；
+   *  不传则维持旧行为（挂载即打开，收起经 @close 由宿主卸载）。 */
+  open?: boolean
 }>()
 const emit = defineEmits<{ close: []; 'need-model': [] }>()
 
@@ -47,7 +50,9 @@ let outsideFocus: HTMLElement | null = null
 
 onMounted(() => {
   outsideFocus = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLElement | null
-  void open(props.binding)
+  // 受控宿主（传入 :open）常驻挂载：只取上下文、保持收起，展开由 :open watch 驱动（T10 F1/F2）；
+  // 未传 open 的旧宿主维持「挂载即打开」。
+  void open(props.binding, { reveal: props.open === undefined ? true : props.open === true })
   if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
     const mq = window.matchMedia('(max-width: 1100px)')
     narrow.value = !!mq.matches
@@ -57,8 +62,22 @@ onMounted(() => {
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('keydown', onGlobalKeydown)
   }
-  void nextTick(() => intentBox.value?.focus())
 })
+
+// 焦点进入输入框（需求 §4.2）：上下文（textarea 挂载前提）就绪后再聚焦。
+// 首帧 nextTick 时面板仍处 loading-context 分支、textarea 尚未渲染，直接聚焦是空操作（T10 F1）。
+watch([contextToken, collapsed], () => {
+  if (collapsed.value || !contextToken.value) return
+  void nextTick(() => {
+    const box = intentBox.value
+    if (!box || typeof document === 'undefined') return
+    const active = document.activeElement
+    // 不抢用户当下已有的输入焦点（例如用户已点进别的表单控件）
+    if (active === box) return
+    if (active && active !== document.body && drawerRef.value?.contains(active)) return
+    box.focus()
+  })
+}, { immediate: true })
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
     window.removeEventListener('keydown', onGlobalKeydown)
@@ -67,6 +86,14 @@ onBeforeUnmount(() => {
 
 // 宿主切换编辑目标：binding 对象变化即重新 open（同目标保留输入，切目标整卡重置）
 watch(() => props.binding, b => { if (b) void open(b) })
+
+// 宿主受控开合（T10 F2）：关闭只收起（保留输入/会话），重开复用同一引擎实例——
+// 同目标输入与已答问题得以保留；切目标仍由上面的 binding watch 整卡重置。
+watch(() => props.open, v => {
+  if (v === undefined) return
+  if (v && collapsed.value) expand()
+  else if (!v && !collapsed.value) close()
+})
 
 const busy = computed(() => status.value === 'generating' || loadingContext.value)
 const contextLine = computed(() => contextInfo.value?.title || props.binding.contextTitle)
@@ -179,8 +206,10 @@ defineExpose({
       <button v-else type="button" :disabled="busy" @click="generate">重试</button>
     </div>
 
-    <!-- 无有效变更：明确 empty，不假称成功 -->
-    <p v-if="status === 'empty'" class="assist-line assist-muted" role="status">{{ AUTOFILL_EMPTY_TEXT }}</p>
+    <!-- 无有效变更：明确 empty，不假称成功；empty 且带回 unresolved 时（模型明确拒绝并给了
+         原因，T10 F3）不说「内容已一致」，改由下方 unresolved 清单如实展示具体原因。 -->
+    <p v-if="status === 'empty' && !unresolved.length" class="assist-line assist-muted" role="status">{{ AUTOFILL_EMPTY_TEXT }}</p>
+    <p v-else-if="status === 'empty'" class="assist-line assist-muted" role="status">本次没有可直接填写的内容；以下原因待处理。</p>
 
     <p v-if="notice" class="assist-line assist-muted">{{ notice }}</p>
 
