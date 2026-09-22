@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`70452b314f252ce0`
+上下文版本：`295c6f95cd9f086e`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### auto_build · zcode · 实施中
+
+时间：2026-09-22T16:28:46.769989+00:00；记录：`.collaboration/entries/000259-01c4f8ea9810.json`
+
+【环境创建】用户明确指令「从主干拉分支 auto_build，新建 worktree」，已完成：分支 auto_build 从已提交 main 基线 2d27584 创建，工作树 /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/auto_build，登记端口 18952（已核对空闲）。数据按 2026-09-22 规则全量拷贝：transfer backup WAL 一致快照落 <worktree>/data/workbench.sqlite3 + keys/wb-root.key 副本（0700/0600）+ ontology-build-blobs/tmp 随迁；快照体检 integrity ok、解密探针 4/4、关键表行数与 main 现库逐表一致，含真实数据与根密钥副本（不可自动丢弃）。未装依赖、未启服务、未开发。
+
+- 决定：分支名按用户指定用 auto_build（非 codex/ 前缀）；端口 18952；workbench-tasks/auto_build.json 覆盖更新为本轮登记（上一轮 auto-build-output-v3 merged_and_cleaned 记录在 git 历史 2d27584）；transfer verify 两项 0 vs 2 经直查 SQL 判定为 CLI 计数口径差异，非快照缺数据
+- 验证：git rev-parse auto_build = 2d2758478708dfa977f2eaa9b67cd15eb5553928；transfer backup 成功且 verify integrity_check ok / foreign_key_check 0 违反 / 解密探针 ok=4 fail=0；快照与 live 逐表行数一致（assets 11 / releases 7 / model_configs 2 / credentials 4 / users 2 / snapshots 365 / import_items 623 / sessions 15）
+- 下一步：等用户下达本分支开发任务（需求文档/执行指令）；开发时从工作树内以 WIZ_WORKBENCH_PORT=18952 + 工作树数据根启动（依赖需先准备）
+- 依据/文档：workbench-tasks/auto_build.json；AGENTS.md 独立分支开发与串行集成（2026-09-20/21/22 数据随迁规则）
 
 ### auto-build-output-v3 · zcode · 已验证
 
@@ -145,14 +156,3 @@ T1 交付：contracts/forms/ 10 份契约（propertySource 含 4 个 draft.kind 
 - 下一步：T2 接 assist_ops 到 assist_forms.FormContract（propertySource 需传 draft_kind）；T4 按 refProviders 提供方名装配候选集；T3 消费 formContracts.gen.ts；协调者统一提交；本记录不构成验收
 - 依据/文档：contracts/forms/ 全部 10 份契约；workbench/assist_forms.py；workbench/assist_forms_gen.py；frontend/src/assist/formContracts.gen.ts；tests/test_autofill_contracts.py
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 20260922_整表自动填写交互-T2操作协议校验（assist-fill-production） · zcode · 已实施，待验收
-
-时间：2026-09-22T10:13:53.158447+00:00；记录：`.collaboration/entries/000246-92319e2316d5.json`
-
-T2 交付：新增 workbench/assist_ops.py（受限 operations 校验器，模块 docstring 冻结 FormContract loader 接口约定）；assist_schema.py 仅增不改地新增 parse_fill_output（autofill/1 解析、questions id 服务端换发、模型 unresolved 契约过滤、MAX_UNRESOLVED=12）；新增 tests/fixtures/autofill_contract_fixture.json（合成契约兼作 T1 loader 接口兼容样例）与 tests/test_autofill_patch.py（40 项）。未动 assist_fields/assist_context/assist_service/assist_routes/server.py/前端；按指令未执行 git 命令，提交留协调者。
-
-- 决定：同字段冲突落位：set/clear 按字段路径判定；行操作按行标识判定（同 localId 的 append、同 rowId 的 update/remove），同列表多条 row.append 合法（04 §6.3 服务端按内容去重即预期多条）；set 的 value=null 一律拒：置空必须走独立 clear（需求 §4.4，防绕过 nullable+clearable+basis 授权）；按 04 §6.1 权限语义实现 ai.fillable=false 与 ai.sensitive=true 字段拒写；结构级 502 口径：operations 非数组/元素非对象/未知 op/op 多余键/超12条；basis 形态违规按单操作无效转 unresolved；问题 id 换发 q_<n> 避让 valid_question_ids 防串号；响应级 unresolved 合并截断（≤12）归 T4 组装时执行
-- 验证：python3 tests/test_autofill_patch.py → 全部通过（40 项）；python3 tests/test_assist_schema.py → 全部通过（57 项，旧 parse_model_output 行为未动）；ruff check 三个 T2 文件 → All checks passed；全仓 ruff 另有 5 处既有报错，均在 test_assist_api/test_assist_context/test_assist_schema（本轮未改动，非 T2 引入）
-- 下一步：T1 对齐（重要）：assist_forms.py 已并行落地为模块函数接口（field_def(form_id,path) 抛 ContractError、list_def 返回原始 item、atomic_groups 登记组节点自身路径）——与 assist_ops docstring 冻结对象接口有 4 处差异；atomic_groups 若登记组节点路径而非组内叶子路径，assist_ops 会把该组永远判不完整，T9 集成须建适配对象（绑 form_id+draft_kind、ContractError→KeyError、归一 list item）或协调改 T1；T4：组装响应 unresolved 时按 MAX_UNRESOLVED=12 合并截断（invalid_operations＋模型自报 unresolved）；T9：把测试内 FixtureContract stub 切换为 assist_forms 真实 loader 复跑同批用例；协调者统一处理本轮 git 提交
-- 依据/文档：workbench/assist_ops.py；workbench/assist_schema.py；tests/test_autofill_patch.py；tests/fixtures/autofill_contract_fixture.json；文档/接口文档/04-编排与LLM接口.md §6
