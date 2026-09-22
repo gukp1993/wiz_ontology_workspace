@@ -977,6 +977,227 @@ def flow_revision_contracts():
           '物料排除按 String(materialRevision) 通过并推进修订', actual=(status, _short(excluded)))
 
 
+# --- 回归流：V2-10 解析并发（线程池，G25） ---------------------------------------------
+class _SlowParseProbe:
+    """慢解析桩：包住真实 parse_material，记录并发峰值；可按文件名片段匹配。"""
+
+    def __init__(self, delay, match=None):
+        self.delay = float(delay)
+        self.match = match
+        self.lock = threading.Lock()
+        self.active = 0
+        self.max_active = 0
+        self.original = build_pipeline.parse_material
+
+    def __call__(self, path, material_id, kind, rel_path=''):
+        if self.match and self.match not in str(rel_path):
+            return self.original(path, material_id, kind, rel_path)
+        with self.lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        try:
+            time.sleep(self.delay)
+            return self.original(path, material_id, kind, rel_path)
+        finally:
+            with self.lock:
+                self.active -= 1
+
+
+def _scan_task_files(name, files):
+    """建任务→上传文件列表[(relPath, text)]→扫描→返回 (task_id, run_id, run)。"""
+    status, created = api('/api/build-task-create', {'name': name})
+    task_id = require((created.get('task') or {}).get('id'), '并发回归任务创建失败：%s' % name)
+    for rel_path, content in files:
+        status, body = _upload_bytes(content.encode('utf-8'), task_id, rel_path)
+        if status != 200:
+            raise Abort('并发回归上传 %s 失败：%s' % (rel_path, _short(body)))
+    status, scan = api('/api/build-scan', {'taskId': task_id})
+    run_id = require(scan.get('runId'), '并发回归扫描未返回 runId')
+    return task_id, run_id, poll_run(task_id, run_id)
+
+
+def _fact_fingerprint(task_id):
+    """任务内全部事实的内容指纹（按材料相对路径 + 事实 id 定序；不含会随任务变化的字段）。"""
+    # 排序键用内容列（locator/snippet/module/kind/quality/data）：fact_id 含 material_id，
+    # 跨任务不可作为顺序键；同内容 ⇒ 同排序 ⇒ 指纹可比。
+    rows = db_rows(
+        'SELECT m.rel_path AS rp, f.module AS md, f.kind AS kd, f.locator_json AS lc, '
+        'f.snippet AS sn, f.quality AS q, f.data_json AS dj '
+        'FROM wb_build_facts f JOIN wb_build_materials m '
+        'ON f.material_id = m.material_id AND f.task_id = m.task_id '
+        'WHERE f.task_id = ? '
+        'ORDER BY m.rel_path, f.locator_json, f.snippet, f.module, f.kind, f.quality, f.data_json',
+        (task_id,))
+    return [(r['rp'], r['md'], r['kd'], r['lc'], r['sn'], r['q'], r['dj']) for r in rows]
+
+
+def flow_parse_concurrency():
+    """V2-10 / G25：功能等价、并发生效、取消、超时、env 覆盖。"""
+    # capabilities 展示生效并发数
+    _, caps = api('/api/build-capabilities')
+    check((caps.get('limits') or {}).get('parseConcurrency') == protocol.PARSE_CONCURRENCY,
+          'capabilities 展示解析并发数（parseConcurrency）',
+          actual=(caps.get('limits') or {}).get('parseConcurrency', protocol.PARSE_CONCURRENCY))
+
+    # ⑤ env 覆盖与非法/非正值回退
+    saved_env = os.environ.get('WIZ_BUILD_PARSE_CONCURRENCY')
+    try:
+        os.environ['WIZ_BUILD_PARSE_CONCURRENCY'] = '3'
+        check(protocol._limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', 8) == 3,
+              'WIZ_BUILD_PARSE_CONCURRENCY 覆盖并发度')
+        os.environ['WIZ_BUILD_PARSE_CONCURRENCY'] = 'abc'
+        check(protocol._limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', 8) == 8,
+              '非法并发度环境变量回退默认（不 crash）')
+        os.environ['WIZ_BUILD_PARSE_CONCURRENCY'] = '0'
+        check(protocol._limit_from_env('WIZ_BUILD_PARSE_CONCURRENCY', 8) == 8,
+              '非正值并发度环境变量回退默认')
+    finally:
+        if saved_env is None:
+            os.environ.pop('WIZ_BUILD_PARSE_CONCURRENCY', None)
+        else:
+            os.environ['WIZ_BUILD_PARSE_CONCURRENCY'] = saved_env
+
+    write_fixtures()
+
+    # ① 功能等价：并发=1 与并发=4 的 facts 内容与顺序完全一致
+    saved_cc = protocol.PARSE_CONCURRENCY
+    try:
+        protocol.PARSE_CONCURRENCY = 1
+        serial_id, _rid1, serial_run = _scan_task_files('并发等价-串行', [
+            (name, (FIXTURE_DIR / name).read_text(encoding='utf-8'))
+            for name in ('schema.sql', 'Device.java', 'req.md')])
+        check(serial_run.get('state') == 'succeeded', '等价组：串行扫描 succeeded',
+              actual=serial_run.get('error'))
+        protocol.PARSE_CONCURRENCY = 4
+        par_id, _rid2, par_run = _scan_task_files('并发等价-并行', [
+            (name, (FIXTURE_DIR / name).read_text(encoding='utf-8'))
+            for name in ('schema.sql', 'Device.java', 'req.md')])
+        check(par_run.get('state') == 'succeeded', '等价组：并发扫描 succeeded',
+              actual=par_run.get('error'))
+        fp_serial, fp_par = _fact_fingerprint(serial_id), _fact_fingerprint(par_id)
+        check(fp_serial == fp_par and len(fp_serial) >= 8,
+              '功能等价：并发=1 与并发=4 产出 facts 内容与顺序完全一致（G25a）',
+              actual=(len(fp_serial), len(fp_par)))
+    finally:
+        protocol.PARSE_CONCURRENCY = saved_cc
+
+    # ② 并发生效：4 个慢文件（各 1.0s）应在池内同时解析
+    slow_files = [('slow%d.md' % i, '# 慢解析 %d\n\n设备监测数据与额定容量说明。\n' % i)
+                  for i in range(1, 5)]
+    probe2 = _SlowParseProbe(1.0)
+    build_pipeline.parse_material = probe2
+    try:
+        started = time.monotonic()
+        _tid2, _rid3, run2 = _scan_task_files('并发生效回归', slow_files)
+        elapsed = time.monotonic() - started
+        check(run2.get('state') == 'succeeded' and probe2.max_active >= 2 and elapsed < 3.5,
+              '并发生效：多文件同时解析中（峰值并发 %d，总耗时 %.1fs < 串行下限 4s；G25b）',
+              actual=(run2.get('state'), probe2.max_active, round(elapsed, 1)))
+    finally:
+        build_pipeline.parse_material = probe2.original
+
+    # ③ 取消：已完成结果保留、未完成不再落库；恢复解析后重扫只补未完成文件（G25d）
+    cancel_files = [('cancel%d.md' % i, '# 取消回归 %d\n\n设备台账说明。\n' % i)
+                    for i in range(1, 7)]
+    probe3 = _SlowParseProbe(2.0)
+    build_pipeline.parse_material = probe3
+    saved_cc3 = protocol.PARSE_CONCURRENCY
+    protocol.PARSE_CONCURRENCY = 2   # 6 文件×2s、并发 2：取消到达时必有未开始任务
+    try:
+        status, created = api('/api/build-task-create', {'name': '并发取消回归'})
+        task3 = require((created.get('task') or {}).get('id'), '取消回归任务创建失败')
+        for rel_path, content in cancel_files:
+            api('/api/build-upload-init', {'taskId': task3, 'relPath': rel_path,
+                                           'size': len(content.encode('utf-8'))})
+        # 逐文件完整上传（init→chunk→complete）
+        for rel_path, content in cancel_files:
+            status, body = _upload_bytes(content.encode('utf-8'), task3, rel_path)
+            if status != 200:
+                raise Abort('取消回归上传 %s 失败：%s' % (rel_path, _short(body)))
+        status, scan = api('/api/build-scan', {'taskId': task3})
+        run_id3 = require(scan.get('runId'), '取消回归扫描未返回 runId')
+        # 等第一份材料解析成功（慢桩 2s）
+        deadline = time.monotonic() + 8
+        first_done = False
+        while time.monotonic() < deadline:
+            _, listing = api('/api/build-materials', query='?taskId=' + task3)
+            if any((m.get('parseState') == 'success') for m in listing.get('items') or []):
+                first_done = True
+                break
+            time.sleep(0.2)
+        check(first_done, '取消前置：至少一份材料已完成落库')
+        status, cancelled = api('/api/build-run-cancel', {'taskId': task3, 'runId': run_id3})
+        run3 = poll_run(task3, run_id3)
+        check(run3.get('state') == 'cancelled',
+              '取消生效：run 转入 cancelled（不再收集新结果）', actual=run3.get('state'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task3)
+        states3 = [(m['relPath'], m['parseState']) for m in listing.get('items') or []]
+        check(sum(1 for _, s in states3 if s == 'success') >= 1
+              and sum(1 for _, s in states3 if s != 'success') >= 2,
+              '取消后：已完成结果保留，未完成文件不再解析（G25d 前半）', actual=states3)
+        facts_before = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?',
+                               (task3,))[0]['n']
+        time.sleep(3.0)   # 超过慢桩时长：验证执行中的迟到结果不会被补写
+        facts_after = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?',
+                              (task3,))[0]['n']
+        check(facts_before >= 1 and facts_before == facts_after,
+              '取消后 facts 数量稳定（迟到结果一律丢弃、不再落库）',
+              actual=(facts_before, facts_after))
+        # 恢复真实解析后重扫：已成功文件按内容复用跳过，仅补未完成文件（G25d 后半）
+        build_pipeline.parse_material = probe3.original
+        status, rescan = api('/api/build-scan', {'taskId': task3})
+        rescan_run_id = require(rescan.get('runId'), '重扫未返回 runId')
+        run3b = poll_run(task3, rescan_run_id)
+        ckpt = json.loads(db_rows('SELECT checkpoint_json AS c FROM wb_build_runs '
+                                  'WHERE run_id = ?', (rescan_run_id,))[0]['c'] or '{}')
+        reused_count = int((ckpt.get('scan') or {}).get('reused') or 0)
+        check(run3b.get('state') == 'succeeded' and reused_count >= 1,
+              '取消后重新扫描 succeeded 且已成功文件按内容复用（检查点 reused≥1）',
+              actual=(run3b.get('error'), reused_count))
+        _, listing = api('/api/build-materials', query='?taskId=' + task3)
+        check(all(m.get('parseState') == 'success' for m in listing.get('items') or []),
+              '重扫后全部材料解析成功（未完成文件被补齐，已成功文件复用）',
+              actual=[(m['relPath'], m['parseState']) for m in listing.get('items') or []])
+    finally:
+        build_pipeline.parse_material = probe3.original
+        protocol.PARSE_CONCURRENCY = saved_cc3
+
+    # ④ 超时：慢文件等待超时 → failed「解析超时」，迟到结果不落库（G25c）
+    saved_timeout = protocol.PARSE_TIMEOUT_SECONDS
+    probe4 = _SlowParseProbe(5.0, match='slow-timeout')
+    build_pipeline.parse_material = probe4
+    try:
+        protocol.PARSE_TIMEOUT_SECONDS = 1
+        task4, _rid4, run4 = _scan_task_files('解析超时回归', [
+            ('slow-timeout.md', '# 超时文件\n\n这段解析会很慢。\n'),
+            ('fast1.md', '# 快文件一\n\n设备额定容量说明。\n'),
+            ('fast2.md', '# 快文件二\n\n监测数据采样说明。\n')])
+        check(run4.get('state') == 'succeeded',
+              '超时回归：快文件不受影响（run succeeded）', actual=run4.get('error'))
+        _, listing = api('/api/build-materials', query='?taskId=' + task4)
+        slow = next((m for m in listing.get('items') or []
+                     if m['relPath'] == 'slow-timeout.md'), {})
+        check(slow.get('parseState') == 'failed' and '解析超时' in str(slow.get('error')),
+              '超时文件标 failed 且原因含「解析超时」（G25c）',
+              actual=(slow.get('parseState'), slow.get('error')))
+        check((slow.get('coverage') or {}).get('factCount') == 0,
+              '超时文件事实被清空（不保留旧 facts、不假称成功）', actual=slow.get('coverage'))
+        facts_t0 = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?',
+                           (task4,))[0]['n']
+        time.sleep(6.0)   # 超过慢桩 5s：迟到结果到达，必须已被丢弃
+        facts_t1 = db_rows('SELECT COUNT(*) AS n FROM wb_build_facts WHERE task_id = ?',
+                           (task4,))[0]['n']
+        _, listing = api('/api/build-materials', query='?taskId=' + task4)
+        slow_after = next((m for m in listing.get('items') or []
+                           if m['relPath'] == 'slow-timeout.md'), {})
+        check(facts_t0 == facts_t1 and slow_after.get('parseState') == 'failed',
+              '超时文件迟到的解析结果一律丢弃（等待 worker 完成后仍无 facts、状态不变）',
+              actual=(facts_t0, facts_t1, slow_after.get('parseState')))
+    finally:
+        protocol.PARSE_TIMEOUT_SECONDS = saved_timeout
+        build_pipeline.parse_material = probe4.original
+
+
 # --- 回归流：V2-8 生成断点续跑与状态回退（G23） ----------------------------------------
 def flow_generate_resume():
     """批次检查点（只重跑失败批）、阶段产物复用、失败入口、基线约束与状态回退。"""
@@ -2121,6 +2342,7 @@ def main():
     flow_image_ocr()
     flow_llm_fallback()
     flow_generate_resume()
+    flow_parse_concurrency()
     flow_lease_fencing(task_id)
     return 0
 

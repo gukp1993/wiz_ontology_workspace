@@ -474,6 +474,12 @@ def _start_scan(task_id, material_ids=None):
                 raise _blocked([{'code': 'NO_MATERIAL', 'field': 'materials',
                                  'message': '没有可扫描的材料（至少需要一份未排除材料）'}])
             for material in materials:
+                if not material_ids and material['parseState'] == 'success' \
+                        and int((material.get('coverage') or {}).get('factCount') or 0) > 0:
+                    # 任务级扫描：已成功且内容未变的材料保留 success——run 内按内容哈希
+                    # 复用跳过（08 §4 / G25d「重新扫描仅解析未完成文件」；此前的整体
+                    # pending 重置使契约承诺的复用从未生效，属缺陷修复）。
+                    continue
                 store.update_material(conn, material['id'], owner_id, parse_state='pending', error='')
             run_id, _lease = store.create_run(conn, task_id, owner_id, 'scan',
                                               {'materialRevision': int(row['material_revision'])})
