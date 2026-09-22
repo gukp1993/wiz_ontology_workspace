@@ -23,6 +23,14 @@
 
 本模块只做配置级校验：不执行 SQL、不访问网络、不写任何存储、不持锁；采纳后的保存
 仍走各表单既有业务校验（CAS、共享影响确认、project_validation 等）。
+
+autofill/1 整表自动填写分支（2026-09-22 改版，04 §6；T2）：
+* parse_fill_output：mode=fill + protocol=2 的受限操作协议解析。模型输出结构须为
+  {operations, questions, unresolved?}；operations 交 workbench.assist_ops 按表单契约
+  白名单校验（其结构级违规向上抛 ModelBadResponse，单操作违规转 invalid_operations
+  由上层组装 unresolved）；questions 沿用 ≤3/题干长度/选项约束，但 id 一律由服务端
+  换发（忽略模型自报 id，防串号）；模型自报 unresolved 逐条按契约过滤（超限 502）。
+* 旧 parse_model_output（suggestions 协议）行为保持不变；check/explain 继续走原路径。
 """
 import json
 import re
@@ -975,3 +983,125 @@ def parse_model_output(content, target_kind, draft_kind, context, draft, answers
     explanation = _parse_explanation(data.get('explanation'), mode)
     return {'questions': questions, 'suggestions': suggestions, 'issues': issues,
             'explanation': explanation, 'dropped': dropped}
+
+
+# ---- autofill/1 整表自动填写（04 §6，2026-09-22 改版；T2） ----------------------
+
+MAX_UNRESOLVED = 12  # 一次响应 unresolved 上限（04 §6.5 冻结）；模型自报超限 → 502
+
+
+def _parse_fill_questions(raw, contract, valid_question_ids):
+    """校验 autofill/1 的问题列表；模型给的 id 一律忽略，由服务端换发新 id。
+
+    新 id 形如 q_<n>，从 1 起跳过 valid_question_ids 已占用的编号（防与在途问题串号）。
+    超过 MAX_QUESTIONS → ModelBadResponse；单个问题形态非法（缺/超长题干、fields 缺失
+    或含契约外路径、options 形态非法）→ 静默丢弃该问题。
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ModelBadResponse('模型输出的问题列表结构非法')
+    if len(raw) > assist_fields.MAX_QUESTIONS:
+        raise ModelBadResponse('模型输出的问题数量超过上限（%d）' % assist_fields.MAX_QUESTIONS)
+    taken = {str(q) for q in (valid_question_ids or ())}
+    questions = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        text = _text(item.get('text'))
+        if not text or len(text) > _QUESTION_PROMPT_MAX:
+            continue
+        raw_fields = item.get('fields')
+        if not isinstance(raw_fields, list) or not raw_fields:
+            continue
+        fields = []
+        for path in raw_fields:
+            clean = path.strip() if isinstance(path, str) else ''
+            if not clean:
+                fields = []
+                break
+            try:
+                contract.field_def(clean)
+            except KeyError:
+                fields = []
+                break
+            if clean not in fields:
+                fields.append(clean)
+        if not fields:
+            continue
+        options = item.get('options')
+        cleaned_options = None
+        if options is not None:
+            if not isinstance(options, list):
+                continue
+            cleaned_options = [opt.strip() for opt in options
+                               if isinstance(opt, str) and opt.strip()
+                               and len(opt) <= _QUESTION_OPTION_MAX]
+        allow = item.get('allowUnsure')
+        number = len(questions) + 1
+        while ('q_%d' % number) in taken:
+            number += 1
+        new_id = 'q_%d' % number
+        taken.add(new_id)
+        questions.append({'id': new_id, 'text': text, 'fields': fields,
+                          'options': cleaned_options,
+                          'allowUnsure': allow if isinstance(allow, bool) else True})
+    return questions
+
+
+def _parse_fill_unresolved(raw, contract):
+    """模型自报的待补项：{field, reason}，field 必须在契约内；逐条过滤，超限 502。"""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ModelBadResponse('模型输出的 unresolved 结构非法')
+    if len(raw) > MAX_UNRESOLVED:
+        raise ModelBadResponse('模型输出的 unresolved 超过上限（%d 条）' % MAX_UNRESOLVED)
+    items = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        if set(str(k) for k in entry) - {'field', 'reason'}:
+            continue
+        field = _text(entry.get('field'))
+        reason = _text(entry.get('reason'))
+        if not field or not reason:
+            continue
+        try:
+            contract.field_def(field)
+        except KeyError:
+            continue
+        items.append({'field': field, 'reason': _clip_text(reason, _REASON_MAX)})
+    return items
+
+
+def parse_fill_output(content, intent, valid_question_ids, contract):
+    """解析 autofill/1（mode=fill、protocol=2）模型输出。返回：
+    {"operations": […通过契约校验的合法操作…],
+     "invalid_operations": [{"op","field","reason"}…]（上层转 unresolved，04 §6.3 分层）,
+     "questions": […id 已由服务端换发…],
+     "unresolved": […模型自报且通过契约过滤的待补项…]}。
+
+    * content：模型原始返回文本（复用 _extract_json 提取，支持围栏/前后杂文本）；
+    * intent：本次发给模型的用户意图原文——basis.kind=intent 的 quote 子串核验依据；
+    * valid_question_ids：本会话仍可引用的 questionId 集合——basis.kind=question 的核验
+      依据，同时用于换发新问题 id 时避让；
+    * contract：FormContract（接口约定冻结在 workbench.assist_ops 模块 docstring）。
+
+    抛 ModelBadResponse（整体违规 → 502）：输出为空/非 JSON/顶层不是对象/顶层未知键/
+    operations·questions·unresolved 形态非法或条数超限/未知 op/op 携带未知键。
+    注意：invalid_operations 与模型自报 unresolved 合并后的响应级 unresolved ≤
+    MAX_UNRESOLVED 由上层（service 组装响应时）执行——本层保证两个来源各自不超上限。
+    """
+    data = _load_model_json(content)
+    unknown_keys = set(str(k) for k in data) - {'operations', 'questions', 'unresolved'}
+    if unknown_keys:
+        raise ModelBadResponse('模型输出包含未知顶层键：' + '、'.join(sorted(unknown_keys)[:5]))
+    from workbench import assist_ops  # 延迟导入：assist_ops 顶层引用本模块的 ModelBadResponse
+    checked = assist_ops.validate_operations(
+        _as_top_list(data.get('operations'), 'operations'),
+        contract, intent, valid_question_ids)
+    return {'operations': checked['valid'],
+            'invalid_operations': checked['invalid'],
+            'questions': _parse_fill_questions(data.get('questions'), contract, valid_question_ids),
+            'unresolved': _parse_fill_unresolved(data.get('unresolved'), contract)}
