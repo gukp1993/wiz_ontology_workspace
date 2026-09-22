@@ -262,7 +262,9 @@ class OnlinePersistence(object):
             doc = _generate_doc_of(row)
             job = (doc.get('jobs') or {}).get(str(job_id or '')) if doc else None
             if job is not None and str(job.get('state') or '') == contracts.JOB_SUCCEEDED:
-                return True  # 重复回调幂等跳过（候选与状态已原子落库）
+                # 幂等跳过（候选与状态已原子落库）：返回 False = 本次未新提交（契约冻结
+                # bool 语义 True=新提交 / False=幂等跳过；与 ExperimentState 口径一致）。
+                return False
             reason = self._reject_reason(row, expected_lease)
             if reason:
                 return False
@@ -316,7 +318,7 @@ class OnlinePersistence(object):
             if job is None:
                 raise ValueError('作业不存在：%s' % parent_job_id)
             if str(job.get('state') or '') == contracts.JOB_SPLIT:
-                return True  # 重复回调幂等跳过
+                return False  # 幂等跳过（冻结 bool 语义：True=新提交 / False=跳过）
             if str(job.get('state') or '') != contracts.JOB_RUNNING:
                 return False  # 其他终态：拒绝改写
             attempts = doc.get('attempts') if isinstance(doc.get('attempts'), dict) else {}
@@ -353,7 +355,7 @@ class OnlinePersistence(object):
             if job is None:
                 raise ValueError('作业不存在：%s' % job_id)
             if str(job.get('state') or '') == contracts.JOB_FAILED:
-                return True  # 重复回调幂等跳过
+                return False  # 幂等跳过（冻结 bool 语义：True=新提交 / False=跳过）
             if str(job.get('state') or '') != contracts.JOB_RUNNING:
                 return False  # 其他终态（如已 succeeded）：拒绝改写
             doc = batch_state.apply_event(doc, {'type': batch_state.EVENT_ATTEMPT_FAILED,

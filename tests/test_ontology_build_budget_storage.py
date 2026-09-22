@@ -21,7 +21,7 @@ iterate_candidates_page（只追加，既有函数未改）。
     all_candidates(limit=500) 恰 500（证明便利函数不再当全量）。
  8. checkpoint 容量：>1MiB 计划 save_plan 抛 CheckpointCapacityError 且库内状态不变；
     事前种入超限 checkpoint 后 claim 同样抛、job 仍 queued。
- 9. 幂等：同一 job 重复 commit_success 不重复插候选、返回 True；候选 id 确定性
+ 9. 幂等：同一 job 重复 commit_success 不重复插候选、幂等跳过返回 False（True=新提交）；候选 id 确定性
     （'bc-'+jobId[2:14]+'-<10hex>'），origin 追加 planEpoch/jobId，usage 聚合正确。
 
 隔离（AGENTS.md 测试隔离铁律）：每个场景独立临时根（WIZ_WORKBENCH_ROOT + 该根下
@@ -367,8 +367,8 @@ def scenario_commit_split():
           '场景6 父截断 usage 入总账（completion=7, calls=1）', aggregate)
     check(int((doc or {}).get('coverage', {}).get('targetPending') or 0) == 2,
           '场景6 父 split 不算成功（pending 保持 2）', (doc or {}).get('coverage'))
-    check(p.commit_split(lease, 'j-root', children, truncated) is True,
-          '场景6 重复 commit_split 幂等返回 True')
+    check(p.commit_split(lease, 'j-root', children, truncated) is False,
+          '场景6 重复 commit_split 幂等跳过返回 False（冻结 bool 语义：True=新提交）')
     child_claim = p.claim_job(lease, 'j-left', 1)
     check(child_claim.get('ok') is True, '场景6 子 job 可再 claim（queued→running）', child_claim)
     left = (read_generate_doc(run_id) or {}).get('jobs', {}).get('j-left') or {}
@@ -451,7 +451,7 @@ def scenario_commit_success_idempotent():
     ok2 = p.commit_success(lease, 'j-root', claim['attemptId'], candidates, API_USAGE,
                            'digest-1', attempt_meta={'finishReason': 'stop', 'bytes': 2048,
                                                      'durationMs': 1200})
-    check(ok2 is True, '场景9 重复 commit_success 幂等返回 True', ok2)
+    check(ok2 is False, '场景9 重复 commit_success 幂等跳过返回 False（冻结 bool 语义）', ok2)
     stored = read_candidates(task_id)
     check(len(stored) == 2, '场景9 重复提交不重复插候选（仍 2 条）', len(stored))
     prefix = 'bc-' + 'j-root'[2:14] + '-'
