@@ -353,6 +353,34 @@ def main():
           == gen2.get('coverage', {}).get('targetTotal'),
           gen2.get('coverage'), 'complete')
 
+    # 7) legacy resume 兼容回归（本次修复的回归点）：schema1 checkpoint（无 schemaVersion
+    #    或 =1）在自适应开启时也必须照常受理——不得被 v2 预检误拦。
+    os.environ.pop('WIZ_BUILD_ADAPTIVE_BATCHING', None)   # 关掉 v2，走纯 legacy 生成
+    status, created2 = api('/api/build-task-create', {'name': 'legacy续跑任务'})
+    task2 = created2['task']['id']
+    make_material(task2)
+    rev2 = setup_scope(task2)
+    status, conf2 = api('/api/build-scope-confirm', {'taskId': task2, 'revision': rev2})
+    check('legacy 生成受理（自适应关闭）', status == 200, (status, conf2), 200)
+    run_l = poll_run(task2, conf2['runId'])
+    check('legacy 生成完成', run_l.get('state') == 'succeeded', run_l.get('state'), 'succeeded')
+    gen_l = ((run_l.get('checkpoint') or {}).get('generate') or {})
+    check('legacy 摘要保持 schema1 形状（无 schemaVersion/无 jobs 明细）',
+          gen_l.get('schemaVersion') is None and 'jobs' not in gen_l and 'batches' in gen_l,
+          list(gen_l.keys()), 'schema1')
+    # 人工置 failed 后 resume(auto)：schema1 缺省版本必须被受理（回归：曾被误判 UNKNOWN）
+    with sto.write_tx() as tx:
+        def _fail_legacy(conn):
+            ob_store.update_run(conn, conf2['runId'], USER_ID, state='failed',
+                                error='注入失败', retryable=True)
+        tx.run(_fail_legacy)
+    status, resumed_l = api('/api/build-run-resume',
+                            {'taskId': task2, 'runId': conf2['runId'], 'resumeMode': 'auto'})
+    check('legacy resume 被受理（缺省版本不得误判 UNKNOWN_CHECKPOINT_SCHEMA）',
+          status == 200, (status, resumed_l), 200)
+    check('legacy resume 执行完成', poll_run(task2, conf2['runId']).get('state') == 'succeeded',
+          poll_run(task2, conf2['runId']).get('state'), 'succeeded')
+
     print('========== 汇总 ==========')
     print('通过 %d / %d' % (len(PASSED), len(PASSED) + len(FAILED)))
     for name in FAILED:

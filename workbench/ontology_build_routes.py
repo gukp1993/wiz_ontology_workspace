@@ -648,7 +648,9 @@ def post_run_resume(payload):
                     and isinstance(raw_doc.get('generate'), dict) else raw_doc
                 if not isinstance(gen_doc, dict) or not gen_doc:
                     gen_doc = None
-                if gen_doc is not None and int(gen_doc.get('schemaVersion') or 0) not in (1, 2):
+                raw_version = gen_doc.get('schemaVersion') if gen_doc is not None else None
+                has_version = raw_version not in (None, '')
+                if has_version and int(raw_version or 0) not in (1, 2):
                     raise _budget_issue(batch_contracts.UNKNOWN_CHECKPOINT_SCHEMA,
                                         '生成计划版本无法识别，拒绝恢复；原候选已保留。')
                 if gen_doc is not None and int(gen_doc.get('schemaVersion') or 0) == 2:
@@ -668,8 +670,11 @@ def post_run_resume(payload):
                             raise _budget_issue(batch_contracts.BUDGET_PLAN_MISMATCH,
                                                 '自适应计划与当前材料不一致（指纹已变化）：'
                                                 '请重新生成建立新计划。')
-                provider = _provider_or_raise()
-                _v2_precheck_generate(provider)
+                # 仅 schema2 计划才做 v2 预算预检：legacy 运行沿用既有语义（provider 缺失在
+                    # 执行侧按 §2.1 处理，不得被前置拦截——否则破坏 legacy resume 行为）。
+                if isinstance(gen_doc, dict) and int(gen_doc.get('schemaVersion') or 0) == 2:
+                    provider = _provider_or_raise()
+                    _v2_precheck_generate(provider)
     with sto.write_tx() as tx:
         def body(conn):
             row = store.require_task(conn, task_id, owner_id)
