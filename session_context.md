@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`b16786b0645b1500`
+上下文版本：`8aa825eaf2ca69bc`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### ui_fix 第八轮：编排列表列宽塌陷与时间显示收口 · codex · 已实施，待验收
+
+时间：2026-09-22T07:53:40.110894+00:00；记录：`.collaboration/entries/000187-1175aa7ea373.json`
+
+按用户截图定位「函数编排」列表页三处根因并修复：①FlowList.vue 是全仓唯一 table-layout:fixed 而无 min-width 的表，fixed 先把 84/150/110/148 四个 px 列分满，未声明宽度的名称列在 517px 容器里被压到 25px（行高 157px），且表总宽小于容器所以不出横滚；按 .ont-table/.attribute-table 既有约定补 min-width:756px，并把配置状态列 110→156（最长胶囊实测 130px）、操作列 148→168（三个 .mini 实测 146px，原宽度让删除按钮溢出单元格 8px）。②同一 updatedAt 在编排页显示 2026/9/22 00:09:41、在生成任务页显示 2026-09-22 14:12：删除 flowModel.ts 与 build/types.ts 两份各自 formatTime，新增 shared/format.ts 作唯一出口，替换 5 个文件共 6 处调用点。构建、lint 与被验包 index-SZgrLazQ.js 逐列复测通过，另扫 19 页面 + 编辑器两视图溢出命中 0。已提交 4a1ae75 与 5122ceb，未合并 main、未重启主工作台。
+
+- 决定：纯时刻保留 toLocaleTimeString('zh-CN',{hour12:false})：saveCoordinator.ts:65 与 FlowTestWorkspace.vue:261 各 locale 均稳定输出 HH:MM:SS，前者行为由 tests/saveQueue.test.mjs 锁定，不为此重开回归面；该窄口径例外已写进 DESIGN.md。；.ftw-field-name 显示裸 UUID 经 /api/flow-state 查实不是渲染缺陷：该测试编排节点入参 name/label 在库里就是空串，UI 按 ID 兜底是既有约定，属测试物料数据形态，不改前端。；flow-canvas 实测 role/aria-label/tabindex 全 null（InstanceGraph 的 .graph-canvas 三者皆有）：差异属画布键盘可达性专项，补 tabindex 只会造一个不动的焦点站，本轮不当样式漂移顺手加。；截图通道返回 NATIVE_BROWSER_VIEWPORT_UNAVAILABLE（页面后台），本轮视觉证据一律用 DOM 实测数值与结构快照，未附截图。
+- 验证：被验包 index-SZgrLazQ.js（视口 831×848，.scroll 容器实宽 517）：名称列 25→198px、行高 157→50px、时间单元格 w:150 单行显示 2026-09-22 00:09。；状态列内容区 136px ≥ 胶囊 130px；操作列末按钮右边界落在 padding 盒内 2px、距单元格右边界 −12px；容器 scrollLeft 可达 239（=756−517），滚到底按钮完整可见。；溢出判据（有直接文本或 td/th/button 且 scrollWidth>容器宽+1，排除 ellipsis/auto 滚动件）扫 19 页面 + 编排编辑器画布与测试调试视图 + 编排列表页：命中 0。设置中心两页未纳入。；无可访问名控件判据只在 #f-editor 画布视图跑了一次命中 0；符号命名按钮判据跑 6 视图命中 0（覆盖面限制已写进 §9.13，未写成全量结论）。；npm run build（含 vue-tsc 严格）两次通过、npm run lint 干净；分支库改动仅 frontend/src 8 文件 + DESIGN.md + 开发计划，工作树已干净。
+- 下一步：等用户在 http://127.0.0.1:18882 自己点一遍编排列表与生成任务页确认时间显示、列宽观感。；§9.10 末清单原样待决：日期/时间芯片口径、backdrop mousedown 关闭语义、ObjectWorkspace:539 缺确认、FlowTestWorkspace role=tab 与 WCAG 2.5.3、B7' 重名对象、约 2744 处 px 魔法数字、画布键盘可达性。；如需坐实 D1 剩余项（FlowTestWorkspace sr-only 空文本勾选、FlowCanvas aria 命名），需一条带 text 型入参且未绑定的编排数据；写真实数据副本需用户点头。；合并 main 与重启主工作台仍需用户明确指令，本轮未做。
+- 依据/文档：worktree/ui_fix/frontend/src/shared/format.ts（新增唯一出口）；worktree/ui_fix/frontend/src/flow/FlowList.vue:113-131（列宽与 min-width）；worktree/ui_fix/DESIGN.md Typography 末条 + Layout fixed 表条；worktree/ui_fix/文档/需求/20260921_样式与交互统一/开发计划.md §9.13；提交 4a1ae75（fix）与 5122ceb（docs），分支 codex/ui_fix，未合并
 
 ### ui_fix 第七轮复测补充：合并后后端 quick 回归边界 · codex · 需求已交付
 
@@ -139,14 +150,3 @@ V2-10 整改复测通过：三项整改全部闭合，无新问题。方式=/tmp
 - 验证：tests/test_ontology_build.py 250/250（连续 2 次全绿 v210_r1/r2 + cr_2/cr_3 共 4 次；本轮共 7 次运行）；parsers 95/95、late_write 23/23、finish_guard 27/27、runner_isolation 34/34、materials_views 10/10、task_purge 17/17、exclusion_inheritance 17/17、merge_refs 42/42、storage_contract 60/60、storage_transfer 27/27；偶发失败定性（预存缺陷，非本轮引入）：约 1/3 运行在「未登录 POST」分支（main() 第 2262 行）报 ConnectionResetError。机制：server.py:313 鉴权门在未登录时不读取请求体即返回 401 并关连接，客户端读响应体时撞 OS 级 RST。定向探针（200 轮未登录 POST，两树同机对比）：当前树 60/200 ECONNRESET、基线树 c482547 66/200（同为 ~30%）——同量级；另有 V2-10 之前 R6 轮日志 /tmp/obt.log 同址复现佐证；vue-tsc 0 错误、npm run build 通过（本轮前端零改动）；ruff 改动文件全过
 - 下一步：待测试 agent 第二轮复验（G25c 两条复现路径 + README 行）；建请协调者裁定：偶发 ECONNRESET 是否安排单独修复（建议方案：测试客户端对「未登录 401」响应体读取失败容忍为重试一次，或服务端在 401 前 drain 请求体——影响面小但均属本轮范围外，未擅自实施）
 - 依据/文档：worktree/build-governance 分支 codex/build-governance：3dc51dc（本轮单一提交）；workbench/ontology_build/pipeline.py _collect_pool_result/_scan_write_pool_failure；探针脚本 /tmp/rst_probe.py（临时，未入库）
-
-### 创建 ui_fix 开发 worktree 并登记隔离环境 · codex · 已确认决定
-
-时间：2026-09-21T13:42:31.672975+00:00；记录：`.collaboration/entries/000178-614ba95041a5.json`
-
-按用户明确创建指令，从已提交 main（4714e8a）派生 codex/ui_fix 分支与 worktree/ui_fix 独立工作树，按 2026-09-21 规范把数据根放在工作树内并完成 main 库快照+根密钥+物料blob 随迁，端口登记 18882。本轮只建环境与登记，未安装依赖、未启动服务、未写业务代码、未改 main。
-
-- 决定：目录名沿用用户给定标识 ui_fix，分支按约定命名 codex/ui_fix；从本地已提交 main 4714e8a 创建，仓库无 remote 故不执行 pull。；数据根=工作树根（WIZ_WORKBENCH_ROOT=worktree/ui_fix），库用 transfer backup --output 生成 WAL 一致快照落 data/workbench.sqlite3，禁复制正在写入的库文件；随迁 keys/wb-root.key（否则副本内加密凭据全不可解）与 data/ontology-build-blobs 57 个物料 blob（1.6MB），使副本自含。；端口实测 18882/18892/18902 空闲、18912 被占，登记 18882；未触碰 18765(main)、18881(build-governance) 等他人实例，未启动任何进程。；登记写入公共目录 .git/workbench-tasks/ui_fix.json（fcntl 串行锁），标注 status=worktree_ready_not_started 与『含真实数据与根密钥副本，不可自动丢弃，删除须用户确认』；账号口令与 main 相同未重置。；依赖与构建按创建模板默认不做：worktree 无 node_modules 与 frontend/dist，后续启动前需 npm ci && npm run build（或由后端托管自己构建的 dist）；npm run dev 的 /api 代理默认 18765，验收本分支前必须核对为 18882。
-- 验证：git worktree list 确认 worktree/ui_fix @ codex/ui_fix @ 4714e8a；git -C worktree/ui_fix status 干净；主仓库 git status 无 worktree 泄漏（.gitignore 第24行 /worktree/ 生效）；快照只读校验：alembic_version=20260920_0003，pragma integrity_check=ok，30 张 wb_ 表有数据（wb_users 2、wb_build_materials 58、wb_build_facts 4024、wb_snapshots 365）；落位文件权限：data/ keys/ 0700，workbench.sqlite3 与 wb-root.key 0600，.runtime/task.env 0600；本轮未运行 npm build、未跑测试、未启动服务（仅环境创建与登记）；context.py record 需 read 返回的 ticket 且各列表字段≤5 项、单条≤400 字，超限报『交接列表格式无效』
-- 下一步：等用户下达 ui_fix 的具体修复范围与任务；开发前在 worktree/ui_fix 内准备依赖并启动 18882 实例。；若修复涉及前端，需先 ./start.sh setup 或建分支 venv，并 npm ci && npm run build 后由分支后端托管自身 dist。；集成合并与清理仍需用户明确指令；本环境含真实数据副本，删除前必须经用户确认。
-- 依据/文档：/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/ui_fix；.git/workbench-tasks/ui_fix.json；worktree/ui_fix/.runtime/task.env
