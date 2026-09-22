@@ -524,3 +524,140 @@ POST /api/assist-generate
 - 生成接口**不持有全局写锁**，不写任何修订；返回前后 revision 与数据库内容不变。
 - 无建议但请求有效 → 200 + `status:"empty"`（`questions`/`suggestions`/`issues` 均可非空为空数组）。
 - 日志只留脱敏错误码、时长、requestId；不落 prompt、模型原文与 trace。
+
+## 6. 整表自动填写（autofill/1，2026-09-22 改版冻结）
+
+> T0 协议冻结（需求《20260922_整表自动填写交互》）。`mode=fill` 从"建议卡＋逐项勾选"
+> 升级为**受限字段操作协议**：模型输出 operations，后端按契约白名单验证，前端核对指纹后
+> 一次原子回填当前草稿。**旧 suggestions 勾选交互随之移除**；`check`／`explain` 响应结构
+> 不变（§5.2），降为面板次要帮助入口。本节与代码不一致时按文档 bug 处理（§红线 5）。
+
+### 6.0 端点与兼容
+
+| 项 | 冻结值 |
+|---|---|
+| 端点 | 沿用 `POST /api/assist-context`、`POST /api/assist-generate`（无新增白名单） |
+| fill 请求 | **必须**携带 `"protocol": 2`；缺失或非 2 → 400 `INVALID_ARGUMENT`（不静默按旧协议处理） |
+| fill 响应 | `protocol: "autofill/1"`；`check`/`explain` 响应仍为 §5.2 suggestions 结构 |
+| formId | 与 §5.0 targetKind 一一对应（10 个）；`propertySource` 按 draft.kind 分派子契约 |
+
+### 6.1 表单契约（单一来源，T1 落地）
+
+- 目录 `contracts/forms/<formId>.json`，开发期唯一字段定义来源；后端装载
+  （`workbench/assist_forms.py`），前端元数据由生成命令产出
+  （`python3 -m workbench.assist_forms_gen` → `frontend/src/assist/formContracts.gen.ts`，
+  生成物入库、禁止手改）。运行时**不接受客户端提交 schema**。
+- 文件语法（冻结）：
+
+```json
+{
+  "formId": "ontology.property",
+  "schemaVersion": 1,
+  "title": "属性定义",
+  "fields": [
+    {"id": "label", "label": "属性名称", "type": "text", "required": true, "maxLength": 120,
+     "ai": {"fillable": true, "clearable": false}},
+    {"id": "dataType", "type": "group", "atomicGroup": "typeCore", "fields": [
+      {"id": "type", "type": "enum", "enum": ["string", "double", "timeSeries"]},
+      {"id": "valueType", "type": "enum", "enum": ["double"],
+       "visibleWhen": {"field": "dataType.type", "op": "eq", "value": "timeSeries"},
+       "requires": "dataType.type"}]}
+  ],
+  "lists": [
+    {"id": "lookupMatch", "rowIdScope": "local", "item": {"id": "left", "type": "text"}}
+  ],
+  "codecs": ["dataTypeTransform", "formattingCodec"],
+  "refProviders": {"table": "catalogTables", "field": "catalogFields"}
+}
+```
+
+- 字段 `type` 冻结枚举：`text`｜`textarea`｜`enum`｜`boolean`｜`ref`｜`group`（嵌套固定结构）｜
+  `list`（顶层 lists 声明，行有本地稳定 rowId）。
+- 约束键：`required`／`maxLength`／`enum`／`nullable`（**仅显式 true 时 clear 合法**）；
+  `visibleWhen`/`editableWhen` 受限表达 `{field, op: eq|ne|in|notEmpty, value}`，**不是 eval**；
+  `atomicGroup` 同名者必须整组生效；`requires` 声明依赖字段（如 valueType 依赖 type）。
+- `ai` 键：`fillable`（默认 true；false = 系统派生/只读，模型不可写）、`clearable`、
+  `sensitive`（true = 不进 prompt、不可写）。`codec` 引用已注册业务 setter 标识
+  （JSON-LD 类型转换、Redis 编码、参数行等），**不携带可执行代码**。
+- `schemaDigest`：对文件做 canonical JSON（键排序、去 digest 字段）后 SHA-256，由 loader
+  重算并填入；响应回传 `schemaVersion`+`schemaDigest`，前端与本地生成物比对，不一致即
+  CONTEXT_STALE 语义（重新取上下文）。
+- 契约演进：布局/文案改动不改 `schemaVersion`；字段增删、类型、枚举、权限、依赖变化必须
+  `schemaVersion+1` 并使全部在途会话失效（digest 变 → 409 CONTEXT_STALE）。
+- 契约一致性守护：`tests/test_autofill_contracts.py`（T1）——契约↔`assist_fields` 注册表
+  ↔前端生成物三方对齐；新增普通字段未入契约时构建期报错。
+
+### 6.2 fill 请求（assist-generate，mode=fill）
+
+在 §5.2 请求基础上新增（全部必填除非注明）：
+
+| 字段 | 说明 |
+|---|---|
+| `protocol` | 常量 `2` |
+| `sessionId` | 首轮不传（服务端签发）；续轮必带回传 |
+| `answers` | `[{"questionId", "value", "unsure"}]`（value ≤2000 字符，沿用 §5 上限）；questionId 必须属于本会话未答复问题 |
+| `draft` | **应用前序操作后的当前草稿**（续轮必为最新；首轮为打开面板时的草稿） |
+
+续轮握手（冻结）：应用操作→draft 变化→**必须重新 `assist-context` 取新 contextToken**→
+携带新 token＋`sessionId`＋`answers` 再 `assist-generate`。旧 token 提交新 draft → 409
+`CONTEXT_STALE`（既有语义）。
+
+### 6.3 fill 响应（200）
+
+```json
+{"protocol": "autofill/1", "status": "ok",
+ "requestId": "…", "formId": "propertySource", "schemaVersion": 1, "schemaDigest": "…",
+ "target": {"space": "project", "targetKind": "propertySource", "targetId": "…"},
+ "draftFingerprint": "…", "contextFingerprint": "…",
+ "sessionId": "s_…", "roundId": "r_…",
+ "operations": [
+   {"op": "set", "field": "connection", "value": "conn-01",
+    "basis": {"kind": "intent", "quote": "用创智园业务库"}},
+   {"op": "row.append", "field": "lookupMatch", "row": {"localId": "r1", "fields": {"left": "id"}}},
+   {"op": "row.update", "field": "params", "rowId": "p_3", "fields": {"from": "identityField"}},
+   {"op": "clear", "field": "note", "basis": {"kind": "question", "questionId": "q_ab"}}],
+ "questions": [{"id": "q_ab", "text": "取值字段用 capacity 还是 rated_power？",
+                "fields": ["result.valueField"], "options": ["capacity", "rated_power"],
+                "allowUnsure": true}],
+ "unresolved": [{"field": "table", "reason": "候选目录中没有该表；请刷新目录或人工选择"}],
+ "summary": "已生成 4 项变更，1 项待补充"}
+```
+
+- **operations 语义**：`set`（field+value）、`clear`（仅 nullable+ai.clearable 字段，用户明确
+  要求才允许）、`row.append`（row.localId 客户端本地生成、服务端按内容去重）、
+  `row.update`／`row.remove`（rowId 必须命中草稿现有行；无法定位 → 模型应改为补问，
+  猜测行号一律拒）。`field` 是**契约内的点路径**（如 `result.valueField`），不提供任意
+  JSON 路径、脚本或持久 ID。
+- **basis（依据）**：`{"kind": "intent", "quote": "原话片段"}` 或
+  `{"kind": "question", "questionId"}`；后端程序校验 quote 确实出现在本次 intent（或本会话
+  已答内容）中、questionId 属于本会话——**防模型自报授权**。校验失败该操作转 unresolved。
+- **冲突拒绝**：同字段多条写操作 → 全部转 unresolved（不后项覆盖）；原子组不完整 → 组内
+  全部转 unresolved；引用不存在（对象/连接/表/字段/编排/输出）→ 该操作转 unresolved。
+- **分层不变**：响应整体结构违规仍 502 `MODEL_BAD_RESPONSE`；单操作违规转 `unresolved`
+  （前端展示原因），独立合法组照常返回；全部无效且无问题 → `status:"empty"`。
+
+### 6.4 会话与问题归属
+
+- 会话**内存态**（不落库）：TTL 30 分钟，LRU ≤200/进程；绑定 user＋space＋target＋formId
+  ＋schemaDigest。目标/契约变化即失效。
+- `questionId` 服务端生成、归属 session+round；已答问题不可重复作答；**旧 round 的
+  questionId 在新 round 提交 → 400 `INVALID_ARGUMENT`（问题已过期，请重新发起）**。
+- `unsure: true` 的答案按"暂不确定"处理：关联字段转 unresolved，不生成默认口径。
+
+### 6.5 限额（冻结，超出 400 或 502 按既有分层）
+
+intent ≤4000；answers ≤8 条/轮且单条 ≤2000；questions ≤3；**operations ≤12**；
+**unresolved ≤12**；draft ≤200KB；模型 `max_tokens` 4000；会话 TTL 30min／LRU 200；
+超时沿用提供方配置（1–300s）。模型输出超限按 §5.2 截断校验拒绝（502）。
+
+### 6.6 前端行为契约（T3 实现基准）
+
+- 默认不渲染任何 AI 区域；页头次要按钮「✦ 自动填写」开 420px 右侧抽屉（窄屏带遮罩）。
+- 生成成功且无待补：一次回填→抽屉收起→表单上方状态条「已填写 N 项，尚未保存」＋
+  「撤销本次填写」＋「查看修改」（逐字段 旧值→新值）；N＝实际改变的顶层字段/复合组数。
+- 回填**只改本地 draft**：不触发 touch/changed 自动保存、不调 form-save/commit-now；
+  等待超过自动保存窗口（900ms×N）数据库与 revision 不变。
+- 撤销单元＝一次会话（首轮＋全部续轮）：期间无手改可整轮恢复；有手改禁用整轮撤销并说明。
+  「取消修改」仍按原页面语义恢复已保存内容。
+- 生成中手改/切目标/关抽屉/契约变化 → 作废在途请求，迟到响应零写入（请求代际计数）。
+- check/explain 为抽屉内次要入口，只读展示（issues/explanation），不提供任何写入。
