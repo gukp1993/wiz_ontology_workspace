@@ -17,7 +17,7 @@ import {effectiveProperty} from '../ontology/propertyModel'
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 import AssistPanel from '../assist/AssistPanel.vue'
 import {identityAssistBinding} from '../assist/identityLinkBindings'
-import type {AssistApi} from '../assist/useAssistPanel'
+import {defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
 const props=defineProps<{projectState:any;refState:any;b:any}>()
 const emit=defineEmits(['before-change','changed','edit-state','go-tab'])
 function before(){emit('before-change')}
@@ -77,29 +77,43 @@ async function submit(apply:()=>void):Promise<{ok:boolean;message:string}>{
   if(formSave)return formSave.submitForm('project',apply)
   before();apply();changed();return {ok:true,message:''}
 }
-// ── 辅助填写（2026-09-21 T8，P1 实例识别）：编辑态挂 AssistPanel，采纳只改本地草稿 ──
-// 面板 binding 由 assist/identityLinkBindings 的 identityAssistBinding 构造（白名单快照与合并，
-// primaryKey↔primary_key、note↔noteDraft 映射；registered 模式快照只含 mode/note）。边界与本体区
-// 一致：采纳绝不触发表单保存（含 form-save/commit-now/touch），持久化由用户点「保存」走既有
-// submitForm 链路；采纳进来的说明随实例识别保存一起经既有 commitDesc 落盘。手改字段经
-// assistTouched 通知面板置过期；编辑器关闭面板收起。登记实例清单不在辅助范围。
-const assistApi=inject<AssistApi|null>('assist-api',null) // 测试注入桩；缺省 null → 面板内部用 defaultAssistApi()
+// ── 整表自动填写（2026-09-22 T8 改版，P1 实例识别）─────────────────────────────
+// 默认不渲染任何 AI 区域（A01）：入口是实例识别表单页头的次要按钮「✦ 自动填写」，保存仍是主操作；
+// 点击挂载 AssistPanel 抽屉（onMounted 自动 open 取上下文）。回填只改本地草稿（引擎保证，绝不触发
+// 表单保存：无 touch/changed/form-save/commit-now 调用）；表单上方状态条由 binding 的 round 镜像
+// 渲染（已填 N 项，尚未保存／另有 M 项待补充／逐字段旧值→新值），「撤销本次填写」走 binding.undoRound
+// （恢复本轮开始前草稿；期间手改禁用并说明，§4.5）。手改字段即 noteManualChange + notifyDraftChanged：
+// 禁整轮撤销 + 作废在途生成。契约与 P1 边界见 assist/identityLinkBindings.ts 头注（registered 模式
+// 只暴露 mode/note，登记实例清单 instances 永不出网、不被批量生成、不凭 id 名称推断唯一性）。
+const assistApiInjected=inject<AssistApi|null>('assist-api',null) // 测试注入桩；缺省用默认实现
+const innerAssistApi=assistApiInjected??defaultAssistApi()
+// 面板 api 包装：fill 响应流经宿主供 binding 观测「另有 M 项待补充」（引擎仍是唯一权威）
+const assistApi:AssistApi={
+  context:body=>innerAssistApi.context(body),
+  generate:async(assistBody:any)=>{const resp=await innerAssistApi.generate(assistBody);assistBinding.value?.observeFill(resp);return resp},
+}
 const assistOpen=ref(false)
-const assistPanelRef=ref<{notifyDraftChanged():void}|null>(null)
-const assistTouchTick=ref(0) // 手改字段次数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
-const assistBinding=computed(()=>{
-  if(editing.value!=='identity')return null
-  return identityAssistBinding(()=>identityDraft.value,noteDraft,{
-    projectId:String(props.projectState?.projectId||''),
-    targetId:String(props.b?.object_type||''),
-    contextTitle:'配置「'+objectName.value+'」的实例识别',
-    applyMode:switchIdentityMode, // 复用既有切换拦截（登记引用未清理时阻止切回数据库表／视图）
-  })
-})
+const assistPanelRef=ref<InstanceType<typeof AssistPanel>|null>(null)
+const assistTouchTick=ref(0) // 手改字段次数（测试观察点；SSR 下模板 ref 为 null 自动跳过）
+// binding 身份必须稳定（状态条镜像与引擎宿主都挂在同一 binding 对象上）：进入实例识别编辑态时构造，
+// 关闭/切目标即作废；再次进入按新目标重建（切目标作废在途请求由面板 watch 负责）。
+let assistBoundBinding:ReturnType<typeof identityAssistBinding>|null=null
+const assistBinding=computed(()=>(editing.value==='identity'?assistBoundBinding:null))
 watch(assistBinding,b=>{if(!b)assistOpen.value=false})
-function toggleAssist(){assistOpen.value=!assistOpen.value}
-// 手改字段 → 通知面板：旧建议过期、解除撤销保护；采纳/撤销写草稿由面板自管草稿指纹，不经此路径。
-function assistTouched(){assistTouchTick.value++;assistPanelRef.value?.notifyDraftChanged()}
+// 入口按钮 aria-expanded：面板已挂载时以抽屉实际收展为准（done 自动收起后回落为 false）
+const assistExpanded=computed(()=>!!assistOpen.value&&!(assistPanelRef.value?.collapsed??false))
+function toggleAssist(){
+  if(!assistOpen.value){assistOpen.value=true;return} // 首次打开：挂载面板（自动取上下文）
+  const p=assistPanelRef.value
+  if(!p)return
+  if(p.collapsed)p.expand() // done 自动收起后重新展开
+  else p.close()            // 展开中 → 用户主动关闭（emit close → 卸载，回到入口按钮）
+}
+function onAssistPanelClosed(){assistOpen.value=false}
+// 手改字段 → 登记 binding（禁整轮撤销 + 状态条说明）并通知面板（作废在途生成，§4.5）
+function assistTouched(){assistTouchTick.value++;assistBinding.value?.noteManualChange();assistPanelRef.value?.notifyDraftChanged()}
+// 宿主「撤销本次填写」：恢复本轮开始前草稿；撤销也是草稿变更，作废在途生成防迟到写入
+function undoAssistRound(){if(!assistBinding.value?.undoRound())return;assistPanelRef.value?.notifyDraftChanged()}
 let identityBaseline='',sourceBaseline=''
 const dirty=computed(()=>{
   if(editing.value==='note')return noteDraft.value!==noteBaseline.value
@@ -113,9 +127,17 @@ onBeforeUnmount(()=>formGuard?.unregister(guard))
 function openIdentity(){
   identityDraft.value={mode:bindingIdentityOf(props.b),connection:String(props.b.connection||''),table:String(props.b.table||''),primary_key:String(props.b.primary_key||''),instances:registeredInstancesOf(props.b)}
   identityBaseline=JSON.stringify(identityDraft.value)
-  // 说明草稿对齐到已保存说明：辅助面板快照里的 note 反映真实当前值（与说明编辑态打开时同一语义）
+  // 说明草稿对齐到已保存说明：自动填写快照里的 note 反映真实当前值（与说明编辑态打开时同一语义）
   noteDraft.value=savedNote.value;noteBaseline.value=savedNote.value
   message.value='';tableChangeNote.value='';refreshMessage.value='';switchNote.value='';switchBlock.value=''
+  // 每次进入编辑态构造新 binding：状态条镜像与撤销单元随本轮编辑对象从零开始（不串上一轮残留）
+  assistBoundBinding=identityAssistBinding(()=>identityDraft.value,noteDraft,{
+    projectId:String(props.projectState?.projectId||''),
+    targetId:String(props.b?.object_type||''),
+    contextTitle:'配置「'+objectName.value+'」的实例识别',
+    applyMode:switchIdentityMode, // 复用既有切换拦截（登记引用未清理时阻止切回数据库表／视图）
+  })
+  assistOpen.value=false
   editing.value='identity'
 }
 function openSource(s?:any){
@@ -127,7 +149,7 @@ function openSource(s?:any){
   message.value='';refreshMessage.value=''
   editing.value='source'
 }
-function closeEditor(){editing.value=null;identityDraft.value={mode:'database',connection:'',table:'',primary_key:'',instances:[]};sourceDraft.value=null;message.value='';tableChangeNote.value='';refreshMessage.value='';switchNote.value='';switchBlock.value='';saving.value=false;assistOpen.value=false}
+function closeEditor(){editing.value=null;identityDraft.value={mode:'database',connection:'',table:'',primary_key:'',instances:[]};sourceDraft.value=null;message.value='';tableChangeNote.value='';refreshMessage.value='';switchNote.value='';switchBlock.value='';saving.value=false;assistOpen.value=false;assistBoundBinding=null}
 function openNote(){noteDraft.value=savedNote.value;noteBaseline.value=savedNote.value;message.value='';editing.value='note'}
 async function saveNote(){
   if(saving.value)return
@@ -323,9 +345,22 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <!-- ========== 编辑态：实例识别表单 ========== -->
 <template v-else-if="editing==='identity'">
 <div class="os-editor-top"><button class="os-back" @click="closeEditor">← 返回实例识别</button><small class="muted">当前对象 · {{objectName}}</small></div>
-<div class="os-assist-row"><button type="button" :aria-pressed="assistOpen" @click="toggleAssist">✦ 辅助填写</button></div>
+<div class="os-assist-row"><button type="button" class="os-assist-trigger" id="os-assist-trigger-identity" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button></div>
 <h2>{{identityMode==='registered'||b.table?'修改':'配置'}}实例识别</h2>
 <p class="os-note">识别“有哪些{{objectName}}实例”，不限制其属性从哪里获取。</p>
+<!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->
+<div v-if="assistBinding&&(assistBinding.round.statusBarText||assistBinding.round.undone)" class="assist-bar" role="status">
+<span v-if="assistBinding.round.statusBarText" class="assist-bar-text">{{assistBinding.round.statusBarText}}</span>
+<span v-else class="assist-bar-text">已撤销本次自动填写，表单已恢复。</span>
+<button v-if="assistBinding.round.statusBarText" type="button" class="row-link" :disabled="!assistBinding.round.canUndo" @click="undoAssistRound">撤销本次填写</button>
+<details v-if="assistBinding.round.changes.length" class="assist-bar-changes">
+<summary>查看修改</summary>
+<ul>
+<li v-for="c in assistBinding.round.changes" :key="c.field"><strong>{{c.label}}</strong>：{{c.oldText}} → {{c.newText}}</li>
+</ul>
+</details>
+<span v-if="assistBinding.round.undoHint" class="assist-bar-hint">{{assistBinding.round.undoHint}}</span>
+</div>
 <div class="row">
 <label>实例来源方式 *<AppSelect :model-value="identityDraft.mode" aria-label="实例来源方式" :options="modeOptions" @update:model-value="identityModeChanged"/><small class="field-help">数据库表／视图：一行数据对应一个实例；项目登记：手工登记实例清单，不依赖数据表。</small></label>
 </div>
@@ -348,7 +383,7 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <p class="field-help">实例清单随本表单一并保存；编号是实例身份，保存后不可直接修改。切换来源方式或登记实例都只在保存后生效，取消则全部放弃。</p>
 </template>
 <p v-if="message" class="inline-error" role="alert">{{message}}</p>
-<AssistPanel v-if="assistOpen&&assistBinding" ref="assistPanelRef" class="os-assist-panel" :binding="assistBinding" :api="assistApi??undefined" @close="assistOpen=false"/>
+<AssistPanel v-if="assistOpen&&assistBinding" ref="assistPanelRef" class="os-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="os-assist-trigger-identity" @close="onAssistPanelClosed"/>
 <div class="os-actions"><button class="primary" :disabled="saving" @click="saveIdentity">{{saving?'保存中…':'保存'}}</button><button :disabled="saving" @click="closeEditor">取消</button><small class="field-help">保存写入当前项目草稿；取消放弃本次修改。</small></div>
 </template>
 <!-- ========== 编辑态：补充来源表单 ========== -->
@@ -422,8 +457,16 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 .os-back:hover{color:var(--blue-deep);border-color:transparent}
 .os-note{background:var(--blue-soft);border:1px solid var(--blue-line);border-radius:7px;padding:10px 14px;font-size:13px;color:var(--muted);margin:12px 0}
 .os-actions{display:flex;gap:9px;align-items:center;margin-top:20px;flex-wrap:wrap}
-/* 辅助填写（T8 P1）：入口按钮紧贴编辑态页头一行；面板为表单内一张卡片，不挤压既有版式 */
+/* 整表自动填写（T8 改版 P1）：页头次要入口（保存仍是主操作）+ 表单上方状态条（与本体区同款） */
 .os-assist-row{display:flex;margin:-6px 0 12px}
+.os-assist-trigger{color:var(--blue-ink,#285bea)}
+.assist-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:8px 12px;background:var(--blue-soft,#edf3ff);border:1px solid var(--blue-line,#c4d5f5);border-radius:6px;font-size:13px}
+.assist-bar-text{color:var(--blue-ink,#285bea);font-weight:600}
+.assist-bar-hint{color:var(--muted,#75869b)}
+.assist-bar-changes{flex-basis:100%}
+.assist-bar-changes summary{cursor:pointer;color:var(--blue-ink,#285bea)}
+.assist-bar-changes ul{margin:8px 0 0;padding-left:18px}
+.assist-bar-changes li{margin:2px 0;overflow-wrap:anywhere}
 .os-assist-panel{margin-top:16px}
 .os-match-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:18px 0}
 .os-match-side{border:1px solid var(--line);border-radius:8px;padding:16px;background:var(--paper-2);min-width:0}

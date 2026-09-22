@@ -24,7 +24,7 @@ import type {RelationView,DbSourceView} from './bindingModel'
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 import AssistPanel from '../assist/AssistPanel.vue'
 import {linkMappingAssistBinding} from '../assist/identityLinkBindings'
-import type {AssistApi} from '../assist/useAssistPanel'
+import {defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
 const props=defineProps<{projectState:any;refState:any;b:any}>()
 const emit=defineEmits(['before-change','changed','edit-state','setup-end','goto-object'])
 function before(){emit('before-change')}
@@ -112,29 +112,57 @@ let draftBaseline=''
 const draftChanged=computed(()=>{if(!draft.value)return false;return JSON.stringify(draft.value)!==draftBaseline||noteDraft.value!==noteBaseline.value})
 function dirty(){return draftChanged.value}
 const editingMembership=computed(()=>!!draft.value?.membership)
-// ── 辅助填写（2026-09-21 T8，P5 链接映射）：表字段关联编辑态挂 AssistPanel，采纳只改本地草稿 ──
+// ── 整表自动填写（2026-09-22 T8 改版，P5 链接映射）────────────────────────────
+// 默认不渲染任何 AI 区域（A01）：入口是表字段关联编辑器页头的次要按钮「✦ 自动填写」，保存仍是主操作。
 // binding 由 assist/identityLinkBindings 的 linkMappingAssistBinding 构造（白名单四字段 + note 映射
-// noteDraft；relation/targetType/membership 不在辅助范围）。成员模式编辑器不提供辅助入口（成员规则
-// 不加白名单）。边界与本体区一致：采纳绝不触发表单保存（含 form-save/commit-now/touch），持久化
-// 由用户点「保存」走既有 submitForm 链路（说明随保存经既有 commitDesc 落盘，两端共用）；手改字段
-// 经 assistTouched 通知面板置过期；编辑器关闭面板收起，切换编辑目标以新 binding 重开。
-const assistApi=inject<AssistApi|null>('assist-api',null) // 测试注入桩；缺省 null → 面板内部用 defaultAssistApi()
+// noteDraft；relation/targetType/membership 不在辅助范围：不出网、不被填写、撤销不触碰——同一条映射
+// 行的未知结构零丢失，A13）。成员模式编辑器不提供辅助入口（成员规则不在契约内）。回填只改本地草稿
+// （引擎保证，绝不触发表单保存：无 touch/changed/form-save/commit-now 调用）；状态条由 binding 的
+// round 镜像渲染，「撤销本次填写」走 binding.undoRound（恢复本轮开始前草稿；期间手改禁用）。手改字段
+// 即 noteManualChange + notifyDraftChanged：禁整轮撤销 + 作废在途生成。两端来源/字段值照建议原样写入，
+// 前端不做「字段同名＝业务等价」判断（服务端核验，不过即转 unresolved）。
+const assistApiInjected=inject<AssistApi|null>('assist-api',null) // 测试注入桩；缺省用默认实现
+const innerAssistApi=assistApiInjected??defaultAssistApi()
+// 面板 api 包装：fill 响应流经宿主供 binding 观测「另有 M 项待补充」（引擎仍是唯一权威）
+const assistApi:AssistApi={
+  context:body=>innerAssistApi.context(body),
+  generate:async(assistBody:any)=>{const resp=await innerAssistApi.generate(assistBody);assistBinding.value?.observeFill(resp);return resp},
+}
 const assistOpen=ref(false)
-const assistPanelRef=ref<{notifyDraftChanged():void}|null>(null)
-const assistTouchTick=ref(0) // 手改字段次数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
+const assistPanelRef=ref<InstanceType<typeof AssistPanel>|null>(null)
+const assistTouchTick=ref(0) // 手改字段次数（测试观察点；SSR 下模板 ref 为 null 自动跳过）
+// binding 身份必须稳定（状态条镜像与引擎宿主都挂在同一 binding 对象上）：按草稿对象身份缓存——
+// 打开一条映射行（含 restorePending 恢复）时构造，关闭/换行即随草稿对象一起作废重建。
+let assistBoundDraft:any=null
+let assistBoundBinding:ReturnType<typeof linkMappingAssistBinding>|null=null
 const assistBinding=computed(()=>{
   const d=draft.value
   if(!d||editingMembership.value)return null
-  return linkMappingAssistBinding(()=>draft.value,noteDraft,{
-    projectId:String(props.projectState?.projectId||''),
-    targetId:String(props.b?.object_type||'')+'.'+String(d.relation||''), // 与后端 project 目标约定一致：对象类型.关系id
-    contextTitle:'维护链接映射「'+linkLabel(d.relation)+'」',
-  })
+  if(assistBoundDraft!==d){
+    assistBoundDraft=d
+    assistBoundBinding=linkMappingAssistBinding(()=>draft.value,noteDraft,{
+      projectId:String(props.projectState?.projectId||''),
+      targetId:String(props.b?.object_type||'')+'.'+String(d.relation||''), // 与后端 project 目标约定一致：对象类型.关系id
+      contextTitle:'维护链接映射「'+linkLabel(d.relation)+'」',
+    })
+  }
+  return assistBoundBinding
 })
 watch(assistBinding,b=>{if(!b)assistOpen.value=false})
-function toggleAssist(){assistOpen.value=!assistOpen.value}
-// 手改字段 → 通知面板：旧建议过期、解除撤销保护；采纳/撤销写草稿由面板自管草稿指纹，不经此路径。
-function assistTouched(){assistTouchTick.value++;assistPanelRef.value?.notifyDraftChanged()}
+// 入口按钮 aria-expanded：面板已挂载时以抽屉实际收展为准（done 自动收起后回落为 false）
+const assistExpanded=computed(()=>!!assistOpen.value&&!(assistPanelRef.value?.collapsed??false))
+function toggleAssist(){
+  if(!assistOpen.value){assistOpen.value=true;return} // 首次打开：挂载面板（自动取上下文）
+  const p=assistPanelRef.value
+  if(!p)return
+  if(p.collapsed)p.expand() // done 自动收起后重新展开
+  else p.close()            // 展开中 → 用户主动关闭（emit close → 卸载，回到入口按钮）
+}
+function onAssistPanelClosed(){assistOpen.value=false}
+// 手改字段 → 登记 binding（禁整轮撤销 + 状态条说明）并通知面板（作废在途生成，§4.5）
+function assistTouched(){assistTouchTick.value++;assistBinding.value?.noteManualChange();assistPanelRef.value?.notifyDraftChanged()}
+// 宿主「撤销本次填写」：恢复本轮开始前草稿；撤销也是草稿变更，作废在途生成防迟到写入
+function undoAssistRound(){if(!assistBinding.value?.undoRound())return;assistPanelRef.value?.notifyDraftChanged()}
 // 当前草稿链接的集合端方向：'out' 出向 / 'in' 入向（成员=另一端）。
 const draftDir=computed(()=>{const rid=draft.value?.relation;const n=relations.value.find(x=>x['@id'].slice(3)===rid);return n?memberSideOfLink(n).dir:''})
 function pendingLinkLabel(r:any){
@@ -403,9 +431,22 @@ defineExpose({dirty,discard:closeEditor})
 </template>
 <!-- ===== 表字段关联编辑器（原有） ===== -->
 <template v-else>
-<div class="lm-assist-row"><button type="button" :aria-pressed="assistOpen" @click="toggleAssist">✦ 辅助填写</button></div>
+<div class="lm-assist-row"><button type="button" class="lm-assist-trigger" id="lm-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button></div>
 <h2>配置链接映射</h2>
 <MappingDescription :model-value="noteDraft" hint="说明两个对象如何关联，例如通过哪些字段找到对方。两端对象共用这一份说明。" @update:model-value="linkNoteChanged"/>
+<!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->
+<div v-if="assistBinding&&(assistBinding.round.statusBarText||assistBinding.round.undone)" class="assist-bar" role="status">
+<span v-if="assistBinding.round.statusBarText" class="assist-bar-text">{{assistBinding.round.statusBarText}}</span>
+<span v-else class="assist-bar-text">已撤销本次自动填写，表单已恢复。</span>
+<button v-if="assistBinding.round.statusBarText" type="button" class="row-link" :disabled="!assistBinding.round.canUndo" @click="undoAssistRound">撤销本次填写</button>
+<details v-if="assistBinding.round.changes.length" class="assist-bar-changes">
+<summary>查看修改</summary>
+<ul>
+<li v-for="c in assistBinding.round.changes" :key="c.field"><strong>{{c.label}}</strong>：{{c.oldText}} → {{c.newText}}</li>
+</ul>
+</details>
+<span v-if="assistBinding.round.undoHint" class="assist-bar-hint">{{assistBinding.round.undoHint}}</span>
+</div>
 <p class="lm-note">{{name(b.object_type)}} → {{linkLabel(draft.relation)}} → {{name(draft.targetType)}}<template v-if="cardinalityOf(draft.relation)"> · {{cardLabel(draft.relation)}}</template></p>
 <p v-if="switchMsg" class="inline-warning" role="status">{{switchMsg}}</p>
 <div class="columns">
@@ -458,7 +499,7 @@ defineExpose({dirty,discard:closeEditor})
 <p v-if="cardinalityHint" :class="cardinalityHint.cls">{{cardinalityHint.text}}</p>
 <p class="field-help">只选两端对象已登记的表，沿实例匹配路径找到对象；不手填表名。配置「去配置」离开时草稿会保留，回到本页签自动恢复。</p>
 <p v-if="message" class="inline-error" role="alert">{{message}}</p>
-<AssistPanel v-if="assistOpen&&assistBinding" ref="assistPanelRef" class="lm-assist-panel" :binding="assistBinding" :api="assistApi??undefined" @close="assistOpen=false"/>
+<AssistPanel v-if="assistOpen&&assistBinding" ref="assistPanelRef" class="lm-assist-panel" :binding="assistBinding" :api="assistApi" trigger-id="lm-assist-trigger" @close="onAssistPanelClosed"/>
 <div class="lm-actions"><button class="primary" :disabled="saving" @click="save">{{saving?'保存中…':'保存'}}</button><button :disabled="saving" @click="closeEditor">取消</button><small class="field-help">保存写入当前项目草稿；取消放弃本次修改。</small></div>
 </template>
 </template>
@@ -470,8 +511,16 @@ defineExpose({dirty,discard:closeEditor})
 .lm-back:hover{color:var(--blue-deep);border-color:transparent}
 .lm-note{background:var(--blue-soft);border:1px solid var(--blue-line);border-radius:7px;padding:10px 14px;font-size:13px;color:var(--muted);margin:12px 0}
 .lm-actions{display:flex;gap:9px;align-items:center;margin-top:20px;flex-wrap:wrap}
-/* 辅助填写（T8 P5）：入口按钮紧贴编辑态页头一行；面板为表单内一张卡片，不挤压既有版式 */
+/* 整表自动填写（T8 改版 P5）：页头次要入口（保存仍是主操作）+ 表单上方状态条（与本体区同款） */
 .lm-assist-row{display:flex;margin:-6px 0 12px}
+.lm-assist-trigger{color:var(--blue-ink,#285bea)}
+.assist-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:8px 12px;background:var(--blue-soft,#edf3ff);border:1px solid var(--blue-line,#c4d5f5);border-radius:6px;font-size:13px}
+.assist-bar-text{color:var(--blue-ink,#285bea);font-weight:600}
+.assist-bar-hint{color:var(--muted,#75869b)}
+.assist-bar-changes{flex-basis:100%}
+.assist-bar-changes summary{cursor:pointer;color:var(--blue-ink,#285bea)}
+.assist-bar-changes ul{margin:8px 0 0;padding-left:18px}
+.assist-bar-changes li{margin:2px 0;overflow-wrap:anywhere}
 .lm-assist-panel{margin-top:16px}
 .lm-inbound{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
 .lm-inbound h3{margin:0 0 4px}

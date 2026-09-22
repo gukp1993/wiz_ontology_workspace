@@ -21,8 +21,9 @@ import { listApiCredentials, saveApiCredential } from './api'
 import MappingDescription from './MappingDescription.vue'
 import { descTextOf, commitDesc } from './bindingModel'
 import AssistPanel from '../assist/AssistPanel.vue'
-import { actionBindingAssistBinding } from '../assist/actionBindingAdapter'
-import type { AssistApi, AssistHostBinding } from '../assist/useAssistPanel'
+import { actionBindingAssistBinding, ACTION_BINDING_SENSITIVE_REASON } from '../assist/actionBindingAdapter'
+import type { ActionBindingAssistBinding } from '../assist/actionBindingAdapter'
+import { defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
 import {
   AUTH_TYPE_OPTIONS, BODY_FORMAT_OPTIONS, CONSTANT_TYPE_OPTIONS, IN_LABELS, IN_OPTIONS, METHOD_OPTIONS,
   SOURCE_LABELS, apiContext, apiView, buildPreview, draftFrom, emptyApi, inheritedTypeText, isApiV2,
@@ -125,17 +126,27 @@ const sourceSelectOptions = computed(() => sourceOptions(ctx.value).map(o => ({
   disabled: !!o.disabled,
 })))
 
-// ── 辅助填写（T10 · P6，2026-09-21）：AI 建议只采纳进弹窗本地草稿，绝不自动保存 ──
-// 仅接口映射（可编辑 api 草稿）提供入口；只读查看（历史 flow/未知实现/失效关联）无入口。
-// 白名单与安全边界见 assist/actionBindingAdapter.ts：auth 永不出网、永不被建议写入；
-// 持久化由用户点「保存」走既有 saveApi→form-save 链路（含校验与 409 处理）。
-const assistApi = inject<AssistApi>('assist-api') // 测试注入桩；缺省 undefined → 面板内部用 defaultAssistApi()
+// ── 整表自动填写（2026-09-22 T8 改版，P6 动作接口映射）──────────────────────────
+// 默认不渲染任何 AI 区域（A01）：入口是接口配置弹窗页头的次要按钮「✦ 自动填写」，保存仍是主操作。
+// 仅可编辑 api 配置提供入口；只读查看（历史 flow/未知实现/失效关联）无入口（按钮不渲染 + openAssist
+// 双保险）。契约与安全边界见 assist/actionBindingAdapter.ts：契约白名单无 auth，认证与凭据（auth.*）
+// 在前端 binding 直接拒绝写入并记入 refusals（契约 ai.sensitive 红线的第二道保险，后端白名单是第一道）；
+// 本页绝不执行接口——参数行 codec 只写本地草稿，请求示意是纯文本拼装。回填只改弹窗本地草稿（引擎保证，
+// 无 form-save/commit-now/touch 调用）；状态条由 binding 的 round 镜像渲染，「撤销本次填写」走
+// binding.undoRound（恢复本轮开始前草稿；期间手改禁用）。持久化由用户点「保存」走既有 saveApi→form-save。
+const assistApiInjected = inject<AssistApi | null>('assist-api', null) // 测试注入桩；缺省用默认实现
+const innerAssistApi = assistApiInjected ?? defaultAssistApi()
+// 面板 api 包装：fill 响应流经宿主供 binding 观测「另有 M 项待补充」（引擎仍是唯一权威）
+const assistApi: AssistApi = {
+  context: body => innerAssistApi.context(body),
+  generate: async (assistBody: any) => { const resp = await innerAssistApi.generate(assistBody); assistBinding.value?.observeFill(resp); return resp },
+}
 const assistVisible = ref(false)
-const assistBinding = shallowRef<AssistHostBinding | null>(null)
-const assistPanel = ref<{ notifyDraftChanged(): void } | null>(null)
-let assistBaseline = '' // 面板对齐点（打开/采纳/撤销）时的草稿+说明指纹：面板写入不算手改
+const assistBinding = shallowRef<ActionBindingAssistBinding | null>(null)
+const assistPanel = ref<InstanceType<typeof AssistPanel> | null>(null)
+let assistBaseline = '' // 面板对齐点（打开/回填/撤销）时的草稿+说明指纹：面板写入不算手改
 const assistFingerprint = () => JSON.stringify(draft.value ?? null) + '|' + noteDraft.value
-function buildAssistBinding(): AssistHostBinding {
+function buildAssistBinding(): ActionBindingAssistBinding {
   const inner = actionBindingAssistBinding({
     projectId: String(props.projectState?.projectId || ''),
     // 已保存绑定：'<对象类型>:<动作id>'（后端据此出标题并核验归属）；未保存配置传 ''（按「新建动作接口映射」出标题）
@@ -150,21 +161,46 @@ function buildAssistBinding(): AssistHostBinding {
   return {
     ...inner,
     apply: values => { inner.apply(values); assistBaseline = assistFingerprint() },
+    applyDraft: next => { inner.applyDraft(next); assistBaseline = assistFingerprint() },
     restore: snap => { inner.restore(snap); assistBaseline = assistFingerprint() },
+    undoRound: () => { const ok = inner.undoRound(); if (ok) assistBaseline = assistFingerprint(); return ok },
   }
 }
 function openAssist() {
   if (!editable.value) return // 只读查看不提供辅助入口（按钮本身也不渲染，这里是双保险）
   assistBaseline = assistFingerprint()
   assistBinding.value = buildAssistBinding() // 新 binding 对象：面板 watch 到变化即整卡重置并重取上下文
+  assistBinding.value.resetRefusals() // 新一轮从零开始：上一轮的拒绝记录不重复显示
   assistVisible.value = true
 }
 function closeAssist() { assistVisible.value = false }
-function toggleAssist() { assistVisible.value ? closeAssist() : openAssist() }
-// 面板写入（apply/restore）以外的草稿/说明变化都算手改：通知面板使旧建议过期、解除撤销保护；
-// 采纳/撤销写草稿先更新 assistBaseline，不会误伤（SSR 下模板 ref 为 null 自动跳过，浏览器生效）。
+// 入口按钮 aria-expanded：面板已挂载时以抽屉实际收展为准（done 自动收起后回落为 false）
+const assistExpanded = computed(() => !!assistVisible.value && !(assistPanel.value?.collapsed ?? false))
+function toggleAssist() {
+  if (!editable.value) return
+  if (!assistVisible.value) { openAssist(); return }
+  const p = assistPanel.value
+  if (!p) return
+  if (p.collapsed) p.expand() // done 自动收起后重新展开
+  else p.close()              // 展开中 → 用户主动关闭（emit close → 卸载，回到入口按钮）
+}
+// 宿主「撤销本次填写」：恢复本轮开始前草稿；撤销也是草稿变更，作废在途生成防迟到写入
+function undoAssistRound() {
+  if (!assistBinding.value?.undoRound()) return
+  assistPanel.value?.notifyDraftChanged()
+}
+// 手改登记（宿主字段/接口说明被用户改动）：禁整轮撤销（保留用户改动）+ 作废在途生成（§4.5）。
+// 浏览器里由下方草稿指纹 watch 自动触发；这里同时作为显式入口（与 T5/T6 的 assistTouched 同一语义，
+// 供模板写路径与组件级测试直驱）。
+function assistTouched() {
+  assistBinding.value?.noteManualChange()
+  assistPanel.value?.notifyDraftChanged()
+}
+// 面板写入（apply/applyDraft/restore/undoRound）以外的草稿/说明变化都算手改；面板写入先更新
+// assistBaseline，不会误伤（SSR 下模板 ref 为 null 自动跳过，浏览器生效）。
 watch(assistFingerprint, json => {
-  if (assistVisible.value && json !== assistBaseline) assistPanel.value?.notifyDraftChanged()
+  if (!assistVisible.value || json === assistBaseline) return
+  assistTouched()
 })
 
 function openEditor(row: Row) {
@@ -177,7 +213,7 @@ function openEditor(row: Row) {
   issues.value = null; message.value = ''; credentialOpen.value = false; credentialMessage.value = ''; credentialDraft.value = { name: '', secret: '' }
   noteDraft.value = editable.value ? descTextOf(props.projectState, 'actions', props.objectType, row.actionId) : ''
   noteBaseline.value = noteDraft.value
-  assistVisible.value = false; assistBinding.value = null // 新编辑目标：辅助面板收起，重开时按新动作重建 binding
+  assistVisible.value = false; assistBinding.value = null // 新编辑目标：自动填写面板收起，重开时按新动作重建 binding
   if (editable.value) void loadCredentials()
   void nextTick(() => dialogEl.value?.scrollTo({ top: 0 }))
 }
@@ -462,7 +498,7 @@ const viewNotice = computed(() => viewReason.value === 'flow'
           <h2>{{ (editable ? '配置接口 · ' : '查看配置 · ') + (editingAction?.name || meta?.actionId || '') }}</h2>
         </div>
         <div class="ab-headtools">
-          <button v-if="editable" type="button" class="mini" :aria-pressed="assistVisible" @click="toggleAssist">{{ assistVisible ? '✦ 收起辅助填写' : '✦ 辅助填写' }}</button>
+          <button v-if="editable" id="ab-assist-trigger" type="button" class="mini ab-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
           <button type="button" @click="closeEditor()">关闭</button>
         </div>
       </div>
@@ -477,9 +513,24 @@ const viewNotice = computed(() => viewReason.value === 'flow'
           <small class="muted">来自项目引用的本体版本，只读；项目里只配置调用它的接口。</small>
         </div>
 
-        <!-- 辅助填写面板（T10）：内嵌弹窗、随卡片滚动；仅可编辑接口配置提供，采纳只改本地草稿 -->
+        <!-- 自动填写面板（T8 改版）：内嵌弹窗、随卡片滚动；仅可编辑接口配置提供，回填只改本地草稿 -->
         <AssistPanel v-if="editable && assistVisible && assistBinding" ref="assistPanel" class="ab-assist-panel"
-                     :binding="assistBinding" :api="assistApi ?? undefined" @close="closeAssist"/>
+                     :binding="assistBinding" :api="assistApi" trigger-id="ab-assist-trigger" @close="closeAssist"/>
+
+        <!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改；auth.* 拒绝逐条说明 -->
+        <div v-if="editable && assistBinding && (assistBinding.round.statusBarText || assistBinding.round.undone || assistBinding.refusals.value.length)" class="assist-bar" role="status">
+          <span v-if="assistBinding.round.statusBarText" class="assist-bar-text">{{ assistBinding.round.statusBarText }}</span>
+          <span v-else-if="assistBinding.round.undone" class="assist-bar-text">已撤销本次自动填写，表单已恢复。</span>
+          <button v-if="assistBinding.round.statusBarText" type="button" class="row-link" :disabled="!assistBinding.round.canUndo" @click="undoAssistRound">撤销本次填写</button>
+          <details v-if="assistBinding.round.changes.length" class="assist-bar-changes">
+            <summary>查看修改</summary>
+            <ul>
+              <li v-for="c in assistBinding.round.changes" :key="c.field"><strong>{{ c.label }}</strong>：{{ c.oldText }} → {{ c.newText }}</li>
+            </ul>
+          </details>
+          <span v-if="assistBinding.round.undoHint" class="assist-bar-hint">{{ assistBinding.round.undoHint }}</span>
+          <p v-for="(r, i) in assistBinding.refusals.value" :key="'r' + i" class="assist-bar-refusal" role="alert">{{ r.reason }}</p>
+        </div>
 
         <template v-if="editable">
           <!-- 2. 基本信息 -->
@@ -552,6 +603,7 @@ const viewNotice = computed(() => viewReason.value === 'flow'
               </template>
             </div>
             <p class="field-help">切换认证方式不会删除已保存的凭据引用，也不会改动凭据库中的密钥。</p>
+            <p v-if="assistVisible" class="field-help">自动填写不会修改认证与凭据：{{ ACTION_BINDING_SENSITIVE_REASON }}</p>
           </details>
 
           <!-- 5. 请求示意 -->
@@ -629,6 +681,16 @@ const viewNotice = computed(() => viewReason.value === 'flow'
 .ab-modalhead h2{font-size:17px;margin:4px 0 0}
 .ab-headtools{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .ab-assist-panel{margin:0 0 16px}
+.ab-assist-trigger{color:var(--blue-ink,#285bea)}
+/* 整表自动填写状态条（T8 改版 P6）：与本体/项目区同款；auth.* 拒绝逐条说明 */
+.assist-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 16px;padding:8px 12px;background:var(--blue-soft,#edf3ff);border:1px solid var(--blue-line,#c4d5f5);border-radius:var(--r-sm);font-size:13px}
+.assist-bar-text{color:var(--blue-ink,#285bea);font-weight:600}
+.assist-bar-hint{color:var(--muted)}
+.assist-bar-changes{flex-basis:100%}
+.assist-bar-changes summary{cursor:pointer;color:var(--blue-ink,#285bea)}
+.assist-bar-changes ul{margin:8px 0 0;padding-left:18px}
+.assist-bar-changes li{margin:2px 0;overflow-wrap:anywhere}
+.assist-bar-refusal{flex-basis:100%;margin:0;color:var(--warn);line-height:1.7}
 .ab-modalbody{padding:18px 24px 22px}
 .ab-modalfoot{position:sticky;bottom:0;z-index:3;background:var(--paper);border-top:1px solid var(--line);padding:12px 24px;display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .ab-footnote{flex:1;min-width:220px;font-size:12px;color:var(--muted)}
