@@ -1,0 +1,34 @@
+{
+  "ticket": "db296311be7247c0bf50e222e4b5a817",
+  "task": "整表自动填写 T4（autofill/1 后端串接）@worktree/assist-fill-production",
+  "status": "implemented",
+  "summary": "fill 分支完成：protocol=2 门禁、内存会话（TTL30min/LRU200，绑定 user+space+target+formId+digest）、答案归属校验与 unsure→unresolved、operations 引用核验、autofill/1 envelope；令牌签入契约 fv/fd（续轮不匹配 409）；新增 FILL_SYSTEM_PROMPT 与 build_fill_user_payload（敏感字段不出网）；FormContract 组节点 atomicGroup 展开为叶子全集；旧 fill 无 protocol→400，check/explain 零改动。新增 tests/test_autofill_http.py（13 组通过）；test_assist_api 7 处 fill 用例最小迁移、test_assist_context 1 处令牌键集断言补 fv/fd。待 Codex 验收。",
+  "decisions": [
+    "会话为进程内存 OrderedDict（不落库），绑定键含 projectId（targetId 按项目隔离）",
+    "引用核验 provider 名→候选集映射收口在 assist_service._PROVIDER_REF_TYPES；identityTableFields 按草稿所选表目录字段核对；上下文未装配的提供方 fail-closed（候选不可用→unresolved）",
+    "答案先只读校验、模型成功后才提交会话变更（模型 502 不消费用户答案）",
+    "未答问题归属 roundId；valid_question_ids 取会话全部已签发 id（basis question 核验+换发避让）"
+  ],
+  "verification": [
+    "python3 tests/test_autofill_http.py 全部通过（13 组，端口 18931/18932 自管自停）",
+    "python3 tests/run.py all 62/62 通过（含 test_assist_api/context/schema、test_autofill_contracts/patch/http）",
+    "~/Library/Python/3.9/bin/ruff check 交付 6 文件全部通过"
+  ],
+  "next": [
+    "待 Codex 独立验收（不合并 main）",
+    "真实提供方联调另记"
+  ],
+  "references": [
+    "文档/接口文档/04-编排与LLM接口.md §6",
+    "文档/需求/20260922_整表自动填写交互/需求说明.md",
+    "workbench/assist_service.py",
+    "workbench/assist_schema.py",
+    "tests/test_autofill_http.py"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T11:10:38.864812+00:00",
+  "sequence": 249,
+  "filename": "000249-7b5397dda201.json",
+  "record_hash": "8c7e372b7a439b0339c0ba5da97c73289820e651fab9c9fc134b92b63b4c9f03",
+  "context_advanced": false
+}

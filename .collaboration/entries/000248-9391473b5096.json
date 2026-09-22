@@ -1,0 +1,38 @@
+{
+  "ticket": "c00f01532b234a169d4d2562469bc9bd",
+  "task": "整表自动填写 T3（前端状态机与抽屉）",
+  "status": "implemented",
+  "summary": "新增 formAutofill.ts 通用填写引擎/宿主状态机：八态流转、请求代际计数（手改/切目标/关闭/重开作废在途）、autofill/1 会话 sessionId/roundId 透传、续轮握手（草稿漂移即先重取 context 再 generate）、整轮撤销单元（快照恢复/手改禁撤销）、applyOperations 契约点路径写入+codec 回调（identity 兜底）+applyDraft 整稿通道、绝不触达宿主保存通道。重写 useAssistPanel.ts 为新交互门面并保留 AssistApi/AssistHostBinding 导出名；AssistPanel.vue 重写为 420px 右侧抽屉（窄屏遮罩/Esc/焦点管理/补问卡/empty 文案/更多帮助只读）；types.ts 扩展 autofill/1 类型。旧勾选/建议卡交互移除。tests/test_autofill_state.mjs 新增 68 项、tests/assist_panel.test.mjs 重写 22 项，均绿；vue-tsc 0 错误。",
+  "decisions": [
+    "撤销快照走 host.snapshot()/restore() 对称通道（draft() 可能是白名单投影，直接恢复会丢未投影字段）；写回优先 binding.applyDraft，无则退回旧 apply(顶层变更值) 过渡",
+    "续轮握手实现为生成前草稿漂移检测：漂移即先 assist-context 再 assist-generate，与 04 §6.2 等价；失败的生成不清上一轮撤销单元",
+    "statusBarText（已填 N 项/另有 M 项待补充，M=questions+unresolved）交宿主渲染状态条；面板内仅抽屉提示行",
+    "面板 done 自动收起不 emit close，仅用户主动关闭才 emit；G2/G3 建议保持面板挂载经 ref.toggle()/collapsed 接线",
+    "check/explain 收进 runHelp 次要入口，沿用旧响应结构只读渲染，无任何写入"
+  ],
+  "verification": [
+    "node --import ./tests/ts_hooks.mjs --test tests/test_autofill_state.mjs → 68/68 通过 exit=0",
+    "node --import ./tests/ts_hooks.mjs tests/assist_panel.test.mjs → 22/22 通过 exit=0",
+    "cd frontend && npx vue-tsc --noEmit → 0 错误（含未改动的宿主组件与 6 个 binding 适配器）",
+    "npx eslint src/assist 四个文件 → 0 错误；未跑 npm run build、未起服务（任务边界）"
+  ],
+  "next": [
+    "旧套件待 T5–T8 重写（可加载，失败均为旧勾选断言）：assist_object_workspace(2/9)、assist_property_manager(旧checked API崩)、assist_property_sources(5/12)、assist_identity_link(8/16)、assist_action_bindings(崩)、assist_workflow(2/11)",
+    "object_sources/mapping_forms/source_config_retention/ui_protection_independent 实测仍绿",
+    "T1 落地后各适配器注入 codecs/applyDraft/contractInfo；真实 codec 归 G2/G3",
+    "交付未提交（任务规定不执行 git），待协调者审阅提交"
+  ],
+  "references": [
+    "frontend/src/assist/formAutofill.ts（引擎）",
+    "frontend/src/assist/useAssistPanel.ts（门面）",
+    "frontend/src/assist/AssistPanel.vue（抽屉）",
+    "tests/test_autofill_state.mjs / tests/assist_panel.test.mjs",
+    "文档/接口文档/04-编排与LLM接口.md §6；文档/需求/20260922_整表自动填写交互/"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-22T10:26:47.900550+00:00",
+  "sequence": 248,
+  "filename": "000248-9391473b5096.json",
+  "record_hash": "a5665b1247aae4174a19b69e581b158251f53659bac4d3e9776e7d854ceb393c",
+  "context_advanced": true
+}
