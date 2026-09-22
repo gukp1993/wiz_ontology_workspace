@@ -45,7 +45,7 @@ const formOriginal = ref('')
 const formOk = computed(() => form.value.name.trim() && form.value.endpoint.trim() && form.value.model.trim() && (editingId.value || form.value.apiKey.trim()))
 const formDirty = computed(() => dialog.value && JSON.stringify(form.value) !== formOriginal.value)
 async function closeDialog() {
-  if (formDirty.value && !(await appConfirm({ message: '放弃未保存的修改？' }))) return
+  if (formDirty.value && !(await appConfirm({ message: '放弃未保存的修改？', danger: true }))) return
   dialog.value = false
 }
 async function save() {
@@ -115,7 +115,8 @@ async function test(item: any) {
   </div>
 
   <div v-if="dialog" class="modal-backdrop" @click.self="closeDialog">
-    <section class="modal-card" role="dialog" aria-modal="true" aria-label="模型配置">
+    <!-- Escape 走与「取消」按钮同一条 closeDialog（脏表单先经 appConfirm 确认）；tabindex="-1" 保证点空白处后仍收得到按键 -->
+    <section class="modal-card" role="dialog" aria-modal="true" aria-label="模型配置" tabindex="-1" @keydown.esc.stop="closeDialog">
       <h2>{{editingId?'编辑模型配置':'新增模型配置'}}</h2>
       <p class="field-help">OpenAI 兼容 chat/completions 接口。API Key 加密保存、只写不读回；接口地址按已保存内容回显。</p>
       <label>配置名称 *<input v-model="form.name" maxlength="60" placeholder="例如：通用推理模型"/></label>

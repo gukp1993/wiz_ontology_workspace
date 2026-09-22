@@ -189,7 +189,7 @@ async function submitDelete() {
 <section class="bt-page">
   <div class="bt-intro">
     <div>
-      <h1>从物料生成本体</h1>
+      <h2>从物料生成本体</h2>
       <p class="muted">从已有系统（代码、表结构、需求文档）中提取业务概念，先得到一份有依据的初稿，再由你裁剪。</p>
     </div>
     <div class="bt-intro-tools">
@@ -289,7 +289,7 @@ async function submitDelete() {
 
   <!-- 新建任务 -->
   <div v-if="newOpen" class="modal-backdrop" @click.self="closeNew">
-    <section class="modal-card" role="dialog" aria-modal="true" aria-label="新建生成任务">
+    <section class="modal-card" role="dialog" aria-modal="true" aria-label="新建生成任务" tabindex="-1" @keydown.esc.stop="closeNew">
       <h2>新建生成任务</h2>
       <p class="muted">任务只组织材料与范围，尚未创建本体；物料和范围稍后在任务内维护。</p>
       <label>任务名称
@@ -306,7 +306,8 @@ async function submitDelete() {
 
   <!-- 删除任务：必须输入任务名（服务端同样校验 confirmName） -->
   <div v-if="delTarget" class="modal-backdrop" @click.self="closeDelete">
-    <section class="modal-card" role="dialog" aria-modal="true" aria-label="删除生成任务">
+    <!-- Escape 与「取消」同义：删除确认不接受背板/Esc 的隐式确认 -->
+    <section class="modal-card" role="dialog" aria-modal="true" aria-label="删除生成任务" tabindex="-1" @keydown.esc.stop="closeDelete">
       <h2>删除生成任务</h2>
       <p>将删除任务「{{ delTarget.name }}」及其材料清单、范围、候选与证据。</p>
       <p class="bt-note warn">已创建的本体草稿不随任务删除，删除后原始证据不可用。</p>
@@ -328,7 +329,9 @@ async function submitDelete() {
 /* 局部样式，只借用全局令牌与通用类（.card/.panelhead/.muted/.status-pill/.modal-*），不新增全局规则 */
 .bt-page{display:block}
 .bt-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-.bt-intro h1{font-size:22px;margin:0 0 4px}
+/* 页内标题降为 h2（顶栏已有页面级 h1）：字号/行距/字重逐值保持原 h1 的渲染结果，
+   font-weight 显式写 700 是因为全局 h2 规则会把 UA 的 bold 拉到 650 */
+.bt-intro h2{font-size:22px;font-weight:700;margin:0 0 4px}
 .bt-intro p{margin:0}
 .bt-intro-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .bt-limits{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 18px;margin:0}

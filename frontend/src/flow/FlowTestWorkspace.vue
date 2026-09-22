@@ -381,23 +381,24 @@ defineExpose({ openScope })
       <h3 class="ftw-sec">测试输入</h3>
       <p class="ftw-hint">{{ scopeKind === 'all' ? '填写编排入口参数，按依赖顺序执行全部处理节点（允许并列分支）。' : '只为范围外来源提供本次测试值；范围内上游输出自动传递，不允许覆盖。测试值不修改节点绑定。' }}</p>
       <!-- R03：统一入口表单——每稳定 ID 只渲染一次，类型控件与范围无关 -->
-      <label v-for="row in entryRows" :key="row.key" class="ftw-field">入口参数 · {{ row.label }} · {{ typeText(row.type) }}
-        <AppSelect v-if="row.type?.type === 'boolean'" :model-value="entryTexts[row.key] ?? ''" :options="BOOLEAN_TEST_OPTIONS" :aria-label="'入口参数 ' + row.label" @update:model-value="v => { entryTexts[row.key] = v }"/>
-        <textarea v-else-if="row.type?.type === 'object' || row.type?.type === 'list'" :value="entryTexts[row.key] || ''" rows="3" :placeholder="row.type?.type === 'object' ? '{}' : '[]'" :aria-label="'入口参数 ' + row.label" @input="entryTexts[row.key] = ($event.target as HTMLTextAreaElement).value"/>
-        <template v-else>
-          <input :value="overrideEmpty[row.key] || entryEmpty[row.key] ? '' : (entryTexts[row.key] || '')" :disabled="!!entryEmpty[row.key]" :aria-label="'入口参数 ' + row.label" placeholder="本次测试的入口值" @input="entryTexts[row.key] = ($event.target as HTMLInputElement).value"/>
-          <span v-if="row.type?.type === 'text'" class="ftw-empty-opt"><input type="checkbox" :checked="!!entryEmpty[row.key]" @change="entryEmpty[row.key] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</span>
-        </template>
-      </label>
-      <div v-for="item in plan.externalInputs" :key="item.nodeId + '/' + item.inputId" class="ftw-ext">
-        <label class="ftw-field">{{ item.nodeName }} · {{ item.label }} · {{ typeText(item.type) }}<small class="ftw-src">{{ sourceHint(item) }}{{ item.kind === 'unbound' ? '（可选）' : '' }}</small>
-          <AppSelect v-if="item.type?.type === 'boolean'" :model-value="overrideTexts[overrideKey(item.nodeId, item.inputId)] ?? ''" :options="BOOLEAN_TEST_OPTIONS" :aria-label="item.nodeName + ' ' + item.label" @update:model-value="v => { overrideTexts[overrideKey(item.nodeId, item.inputId)] = v }"/>
-          <textarea v-else-if="item.type?.type === 'object' || item.type?.type === 'list'" :value="overrideTexts[overrideKey(item.nodeId, item.inputId)] || ''" rows="3" :placeholder="item.type?.type === 'object' ? '{}' : '[]'" :aria-label="item.nodeName + ' ' + item.label" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLTextAreaElement).value"/>
-          <template v-else>
-            <input :value="overrideEmpty[overrideKey(item.nodeId, item.inputId)] ? '' : (overrideTexts[overrideKey(item.nodeId, item.inputId)] || '')" :disabled="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" :aria-label="item.nodeName + ' ' + item.label" :placeholder="item.kind === 'unbound' ? '可选：为未绑定输入提供本次测试值' : '本次测试值'" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).value"/>
-            <span v-if="item.type?.type === 'text'" class="ftw-empty-opt"><input type="checkbox" :checked="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" @change="overrideEmpty[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</span>
-          </template>
+      <div v-for="row in entryRows" :key="row.key" class="ftw-field">
+        <label class="ftw-field-name">入口参数 · {{ row.label }} · {{ typeText(row.type) }}
+          <AppSelect v-if="row.type?.type === 'boolean'" :model-value="entryTexts[row.key] ?? ''" :options="BOOLEAN_TEST_OPTIONS" :aria-label="'入口参数 ' + row.label" @update:model-value="v => { entryTexts[row.key] = v }"/>
+          <textarea v-else-if="row.type?.type === 'object' || row.type?.type === 'list'" :value="entryTexts[row.key] || ''" rows="3" :placeholder="row.type?.type === 'object' ? '{}' : '[]'" :aria-label="'入口参数 ' + row.label" @input="entryTexts[row.key] = ($event.target as HTMLTextAreaElement).value"/>
+          <input v-else :value="overrideEmpty[row.key] || entryEmpty[row.key] ? '' : (entryTexts[row.key] || '')" :disabled="!!entryEmpty[row.key]" :aria-label="'入口参数 ' + row.label" placeholder="本次测试的入口值" @input="entryTexts[row.key] = ($event.target as HTMLInputElement).value"/>
         </label>
+        <!-- 「使用空文本」不能留在值输入的 label 里：隐式关联只指向第一个控件，勾选文字会误聚焦输入框 -->
+        <label v-if="row.type?.type === 'text'" class="ftw-empty-opt"><span class="sr-only">入口参数 {{ row.label }}</span><input type="checkbox" :checked="!!entryEmpty[row.key]" @change="entryEmpty[row.key] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</label>
+      </div>
+      <div v-for="item in plan.externalInputs" :key="item.nodeId + '/' + item.inputId" class="ftw-ext">
+        <div class="ftw-field">
+          <label class="ftw-field-name">{{ item.nodeName }} · {{ item.label }} · {{ typeText(item.type) }}<small class="ftw-src">{{ sourceHint(item) }}{{ item.kind === 'unbound' ? '（可选）' : '' }}</small>
+            <AppSelect v-if="item.type?.type === 'boolean'" :model-value="overrideTexts[overrideKey(item.nodeId, item.inputId)] ?? ''" :options="BOOLEAN_TEST_OPTIONS" :aria-label="item.nodeName + ' ' + item.label" @update:model-value="v => { overrideTexts[overrideKey(item.nodeId, item.inputId)] = v }"/>
+            <textarea v-else-if="item.type?.type === 'object' || item.type?.type === 'list'" :value="overrideTexts[overrideKey(item.nodeId, item.inputId)] || ''" rows="3" :placeholder="item.type?.type === 'object' ? '{}' : '[]'" :aria-label="item.nodeName + ' ' + item.label" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLTextAreaElement).value"/>
+            <input v-else :value="overrideEmpty[overrideKey(item.nodeId, item.inputId)] ? '' : (overrideTexts[overrideKey(item.nodeId, item.inputId)] || '')" :disabled="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" :aria-label="item.nodeName + ' ' + item.label" :placeholder="item.kind === 'unbound' ? '可选：为未绑定输入提供本次测试值' : '本次测试值'" @input="overrideTexts[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).value"/>
+          </label>
+          <label v-if="item.type?.type === 'text'" class="ftw-empty-opt"><span class="sr-only">{{ item.nodeName }} {{ item.label }}</span><input type="checkbox" :checked="!!overrideEmpty[overrideKey(item.nodeId, item.inputId)]" @change="overrideEmpty[overrideKey(item.nodeId, item.inputId)] = ($event.target as HTMLInputElement).checked"/> 使用空文本 ""（作为本次提交值）</label>
+        </div>
       </div>
       <div v-if="fixedRows.length" class="ftw-fixed">
         <p class="ftw-hint">固定来源输入（沿用节点配置，不单独覆盖）：</p>
@@ -521,8 +522,10 @@ defineExpose({ openScope })
 .ftw-input h3,.ftw-result-head h3{font-size:14px;margin:0 0 10px}
 .ftw-sec{margin-top:18px}
 .ftw-field{display:block;font-size:12px;color:var(--muted);margin:10px 0}
+/* 字段内嵌 label 是复选框独立取名后新增的层级：全局 label{margin:14px 0;font-size:13px} 会撑开间距、放大字号，这里显式回到继承值（渲染与改前一致） */
+.ftw-field-name{display:block;margin:0;font-size:inherit}
 .ftw-field input,.ftw-field textarea,.ftw-field select,.ftw-field .app-select{margin-top:4px}
-.ftw-empty-opt{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:3px}
+.ftw-empty-opt{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin:3px 0 0}
 .ftw-empty-opt input{width:auto}
 .ftw-src{display:block;font-size:11px;margin-top:2px}
 .ftw-hint{font-size:12px;color:var(--muted);margin:6px 0}

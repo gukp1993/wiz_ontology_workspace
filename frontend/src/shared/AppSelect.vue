@@ -98,7 +98,9 @@ function keydown(event:KeyboardEvent){
   }
   if(event.altKey)return
   const key=event.key,isSearch=event.target===searchInput.value
-  if(key==='Tab'){if(opened.value){event.stopPropagation();tabAway(event)}return}
+  // 弹窗内的 Tab 由 shared/modalFocus.ts 在 document 捕获阶段圈禁（并已把展开面板的控件并入陷阱）；
+  // 它先于此处的元素处理器执行，defaultPrevented 即表示"这一格已经排好了"，再跳一次会跳出弹窗。
+  if(key==='Tab'){if(opened.value&&!event.defaultPrevented){event.stopPropagation();tabAway(event)}return}
   if(key==='Escape'){if(opened.value){event.preventDefault();event.stopPropagation();close(true)}return}
   if(['ArrowDown','ArrowUp','Enter'].includes(key)||(!isSearch&&key===' ')){
     event.preventDefault();event.stopPropagation()
@@ -138,7 +140,7 @@ onBeforeUnmount(()=>{listen(false);resizeObserver?.disconnect();fieldsetObserver
   <div class="app-select">
     <button ref="trigger" v-bind="attrs" type="button" role="combobox" class="app-select-trigger"
       :class="{'is-open':opened,'is-placeholder':!selected&&!value}" :disabled="disabled" :aria-disabled="disabled"
-      :aria-expanded="opened" aria-haspopup="listbox" :aria-controls="uid+'-list'" :aria-activedescendant="opened?activeId:undefined"
+      :aria-expanded="opened" aria-haspopup="listbox" :aria-controls="opened?uid+'-list':undefined" :aria-activedescendant="opened?activeId:undefined"
       :title="caption" @click="opened?close():open()" @keydown="keydown">
       <span class="app-select-caption">{{caption}}</span>
       <svg class="app-select-chevron" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -167,21 +169,24 @@ onBeforeUnmount(()=>{listen(false);resizeObserver?.disconnect();fieldsetObserver
 
 <style scoped>
 .app-select{display:block;width:100%;min-width:0;margin-top:var(--app-select-gap,5px)}
-.app-select-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:41px;padding:9px 11px;border:1px solid var(--line-2);border-radius:7px;background:var(--paper);color:var(--ink);font:inherit;font-size:14px;line-height:1.6;text-align:left;cursor:pointer;transition:border-color .12s}
+/* 触发器与同一字段容器里的 input/select/textarea 必须同规格（.editor-field 下为
+   min-height:40px / padding:9px 11px / --r-sm），否则下拉框和文本框并排时错开 1px 与 1px 圆角。
+   表格里把整行钉在 41px 的地方（ActionBindings 参数表）自己覆盖 min-height。 */
+.app-select-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:40px;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--paper);color:var(--ink);font:inherit;font-size:14px;line-height:1.6;text-align:left;cursor:pointer;transition:border-color .12s}
 .app-select-trigger:hover:not(:disabled){border-color:var(--blue-line);color:var(--ink)}
 .app-select-trigger.is-open{border-color:var(--blue)}
 .app-select-trigger:disabled{opacity:1;background:var(--paper-2);border-color:var(--line);color:var(--muted);cursor:not-allowed}
 .app-select-trigger.is-placeholder{color:var(--faint)}.app-select-caption{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .app-select-chevron{flex:none;color:var(--faint);transition:transform .12s}.is-open .app-select-chevron{transform:rotate(180deg)}
-.app-select-panel{z-index:1000;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;padding:5px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);box-shadow:var(--shadow-1);font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif}
-.app-select-search{display:flex;align-items:center;gap:8px;margin:3px 3px 7px;padding:0 9px;border:1px solid var(--line);border-radius:6px;background:var(--paper-2);color:var(--faint);flex:none}
+.app-select-panel{z-index:1000;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;padding:5px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--paper);color:var(--ink);box-shadow:var(--shadow-1);font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif}
+.app-select-search{display:flex;align-items:center;gap:8px;margin:3px 3px 7px;padding:0 9px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper-2);color:var(--faint);flex:none}
 .app-select-search input{min-width:0;width:100%;padding:8px 0;margin:0;border:0;background:transparent;box-shadow:none;outline:none;color:var(--ink);font:inherit;font-size:13px;line-height:1.6}
 .app-select-search input::-webkit-search-cancel-button{display:none}.app-select-search svg{flex:none}
 /* 面板 overflow:hidden，外描边环会被裁掉，所以焦点补偿用等效 2px 内环（1px 边框换色 + 1px inset 环） */
 .app-select-search:focus-within{border-color:var(--blue);box-shadow:inset 0 0 0 1px var(--focus)}
 .app-select-clear{flex:none;border:0;padding:0;width:20px;min-height:24px;background:transparent;color:var(--faint);font-size:18px;line-height:1;cursor:pointer}
 .app-select-options{min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;outline:none}
-.app-select-option{display:flex;align-items:center;gap:12px;width:100%;min-height:38px;padding:8px 10px;border:0;border-radius:5px;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.app-select-option{display:flex;align-items:center;gap:12px;width:100%;min-height:38px;padding:8px 10px;border:0;border-radius:var(--r-sm);background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
 .app-select-option>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .app-select-option.is-active{background:var(--paper-2)}.app-select-option.is-selected{background:var(--blue-soft);color:var(--blue-ink)}
 .app-select-option:disabled{opacity:.5;color:var(--muted);background:transparent;cursor:not-allowed}.app-select-check{flex:none;color:var(--blue-ink);font-weight:650}.app-select-empty{padding:21px 12px;text-align:center;color:var(--faint);font-size:13px}

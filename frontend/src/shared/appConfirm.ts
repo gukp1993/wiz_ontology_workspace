@@ -32,6 +32,9 @@ function openDialog(opts: AppConfirmOptions): Promise<boolean> {
     card.className = 'modal-card'
     card.setAttribute('role', 'dialog')
     card.setAttribute('aria-modal', 'true')
+    // 本模块自带 Tab/Enter/Escape 圈禁；shared/modalFocus.ts 见到该属性即完全不插手，
+    // 否则它会按下层业务弹窗把焦点从确认框里抢走（appConfirm 通常盖在弹窗之上）。
+    card.setAttribute('data-modal-a11y', 'manual')
 
     if (opts.title) {
       const h2 = document.createElement('h2')

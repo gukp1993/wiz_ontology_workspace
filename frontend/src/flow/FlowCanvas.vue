@@ -226,8 +226,9 @@ defineExpose({ sync, focusNode, fitAll, zoom100, autoLayout })
 <template>
 <div class="canvas-wrapper flow-canvas">
   <div ref="canvas" class="cy-canvas"></div>
+  <!-- 勾选框是跟随节点坐标的 24×24 画布浮层，补可见文字会撑破定位盒，故用 aria-label 命名（节点名取自覆盖层数据） -->
   <label v-for="o in overlay" :key="o.id" class="test-pick" :style="{ left: o.x + 'px', top: o.y + 'px' }" :title="`测试 ${o.name}`">
-    <input type="checkbox" :checked="o.checked" @click.stop @change="emit('test-toggle', o.id)"/>
+    <input type="checkbox" :checked="o.checked" :aria-label="`勾选节点「${o.name}」加入测试范围`" @click.stop @change="emit('test-toggle', o.id)"/>
   </label>
   <span class="canvas-hint">{{mode==='bind'?'建立绑定：点击来源处理节点，再点击目标处理节点':(mode==='test'?'勾选测试范围 · 点击节点名称仍可查看配置':'点击节点查看配置 · 右键连线可删除绑定')}}</span>
   <span v-if="notice" class="canvas-notice" role="status">{{notice}}</span>

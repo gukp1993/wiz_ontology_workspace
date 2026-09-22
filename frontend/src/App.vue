@@ -21,6 +21,7 @@ import OntologyDiscover from './tools/OntologyDiscover.vue'
 import KnowledgeExplorer from './tools/KnowledgeExplorer.vue'
 import InstanceExplorer from './tools/InstanceExplorer.vue'
 import AppSelect from './shared/AppSelect.vue'
+import { installModalA11y } from './shared/modalFocus'
 import AppError from './shared/AppError.vue'
 import FunctionManager from './ontology/FunctionManager.vue'
 import ActionLibrary from './ontology/ActionLibrary.vue'
@@ -219,16 +220,10 @@ function requestLeave(): Promise<boolean> {
 }
 function keepEditing() { leaveResolver?.(false) }
 function discardEditing() { leaveResolver?.(true) }
-// 模态（离开确认/新建本体）打开时：topbar/rail/shell 三块根界面 inert，焦点移入弹窗。
+// 模态（离开确认/新建本体）打开时：topbar/rail/shell 三块根界面 inert。
+// 焦点移入/Tab 圈禁/关闭归还由 shared/modalFocus.ts 统一负责（这里原先有一段
+// "取 DOM 末尾的 .modal-card 再 focus 第一个控件"的重复实现，已删）。
 const modalOpen = computed(() => leaveDialog.value || showOntologyDialog.value)
-watch(modalOpen, open => {
-  if (!open) return
-  void nextTick(() => {
-    const cards = document.querySelectorAll<HTMLElement>('.modal-backdrop .modal-card')
-    const card = cards.length ? cards[cards.length - 1] : null // 取 DOM 末尾的卡（最上层弹窗）
-    card?.querySelector<HTMLElement>('button, input')?.focus()
-  })
-})
 // D05/P06：发布前必须确认「保存确实完成」。既有 FormGuardAPI 之外只加一个只读查询，
 // 类型两端局部声明（不改 app/formGuard.ts），仍然只经 provide/inject，不新增全局状态库。
 type FormGuardWithSaveProbe = FormGuardAPI & { projectSaveStatus: () => SaveStatus }
@@ -968,10 +963,10 @@ const saveState = computed<{ kind: string; text: string; hint: string }>(() => {
   if (formEditing.value) return { kind: 'editing', text: '编辑表单 · 草稿已保存', hint: '表单已打开但没有修改；草稿内容已保存' }
   return { kind: 'saved', text: '已保存', hint: '当前草稿已保存' }
 })
-watch(() => activeSaver.value.status.value, s => {
+watch(() => activeSaver.value?.status.value, s => {
   if (saveSlowTimer) { clearTimeout(saveSlowTimer); saveSlowTimer = null }
   saveSlow.value = false
-  if (s === 'saving') saveSlowTimer = setTimeout(() => { if (activeSaver.value.status.value === 'saving') saveSlow.value = true }, SAVE_SLOW_MS)
+  if (s === 'saving') saveSlowTimer = setTimeout(() => { if (activeSaver.value?.status.value === 'saving') saveSlow.value = true }, SAVE_SLOW_MS)
 })
 async function retrySave() { try { await activeSaver.value.retry() } catch (e) { notify((e as Error).message, true) } }
 async function discardReload() { if (!(await appConfirm({ message: '放弃本地修改，重新加载服务端最新草稿？', danger: true, confirmLabel: '放弃重载' }))) return; try { await activeSaver.value.reload(); notify('已重新加载服务端草稿') } catch (e) { notify((e as Error).message, true) } }
@@ -990,6 +985,7 @@ function unloadGuard(e: BeforeUnloadEvent) { if (dirtyGuards().length) { e.preve
 
 onMounted(async () => {
   bindGlobals()
+  installModalA11y() // 全站弹窗焦点兜底（Tab 圈禁/移入/归还），详见 shared/modalFocus.ts
   document.addEventListener('click', onDocClickUserMenu)
   window.addEventListener('resize', onUserMenuViewport)
   await loadOntologyData()
@@ -1069,7 +1065,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', keydown); window.r
 <template>
 <div class="topbar" :class="{mini: railMini}" :inert="modalOpen"><div class="topbar-crumb"><span class="crumb-path">{{crumbPath}}</span><h1 class="topbar-title">{{pages[view]}}</h1></div><div class="topbar-status">
 <template v-if="booting||ontologyLoad==='loading'"><span class="save-pill">{{ontologySlow?'仍在加载，请稍候…':'加载中…'}}</span></template>
-<template v-else-if="(space==='project'&&((projectState||(flowViews.includes(view)&&flowState))))||(space==='ontology'&&hasOntology&&ontologyLoad==='ready')">
+<template v-else-if="(space==='project'&&((projectState||(flowViews.includes(view)&&flowState))))||(space==='ontology'&&hasOntology&&ontologyLoad==='ready')||(onGlobalView&&ontologyLoad!=='error')">
 <!-- G3：状态由真实 guard dirty + Saver 状态派生；摘要文案，完整错误在页面内持续可见 -->
 <span class="save-pill" :class="saveState.kind" :title="saveState.hint"><template v-if="saveState.kind==='form'">✎ </template>{{saveState.text}}<template v-if="saveState.kind==='saved'&&!onGlobalView&&activeSaver!.lastSavedAt.value"> · {{activeSaver!.lastSavedAt.value}}</template></span>
 <button v-if="saveState.kind==='saved'&&!onGlobalView&&activeErrors.length" class="save-issues" :title="activeErrors.join('；')" @click="navigate(activeReleaseView)">{{activeErrors.length}} 项待完善</button>

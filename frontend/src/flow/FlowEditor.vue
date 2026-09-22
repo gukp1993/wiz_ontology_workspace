@@ -461,20 +461,9 @@ function startResize(e: MouseEvent) {
   e.preventDefault()
 }
 
-// ── 键盘：Esc 优先级（弹窗 → 菜单 → 模式），Tab 焦点约束在弹窗内 ────────────────────
+// ── 键盘：Esc 优先级（弹窗 → 菜单 → 模式）。Tab 圈禁已归 shared/modalFocus.ts 全站负责 ──
 const addMenu = ref(false)
 function onKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Escape' && e.key !== 'Tab') return
-  if (e.key === 'Tab' && anyModalOpen()) {
-    const modal = document.querySelector('.flow-modal')
-    if (!modal) return
-    const focusables = [...modal.querySelectorAll<HTMLElement>('button,input,textarea,select,[tabindex]')].filter(x => !(x as HTMLButtonElement).disabled && x.offsetParent !== null)
-    if (!focusables.length) return
-    const i = focusables.indexOf(document.activeElement as HTMLElement)
-    if (e.shiftKey && i <= 0) { e.preventDefault(); focusables[focusables.length - 1].focus() }
-    else if (!e.shiftKey && (i === focusables.length - 1 || i < 0)) { e.preventDefault(); focusables[0].focus() }
-    return
-  }
   if (e.key !== 'Escape') return
   if (anyModalOpen()) { e.preventDefault(); void closeDialog(); return }
   if (addMenu.value) { addMenu.value = false; return }
@@ -491,7 +480,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   <header class="flow-head">
     <div class="head-row">
       <button class="quiet" @click="emit('back')">← 编排列表</button>
-      <h1 class="flow-title">{{ state.name || '未命名编排' }}<button class="quiet rename-btn" title="修改编排名称" aria-label="修改编排名称" @click="openRename">✎</button></h1>
+      <h2 class="flow-title">{{ state.name || '未命名编排' }}<button class="quiet rename-btn" title="修改编排名称" aria-label="修改编排名称" @click="openRename">✎</button></h2>
       <span class="push"></span>
       <span class="context" title="连接与凭据按此项目上下文解析；切换走既有项目加载（保存/离开保护），不静默重绑">运行项目
         <AppSelect :model-value="projectId || ''" :options="projectOptions" :disabled="!projectOptions.length" placeholder="未选择项目" aria-label="运行项目" @update:model-value="id => emit('switch-project', id)"/>

@@ -77,12 +77,14 @@ const rows = computed<SharedRow[]>(() => definitions.value.map((s: any) => {
   }
 }))
 // 数据类型筛选：以 propertyDataType 规范化类型判定；时间序列只命中「时间序列」，不命中「数值」。
+// 芯片严格对齐业务枚举（editorModel.typeOptions 与 importPlan.DATA_TYPE_MAP：文本/数值/是／否/时间/数组/结构体/时间序列），
+// 所以不再有「日期」芯片——编辑器不产出 xsd:date，editorModel.businessType 把 date 归进「时间」；
+// 「时间」因此也吃 date，避免存量 date 定义在任何芯片下都筛不到。
 const TYPE_FILTERS: { key: string; test: (dt: any) => boolean }[] = [
   { key: '文本', test: dt => dt.type === 'string' },
   { key: '数值', test: dt => dt.type === 'double' || dt.type === 'decimal' || dt.type === 'integer' },
   { key: '是／否', test: dt => dt.type === 'boolean' },
-  { key: '日期', test: dt => dt.type === 'date' },
-  { key: '时间', test: dt => dt.type === 'dateTime' || dt.type === 'timestamp' },
+  { key: '时间', test: dt => dt.type === 'dateTime' || dt.type === 'timestamp' || dt.type === 'date' },
   { key: '数组', test: dt => dt.type === 'array' },
   { key: '结构体', test: dt => dt.type === 'struct' },
   { key: '时间序列', test: dt => dt.type === 'timeSeries' },
@@ -212,7 +214,8 @@ async function removeShared(s: any) {
 }
 
 // ── 更多操作 · 粘贴多行（原对象属性页能力移入，功能不删） ──
-const typeLabels: Record<string, string> = { string: '文本', double: '数值', decimal: '数值', integer: '数值', boolean: '是／否', date: '日期', dateTime: '日期', array: '数组', struct: '结构体' }
+// 粘贴预览的类型标签：与 propertyModel.dataTypeLabel 同一口径（dateTime 显示「时间」，不是「日期」）。
+const typeLabels: Record<string, string> = { string: '文本', double: '数值', decimal: '数值', integer: '数值', boolean: '是／否', date: '日期', dateTime: '时间', array: '数组', struct: '结构体' }
 const importPreview = computed(() => { try { return { rows: parsePropertyRows(pasted.value), error: '' } } catch (e: any) { return { rows: [], error: e.message } } })
 function importRows() {
   if (importPreview.value.error || !importPreview.value.rows.length || !pasteTarget.value) return

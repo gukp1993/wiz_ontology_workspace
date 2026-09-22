@@ -132,7 +132,7 @@ function openEdit(id: string) {
 async function openConvert(id: string) {
   const a: any = actionById(id)
   if (!a) return
-  if (!(await appConfirm({ message: '将此历史动作转换为新格式编辑？保存后旧格式的适用对象、输入参数、提交条件、权限与验收字段会被新结构替代并移除，且需重新发布后项目引用才会更新。继续吗？' }))) return
+  if (!(await appConfirm({ message: '将此历史动作转换为新格式编辑？保存后旧格式的适用对象、输入参数、提交条件、权限与验收字段会被新结构替代并移除，且需重新发布后项目引用才会更新。继续吗？', danger: true }))) return
   editId.value = id
   draft.value = { name: a.name ?? '', description: a.description ?? '', effect: a.effect ?? '' }
   baseline = JSON.stringify(draft.value)

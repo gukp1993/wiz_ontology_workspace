@@ -45,7 +45,7 @@ function activeChild():any{
 async function guardUnsaved():Promise<boolean>{
   const el=activeChild()
   if(!el||typeof el.dirty!=='function'||!el.dirty())return true
-  if(!(await appConfirm({ message: '当前表单有未保存的修改，离开将放弃本次修改。继续吗？', confirmLabel: '放弃并离开', cancelLabel: '继续编辑' })))return false
+  if(!(await appConfirm({ message: '当前表单有未保存的修改，离开将放弃本次修改。继续吗？', confirmLabel: '放弃并离开', cancelLabel: '继续编辑', danger: true })))return false
   el.discard()
   return true
 }

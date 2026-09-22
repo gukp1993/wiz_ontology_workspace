@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`761c8f1440140e2b`
+上下文版本：`1d77783b05342f1d`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 样式与交互统一(codex/ui_fix)：第六轮点击驱动复测+复测中自修三处modalFocus缺陷 · codex · 已实施，待验收
+
+时间：2026-09-22T05:51:54.298170+00:00；记录：`.collaboration/entries/000181-0a2e075433b0.json`
+
+上一版150轮复测子agent未出结论；改为主agent用browser-use同一标签页逐条亲测。关键教训：press_key合成的Tab/Escape不派发进DOM，键盘判定一律走evaluate_script的dispatchEvent+读defaultPrevented/activeElement。复测中在自己首落地的shared/modalFocus.ts发现并修掉三处缺陷：①焦点移入用requestAnimationFrame，隐藏/遮挡标签页document.hidden时rAF永不回调致移入/归还整套静默失效（也是上版子agent测不到差异的症结）→改setTimeout(0)宏任务；②Escape无焦点逃逸兜底，焦点掉body时卡片级@keydown.esc收不到→捕获层向最上层可见卡派发不冒泡Escape；③AppSelect展开时陷阱重建丢owner致下一格漏背层→面板并入时保留owner。复测通过：C1进入/C2归还/C4一次关一层/C5点空白后Esc仍关、AppSelect触发40px+面板10px(--r-md)+选项6px(--r-sm)+aria-controls仅展开、构建页h1count=1且页标题h2 22px/700、设置页控制台干净+pill显示设置(B1/B9)、appConfirm自管层取消/确定。
+
+- 验证：npm run build(vue-tsc) exit0，产物index-Cbzg0FEc.js，grep确认dist含key:Escape,bubbles:!1与aria-expanded两处修复；npx eslint src/shared/modalFocus.ts exit0；browser-use实测：autoFocusedIntoModal=true、body下Escape关闭=true、脏表单两层精确关一层、Tab全程inModal且preventDefault、面板/选项radius令牌化；http 127.0.0.1:18882/#settings-models 控制台无error；所有测试弹窗均以取消/放弃草稿关闭，未写入真实快照数据，未创建本体
+- 下一步：未合并main、未重启主工作台（需用户另行授权）；D1三处可访问名与D2.danger-btn计算色为代码+令牌层核实，uiverify是空快照无本体/项目故未浏览器实操；要坐实需带数据验收账号；§9.10末留给用户/后续专项清单本轮不自行推进
+- 依据/文档：frontend/src/shared/modalFocus.ts；文档/需求/20260921_样式与交互统一/开发计划.md §9.11
 
 ### 样式与交互统一(codex/ui_fix)：第五轮复验修复，补 C-4c/C-4d/B-6 三通道与穷举脚本自检，提交 a7c74d0 · zcode · 已实施，待验收
 
@@ -139,14 +149,3 @@
 - 验证：main 3debc02：tracked ontology=0/.idea=0/总数883；磁盘 ontology=995(=基线)/.idea=6(=基线)；除他人暂存重组外无本任务残留；组合验证：ruff All checks passed、eslint exit 0、build 4.02s、TS 6/6、quick 3/3、all 48/49（pypdf 缺口 main 对照 83/85 同败）；无盘失败定位：集成树合并后 ontology/ 被 checkout 删除致 5 用例败，恢复磁盘后全过——纯磁盘种子缺失非代码回归；合并构成：996 D=991+5；Palantir 对照表 D+A 系 rename 断裂假象（新路径与 main 版 diff 为空）；69 R100=备份改名；非目标删除 0；端口18941无监听、两树无进程；18765 HTTP 200 未动
 - 下一步：主工作台 18765 运行合并前代码，更新需另行授权（build+重启）；新克隆环境测试种子依赖建议立项专项（测试自含种子或跳过守卫）；main 备份 data/workbench-before-build-migration-20260921-143248.sqlite3 保留
 - 依据/文档：main 链：5755e72→a4dd4e6→3debc02(含 merge 1279542)；被合并 codex/repo-cleanup@2c6a44d；文档/需求/20260921_仓库架构整理与代码规范/；验收记录提交 b3e912b/5a47ede
-
-### 自动化构建评审系列文档归档至独立目录（用户指令） · zcode · 已实施，待验收
-
-时间：2026-09-21T07:25:13.083100+00:00；记录：`.collaboration/entries/000167-6fcf5213d39d.json`
-
-按用户指令新建 文档/本体自动化构建评审_20260921/ 目录，git mv 收拢七份系列文档（R01-R10 讨论方案评审、续会4/5/5终版/6/7 纪要评审、方向整合与讨论议程），commit e2dafe0。移动后修正跨目录相对链接（](需求/ → ](../需求/、](本体建设思路 → ](../本体建设思路），全目录 md 链接逐一校验可解析（仅 Downloads 绝对路径为历史溯源标注、原文件已被用户清理，保持原值不修）。新增 README.md 索引：七份文档阅读顺序与关系表（评审对象+核心结论一栏）、当前状态与下一步（A1 待裁决对续会7三态草稿拍板、C1 衔接 build-governance worktree 18881、D1 收尾文档待指令、导出工具缺陷五次以完整对话为准）、目录外关联文档（需求说明/本体建设思路/推进计划表）。移动前全仓库引用核查：系列路径仅被文档自身与 session_context.md（自动生成不手改）引用，AGENTS/推进计划表等无引用，无断链风险。纯文件组织无内容改动；git mv 保留历史（部分文件因链接修正内容变化被识别为 rename 98-100%，log --follow 可追溯）。
-
-- 验证：移动前 grep 全仓库（排除 entries/worktree/node_modules/dist）：七份文档路径仅被自身与 session_context.md 引用；链接校验循环：目录内全部 .md 相对链接逐条解析，仓库内 0 断链；三条 Downloads 绝对路径为溯源标注（原导出件已被清理），非本次移动造成；git show e2dafe0：8 文件 496 增 1 删（7 份 git mv + README 新建）
-- 下一步：后续本系列新评审文档（如 meeting-49+）直接归档到该目录并更新 README 关系表；A1 裁决/C1 立项/D1 收尾文档等下一步不变，引用路径以新目录为准
-- 依据/文档：文档/本体自动化构建评审_20260921/；commit e2dafe0
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。

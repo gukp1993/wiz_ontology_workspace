@@ -85,6 +85,8 @@ async function submit() {
 .login-mark{width:34px;height:34px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:inline-flex;align-items:center;justify-content:center;font-size:17px;flex:none}
 .login-form .editor-field{margin:0 0 14px}
 .login-actions{display:flex;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap}
-.login-actions .primary{min-width:120px;height:38px}
+/* 主按钮高度走全局 button 规格（padding 6px 13px → 36px）；此前本地写死 38px，
+   与全站唯一的实心主按钮差 2px。只留宽度这条登录页特有的诉求。 */
+.login-actions .primary{min-width:120px}
 .login-hint{margin:18px 0 0;font-size:12px;line-height:1.7}
 </style>

@@ -97,7 +97,8 @@ async function remove(item: any) {
   </div>
 </section>
 <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate=false">
-  <form class="modal-card" role="dialog" aria-modal="true" aria-label="新建编排" @submit.prevent="create">
+  <!-- tabindex="-1"：点卡片空白处时焦点落在卡片上，Escape 才收得到（与 project/ActionBindings 同一写法） -->
+  <form class="modal-card" role="dialog" aria-modal="true" aria-label="新建编排" tabindex="-1" @submit.prevent="create" @keydown.esc.stop="showCreate=false">
     <h2>新建编排</h2>
     <p class="field-help">从空白编排开始：默认包含不可删除的「编排输入」「编排输出」边界节点。</p>
     <label>名称 *<input v-model="newName" required maxlength="80" placeholder="例如：SOC 日采样计算流程"/></label>

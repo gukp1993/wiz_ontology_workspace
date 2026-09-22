@@ -134,7 +134,7 @@ function openEdit(id = '') {
 function closeEditor() { mode.value = 'list'; draft.value = null }
 function onField(key: string, value: string) { if (draft.value) draft.value[key] = value }
 async function cancelEdit() {
-  if (dirty.value && !(await appConfirm({ message: '放弃尚未保存的修改？' }))) return
+  if (dirty.value && !(await appConfirm({ message: '放弃尚未保存的修改？', danger: true }))) return
   closeEditor()
 }
 // 保存后回到列表并定位该行

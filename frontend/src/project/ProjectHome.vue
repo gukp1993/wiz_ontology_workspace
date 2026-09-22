@@ -222,9 +222,9 @@ onBeforeUnmount(()=>guardApi.unregister(paramsGuard))
 </template>
 <p v-if="message" class="inline-error" role="status">{{message}}</p>
 
-<!-- 新建项目弹窗：与「新建本体」同一套 modal-card 交互（Esc/背板/取消关闭） -->
-<div v-if="showCreateDialog" class="modal-backdrop" @click.self="showCreateDialog=false" @keydown.esc.stop="showCreateDialog=false">
-  <form class="modal-card" role="dialog" aria-modal="true" aria-label="新建项目" @submit.prevent="createProjectFromDialog">
+<!-- 新建项目弹窗：与「新建本体」同一套 modal-card 交互（Esc/背板/取消关闭）；Escape 统一挂在卡片上 -->
+<div v-if="showCreateDialog" class="modal-backdrop" @click.self="showCreateDialog=false">
+  <form class="modal-card" role="dialog" aria-modal="true" aria-label="新建项目" tabindex="-1" @submit.prevent="createProjectFromDialog" @keydown.esc.stop="showCreateDialog=false">
     <h2>新建项目</h2>
     <p class="field-help">创建空白项目；可以先配置数据连接，之后再绑定已发布本体版本。项目标识自动生成，不复制本体定义。</p>
     <label>项目名称<input v-model="newName" required maxlength="80" placeholder="例如：园区三期"></label>

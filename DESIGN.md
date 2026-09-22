@@ -296,6 +296,9 @@ components:
 - 新界面复用既有骨架：库管理用 `.manager-layout`，工作区用 `.ld-*`，表格用 `.ont-*`，字段用 `.editor-field`，空态用 `.empty-state`。
 - 尺寸写进令牌或既有档位；`--r-sm/md/lg/pill` 与 12/13/14/15/17 字号是允许清单。
 - 表格与详情都给"下一步动作"：校验问题可定位到对象并高亮行，而不是只报错文。
+- **每页只有一个是 `<h1>`**：顶栏 `.topbar-title`（15px/650，`style.css:80`）。页面内的标题从 `<h2>` 起（区块标题走全局 `h2{17px/650}`、`h3{15px}`，`style.css:27`；把页内 h1 降为 h2 时**必须同步改 scoped 选择器并把 font-size/font-weight 写成原值**，否则会静默落到全局 h2 的 17px/650）。局部 16px 的 h3（`.tool-card h3`、`.ab-root h3`、`.bt-hero h3`）是上面登记的既有特殊档，**不算漂移、不为"统一"改值**。
+- **表单控件同规格**：`.editor-field` 下 `input/select/textarea` 是 `min-height:40px / padding:9px 11px / --r-sm`（`style.css:41`），`shared/AppSelect.vue` 的 `.app-select-trigger` 必须与之一致（本轮从 41px/7px 并到 40px/`--r-sm`）；表格行内需要更高行高时由**该表格自己**把输入框与触发器一起钉同一值（例：`project/ActionBindings.vue:594/596` 的 41px），不在组件基线里写死。
+- **弹窗焦点只有一个实现**：Tab 圈禁、焦点移入与关闭归还全部由 `shared/modalFocus.ts` 在 `document` 上兜底（识别 `[aria-modal="true"]`），页面**不再自写 Tab 陷阱**；页面只负责自己的 Escape 与背板关闭路径。已有完整自实现的（`shared/appConfirm.ts`）在卡片上标 `data-modal-a11y="manual"` 退出接管。**不用集中 `inert` 代替焦点陷阱**：inert 漏算一个容器就变成整屏吞点击，代价高于收益。
 - 保留既有安全网行为：自动保存、离开保护、引用检查、撤销、`restoreListScroll`、`selectedHidden` 提示、保存队列语义都不受样式重构影响。
 - 改前端后跑 `npm run build`（含 vue-tsc 严格检查）与 `npm run lint`，并在隔离实例浏览器实测。
 

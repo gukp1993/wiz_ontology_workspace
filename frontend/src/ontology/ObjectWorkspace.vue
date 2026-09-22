@@ -503,7 +503,7 @@ async function confirmPick(ids: string[]) {
 async function removeAssociation(actionId: string) {
   if (!current.value) return
   const actionName = actionById.value.get(actionId)?.name || '此动作'
-  if (!(await appConfirm({ message: '删除「' + actionName + '」在当前对象上的关联？动作定义保留，其他对象的关联不受影响；项目里已有的绑定会显示关联失效并保留配置。' }))) return
+  if (!(await appConfirm({ message: '删除「' + actionName + '」在当前对象上的关联？动作定义保留，其他对象的关联不受影响；项目里已有的绑定会显示关联失效并保留配置。', danger: true }))) return
   const typeId = current.value['@id']
   const r = await formSave.submitForm('ontology', () => {
     commitAssociations(props.state, associationsOf(props.state).filter(a => !(a.actionId === actionId && (a.objectTypeId === typeId || a.objectTypeId === 'mg:' + typeId.replace(/^mg:/, '')))))
@@ -634,7 +634,8 @@ async function removeNode(id: string, label: string, confirmText?: string) {
     const refs = graphReferences(props.state, id)
     if (refs.length) { message.value = '暂不能删除：请先处理引用（' + refs.join('、') + '）。'; return }
   }
-  if (!(await appConfirm({ message: confirmText || '删除「' + (label || id) + '」？可通过撤销恢复。' }))) return
+  // 删除/移除引用（对象、属性、链接）都走这里，统一按破坏性确认渲染实心红边按钮
+  if (!(await appConfirm({ message: confirmText || '删除「' + (label || id) + '」？可通过撤销恢复。', danger: true }))) return
   emit('before-change', { actionLabel: '删除「' + (label || id) + '」', target: { kind: 'object', id } })
   props.state.ontology['@graph'] = graph.value.filter((n: any) => n['@id'] !== id)
   emit('changed')

@@ -347,7 +347,7 @@ const blockedReason = computed(() => {
 <section class="bt-page">
   <div class="bt-intro">
     <div>
-      <h1>添加物料</h1>
+      <h2>添加物料</h2>
       <p class="muted">材料可以覆盖多个业务。先扫描识别内容，再通过对话确定本次范围。</p>
     </div>
     <button type="button" @click="emit('back')">← 生成任务</button>
@@ -568,7 +568,9 @@ const blockedReason = computed(() => {
    其余为局部 scoped 样式，不新增全局规则 */
 .bt-page{display:block}
 .bt-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:12px}
-.bt-intro h1{font-size:22px;margin:0 0 4px}
+/* 页内标题降为 h2（顶栏已有页面级 h1）：字号/字重/行距逐值保持原 h1 渲染结果，
+   font-weight 显式写 700 是因为全局 h2 规则会把 UA 的 bold 拉到 650 */
+.bt-intro h2{font-size:22px;font-weight:700;margin:0 0 4px}
 .bt-intro p{margin:0}
 .bt-sub{display:block;font-size:12px;color:var(--muted);margin-top:4px}
 .bt-note{padding:11px 14px;border:1px solid var(--blue-line);background:var(--blue-soft);border-radius:var(--r-sm);font-size:13px;color:var(--ink-2);margin:12px 0}
