@@ -109,9 +109,9 @@ watch(() => props.initialTab, t => { if (t === 'props' || t === 'links' || t ===
 type Origin = 'list'
 type LinkDraft = { label: string; from: string; to: string; cardinality: string; reverseLabel: string; comment: string }
 type Editor =
-  | { kind: 'object'; isNew: boolean; id: string; draft: { label: string; comment: string }; original: string; returnTab: Tab; origin: Origin }
+  | { kind: 'object'; isNew: boolean; id: string; draft: { label: string; comment: string }; original: string; returnTab: Tab; origin: Origin; assistTitle: string }
   | { kind: 'property'; targetTypeId: string; propertyId: string; returnTab: Tab }
-  | { kind: 'link'; isNew: boolean; id: string; draft: LinkDraft; original: string; returnTab: Tab; origin: Origin }
+  | { kind: 'link'; isNew: boolean; id: string; draft: LinkDraft; original: string; returnTab: Tab; origin: Origin; assistTitle: string }
 const editor = ref<Editor | null>(null)
 const editorError = ref(''), editorSaving = ref(false)
 const objectDraft = computed(() => editor.value?.kind === 'object' ? editor.value.draft : null)
@@ -164,7 +164,8 @@ function openObjectEditor(isNew: boolean, origin: Origin = 'list') {
   if (!isNew && !n) return
   if (origin === 'list') captureListScroll()
   const draft = { label: n?.['rdfs:label'] || '', comment: n?.['rdfs:comment'] || '' }
-  editor.value = { kind: 'object', isNew, id: isNew ? 'mg:object_' + crypto.randomUUID().replaceAll('-', '') : n['@id'], draft, original: JSON.stringify(draft), returnTab: detailTab.value, origin }
+  editor.value = { kind: 'object', isNew, id: isNew ? 'mg:object_' + crypto.randomUUID().replaceAll('-', '') : n['@id'], draft, original: JSON.stringify(draft), returnTab: detailTab.value, origin,
+    assistTitle: isNew ? '新建对象类型' : '维护「' + typeName(n['@id']) + '」的对象定义' }
   editorError.value = ''
 }
 // 工作概览「创建第一个对象」：自动打开既有新建对象表单（H02，20260919 概览优化）。
@@ -220,7 +221,8 @@ function openLinkEditor(id = '', origin: Origin = 'list') {
   const draft: LinkDraft = n
     ? { label: n['rdfs:label'] || '', from: n['rdfs:domain']?.['@id'] || fallbackFrom, to: n['rdfs:range']?.['@id'] || '', cardinality: n['mg:cardinality'] || 'many-to-one', reverseLabel: n['mg:reverseLabel'] || '', comment: n['rdfs:comment'] || '' }
     : { label: '', from: fallbackFrom, to: objects.value.find(o => o['@id'] !== fallbackFrom)?.['@id'] || fallbackFrom, cardinality: 'many-to-one', reverseLabel: '', comment: '' }
-  editor.value = { kind: 'link', isNew: !id, id: id || 'mg:link_' + crypto.randomUUID().replaceAll('-', ''), draft, original: JSON.stringify(draft), returnTab: detailTab.value === 'links' ? 'links' : detailTab.value, origin }
+  editor.value = { kind: 'link', isNew: !id, id: id || 'mg:link_' + crypto.randomUUID().replaceAll('-', ''), draft, original: JSON.stringify(draft), returnTab: detailTab.value === 'links' ? 'links' : detailTab.value, origin,
+    assistTitle: (!id) ? '定义业务链接' : '维护链接「' + (draft.label || '未命名链接') + '」' }
   editorError.value = ''
 }
 async function saveLink() {
@@ -262,8 +264,8 @@ const assistTouchTick = ref(0) // 手改字段次数（测试观察点；面板�
 const assistBinding = computed(() => {
   const e = editor.value
   if (!e) return null
-  if (e.kind === 'object') return objectAssistBinding(e.draft, { ontologyId: assistOntologyId, targetId: e.isNew ? '' : e.id, contextTitle: e.isNew ? '新建对象类型' : '维护「' + typeName(e.id) + '」的对象定义' })
-  if (e.kind === 'link') return linkAssistBinding(e.draft, { ontologyId: assistOntologyId, targetId: e.isNew ? '' : e.id, contextTitle: e.isNew ? '定义业务链接' : '维护链接「' + (e.draft.label || '未命名链接') + '」' })
+  if (e.kind === 'object') return objectAssistBinding(e.draft, { ontologyId: assistOntologyId, targetId: e.isNew ? '' : e.id, contextTitle: e.assistTitle })
+  if (e.kind === 'link') return linkAssistBinding(e.draft, { ontologyId: assistOntologyId, targetId: e.isNew ? '' : e.id, contextTitle: e.assistTitle })
   return null // 属性表单由 PropertyManager 自行接入（T6），不在本页挂面板
 })
 watch(assistBinding, b => { if (!b) assistOpen.value = false })

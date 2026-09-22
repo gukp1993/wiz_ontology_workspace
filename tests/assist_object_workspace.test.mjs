@@ -296,12 +296,16 @@ try {
       assert.equal(ctx.api.linkDraft.value.from, 'mg:cluster', '未勾选的建议不得改动草稿')
       assert.equal(ctx.formSave.saves.length, 0, '采纳绝不触发表单保存')
       assert.equal(ctx.panel.justAdopted.value, true)
+      assert.equal(ctx.panel.status.value, 'done', 'DEF-EXT-1 回归：采纳后面板保持 done 态（binding 不得因标题读响应式草稿而整卡重置）')
+      assert.equal(ctx.panel.canUndo.value, true, 'DEF-EXT-1 回归：采纳后撤销可用')
       const phtml = await ctx.panelHtml()
       assert.match(phtml, /已填入表单，尚未保存/)
     })
 
     await check('⑥b 链接表单手改字段：通知发出、再次采纳被拦、撤销失效', async () => {
+      const titleBefore = ctx.api.assistBinding.value.contextTitle
       ctx.api.setLinkField('label', '手改链接名')
+      assert.equal(ctx.api.assistBinding.value.contextTitle, titleBefore, 'DEF-EXT-1 回归：辅助标题在编辑器打开时冻结，不随草稿 label 变化（防 binding 重建整卡重置）')
       assert.equal(ctx.api.assistTouchTick.value, 1, '链接字段输入事件触发手改通知')
       assert.equal(ctx.panel.adopt(), false, '手改后采纳被草稿指纹拦下')
       assert.equal(ctx.api.linkDraft.value.label, '手改链接名')
