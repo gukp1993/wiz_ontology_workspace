@@ -107,6 +107,81 @@ def _rate_limited(error):
     return 'HTTP 429' in str(error or '')
 
 
+ADAPTIVE_MIN_WORKERS = 1
+ADAPTIVE_MAX_WORKERS = 8
+_ADAPTIVE_429_COOLDOWN_SECONDS = 20   # 撞限流后的冷却（等 RPM 窗口滚动）
+_HEARTBEAT_SECONDS = 15
+
+
+def _run_batches_adaptive(owner_id, run_id, label, batches, pending, provider, scope,
+                          done_positions, accumulated, model_facts):
+    """批次抽取调度：自适应并发 + 心跳，按批次序号返回结果。
+
+    为什么自适应：实测 GLM-5.3-Flash 账号并发 2 稳定、4 路零星 429、16 路多数失败
+    （并发能力上限 50 与账号 RPM 限流是两件事）；固定并发要么浪费要么大批失败。
+    连续成功升一路（至上限），撞 429 降一路并冷却 20 秒。
+
+    为什么按序返回：候选落库顺序决定定义顺序，必须与串行版一致
+    （与 V2-10「解析并发、落库串行」同一确定性原则）。
+    心跳：等待期间每 15 秒写 waitingPosition/waitingCount，页面据此显示真实等待
+    （用户实测反馈「抽象本体定义只有处理中」）。
+    """
+    if not pending:
+        return {}
+    cap = max(ADAPTIVE_MIN_WORKERS, min(ADAPTIVE_MAX_WORKERS, int(protocol.LLM_CONCURRENCY)))
+    pool = ThreadPoolExecutor(max_workers=cap, thread_name_prefix='build-extract')
+    results = {}
+    queued = list(pending)
+    running = {}
+    workers_wanted = min(cap, len(queued))
+    last_heartbeat = time.monotonic()
+    cooldown_until = 0.0
+    success_streak = 0
+    try:
+        while queued or running:
+            while queued and len(running) < max(1, workers_wanted) and time.monotonic() >= cooldown_until:
+                position, batch = queued[0]
+                running[position] = pool.submit(_extract_batch_with_split, provider, scope, batch)
+                queued.pop(0)
+            finished = [pos for pos, future in running.items() if future.done()]
+            for position in finished:
+                future = running.pop(position)
+                try:
+                    result = future.result()
+                except Exception as exc:  # noqa: BLE001 - 单批异常不影响其余批次
+                    result = {'ok': False, 'candidates': [],
+                              'error': '批次执行异常：%s' % type(exc).__name__}
+                results[position] = result
+                if result.get('ok'):
+                    success_streak += 1
+                    if success_streak >= 2 and workers_wanted < cap:
+                        workers_wanted += 1
+                        success_streak = 0
+                if _rate_limited(result.get('error')):
+                    workers_wanted = max(ADAPTIVE_MIN_WORKERS, workers_wanted - 1)
+                    success_streak = 0
+                    cooldown_until = time.monotonic() + _ADAPTIVE_429_COOLDOWN_SECONDS
+            if not finished:
+                now = time.monotonic()
+                if now - last_heartbeat >= _HEARTBEAT_SECONDS and running:
+                    last_heartbeat = now
+                    try:
+                        runner.stage(owner_id, run_id, 'abstract', label,
+                                     {'done': len(done_positions),
+                                      'total': len(batches), 'facts': len(model_facts),
+                                      'candidates': len(accumulated),
+                                      'waitingPosition': min(running),
+                                      'waitingCount': len(running) + len(queued)})
+                    except runner.Cancelled:
+                        raise
+                    except Exception:  # noqa: BLE001 - 心跳失败不影响抽取
+                        pass
+                time.sleep(0.5)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    return results
+
+
 def _extract_batch_with_split(provider, scope, batch, depth=0):
     """抽取一批候选；截断自动拆批（≤2 层），瞬态网络/限流错误有限重试。
 
