@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`074144a474f8f2d7`
+上下文版本：`f17db2bc9a26f87c`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 自动填写 v3：输入区模型选择与思考强度 · codex · 需求已交付
+
+时间：2026-09-23T06:23:50.877899+00:00；记录：`.collaboration/entries/000266-35a113476cb7.json`
+
+用户要求在自动填写输入框内选择当前账号可用模型与思考强度，支持模型默认低。已在原需求目录交付需求说明_v3、开发计划_v3、执行指令_v3；v3 替代 v2 侧栏只读/仅设置选模型的交互决定。约定按具体模型能力展示强度，GLM-5.3-Flash 强制思考支持 low/high/max，DeepSeek deepseek-flash 支持 off/low/high/max；未知能力跟随模型且不假称低。本次仅文档交付，未改业务代码或接口文档，未验收或合并。
+
+- 决定：输入区选择只影响当前自动填写面板会话，不改账号默认或用途配置；切目标重置到用途模型。；请求级 providerId/reasoningEffort 须经服务端账号权限与能力校验；旧客户端省略字段继续旧行为；实现前先更新接口文档。；现有 fill_by_llm 工作树有对象轻量填写的未提交修改，执行者须先核对 owner 并串行处理共享文件，不覆盖。
+- 验证：只读核对现有 AssistPanel、formAutofill、llm_purpose、llm_client 和接口文档；v3 三文档内容自检；git diff --check 通过。
+- 下一步：harness 在已登记 fill_by_llm 工作树按执行指令_v3 实施、自测并提交，交 Codex 独立验收；不合并 main。
+- 依据/文档：文档/需求/20260922_整表自动填写交互/需求说明_v3.md；文档/需求/20260922_整表自动填写交互/开发计划_v3.md；文档/需求/20260922_整表自动填写交互/执行指令_v3.md
 
 ### fill_by_llm GLM-5.3-Flash 与豆包速度差诊断及指令纠错 · codex · 已确认决定
 
@@ -141,14 +152,3 @@
 - 验证：python3 tests/test_autofill_integration.py → EXIT=0，全部通过（12 组断言块），5.44s。；python3 tests/run.py --test test_autofill_integration.py → 通过 1/1（5.4s）；--list 复核 unit 52 项、all 63 项各含本文件 1 次，组内无重复。；ruff check tests/test_autofill_integration.py tests/run.py → All checks passed。；未触碰 workbench/、contracts/、frontend/（含 dist）、.runtime/、data/、ontology/ 及 tests/ 下他人文件；find -mmin 复核零修改。18951 未停止未连接；18941/18942 已释放。；开场仅只读 git log/status 核对基线，无 git 写操作。
 - 下一步：生产缺陷待修：workbench/assist_schema.py:1042 `_fill_cell_summary` 读 cell['path']/cell['type']，而 workbench/assist_forms.py:703 `FormContract.list_def()` 返回 _normalize_leaf 归一结果（无 path/label）→ KeyError → server.py 兜底 400。复现：任取声明 lists 的契约（actionBinding、propertySource 的 database/redis/flow 变体）发 mode=fill 即 100% 400，4 变体全不可用。；D1 等值口径差异交独立验收：服务端 fill 不做等值过滤（原样下发 ok），等值不落盘靠前端 changed/topLevelChanges；模型只回显旧值时前端走 done+收起、appliedCount=0、状态条为空，不命中 AssistPanel.vue:182 的 empty 提示分支，与需求 §4.3/A14 有落差。；A01/A02/A18 与 A03~A08/A10~A13/A17 的浏览器呈现分支留 T10 独立验收；本文件头已列不覆盖清单。
 - 依据/文档：tests/test_autofill_integration.py；tests/fixtures/autofill_integration_seed.json；tests/run.py；workbench/assist_schema.py 与 workbench/assist_forms.py（缺陷位点）；文档/接口文档/04-编排与LLM接口.md 与 03-项目区接口.md §3.4
-
-### 整表自动填写 T8（P1/P5/P6 三页接入，分支 codex/assist-fill-production） · zcode · 已实施，待验收
-
-时间：2026-09-22T12:17:21.547743+00:00；记录：`.collaboration/entries/000252-f2e2b095ed47.json`
-
-在上一位 agent 半成品上续接完成 T8：identityLinkBindings.ts / actionBindingAdapter.ts 补齐 restore 回写（统一 restoreSnap + cloneJson，宿主 undoRound 与引擎 restore 共用），核对 formId/contractInfo/codecs/applyDraft/snapshot/手改通知全覆盖；ObjectSources/LinkMappings/ActionBindings 三页改 T5/T6 范式——页头次要按钮「✦ 自动填写」（aria-expanded/aria-haspopup + trigger-id 反向接线）、默认无 AI 区、状态条+撤销+查看修改+手改通知，回填只改本地草稿（零 touch/changed/form-save/commit-now），旧建议卡/勾选/采纳 UI 全部移除。
-
-- 决定：P1：registered 模式快照只含 {mode,note}（说明类可填，连接/表/主键 visibleWhen=false 不可见即不可填）；instances 登记实例清单永不出网、不批量生成、不凭 id 名称推断唯一性；mode 切换走组件既有 applyMode 守卫，被拒时同批数据库键一并丢弃。；P5：binding 以 targetId='<对象类型>.<关系id>' 绑定当前编辑的那一条映射行，applyDraft/restore 只写该行契约白名单键；relation/targetType/membership/legacy 等白名单外结构不进快照、不被回填、撤销不触碰（A13 零丢失）；两端字段值照建议原样提交，前端不做「字段同名＝业务等价」判断（服务端核验，不过即转 unresolved）。；P6：auth.* 按契约 ai.sensitive 前端 binding 直接拒绝写入并记入 refusals（快照绝无 auth 故永不出网；点路径 auth.credentialId 同样拒绝），状态条逐条显示原因；适配层与宿主无任何网络调用（测试用 networkCalls 计数断言），参数行只在本地草稿落位。；rowId 裁决：identity/linkMapping 契约 lists=[] 无行结构，仅组件键映射 primaryKey↔primary_key、note↔noteDraft；actionBinding actionParams（rowIdScope=local）由 actionParamRows codec 精确落行——row.update/remove 必须命中现有 rowId（未命中抛错→引擎记 failures 不中断其余操作），row.append 沿用服务端 localId（仅冲突时由 newParamId 补齐，保续轮定位稳定），未涉及行原样保留。；修复半成品实际缺陷：parametersCodec 原来按 v.op 判定入参三类，但引擎 row.append 传入 {localId,fields}（无 op 键）会被误判为「显式整组」抛错——改为先判 row.update/remove、再判 {localId|fields} 为 append、最后才是数组整组；valueIn 兼容契约键 property/valueType 与组件键 propertyId/type 双形态。另：SSR 下 setup 阶段 watch 不触发（实测 Vue 3.5.41），ActionBindings 另导出显式 assistTouched() 手改入口。
-- 验证：node --import ./tests/ts_hooks.mjs tests/assist_identity_link.test.mjs → 16/16 通过（重写为新交互：binding 工厂/登记模式说明回填且不批量生成实例/来源模式 connection·table·primaryKey 链路/上下文请求/直接回填无勾选/整轮撤销/手改禁撤销/续轮累计与一次撤销/显式保存 commitDesc 落盘/入口 aria 与抽屉）。；node --import ./tests/ts_hooks.mjs tests/assist_action_bindings.test.mjs → 16/16 通过（URL/方法/参数行回填、row.update·remove·append 精确落行、未命中行失败不中断、auth.* 拒绝且草稿 auth 不变、零网络调用、form-save/commit-now 零调用、撤销含 auth 与行 id 保真、显式保存含历史字段零丢失）。；cd frontend && npx vue-tsc --noEmit → 退出码 0（全仓 0 错，含 T7 并行文件）；npx eslint 我的 5 个文件 → 0 违规（顺带清掉 ActionBindings.vue 既有 no-unused-expressions）。；相邻套件回归：assist_object_workspace 14/14、assist_panel 22/22、assist_property_manager 74/74、assist_workflow 12/12，mapping_forms/object_sources/action_model/source_config_retention/ui_protection_independent 通过；python3 tests/run.py --test tests/test_autofill_contracts.py → 423 断言通过。
-- 下一步：停在待 Codex 独立验收：本轮未跑 npm run build（按任务边界只做 vue-tsc），也未起服务做浏览器实链路验收；页头入口/抽屉焦点/aria-expanded 回落/手改 watch 仅由组件级测试与源码断言覆盖。；浏览器验收建议确认：三页入口在窄屏(≤1100px)遮罩态、Esc 关闭焦点回落、done 自动收起后 aria-expanded 回落；ActionBindings 弹窗内状态条与参数表共存布局。；T7（propertySourceBinding/PropertySources）为并行改动，本轮未触碰；未做 git 提交（任务指令禁止），提交由协调者安排。
-- 依据/文档：文档/需求/20260922_整表自动填写交互/需求说明.md §3（P1/P5/P6）、§4.4、§4.5、A13；文档/接口文档/04-编排与LLM接口.md §6.6 前端行为契约；contracts/forms/identity.json、linkMapping.json、actionBinding.json；frontend/src/assist/ontologyBindings.ts（T5 createRoundMirror/undoRound 范式）；tests/assist_identity_link.test.mjs、tests/assist_action_bindings.test.mjs

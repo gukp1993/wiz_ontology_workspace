@@ -1,0 +1,28 @@
+{
+  "ticket": "c53d5eb01d324dfe974e1db73b8a00c4",
+  "task": "自动填写 v3：输入区模型选择与思考强度",
+  "status": "ready",
+  "summary": "用户要求在自动填写输入框内选择当前账号可用模型与思考强度，支持模型默认低。已在原需求目录交付需求说明_v3、开发计划_v3、执行指令_v3；v3 替代 v2 侧栏只读/仅设置选模型的交互决定。约定按具体模型能力展示强度，GLM-5.3-Flash 强制思考支持 low/high/max，DeepSeek deepseek-flash 支持 off/low/high/max；未知能力跟随模型且不假称低。本次仅文档交付，未改业务代码或接口文档，未验收或合并。",
+  "decisions": [
+    "输入区选择只影响当前自动填写面板会话，不改账号默认或用途配置；切目标重置到用途模型。",
+    "请求级 providerId/reasoningEffort 须经服务端账号权限与能力校验；旧客户端省略字段继续旧行为；实现前先更新接口文档。",
+    "现有 fill_by_llm 工作树有对象轻量填写的未提交修改，执行者须先核对 owner 并串行处理共享文件，不覆盖。"
+  ],
+  "verification": [
+    "只读核对现有 AssistPanel、formAutofill、llm_purpose、llm_client 和接口文档；v3 三文档内容自检；git diff --check 通过。"
+  ],
+  "next": [
+    "harness 在已登记 fill_by_llm 工作树按执行指令_v3 实施、自测并提交，交 Codex 独立验收；不合并 main。"
+  ],
+  "references": [
+    "文档/需求/20260922_整表自动填写交互/需求说明_v3.md",
+    "文档/需求/20260922_整表自动填写交互/开发计划_v3.md",
+    "文档/需求/20260922_整表自动填写交互/执行指令_v3.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-23T06:23:50.877899+00:00",
+  "sequence": 266,
+  "filename": "000266-35a113476cb7.json",
+  "record_hash": "cc8f4159226691643c1e3326237c97e4724bfeb79bc7325b426f34a848fecb94",
+  "context_advanced": false
+}
