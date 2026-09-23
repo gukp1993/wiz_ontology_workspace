@@ -291,6 +291,8 @@ button:active:not(:disabled){transform:translateY(1px)}
 .ont-table th .ont-sort{height:30px;border:0;background:transparent;font-size:12px;color:inherit;padding:0}
 .ont-table th .ont-sort:hover{color:var(--blue);background:transparent}
 .ont-table td{height:64px;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle;overflow-wrap:anywhere}
+/* 单元格内联子元素统一按盒中线对齐（20260923 用户反馈「水平对齐」）：编辑/删除等 .row-link 按钮自带内边距，默认基线对齐会比名称/定义低约 5px */
+.ont-table td>*{vertical-align:middle}
 .ont-table tbody tr:hover td{background:var(--paper-2)}
 .ont-table tbody tr.ont-selected td,.ont-table tbody tr.ow-flash-row td{background:var(--blue-soft)}
 .ont-name{display:block;max-width:100%;border:0;background:transparent;padding:0;text-align:left;color:var(--ink);font-weight:600;font-size:13px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
