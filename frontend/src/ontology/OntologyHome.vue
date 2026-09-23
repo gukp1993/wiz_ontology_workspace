@@ -203,6 +203,7 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
     <button class="primary" @click="emit('navigate','objects',{create:true})">＋ 创建第一个对象</button>
     <button @click="emit('navigate','build')">从物料生成</button>
     <button @click="importOpen=true">从 Excel 导入</button>
+    <span class="action-sep" aria-hidden="true"></span>
     <button class="text" @click="downloadTemplate">下载 Excel 模板</button>
   </div>
   <div class="example"><span>对象填写示例</span><div><strong>储能簇</strong>
@@ -332,7 +333,9 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
 .home-welcome h2{font-size:23px;margin-bottom:9px}
 .home-welcome>p{color:var(--muted);font-size:14px;max-width:700px}
 .start-actions{display:flex;gap:10px;align-items:center;margin:23px 0 28px;flex-wrap:wrap}
-.start-actions .text{margin-left:5px;padding:2px 0;font-size:12px}
+/* 模板下载是导入的附属动作：静音链接而非同级按钮（.text 无全局样式，须在本地去边框对齐高度） */
+.action-sep{width:1px;height:16px;background:var(--line);flex:none}
+.start-actions .text{border:0;background:none;padding:8px 8px;font-size:12px;color:var(--muted)}
 .example{display:flex;gap:18px;align-items:flex-start;border-top:1px solid var(--line);padding-top:20px;max-width:790px;font-size:13px}
 .example>span{color:var(--muted);font-size:12px;white-space:nowrap}
 .example strong{font-weight:600;display:block;margin-bottom:3px}
@@ -391,6 +394,6 @@ onMounted(()=>{void loadVersions();void loadDiff();void loadProjects()})
 .object-def{color:var(--muted)}
 /* ── 响应式（1440/1024/768；620 以下沿全局侧栏适配）── */
 @media(max-width:1150px){.asset{padding:3px 12px}.asset strong{font-size:25px}.asset-grid{grid-template-columns:repeat(3,minmax(0,1fr));row-gap:22px}.asset:nth-child(3){border-right:0}.asset:nth-child(4){padding-left:0}}
-@media(max-width:850px){main .pageintro{align-items:flex-start;flex-wrap:wrap}.home-welcome{padding:26px 22px}.home-welcome h2{font-size:21px}.asset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.asset:nth-child(3){border-right:1px solid var(--line);padding-left:0}.asset:nth-child(2n){border-right:0;padding-left:12px}.asset:nth-child(5){padding-left:0}.issue{align-items:flex-start}.neutral-state{flex-wrap:wrap}.neutral-state button{margin-left:47px}.example{gap:12px}.start-actions .text{margin-left:0}}
+@media(max-width:850px){main .pageintro{align-items:flex-start;flex-wrap:wrap}.home-welcome{padding:26px 22px}.home-welcome h2{font-size:21px}.asset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.asset:nth-child(3){border-right:1px solid var(--line);padding-left:0}.asset:nth-child(2n){border-right:0;padding-left:12px}.asset:nth-child(5){padding-left:0}.issue{align-items:flex-start}.neutral-state{flex-wrap:wrap}.neutral-state button{margin-left:47px}.example{gap:12px}.action-sep{display:none}}
 @media(max-width:620px){.home-welcome{padding:24px 20px}.home-welcome h2{font-size:20px}.home-welcome>p{font-size:13px}.start-actions{gap:8px}.start-actions button{padding:7px 10px;font-size:12px}.example{display:block}.example>span{display:block;margin-bottom:6px}.check-tools{flex-wrap:wrap;justify-content:flex-end}.check-tools .pill{display:none}.asset small{font-size:10px}}
 </style>
