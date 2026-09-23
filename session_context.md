@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`b85e3c5bc21b86ed`
+上下文版本：`fdbc242eba103d98`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 自动填写v2简洁需求与harness指令 · codex · 需求已交付
+
+时间：2026-09-23T01:41:16.697646+00:00；记录：`.collaboration/entries/000263-fc1f22bac9bb.json`
+
+在既有整表自动填写需求目录交付需求说明_v2.md与执行指令_v2.md，基于局部原型明确短提示生成对象名称和业务定义、按字段生成策略解耦不同表单、设置中的自动填写专用模型/思考覆盖，以及草稿/保存/撤销/安全与验收边界。当前仅文档交付，未修改业务代码、真实数据或合并分支。
+
+- 决定：每个页面不维护独立整套提示词；用通用生成引擎和字段策略定义差异。；自动填写用途在设置中单独选模型及思考模式，表单侧栏只读显示生效配置。；输入储能系统可生成业务定义草稿，不要求用户先提供完整定义。
+- 验证：核对既有v1需求、局部原型v2、fill_by_llm与model_setting现有工作树及接口文档；新文档限定已登记工作树和停止点。
+- 依据/文档：文档/需求/20260922_整表自动填写交互/需求说明_v2.md；文档/需求/20260922_整表自动填写交互/执行指令_v2.md；文档/需求/20260922_整表自动填写交互/交互原型_v2.html
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### auto_build · zcode · 实施中
 
@@ -142,14 +153,3 @@
 - 下一步：assist_object_workspace.test.mjs 7/14 失败：该套件把 PropertyManager 桩为 render:null 且不引用 propertyBinding，失败在对象/链接编辑器流程（T5 归属文件），与 T6 无执行路径交集，待 T5 处理；AssistPanel 无 id prop，按钮 aria-controls 指向的 pm-assist-drawer 暂悬空（已用 trigger-id 反向接线），T3 加 id 支持后补全；浏览器验收与 Codex 独立验收待排；未做 git 提交（任务指令禁止 git 命令，提交由协调者安排）
 - 依据/文档：frontend/src/assist/propertyBinding.ts；frontend/src/ontology/PropertyManager.vue；tests/assist_property_manager.test.mjs；文档/接口文档/04-编排与LLM接口.md §6.6
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### 整表自动填写 T4（autofill/1 后端串接）@worktree/assist-fill-production · zcode · 已实施，待验收
-
-时间：2026-09-22T11:10:38.864812+00:00；记录：`.collaboration/entries/000249-7b5397dda201.json`
-
-fill 分支完成：protocol=2 门禁、内存会话（TTL30min/LRU200，绑定 user+space+target+formId+digest）、答案归属校验与 unsure→unresolved、operations 引用核验、autofill/1 envelope；令牌签入契约 fv/fd（续轮不匹配 409）；新增 FILL_SYSTEM_PROMPT 与 build_fill_user_payload（敏感字段不出网）；FormContract 组节点 atomicGroup 展开为叶子全集；旧 fill 无 protocol→400，check/explain 零改动。新增 tests/test_autofill_http.py（13 组通过）；test_assist_api 7 处 fill 用例最小迁移、test_assist_context 1 处令牌键集断言补 fv/fd。待 Codex 验收。
-
-- 决定：会话为进程内存 OrderedDict（不落库），绑定键含 projectId（targetId 按项目隔离）；引用核验 provider 名→候选集映射收口在 assist_service._PROVIDER_REF_TYPES；identityTableFields 按草稿所选表目录字段核对；上下文未装配的提供方 fail-closed（候选不可用→unresolved）；答案先只读校验、模型成功后才提交会话变更（模型 502 不消费用户答案）；未答问题归属 roundId；valid_question_ids 取会话全部已签发 id（basis question 核验+换发避让）
-- 验证：python3 tests/test_autofill_http.py 全部通过（13 组，端口 18931/18932 自管自停）；python3 tests/run.py all 62/62 通过（含 test_assist_api/context/schema、test_autofill_contracts/patch/http）；~/Library/Python/3.9/bin/ruff check 交付 6 文件全部通过
-- 下一步：待 Codex 独立验收（不合并 main）；真实提供方联调另记
-- 依据/文档：文档/接口文档/04-编排与LLM接口.md §6；文档/需求/20260922_整表自动填写交互/需求说明.md；workbench/assist_service.py；workbench/assist_schema.py；tests/test_autofill_http.py
