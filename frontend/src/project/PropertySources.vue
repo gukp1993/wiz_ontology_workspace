@@ -15,7 +15,6 @@ function psConsume(objectType:string){if(!psPendingOf(objectType))return null;co
 import {computed,inject,onBeforeUnmount,ref,shallowRef,watch} from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
-import MappingDescription from './MappingDescription.vue'
 import {isQueryRule,isReusableRule,ruleInputErrors} from './queryRules'
 import {scanSqlParams,inlineSqlErrors,effectiveParams} from './inlineSql'
 import {isCalcFunction,calcRangeOk,calcConstantOk,CALC_TYPE_NAMES} from './calcFunction'
@@ -1056,9 +1055,8 @@ if(psPendingOf(props.b.object_type)){
 <p v-for="(r,i) in assistRefusals" :key="i">未能填写「{{propertySourceFieldLabel(r.field)}}」：{{r.reason}}</p>
 </div>
 </div>
-<!-- 项目说明（v2.1）：在前、默认展开可折叠；下方取值配置默认折叠为摘要（unknown 只读分支默认展开） -->
+<!-- 取值配置默认折叠为摘要（unknown 只读分支默认展开）；项目说明入口已按 20260923 用户指示移除（说明数据仍随草稿保存） -->
 <div v-if="draft" class="ps-desc-wrap">
-<MappingDescription v-if="draft.kind!=='unknown'" v-model="noteDraft" hint="说明这个属性从哪里取、怎么算；需要多步处理时可以分步写。"/>
 <details class="ps-config-fold" :open="draft.kind==='unknown'">
 <summary><strong>取值配置</strong><small class="muted">{{draft.kind==='unknown'?'未识别结构（只读保留）':(listSummary(draft.kind==='none'?null:propertyView(props.b,selectedApi))||'需要时补充')}}</small></summary>
 <div class="ps-config-body">

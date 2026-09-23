@@ -18,7 +18,6 @@ import { actionBindingsOf, actionsOf, effectiveAssociations } from '../ontology/
 import { listFlows } from '../flow/api'
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 import { listApiCredentials, saveApiCredential } from './api'
-import MappingDescription from './MappingDescription.vue'
 import { descTextOf, commitDesc } from './bindingModel'
 import AssistPanel from '../assist/AssistPanel.vue'
 import { actionBindingAssistBinding, ACTION_BINDING_SENSITIVE_REASON } from '../assist/actionBindingAdapter'
@@ -507,7 +506,6 @@ const viewNotice = computed(() => viewReason.value === 'flow'
         <div class="ab-banner">
           <strong>本体动作：{{ editingAction?.name || '动作不在引用版本中' }}</strong>
           <p v-if="editingAction?.effect">{{ editingAction.effect }}</p>
-          <MappingDescription v-if="editable" v-model="noteDraft" hint="说明这个项目如何完成动作、使用什么接口，以及如何确认结果。填写和保存不会执行设备操作。"/>
           <p v-if="editingAction?.description">{{ editingAction.description }}</p>
           <p v-if="!editingAction?.effect && !editingAction?.description" class="muted">本体未填写业务定义。</p>
           <small class="muted">来自项目引用的本体版本，只读；项目里只配置调用它的接口。</small>

@@ -16,7 +16,6 @@ function lmConsume(objectType:string):any|null{if(!lmPendingOf(objectType))retur
 import {computed,inject,onBeforeUnmount,ref,watch} from 'vue'
 import { appConfirm } from '../shared/appConfirm'
 import AppSelect from '../shared/AppSelect.vue'
-import MappingDescription from './MappingDescription.vue'
 import {descTextOf,commitDesc,relationView,commitRelation,sourceById,dbSourcesOf,tableCatalog,fieldOptions,refreshCatalogOf,bindingIdentityOf,registeredInstancesOf,MEMBERSHIP_OPERATORS,MEMBERSHIP_SCOPES} from './bindingModel'
 import type {MembershipRuleView} from './bindingModel'
 import SourcePreview from './SourcePreview.vue'
@@ -251,8 +250,6 @@ const originCatalog=computed(()=>originTable.value?tableCatalog(props.projectSta
 function originSourceChanged(v:string){if(!draft.value||v===draft.value.sourceId)return;draft.value.sourceId=v;draft.value.field='';switchMsg.value='已切换起点来源表，请重新选择起点字段。';assistTouched()}
 // 起点关联字段手改（含辅助采纳后的重新手改）：更新草稿并通知辅助面板置过期
 function draftFieldChanged(v:string){if(!draft.value||draft.value.field===v)return;draft.value.field=v;assistTouched()}
-// 链接说明手改：草稿即 noteDraft（两端共用一份说明）；辅助采纳路径不走此通知
-function linkNoteChanged(v:string){if(noteDraft.value===v)return;noteDraft.value=v;assistTouched()}
 // 终点来源完全对称：取终点对象绑定的实例来源 + one 来源；无绑定则提供去配置入口。
 const targetBinding=computed(()=>draft.value?bindingOfType(draft.value.targetType):undefined)
 const hasManyTarget=computed(()=>!!targetBinding.value&&dbSourcesOf(targetBinding.value).some(s=>s.cardinality==='many'))
@@ -396,7 +393,6 @@ defineExpose({dirty,discard:closeEditor})
 <!-- ===== 成员模式编辑器（起点=登记实例） ===== -->
 <template v-if="editingMembership">
 <h2>按条件选择成员</h2>
-<MappingDescription v-model="noteDraft" hint="说明两个对象如何关联，例如通过哪些字段找到对方。两端对象共用这一份说明。"/>
 <p class="lm-note">{{membershipChainNote()}}{{cardinalityOf(draft.relation)?' · '+cardLabel(draft.relation):''}} · 成员身份表 {{memberTargetBinding?.table||'未配置'}}</p>
 <p v-if="switchMsg" class="inline-warning" role="status">{{switchMsg}}</p>
 <p class="field-help">成员由成员对象<strong>已配置的实例来源表</strong>按下方条件筛选；字段只能从该表字段目录选择，值按字段类型校验后参数化执行。每个起点实例单独一套条件；成员按成员端主键去重。</p>
@@ -433,7 +429,6 @@ defineExpose({dirty,discard:closeEditor})
 <template v-else>
 <div class="lm-assist-row"><button type="button" class="lm-assist-trigger" id="lm-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button></div>
 <h2>配置链接映射</h2>
-<MappingDescription :model-value="noteDraft" hint="说明两个对象如何关联，例如通过哪些字段找到对方。两端对象共用这一份说明。" @update:model-value="linkNoteChanged"/>
 <!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->
 <div v-if="assistBinding&&(assistBinding.round.statusBarText||assistBinding.round.undone)" class="assist-bar" role="status">
 <span v-if="assistBinding.round.statusBarText" class="assist-bar-text">{{assistBinding.round.statusBarText}}</span>
