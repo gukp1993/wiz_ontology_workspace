@@ -73,7 +73,7 @@ async function remove(item: any) {
 
   </div>
   <div class="scroll">
-    <table>
+    <table class="flow-table">
       <thead><tr><th>编排名称</th><th class="col-nodes">处理节点</th><th class="col-time">更新时间</th><th class="col-status">配置状态</th><th class="col-ops">操作</th></tr></thead>
       <tbody>
         <tr v-for="item in filtered" :key="item.id" :class="{deleted:item.status==='deleted'}">

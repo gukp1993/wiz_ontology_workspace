@@ -124,7 +124,7 @@ body{font-size:14px}.tools{flex-wrap:wrap}.tools>span{font-size:12px;color:var(-
 .ow-row-tools button{height:28px;padding:3px 9px;font-size:12px}
 .row-link{border:0;background:none;padding:2px 6px;border-radius:4px;color:var(--blue);font-size:13px}
 .row-link:hover{background:var(--blue-soft)}
-.row-link.danger{color:var(--danger)}
+.row-link.danger{color:var(--danger);margin-top:0}/* .danger 是提示段落样式（含 margin-top:12px），行内删除按钮同名类会把边距带进来导致与「编辑」错位（20260923） */
 .row-link.danger:hover{background:var(--danger-soft)}
 /* 两名并存但**不合档**：.empty 历史值是四周 45px，.empty-state 是 44px 24px；
    合并会让 8 个既有消费点（含 legacyGraph 依赖的 .empty）横向内边距凭空少 21px，属布局改动不属漂移收敛。 */
@@ -293,6 +293,8 @@ button:active:not(:disabled){transform:translateY(1px)}
 .ont-table td{height:64px;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle;overflow-wrap:anywhere}
 /* 单元格内联子元素统一按盒中线对齐（20260923 用户反馈「水平对齐」）：编辑/删除等 .row-link 按钮自带内边距，默认基线对齐会比名称/定义低约 5px */
 .ont-table td>*{vertical-align:middle}
+/* 其余含行内按钮/徽标的数据列表同样按盒中线对齐（20260923 全列表普查）：工作概览 home-table、构建任务/物料 bt-table、动作绑定 ab-list、配置迁移 ct-result、函数编排 flow-table */
+.home-table td>*,.bt-table td>*,.ab-list td>*,.ct-result td>*,.flow-table td>*{vertical-align:middle}
 .ont-table tbody tr:hover td{background:var(--paper-2)}
 .ont-table tbody tr.ont-selected td,.ont-table tbody tr.ow-flash-row td{background:var(--blue-soft)}
 .ont-name{display:block;max-width:100%;border:0;background:transparent;padding:0;text-align:left;color:var(--ink);font-weight:600;font-size:13px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
