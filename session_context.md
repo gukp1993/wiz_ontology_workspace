@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`50809a6fe9688dee`
+上下文版本：`4bb7125bd9ba2253`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### fix_ui · zcode · 已实施，待验收
 
-时间：2026-09-23T14:05:05.650164+00:00；记录：`.collaboration/entries/000278-7b6a2d455188.json`
+时间：2026-09-23T14:10:27.948119+00:00；记录：`.collaboration/entries/000279-3517fdd30a4d.json`
 
-【UI 打磨第 8 轮完成，待验收】按用户截图优化函数编排样式（dc2c452）：编排输入/输出（BoundaryConfig）与处理节点输入/输出（NodeConfig）的参数卡——技术名/显示名由两列并排改逐行全宽；删除按钮原在 .mapping-row 底对齐、因 label 内含帮助文字而悬空下沉，改为卡片右上角 row-link danger 文字按钮，与全仓列表/表单删除样式一致。分支 fix_ui 验收 HEAD=dc2c452（共十三提交）。
+【UI 打磨第 9 轮完成，待验收】按用户指令移除函数编排节点配置面板的「名称与说明」块（2385cc2，-10 行）：节点名称输入、说明文本域及专属 setNodeName/setNodeDesc 一并删除，面板直接从「输入」区块开始；节点保留类型默认名（SQL节点/编排输入等），画布与节点列表照常显示既有名称；flowModel 签名中的 description 字段保留（历史数据零丢失，仅删编辑 UI）。分支 fix_ui 验收 HEAD=2385cc2（共十四提交）。
 
-- 决定：参数卡删除按钮统一为右上角红色文字链接（对齐全仓删除样式），字段逐行全宽对齐既定表单风格
-- 验证：vue-tsc / vite build 过；18981 流程编辑器实测：打开设备SOC计算流程 → 编排输入节点面板截图核对——删除置右上、技术名/显示名/类型纵向全宽；仅查看未保存，未写编排数据
-- 下一步：交 Codex 独立验收（验收 HEAD=dc2c452，端口 18981）；通过后停在待用户授权集成
-- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@dc2c452；frontend/src/flow/BoundaryConfig.vue；frontend/src/flow/NodeConfig.vue
+- 决定：只删编辑 UI 不动数据字段：node.description 仍在 flowModel 指纹签名内，历史数据零丢失
+- 验证：vue-tsc / eslint / vite build 全过，setNodeName/setNodeDesc 无悬挂引用；18981 流程编辑器实测：编排输入节点面板已无「名称与说明」块与「节点名称」输入
+- 下一步：交 Codex 独立验收（验收 HEAD=2385cc2，端口 18981）；通过后停在待用户授权集成
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@2385cc2；frontend/src/flow/NodeConfig.vue
 
 ### fix/model-setting-500-db-migration · zcode · 已验证
 
