@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`6de21f2742befaec`
+上下文版本：`8049c29e16cf497c`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### fix_ui · zcode · 已确认决定
+
+时间：2026-09-23T11:23:22.991129+00:00；记录：`.collaboration/entries/000268-cf3baec75c8c.json`
+
+【环境创建】按用户明确指令从最新已提交 main dd7dbe4 创建 fix_ui 分支与 worktree/fix_ui 独立工作树（仅建环境：未装依赖、未启服务、未开发）。端口 18981（创建与登记前两次实测无监听，不在既有登记 18765/18941/18952/18971 中）。数据按 2026-09-22 规则全量随迁 main：transfer backup WAL 一致快照落位工作树 data/workbench.sqlite3 + keys/wb-root.key 副本（shasum 一致）+ data/ontology-build-blobs 与 data/ontology-build-tmp 随迁，登记 workbench-tasks/fix_ui.json 标注含真实数据不可自动丢弃。
+
+- 决定：分支名用用户指定的 fix_ui（用户明确命名优先于 codex/<短名> 默认）；端口取 18981：空闲且与既有任务无关联；需求文档尚未提供，登记 scope 留待用户开发指令补充，不自行推断实施范围
+- 验证：git worktree add 成功：worktree/fix_ui HEAD=dd7dbe4 与 main 一致、工作树干净；快照体检：integrity_check ok、foreign_key_check 违规 0、30 表与 main 逐表行数零差异；副本根密钥 shasum 与 main 一致（99d4bf52…）；key_id c26b32a0c13462a5 与快照内 4 条 wb_credentials 全部匹配；以 WIZ_WORKBENCH_ROOT=工作树根 走真实读取路径解密探针 4/4 通过；端口 18981 两次 lsof 实测无监听
+- 下一步：等待用户下达 fix_ui 开发指令（首开发轮需在工作树内 npm install + 前端构建后再启服务）；开发、自测、提交后交 Codex 独立验收；不合并 main，不更新 18765
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui；AGENTS.md 独立分支开发与串行集成（2026-09-20/21/22 规则）
 
 ### auto_build/fact-quality-v1 · zcode · 已实施，待验收
 
@@ -141,13 +152,3 @@
 - 下一步：用户拍板 3 个开放决策点后冻结契约（开发计划 T0）；实施需用户按执行指令 §1 下达 worktree 创建指令；接口文档先行（T3）
 - 依据/文档：文档/需求/20260922_模型供应商与模型管理改版/需求说明.md；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md；文档/需求/20260922_模型供应商与模型管理改版/执行指令.md；文档/需求/20260922_模型供应商与模型管理改版/交互原型_v1.html
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### assist-fill-production · zcode · 已实施，待验收
-
-时间：2026-09-22T15:21:05.739883+00:00；记录：`.collaboration/entries/000255-7512133e418a.json`
-
-用户截图反馈：自动填写抽屉在生成中（「正在填写…」态）主按钮渲染成空框。定位为 CSS 特异性反吃——.assist-actions button(0,1,1) 只覆盖 background/border 声明，而裸 .assist-primary(0,1,0) 的 color:#fff 仍生效，按钮变白字白底（disabled 态 opacity:.5 时更明显）。修复：规则抬到 .assist-actions button.assist-primary（hover 同步 .assist-actions button.assist-primary:hover:not(:disabled) 压过 (0,3,1)），并在 DESIGN.md 共享语义类表登记该不变量与失败症状。加 3 项回归锁（tests/assist_panel.test.mjs ⑥a/⑥b/⑥c：必须用抬特异性的写法、hover 同款、不得再出现裸单类声明）。全仓同类反吃扫描（裸变体类 + 同父后代选择器覆盖）结果 0 处。前端 45/47（剩 2 个 main 既有债务）、构建过、18951 已重启。提交 eec8314。
-
-- 验证：修复后源码核对：.assist-actions button.assist-primary + hover 变体，无裸 .assist-primary 声明；tests/assist_panel.test.mjs 25/25（含新增 ⑥a/⑥b/⑥c 三项样式回归锁）；全仓扫描裸变体 + 同父按钮覆盖的潜在反吃：0 处；前端 47 套件 45 过（flow_test_workspace/legacy_graph_bridge 为 main 既有债务）；npm run build 过；18951 重启（PID 81880）
-- 下一步：待独立验收（交付 SHA 更新为 eec8314）；用户可在 18951 刷新页面确认按钮恢复蓝底白字
-- 依据/文档：DESIGN.md（共享语义类表新增 .assist-actions button.assist-primary 行）；frontend/src/assist/AssistPanel.vue:309-313；开发计划 §9

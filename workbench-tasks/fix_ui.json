@@ -1,0 +1,18 @@
+{
+  "task": "fix_ui",
+  "requirement": "待补充（用户仅下达创建指令，需求文档/执行指令尚未提供）",
+  "owner": "zcode",
+  "role": "实施（按后续执行指令开发、自测）；Codex 独立验收",
+  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/fix_ui",
+  "branch": "fix_ui",
+  "baseSha": "dd7dbe4ac07723b8363478471d4a7ac0334c3068",
+  "port": 18981,
+  "dataRoot": "工作树根（data/workbench.sqlite3 + keys/wb-root.key + data/ontology-build-blobs + data/ontology-build-tmp；含真实数据与根密钥副本，不可自动丢弃）",
+  "python": "system Python 3.9（与本需求无新增依赖；依赖变化时改独立环境）",
+  "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18981；启动用工作树内 ./start.sh（首开发轮需先 npm install + 前端构建）",
+  "scope": "待用户下达开发指令后补充",
+  "status": "created（仅建分支/工作树/登记，未装依赖、未启服务、未开发）",
+  "updatedAt": "2026-09-23（创建轮）",
+  "notes": "按 2026-09-22 规则全量随迁 main 数据：transfer backup WAL 一致快照（30 表与 main 逐表行数零差异、integrity ok、外键违规 0）+ keys/wb-root.key 副本（shasum 一致，key_id c26b32a0c13462a5 与库内 4 条凭据匹配，解密探针 4/4 通过）+ ontology-build-blobs/ontology-build-tmp 随迁。端口 18981 创建时与登记前两次实测均无监听，且不在既有登记（18765/18941/18952/18971）中。",
+  "headSha": "dd7dbe4"
+}
