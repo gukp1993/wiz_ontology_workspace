@@ -117,9 +117,8 @@ function onGotoTargetProperties(t:string){
 <aside v-if="!editorOpen" class="card mapping-list"><h3>对象类型 · {{types.length}}</h3><input v-model="search" placeholder="搜索对象类型" aria-label="搜索对象绑定"><button v-for="t in visibleTypes" :key="t['@id']" :class="{active:selected===t['@id'].slice(3)}" @click="pick(t['@id'].slice(3))"><strong>{{t['rdfs:label']}}</strong><small>{{bound(t['@id'].slice(3))?'已启用映射':'尚未启用'}}</small></button><p v-if="!visibleTypes.length">没有匹配的对象类型</p></aside>
 <div class="mapping-detail">
 <section v-if="!active" class="card"><div class="detail-heading"><div><h2>{{name(selected)}}</h2><small class="head-sub">{{desc(selected)||'暂无业务定义'}}</small></div><span class="tag">未启用</span></div>
-<div v-if="selected" class="empty-state"><div class="empty-state-ico">◇</div><p>这个项目需要使用{{name(selected)}}吗？启用后配置实例识别（来源表与主键），属性取值与链接映射再逐步补充。</p><button class="primary" @click="enable(selected)">启用并配置身份来源</button></div></section>
-<!-- 未启用数据映射的对象同样可以做动作绑定：动作绑定只依赖本体引用版本中的对象动作关联 -->
-<section class="card"><ActionBindings v-if="!active&&selected" :project-state="projectState" :ref-state="refState" :object-type="selected" @before-change="before" @changed="changed"/></section>
+<div v-if="selected" class="empty-state"><div class="empty-state-ico">◇</div><p>这个项目需要使用{{name(selected)}}吗？启用后配置实例识别（来源表与主键），属性取值、链接映射与动作绑定再逐步补充。</p><button class="primary" @click="enable(selected)">启用并配置身份来源</button></div></section>
+<!-- 20260923 用户裁定：动作绑定与其他能力一致，仅在对象启用后经「动作绑定」页签配置（此前未启用也可绑定的旧设计废弃） -->
 <section v-for="b in active?[active]:[]" :key="b.object_type" class="card">
 <template v-if="!editorOpen">
 <div class="detail-heading"><div><h2>{{name(b.object_type)}}</h2><small class="head-sub">{{desc(b.object_type)||'暂无业务定义'}}</small></div><div class="tools"><span class="status-pill">项目映射</span><button class="row-link danger" @click="removeObject(b)">删除此绑定</button></div></div>
