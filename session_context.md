@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`188b4f52c6ff6dd5`
+上下文版本：`56e424f8a9dd095e`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### fix_ui · zcode · 已实施，待验收
 
-时间：2026-09-23T13:32:18.971952+00:00；记录：`.collaboration/entries/000275-2ef65eb575d6.json`
+时间：2026-09-23T13:46:39.187420+00:00；记录：`.collaboration/entries/000276-08bf2005c4f6.json`
 
-【UI 打磨第 5 轮完成，待验收】按用户指令移除项目区对象映射四页签的「说明」块（8b79127，4 文件 -35）：①实例识别（ObjectSources）删来源说明摘要块+编辑说明入口+来源说明编辑弹层+openNote/saveNote 及悬空帮助行；②属性取值（PropertySources）删属性编辑器 MappingDescription；③链接映射（LinkMappings）删成员模式与表字段关联两个编辑器的 MappingDescription 及专属 linkNoteChanged；④动作绑定（ActionBindings）删动作编辑弹层 MappingDescription。范围裁定：仅移除可见 UI；noteDraft 状态/脏检查/保存链路/自动填写说明指纹保持原样（涉及冻结的自动填写协议）；说明数据仍随草稿保存；动作绑定列表「项目说明」列不在本次范围。分支 fix_ui 验收 HEAD=8b79127（共八提交）。
+【UI 打磨第 6 轮完成，待验收】两件事（501c551 + 46d4e42）：①按用户「删除，不要折叠，其他几个同理」把对象映射的常驻配置折叠全部改常开平铺——ObjectSources 数据来源/已登记补充来源，PropertySources 取值配置/匹配条件/无匹配记录/多行与缺失处理/缺失与异常处理；summary 改静态小标题保留视觉层级；自动填写状态条「查看修改」属填写协议审查 UI 保留。②修用户报的「空本体对象映射样式完全乱」——未启用对象的动作绑定区此前裸露在页面背景且 ab-list 是无统一样式的原生表格；ProjectBinding 未启用分支套 section.card，表格升级 ont-table 统一样式（操作列改左对齐），弹层认证配置/历史配置折叠同步平铺。分支 fix_ui 验收 HEAD=46d4e42（共十提交）。
 
-- 决定：只删可见 UI 不动 noteDraft 状态机：自动填写面板的 setNote/说明指纹属冻结的填写协议（04 分册），改动会破坏协议；残留的辅助写说明路径成为不可见但一致的行为；动作绑定列表的项目说明列非本轮圈选范围，保留
-- 验证：vue-tsc / eslint / vite build 全过；grep 确认源码与 dist 产物中四条说明文案零残留、无悬挂引用；18981 实测（强刷排除缓存）：实例识别 tab 无来源说明/编辑说明；链接映射编辑器打开无说明块；属性取值/动作绑定页面无说明文案
-- 下一步：交 Codex 独立验收（验收 HEAD=8b79127，端口 18981）；通过后停在待用户授权集成；观察项不变：全仓 .text/.full 类无样式定义为既有债务
-- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@8b79127；frontend/src/project/ObjectSources.vue；frontend/src/project/LinkMappings.vue
+- 决定：折叠平铺仅限常驻配置折叠；自动填写「查看修改」属冻结协议的审查 UI 保留；ObjectSources/PropertySources 编辑器当前项目（空本体）无启用对象不可达，以代码+构建+同构模式验证，动作绑定弹层实测；未启用对象显示动作绑定是有意设计（动作绑定只依赖本体动作关联，注释已说明），本轮只修其容器与表格观感
+- 验证：vue-tsc / vite build 过；四文件各仅剩 1 个 details（均为协议内查看修改折叠）；18981 截图：空本体对象映射页动作绑定区已卡片化、表格与统一列表观感一致；配置接口弹层认证配置平铺（取消关闭未写数据）
+- 下一步：交 Codex 独立验收（验收 HEAD=46d4e42，端口 18981）；通过后停在待用户授权集成；提醒：创智园二期现引用空本体 1.0.0（用户测试时自行改绑），如需还原请在项目概览重新绑定
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@46d4e42；frontend/src/project/ObjectSources.vue；frontend/src/project/PropertySources.vue
 
 ### fix/model-setting-500-db-migration · zcode · 已验证
 
