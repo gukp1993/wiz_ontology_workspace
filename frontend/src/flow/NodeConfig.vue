@@ -237,11 +237,9 @@ async function refillSkeleton() {
         <strong>{{row.summary}}</strong><small :class="{'inline-error': !row.input.source}">{{row.source}}</small>
       </button>
       <div v-if="expandedInputs[row.input.id]" class="param-body">
-        <div class="mapping-row">
-          <label>技术名（实现中引用）*<input :value="row.input.name" :class="fieldFlash('name', row.input.id)" placeholder="如 limit_n" :aria-label="'输入技术名'" @change="renameTechnical(node,'inputs',Number(index),($event.target as HTMLInputElement).value.trim())"/></label>
-          <label>显示名<input :value="row.input.label" :aria-label="'输入显示名'" @input="setInputLabel(row.input,($event.target as HTMLInputElement).value)"/></label>
-          <button class="mini" @click="removeInput(Number(index))">删除</button>
-        </div>
+        <div class="param-toolbar"><button class="row-link danger" @click="removeInput(Number(index))">删除</button></div>
+        <label>技术名（实现中引用）*<input :value="row.input.name" :class="fieldFlash('name', row.input.id)" placeholder="如 limit_n" :aria-label="'输入技术名'" @change="renameTechnical(node,'inputs',Number(index),($event.target as HTMLInputElement).value.trim())"/></label>
+        <label>显示名<input :value="row.input.label" :aria-label="'输入显示名'" @input="setInputLabel(row.input,($event.target as HTMLInputElement).value)"/></label>
         <label>类型<TypeEditor :decl="row.input.type" @before-change="emit('before-change')" @changed="emit('changed')"/></label>
         <label :class="fieldFlash('binding')">来源绑定<BindingEditor :state="state" :owner="{nodeId:node.id,input:row.input}" @before-change="emit('before-change')" @changed="emit('changed')"/></label>
       </div>
@@ -343,11 +341,9 @@ async function refillSkeleton() {
     <h3>输出</h3>
     <p class="muted tight">输出参数名用于下游绑定；改名继续以稳定 ID 维持引用。</p>
     <div v-for="(out,index) in node.outputs" :key="out.id" class="param-card">
-      <div class="mapping-row">
-        <label>技术名 *<input :value="out.name" :class="fieldFlash('name', out.id)" placeholder="如 rows" :aria-label="'输出技术名'" @change="renameTechnical(node,'outputs',Number(index),($event.target as HTMLInputElement).value.trim())"/></label>
-        <label>显示名<input :value="out.label" :aria-label="'输出显示名'" @input="setOutputLabel(out,($event.target as HTMLInputElement).value)"/></label>
-        <button class="mini" @click="removeOutput(Number(index))">删除</button>
-      </div>
+      <div class="param-toolbar"><button class="row-link danger" @click="removeOutput(Number(index))">删除</button></div>
+      <label>技术名 *<input :value="out.name" :class="fieldFlash('name', out.id)" placeholder="如 rows" :aria-label="'输出技术名'" @change="renameTechnical(node,'outputs',Number(index),($event.target as HTMLInputElement).value.trim())"/></label>
+      <label>显示名<input :value="out.label" :aria-label="'输出显示名'" @input="setOutputLabel(out,($event.target as HTMLInputElement).value)"/></label>
       <label>类型<TypeEditor :decl="out.type" @before-change="emit('before-change')" @changed="emit('changed')"/></label>
     </div>
     <button class="sheet-add" @click="addOutput">＋ 添加输出</button>
@@ -391,6 +387,7 @@ async function refillSkeleton() {
 .check-line{display:flex;align-items:center;gap:6px}
 .check-line input{width:auto}
 .inline-check{width:auto}
-.mapping-row{align-items:end}
+/* 参数卡：删除按钮收进右上角工具行，字段逐行全宽（20260923 样式统一） */
+.param-toolbar{display:flex;justify-content:flex-end}
 .field-flash{outline:2px solid var(--focus);outline-offset:2px;background:var(--blue-soft)!important;border-radius:var(--r-sm);transition:background .6s var(--ease)}
 </style>

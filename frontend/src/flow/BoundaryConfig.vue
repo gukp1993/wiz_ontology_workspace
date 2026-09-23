@@ -96,11 +96,9 @@ function compatibleText(out: any): string {
     ?'编排输入节点维护整个流程的入口参数声明；处理节点输入可绑定到这些参数。'
     :'编排输出声明命名返回值，逐项绑定到处理节点输出或其对象字段；不会默认取最后创建的节点。'}}</p>
   <div v-for="(entry,index) in (kind==='input'?state.inputs:state.outputs)" :key="entry.id" class="param-card">
-    <div class="mapping-row">
-      <label>技术名 *<input :value="entry.name" placeholder="如 device_id" :aria-label="'技术名'" @change="setField(entry,'name',($event.target as HTMLInputElement).value.trim())"/></label>
-      <label>显示名<input :value="entry.label" :aria-label="'显示名'" @input="setField(entry,'label',($event.target as HTMLInputElement).value)"/></label>
-      <button class="mini" @click="removeEntry(kind==='input'?'inputs':'outputs',Number(index))">删除</button>
-    </div>
+    <div class="param-toolbar"><button class="row-link danger" @click="removeEntry(kind==='input'?'inputs':'outputs',Number(index))">删除</button></div>
+    <label>技术名 *<input :value="entry.name" placeholder="如 device_id" :aria-label="'技术名'" @change="setField(entry,'name',($event.target as HTMLInputElement).value.trim())"/></label>
+    <label>显示名<input :value="entry.label" :aria-label="'显示名'" @input="setField(entry,'label',($event.target as HTMLInputElement).value)"/></label>
     <label>类型<TypeEditor :decl="entry.type" @before-change="emit('before-change')" @changed="emit('changed')"/></label>
     <template v-if="kind==='output'">
       <label>绑定来源输出
@@ -121,5 +119,6 @@ function compatibleText(out: any): string {
 </div>
 </template>
 <style scoped>
-.mapping-row{align-items:end}
+/* 参数卡：删除按钮收进右上角工具行，字段逐行全宽（20260923 样式统一） */
+.param-toolbar{display:flex;justify-content:flex-end}
 </style>
