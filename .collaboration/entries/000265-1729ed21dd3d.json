@@ -1,0 +1,26 @@
+{
+  "ticket": "021d1f6e01c441619c393bb59886ef42",
+  "task": "fill_by_llm GLM-5.3-Flash 与豆包速度差诊断及指令纠错",
+  "status": "decision",
+  "summary": "核对智谱官方 GLM-5.3-Flash 文档后纠正先前判断：该模型强制思考，thinking.type 只支持 enabled，reasoning_effort 支持 low/high/max 且默认 max。fill_by_llm 当前模型为 open.bigmodel.cn 的 glm-5.3-flash；代码仅按域名把 thinking off 标记为支持并发送 disabled，UI 的‘思考已关闭’不能证明模型实际关闭。客户端非流式等待完整 JSON，豆包聊天体感可能是首字流式呈现且模型/任务不同。已补充对象轻量填写计划和 harness 指令，要求先核实模型能力/实际请求参数，禁止预设 800 tokens 安全，分开测短提示与推理强度。未改业务代码或数据。",
+  "decisions": [
+    "把 GLM-5.3-Flash 的思考能力冲突作为现有配置缺陷/待核项，不能以 UI off 文案作为关闭思考证据。",
+    "短提示性能 A/B 与 reasoning_effort 参数实验分开，避免混淆因果。"
+  ],
+  "verification": [
+    "智谱官方 docs.z.ai/guides/vlm/glm-5.3-flash 与 docs.bigmodel.cn/cn/guide/start/concept-param；只读核对工作树模型 metadata 与 llm_client.py、llm_purpose.py；git diff --check 通过。"
+  ],
+  "next": [
+    "harness 在原工作树实施前应读取更新后的主仓库指令；若已开工需同步此纠错，独立报告 UI 思考状态缺陷和真实模型耗时。"
+  ],
+  "references": [
+    "文档/需求/20260922_整表自动填写交互/对象轻量填写_开发计划_v1.md",
+    "文档/需求/20260922_整表自动填写交互/对象轻量填写_执行指令_v1.md"
+  ],
+  "actor": "codex",
+  "created_at": "2026-09-23T05:57:59.546241+00:00",
+  "sequence": 265,
+  "filename": "000265-1729ed21dd3d.json",
+  "record_hash": "a543e04d703800d628728fb9130f63e72bee4076dbca121076aeb8bc388c399d",
+  "context_advanced": false
+}

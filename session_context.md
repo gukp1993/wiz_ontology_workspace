@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`14e77994c919e6c7`
+上下文版本：`074144a474f8f2d7`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### fill_by_llm GLM-5.3-Flash 与豆包速度差诊断及指令纠错 · codex · 已确认决定
+
+时间：2026-09-23T05:57:59.546241+00:00；记录：`.collaboration/entries/000265-1729ed21dd3d.json`
+
+核对智谱官方 GLM-5.3-Flash 文档后纠正先前判断：该模型强制思考，thinking.type 只支持 enabled，reasoning_effort 支持 low/high/max 且默认 max。fill_by_llm 当前模型为 open.bigmodel.cn 的 glm-5.3-flash；代码仅按域名把 thinking off 标记为支持并发送 disabled，UI 的‘思考已关闭’不能证明模型实际关闭。客户端非流式等待完整 JSON，豆包聊天体感可能是首字流式呈现且模型/任务不同。已补充对象轻量填写计划和 harness 指令，要求先核实模型能力/实际请求参数，禁止预设 800 tokens 安全，分开测短提示与推理强度。未改业务代码或数据。
+
+- 决定：把 GLM-5.3-Flash 的思考能力冲突作为现有配置缺陷/待核项，不能以 UI off 文案作为关闭思考证据。；短提示性能 A/B 与 reasoning_effort 参数实验分开，避免混淆因果。
+- 验证：智谱官方 docs.z.ai/guides/vlm/glm-5.3-flash 与 docs.bigmodel.cn/cn/guide/start/concept-param；只读核对工作树模型 metadata 与 llm_client.py、llm_purpose.py；git diff --check 通过。
+- 下一步：harness 在原工作树实施前应读取更新后的主仓库指令；若已开工需同步此纠错，独立报告 UI 思考状态缺陷和真实模型耗时。
+- 依据/文档：文档/需求/20260922_整表自动填写交互/对象轻量填写_开发计划_v1.md；文档/需求/20260922_整表自动填写交互/对象轻量填写_执行指令_v1.md
 
 ### fill_by_llm 对象轻量填写 harness 开发指令 · codex · 需求已交付
 
@@ -141,14 +152,3 @@
 - 验证：node --import ./tests/ts_hooks.mjs tests/assist_identity_link.test.mjs → 16/16 通过（重写为新交互：binding 工厂/登记模式说明回填且不批量生成实例/来源模式 connection·table·primaryKey 链路/上下文请求/直接回填无勾选/整轮撤销/手改禁撤销/续轮累计与一次撤销/显式保存 commitDesc 落盘/入口 aria 与抽屉）。；node --import ./tests/ts_hooks.mjs tests/assist_action_bindings.test.mjs → 16/16 通过（URL/方法/参数行回填、row.update·remove·append 精确落行、未命中行失败不中断、auth.* 拒绝且草稿 auth 不变、零网络调用、form-save/commit-now 零调用、撤销含 auth 与行 id 保真、显式保存含历史字段零丢失）。；cd frontend && npx vue-tsc --noEmit → 退出码 0（全仓 0 错，含 T7 并行文件）；npx eslint 我的 5 个文件 → 0 违规（顺带清掉 ActionBindings.vue 既有 no-unused-expressions）。；相邻套件回归：assist_object_workspace 14/14、assist_panel 22/22、assist_property_manager 74/74、assist_workflow 12/12，mapping_forms/object_sources/action_model/source_config_retention/ui_protection_independent 通过；python3 tests/run.py --test tests/test_autofill_contracts.py → 423 断言通过。
 - 下一步：停在待 Codex 独立验收：本轮未跑 npm run build（按任务边界只做 vue-tsc），也未起服务做浏览器实链路验收；页头入口/抽屉焦点/aria-expanded 回落/手改 watch 仅由组件级测试与源码断言覆盖。；浏览器验收建议确认：三页入口在窄屏(≤1100px)遮罩态、Esc 关闭焦点回落、done 自动收起后 aria-expanded 回落；ActionBindings 弹窗内状态条与参数表共存布局。；T7（propertySourceBinding/PropertySources）为并行改动，本轮未触碰；未做 git 提交（任务指令禁止），提交由协调者安排。
 - 依据/文档：文档/需求/20260922_整表自动填写交互/需求说明.md §3（P1/P5/P6）、§4.4、§4.5、A13；文档/接口文档/04-编排与LLM接口.md §6.6 前端行为契约；contracts/forms/identity.json、linkMapping.json、actionBinding.json；frontend/src/assist/ontologyBindings.ts（T5 createRoundMirror/undoRound 范式）；tests/assist_identity_link.test.mjs、tests/assist_action_bindings.test.mjs
-
-### assist-fill-production T5 本体接入（O1/O3/O4/O5，分支 codex/assist-fill-production） · zcode · 已实施，待验收
-
-时间：2026-09-22T11:30:32.267073+00:00；记录：`.collaboration/entries/000251-f63ffe52c58a.json`
-
-整表自动填写 T5 交付：ontologyBindings.ts 重写为 autofill/1 对接面（formId/contractInfo 取 formContracts.gen 生成物指纹、codecs 空=identity 直写、applyDraft 合并零丢失、快照钩子=撤销单元起点），新增共享 createRoundMirror 宿主状态条镜像（已填 N 项/另有 M 项待补充/逐字段旧值→新值/手改禁撤销）与宿主 undoRound；workflowBindings.ts 镜像接入 rule/action；ObjectWorkspace 对象/链接编辑器、BusinessRuleLibrary、ActionLibrary 页头次要按钮「✦ 自动填写」（aria-expanded/aria-haspopup+trigger-id 反向接线）+表单上方状态条+手改通知+api 包装 observeFill；默认无 AI 区（A01），回填绝不触发表单保存，旧建议卡/勾选/采纳路径全部移除。binding 按 editor/draft 对象缓存保证引用稳定（镜像挂 binding 上，Vue3.5 computed 无订阅者重求值保不住恒定）。
-
-- 决定：状态条为 binding 镜像而非引擎直读：T3 AssistPanel 只 expose 动作与 collapsed，不暴露 statusBarText/canUndo/roundSummary/undoRound，面板禁改；引擎 snapshot()/applyDraft 调用点=撤销单元边界与落回点，据此镜像；引擎仍是唯一权威，镜像只服务渲染与宿主撤销按钮；测试断言镜像与引擎 statusBarText 口径一致；待补充计数（另有 M 项）由组件 api 包装在 generate 返回后回传 binding.observeFill，按 formId+target+契约指纹过滤（切目标迟到响应/契约不符不计）；beginRound 不清 pendingCount（observeFill 先于引擎处理响应回传，清零会抹掉本响应待补数），empty/撤销时清零；宿主 undoRound 恢复本轮起点后调用 notifyDraftChanged 作废在途生成（撤销也是草稿变更 §4.5）；手改后快照作废，续轮落回不再产生可撤销快照（不覆盖用户改动）；binding 按 editor/draft 对象身份缓存，换编辑目标即换 binding，镜像随之重置
-- 验证：node --import ./tests/ts_hooks.mjs tests/assist_object_workspace.test.mjs → 14/14 通过（对接面/A01/上下文体/直接回填/撤销/手改禁撤销/续轮整轮撤销/切目标作废/契约指纹与 empty 零写入/链接同链路/显式保存不受影响）；node --import ./tests/ts_hooks.mjs tests/assist_workflow.test.mjs → 12/12 通过（rule/action 对接面、DEF-02 新建动作 targetId 空串、回填零保存零 changed、历史 output 不受影响、切目标与关闭）；cd frontend && npx vue-tsc --noEmit → 0 错误；npx eslint 五个改动 src 文件 → 0 违规；回归：assist_panel 22/22、test_autofill_state 69 项 0 失败、object_workspace 7/7、editor_head_consistency 19、list_controls 4/4、ont_list_unified 4/4、dependency_guard 22/22
-- 下一步：浏览器实链路归 T10：SSR 不覆盖模板 ref 通道（二次点击收起/展开、notify 经 ref）、Esc/遮罩/焦点圈闭、aria-expanded 随 done 自动收起回落；已知限制：cancel 后迟到响应被引擎代际丢弃，但已计入的待补充数短暂残留（手动改/新响应/撤销纠正）；面板未暴露 cancel 事件；宿主 undoRound 后引擎待补问题卡保留（引擎无对外复位接口），续答按已恢复草稿校验；字段定位（查看修改聚焦）未接：共享 Field 无锚点，不硬造；aria-controls 指向的抽屉 id 需 T3 给 AssistPanel 加 id prop 后补全（当前 trigger-id 反向接线，与 T6 同思路）；未做 git 提交（任务指令禁止），提交由协调者安排
-- 依据/文档：frontend/src/assist/ontologyBindings.ts；frontend/src/assist/workflowBindings.ts；frontend/src/ontology/ObjectWorkspace.vue；frontend/src/ontology/BusinessRuleLibrary.vue 与 ActionLibrary.vue；tests/assist_object_workspace.test.mjs 与 tests/assist_workflow.test.mjs；文档/接口文档/04-编排与LLM接口.md §6.6
