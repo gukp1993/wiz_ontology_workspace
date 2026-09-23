@@ -206,8 +206,6 @@ function setExec(key: string, value: any) {
   emit('changed')
 }
 function setConnection(value: string) { emit('before-change'); impl.value.connectionId = value; emit('changed') }
-function setNodeName(value: string) { emit('before-change', { actionLabel: '重命名节点「' + (value || props.node.name || '') + '」', target: { kind: 'node', id: props.node.id }, mergeKey: 'node-name:' + props.node.id }); props.node.name = value; emit('changed') }
-function setNodeDesc(value: string) { emit('before-change', { actionLabel: '修改节点说明', target: { kind: 'node', id: props.node.id }, mergeKey: 'node-desc:' + props.node.id }); props.node.description = value; emit('changed') }
 async function refillSkeleton() {
   if (!isPython.value) return
   if (!(await appConfirm({ message: '重建 main 骨架将覆盖当前 Python 代码正文（按当前输入/输出参数生成）。确认覆盖？', danger: true, confirmLabel: '确认覆盖' }))) return
@@ -220,14 +218,6 @@ async function refillSkeleton() {
 <template>
 <div class="node-config">
   <p v-if="notice" class="property-feedback" role="status">{{notice}}</p>
-
-  <details class="cfg-block" data-section="basics">
-    <summary>名称与说明</summary>
-    <div class="cfg-body">
-      <label>节点名称<input :value="node.name" aria-label="节点名称" placeholder="如 读取实时 SOC" @input="setNodeName(($event.target as HTMLInputElement).value)"/></label>
-      <label>说明<textarea :value="node.description || ''" rows="2" aria-label="节点说明" placeholder="这个节点做什么（选填）" @input="setNodeDesc(($event.target as HTMLTextAreaElement).value)"/></label>
-    </div>
-  </details>
 
   <section class="cfg-block" data-section="inputs">
     <h3>输入</h3>
