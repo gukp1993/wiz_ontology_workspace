@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新建对象 · 自动填写局部交互原型</title>
+  <style>
+    :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;color:#23364c;background:#f6f9fd;font-size:14px}
+    *{box-sizing:border-box}body{margin:0}button,textarea,input{font:inherit}button{cursor:pointer;border:1px solid #d2dff0;border-radius:6px;background:#fff;color:#21364e;padding:8px 13px}button:hover{background:#f2f6ff}button:disabled{opacity:.48;cursor:not-allowed}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #78a2ff;outline-offset:2px}
+    .primary{background:#285be7;color:white;border-color:#285be7}.primary:hover{background:#174cd2}.plain{border:0;background:transparent;color:#285be7;padding:4px 6px}.muted{color:#708197;font-size:12px}.demo{position:fixed;top:0;left:0;right:0;height:35px;background:#fff9eb;border-bottom:1px solid #ebddb6;color:#705521;z-index:90;display:flex;align-items:center;gap:14px;padding:0 18px;font-size:12px}.demo span{flex:1}.demo button{padding:2px 9px;font-size:12px;background:transparent;border-color:#dfcfa3;color:#705521}
+    .sidebar{position:fixed;top:35px;bottom:0;left:0;width:210px;background:#fff;border-right:1px solid #d8e3f1;padding:19px 12px}.brand{font-size:17px;font-weight:750;letter-spacing:.02em;margin:0 9px 27px}.brand small{display:block;margin-top:3px;color:#92a1b2;font-size:9px;letter-spacing:.24em}.switch{display:flex;padding:3px;border:1px solid #dce5f0;border-radius:7px;background:#f4f7fb;gap:4px;margin:0 0 24px}.switch span{flex:1;text-align:center;padding:6px}.switch .active{background:#fff;color:#285be7;border-radius:5px;font-weight:700;box-shadow:0 1px 3px #c9d5e5}.nav-label{font-size:11px;color:#8a9bad;margin:15px 9px 6px}.nav-row{display:block;padding:9px 12px;border-radius:6px;color:#425772}.nav-row.active{background:#eef4ff;color:#285be7;font-weight:700}
+    .workspace{margin:35px 0 0 210px;min-height:calc(100vh - 35px);transition:margin-right .18s ease}.panel-open .workspace{margin-right:400px}.topbar{height:55px;background:#fff;border-bottom:1px solid #dae4f1;display:flex;align-items:center;justify-content:space-between;padding:0 24px;color:#64768d;font-size:13px}.topbar strong{color:#263a52}.content{max-width:1100px;margin:0 auto;padding:23px 24px 65px}.back{border:none;padding:0;background:none;color:#285be7}.card{background:#fff;border:1px solid #d8e3f1;border-radius:9px;padding:23px;margin-top:16px}.heading{display:flex;justify-content:space-between;gap:20px;align-items:center;margin:19px 0 20px}.heading h1{font-size:22px;margin:0 0 4px}.assist-trigger{white-space:nowrap}.field{margin:0 0 23px}.field label{display:block;font-weight:600;margin:0 0 8px}.required{color:#d34a4a}.field input,.field textarea{display:block;width:100%;border:1px solid #c8d7eb;border-radius:6px;padding:10px 12px;color:#24364b;background:#fff}.field textarea{height:104px;resize:vertical;line-height:1.6}.field input{height:43px}.field.ai-filled input,.field.ai-filled textarea{background:#f8fbff;border-color:#88acff}.ai-tag{display:inline-block;margin-left:8px;font-size:11px;color:#285be7;background:#ebf2ff;padding:1px 6px;border-radius:4px;font-weight:500}.field-note{color:#708197;font-size:12px;margin-top:7px}.footer{border-top:1px solid #e4ebf5;padding-top:17px;display:flex;gap:9px;align-items:center}.footer .muted{margin-left:5px}
+    .feedback{border:1px solid #c3d6ff;background:#edf4ff;color:#2850a9;border-radius:7px;padding:10px 13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 16px}.feedback.error{border-color:#edc2c2;background:#fff6f5;color:#a63b3b}.feedback.good{border-color:#bee2ca;background:#f1fbf4;color:#267246}.feedback strong{font-size:13px}.feedback .spacer{flex:1}.feedback button{padding:5px 9px}.diff{flex:1 0 100%;border-top:1px solid #cfdbf0;margin-top:4px;padding-top:9px;color:#405b7d;font-size:12px}.diff p{margin:5px 0}.diff del{color:#8694a5}.diff b{color:#285be7;font-weight:500}
+    .drawer{position:fixed;top:35px;bottom:0;right:0;width:400px;background:#fff;border-left:1px solid #d8e3f1;box-shadow:-8px 0 26px #203a5b12;z-index:50;padding:21px;overflow:auto}.drawer[hidden],.backdrop[hidden],.feedback[hidden],.model-note[hidden]{display:none}.drawer-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5ecf5;padding-bottom:14px}.drawer-head h2{font-size:17px;margin:0}.spark{color:#285be7}.close{border:none;background:none;font-size:21px;line-height:1;padding:4px 9px}.context{margin:15px 0 14px;color:#63758c;font-size:13px}.model-row{border:1px solid #dce7f4;border-radius:7px;padding:10px 11px;display:flex;gap:8px;align-items:center;background:#f8faff;margin-bottom:20px}.model-row .dot{width:7px;height:7px;border-radius:50%;background:#3eae72}.model-row strong{font-size:12px}.model-row .grow{flex:1}.model-row .plain{font-size:12px}.model-note{border:1px solid #c9d9f5;background:#f2f6ff;padding:10px;border-radius:6px;font-size:12px;margin:-10px 0 17px;line-height:1.6}.drawer label{font-weight:650;display:block;margin-bottom:9px}.prompt{width:100%;min-height:92px;max-height:220px;resize:vertical;padding:11px 12px;border:1px solid #bfd0ea;border-radius:6px;color:#263b54;line-height:1.6}.prompt-foot{display:flex;justify-content:space-between;margin:5px 0 12px;color:#72839a;font-size:12px}.example{border-radius:16px;padding:4px 10px;font-size:12px}.drawer-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:25px}.drawer-actions .primary{min-width:132px}.drawer-tip{font-size:12px;color:#73849b;margin-top:12px}.loading{margin-top:19px;border:1px solid #cbdcff;background:#f4f8ff;border-radius:7px;padding:11px;color:#355a9a;font-size:13px}.warning{margin-top:18px;border:1px solid #efd6a6;background:#fff9ed;border-radius:7px;padding:12px;color:#765c2f;font-size:13px;line-height:1.6}.backdrop{position:fixed;inset:35px 0 0;background:#172e4a63;z-index:40;display:none}
+    @media(max-width:1100px){.panel-open .workspace{margin-right:0}.panel-open .backdrop{display:block}.drawer{width:min(400px,100vw)}}
+    @media(max-width:720px){.sidebar{display:none}.workspace{margin-left:0}.content{padding:15px}.topbar{padding:0 15px}.card{padding:17px}.demo{font-size:10px;gap:7px;padding:0 8px}.demo button{font-size:10px;padding:2px 5px}.heading h1{font-size:19px}.heading{align-items:flex-start}.footer{flex-wrap:wrap}.footer .muted{flex-basis:100%;margin-left:0}}
+  </style>
+</head>
+<body>
+  <div class="demo"><span>局部交互原型 · 内容由预置规则模拟，不连接 LLM；保存仅在本页内存生效。</span><button id="reset" type="button">重置</button></div>
+  <aside class="sidebar" aria-label="本体导航"><div class="brand">◇ 本体工作台<small>ONTOLOGY WORKSPACE</small></div><div class="switch"><span class="active">本体</span><span>项目</span></div><div class="nav-label">建模</div><div class="nav-row">工作概览</div><div class="nav-row active">对象建模</div><div class="nav-label">资产</div><div class="nav-row">共享属性</div><div class="nav-row">业务规则</div><div class="nav-row">动作定义</div></aside>
+  <main class="workspace" id="workspace">
+    <div class="topbar"><span>储能本体 / 对象建模 / <strong>新建对象类型</strong></span><span id="topState">已保存</span></div>
+    <div class="content"><span class="back">← 返回对象</span>
+      <div class="heading"><div><h1>新建对象类型</h1><div class="muted">填写业务概念的名称和定义</div></div><button id="openAssist" class="assist-trigger" type="button" aria-expanded="false" aria-controls="assistDrawer">✦ 自动填写</button></div>
+      <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+      <section class="card" aria-label="新建对象表单">
+        <div id="nameField" class="field"><label for="objectName">对象名称 <span class="required">*</span><span class="ai-tag" hidden>已自动填写</span></label><input id="objectName" maxlength="120" placeholder="例如：储能系统" autocomplete="off"></div>
+        <div id="definitionField" class="field"><label for="definition">业务定义 <span class="required">*</span><span class="ai-tag" hidden>已自动填写</span></label><textarea id="definition" maxlength="2000" placeholder="说明该对象是什么，以及它的业务边界。"></textarea><div class="field-note">只需名称和业务定义即可保存；属性与链接在对象内补充。</div></div>
+        <div class="footer"><button id="save" class="primary" type="button">保存</button><button id="cancelEdit" type="button">取消修改</button><span class="muted">自动填写的内容可修改，保存前不会生效。</span></div>
+      </section>
+    </div>
+  </main>
+  <div id="backdrop" class="backdrop" hidden></div>
+  <section id="assistDrawer" class="drawer" aria-label="自动填写当前表单" hidden>
+    <div class="drawer-head"><h2><span class="spark">✦</span> 自动填写</h2><button id="closeAssist" class="close" type="button" aria-label="关闭自动填写">×</button></div>
+    <div class="context">当前表单 · 新建对象类型</div>
+    <div class="model-row"><span class="dot"></span><div class="grow"><strong>自动填写模型 · 示例配置</strong><div class="muted">思考已关闭 · 模型在「设置」中统一配置</div></div></div>
+    <label for="prompt">你想创建什么？</label><textarea id="prompt" class="prompt" maxlength="4000" placeholder="例如：储能系统"></textarea>
+    <div class="prompt-foot"><span>一句名称就可以开始，也可以补充业务说明。</span><span id="promptLength">0/4000</span></div>
+    <button id="example" class="example" type="button">试试：储能系统</button>
+    <div class="drawer-actions"><button id="stopWaiting" type="button" hidden>停止等待</button><span id="actionSpacer"></span><button id="generate" class="primary" type="button" disabled>生成并填入表单</button></div>
+    <div class="drawer-tip">将直接填入当前草稿；你可以检查、修改或撤销，仍需手动保存。</div>
+    <div id="loading" class="loading" role="status" hidden>正在生成对象名称和业务定义，已等待 <span id="elapsed">0</span> 秒…</div>
+  </section>
+  <script>
+    (() => {
+      const $ = id => document.getElementById(id);
+      const initial = () => ({draft:{name:'',definition:''},saved:{name:'',definition:''},prompt:'',panelOpen:false,phase:'idle',before:null,changed:[],canUndo:false,showDiff:false,feedback:'',feedbackTone:'',elapsed:0});
+      let state = initial(), timer = null, ticker = null, generation = 0;
+      const clone = value => JSON.parse(JSON.stringify(value));
+      const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+      const dirty = () => JSON.stringify(state.draft) !== JSON.stringify(state.saved);
+      function stopGeneration(){generation++;clearTimeout(timer);clearInterval(ticker);timer=ticker=null;if(state.phase==='loading')state.phase='idle';}
+      function render(){
+        document.body.classList.toggle('panel-open',state.panelOpen);
+        $('assistDrawer').hidden=!state.panelOpen;$('backdrop').hidden=!state.panelOpen;
+        $('openAssist').setAttribute('aria-expanded',String(state.panelOpen));
+        $('topState').textContent=dirty()?'● 有未保存修改':'已保存';
+        if($('objectName').value!==state.draft.name)$('objectName').value=state.draft.name;
+        if($('definition').value!==state.draft.definition)$('definition').value=state.draft.definition;
+        if($('prompt').value!==state.prompt)$('prompt').value=state.prompt;
+        $('promptLength').textContent=state.prompt.length+'/4000';
+        $('generate').disabled=!state.prompt.trim()||state.phase==='loading';
+        $('generate').textContent=state.phase==='loading'?'正在生成…':'生成并填入表单';
+        $('stopWaiting').hidden=state.phase!=='loading';$('actionSpacer').hidden=state.phase==='loading';
+        $('prompt').disabled=state.phase==='loading';$('example').disabled=state.phase==='loading';
+        $('loading').hidden=state.phase!=='loading';$('elapsed').textContent=String(state.elapsed);
+        for(const [key,id] of [['name','nameField'],['definition','definitionField']]){
+          const changed=state.changed.includes(key);$(id).classList.toggle('ai-filled',changed);
+          $(id).querySelector('.ai-tag').hidden=!changed;
+        }
+        const box=$('feedback');box.hidden=!state.feedback;box.className='feedback'+(state.feedbackTone?' '+state.feedbackTone:'');
+        if(state.feedback){
+          const diff=state.showDiff&&state.before?'<div class="diff">'+state.changed.map(key=>{
+            const label=key==='name'?'对象名称':'业务定义';return '<p><strong>'+label+'</strong>：<del>'+escapeHtml(state.before[key]||'空')+'</del> → <b>'+escapeHtml(state.draft[key]||'空')+'</b></p>';
+          }).join('')+'</div>':'';
+          box.innerHTML='<strong>'+escapeHtml(state.feedback)+'</strong><span class="spacer"></span>'+
+            (state.before?'<button type="button" id="viewDiff">'+(state.showDiff?'收起修改':'查看修改')+'</button><button type="button" id="undo" '+(state.canUndo?'':'disabled')+'>撤销本次填写</button>':'')+diff;
+        }else box.innerHTML='';
+      }
+      function openPanel(){state.panelOpen=true;render();$('prompt').focus();}
+      function closePanel(){if(state.phase==='loading'){stopGeneration();state.feedback='已停止等待，本次结果不会填入表单。';state.feedbackTone='';}state.panelOpen=false;render();$('openAssist').focus();}
+      function infer(){
+        const p=state.prompt.trim();let name='',definition='';
+        if(p.includes('储能系统')){name='储能系统';definition='储能系统是对储能设备进行统一管理和运行分析的业务对象，用于描述系统整体的容量、功率和运行状态。具体设备范围由业务场景确定。';}
+        else if(p.includes('储能簇')){name='储能簇';definition='储能簇是由多个电池单元组成、作为整体进行监测和管理的储能业务对象，可用于描述其容量、功率和运行状态。';}
+        else if(p.includes('储能设备')){name='储能设备';definition='储能设备是参与储能系统运行的业务对象，用于描述设备的额定能力、运行状态及相关监测信息。';}
+        else {name=(p.match(/[“"]([^”"]+)[”"]/)||[])[1]||p.replace(/^(请|帮我|创建|新建|填写|一个|对象|的|名称|和|业务定义|为|是|\s)+/g,'').split(/[，,。；;\n]/)[0].slice(0,24)||'新对象';definition=name+'是当前业务中需要独立识别和管理的对象类型，其具体范围与关联关系可在后续建模中补充。';}
+        return {name,definition};
+      }
+      function generate(){
+        if(!state.prompt.trim()||state.phase==='loading')return;
+        stopGeneration();const id=generation;state.phase='loading';state.elapsed=0;render();
+        ticker=setInterval(()=>{if(id!==generation)return;state.elapsed++;$('elapsed').textContent=String(state.elapsed);},1000);
+        timer=setTimeout(()=>{if(id!==generation)return;clearInterval(ticker);timer=ticker=null;state.phase='idle';
+          const proposal=infer(),before=clone(state.draft),next=clone(state.draft),changed=[];
+          for(const key of ['name','definition'])if(!next[key].trim())next[key]=proposal[key];
+          for(const key of ['name','definition'])if(next[key]!==state.draft[key])changed.push(key);
+          state.before=changed.length?before:null;state.draft=next;state.changed=changed;state.canUndo=!!changed.length;state.showDiff=false;
+          state.feedback=changed.length?'已填写'+changed.map(k=>k==='name'?'对象名称':'业务定义').join('、')+'，尚未保存。':'当前字段已有内容，本次未覆盖；可手动修改。';state.feedbackTone='';state.panelOpen=false;render();$('openAssist').focus();
+        },1250);
+      }
+      $('openAssist').addEventListener('click',()=>state.panelOpen?closePanel():openPanel());
+      $('closeAssist').addEventListener('click',closePanel);$('backdrop').addEventListener('click',closePanel);
+      document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.panelOpen)closePanel();});
+      $('prompt').addEventListener('input',e=>{state.prompt=e.target.value;$('promptLength').textContent=state.prompt.length+'/4000';$('generate').disabled=!state.prompt.trim();});
+      $('example').addEventListener('click',()=>{state.prompt='储能系统';render();$('prompt').focus();});
+      $('generate').addEventListener('click',generate);
+      $('stopWaiting').addEventListener('click',()=>{stopGeneration();state.feedback='已停止等待，本次结果不会填入表单。';state.feedbackTone='';render();});
+      for(const [key,id] of [['name','objectName'],['definition','definition']])$(id).addEventListener('input',e=>{
+        state.draft[key]=e.target.value;if(state.before){state.canUndo=false;state.changed=state.changed.filter(k=>k!==key);state.feedback='已保留手动修改；本次自动填写不可一键撤销。';}
+        $('topState').textContent=dirty()?'● 有未保存修改':'已保存';render();
+      });
+      $('feedback').addEventListener('click',e=>{if(e.target.id==='viewDiff'){state.showDiff=!state.showDiff;render();}else if(e.target.id==='undo'&&state.canUndo){state.draft=clone(state.before);state.before=null;state.changed=[];state.canUndo=false;state.showDiff=false;state.feedback='已撤销本次自动填写。';render();}});
+      $('save').addEventListener('click',()=>{if(!state.draft.name.trim()||!state.draft.definition.trim()){state.feedback='请先填写对象名称和业务定义。';state.feedbackTone='error';render();(!state.draft.name.trim()?$('objectName'):$('definition')).focus();return;}state.saved=clone(state.draft);state.before=null;state.changed=[];state.canUndo=false;state.feedback='已保存（仅在本原型内存中）。';state.feedbackTone='good';render();});
+      $('cancelEdit').addEventListener('click',()=>{stopGeneration();state.draft=clone(state.saved);state.before=null;state.changed=[];state.canUndo=false;state.feedback='已恢复到上次保存的内容。';state.feedbackTone='';render();});
+      $('reset').addEventListener('click',()=>{stopGeneration();state=initial();render();});
+      render();
+    })();
+  </script>
+</body>
+</html>

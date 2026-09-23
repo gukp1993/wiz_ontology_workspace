@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`9039678af1be4717`
+上下文版本：`61b86bfad3a2618c`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### 新建对象自动填写局部交互原型_v2 · codex · 需求已交付
+
+时间：2026-09-23T01:31:04.416516+00:00；记录：`.collaboration/entries/000261-b130e839b725.json`
+
+新增局部可点击 HTML 原型，仅覆盖新建对象表单与自动填写侧栏：默认手填、输入储能系统后模拟生成名称和业务定义、草稿回填与未保存提示、查看修改、撤销、手改、保存/取消、等待状态。模型在侧栏只读显示，由设置中的自动填写用途配置统一选择，本原型不扩展设置页或真实模型调用。
+
+- 决定：自动填写功能单独选择模型配置，入口放在设置中；表单页面不放模型选择，不打断填写流程。；业务定义允许由短提示生成可编辑草稿，不反问用户提供完整定义。
+- 验证：node --check 检查原型内联 JavaScript 通过；HTMLParser 检查无重复 ID、无远程资源。；浏览器工具安全策略拒绝打开本地 file:// 原型，因此未完成浏览器交互实测，交付时如实说明。
+- 依据/文档：文档/需求/20260922_整表自动填写交互/交互原型_v2.html
 
 ### fill_by_llm · zcode · 实施中
 
@@ -144,15 +154,3 @@ fill 分支完成：protocol=2 门禁、内存会话（TTL30min/LRU200，绑定 
 - 验证：python3 tests/test_autofill_http.py 全部通过（13 组，端口 18931/18932 自管自停）；python3 tests/run.py all 62/62 通过（含 test_assist_api/context/schema、test_autofill_contracts/patch/http）；~/Library/Python/3.9/bin/ruff check 交付 6 文件全部通过
 - 下一步：待 Codex 独立验收（不合并 main）；真实提供方联调另记
 - 依据/文档：文档/接口文档/04-编排与LLM接口.md §6；文档/需求/20260922_整表自动填写交互/需求说明.md；workbench/assist_service.py；workbench/assist_schema.py；tests/test_autofill_http.py
-
-### 整表自动填写 T3（前端状态机与抽屉） · zcode · 已实施，待验收
-
-时间：2026-09-22T10:26:47.900550+00:00；记录：`.collaboration/entries/000248-9391473b5096.json`
-
-新增 formAutofill.ts 通用填写引擎/宿主状态机：八态流转、请求代际计数（手改/切目标/关闭/重开作废在途）、autofill/1 会话 sessionId/roundId 透传、续轮握手（草稿漂移即先重取 context 再 generate）、整轮撤销单元（快照恢复/手改禁撤销）、applyOperations 契约点路径写入+codec 回调（identity 兜底）+applyDraft 整稿通道、绝不触达宿主保存通道。重写 useAssistPanel.ts 为新交互门面并保留 AssistApi/AssistHostBinding 导出名；AssistPanel.vue 重写为 420px 右侧抽屉（窄屏遮罩/Esc/焦点管理/补问卡/empty 文案/更多帮助只读）；types.ts 扩展 autofill/1 类型。旧勾选/建议卡交互移除。tests/test_autofill_state.mjs 新增 68 项、tests/assist_panel.test.mjs 重写 22 项，均绿；vue-tsc 0 错误。
-
-- 决定：撤销快照走 host.snapshot()/restore() 对称通道（draft() 可能是白名单投影，直接恢复会丢未投影字段）；写回优先 binding.applyDraft，无则退回旧 apply(顶层变更值) 过渡；续轮握手实现为生成前草稿漂移检测：漂移即先 assist-context 再 assist-generate，与 04 §6.2 等价；失败的生成不清上一轮撤销单元；statusBarText（已填 N 项/另有 M 项待补充，M=questions+unresolved）交宿主渲染状态条；面板内仅抽屉提示行；面板 done 自动收起不 emit close，仅用户主动关闭才 emit；G2/G3 建议保持面板挂载经 ref.toggle()/collapsed 接线；check/explain 收进 runHelp 次要入口，沿用旧响应结构只读渲染，无任何写入
-- 验证：node --import ./tests/ts_hooks.mjs --test tests/test_autofill_state.mjs → 68/68 通过 exit=0；node --import ./tests/ts_hooks.mjs tests/assist_panel.test.mjs → 22/22 通过 exit=0；cd frontend && npx vue-tsc --noEmit → 0 错误（含未改动的宿主组件与 6 个 binding 适配器）；npx eslint src/assist 四个文件 → 0 错误；未跑 npm run build、未起服务（任务边界）
-- 下一步：旧套件待 T5–T8 重写（可加载，失败均为旧勾选断言）：assist_object_workspace(2/9)、assist_property_manager(旧checked API崩)、assist_property_sources(5/12)、assist_identity_link(8/16)、assist_action_bindings(崩)、assist_workflow(2/11)；object_sources/mapping_forms/source_config_retention/ui_protection_independent 实测仍绿；T1 落地后各适配器注入 codecs/applyDraft/contractInfo；真实 codec 归 G2/G3；交付未提交（任务规定不执行 git），待协调者审阅提交
-- 依据/文档：frontend/src/assist/formAutofill.ts（引擎）；frontend/src/assist/useAssistPanel.ts（门面）；frontend/src/assist/AssistPanel.vue（抽屉）；tests/test_autofill_state.mjs / tests/assist_panel.test.mjs；文档/接口文档/04-编排与LLM接口.md §6；文档/需求/20260922_整表自动填写交互/
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
