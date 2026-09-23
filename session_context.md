@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`f028e936d2d36e44`
+上下文版本：`50809a6fe9688dee`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### fix_ui · zcode · 已实施，待验收
 
-时间：2026-09-23T13:56:30.255612+00:00；记录：`.collaboration/entries/000277-3801b08dcaba.json`
+时间：2026-09-23T14:05:05.650164+00:00；记录：`.collaboration/entries/000278-7b6a2d455188.json`
 
-【UI 打磨第 7 轮完成，待验收】①按用户上一条质疑落实设计统一（b712844）：动作绑定与其他能力一致——未启用对象不再展示独立动作绑定卡片（旧设计=未启用也可绑定，理由是动作绑定只依赖本体动作关联不依赖实例来源；用户裁定废弃），动作绑定回归启用后第四页签，未启用空态文案补「动作绑定」并列说明。②用户截图「样式优化」（a0d057b）：修改实例识别表单的数据连接与来源表视图由两列并排拆为逐行全宽，与规则/动作表单既定风格一致。用户截图 1 圈出的顶部空白条在最新构建已不复现（旧独立动作绑定卡片残留状态，本次改造后彻底移除）。分支 fix_ui 验收 HEAD=a0d057b（共十二提交）。
+【UI 打磨第 8 轮完成，待验收】按用户截图优化函数编排样式（dc2c452）：编排输入/输出（BoundaryConfig）与处理节点输入/输出（NodeConfig）的参数卡——技术名/显示名由两列并排改逐行全宽；删除按钮原在 .mapping-row 底对齐、因 label 内含帮助文字而悬空下沉，改为卡片右上角 row-link danger 文字按钮，与全仓列表/表单删除样式一致。分支 fix_ui 验收 HEAD=dc2c452（共十三提交）。
 
-- 决定：动作绑定时机与属性/链接一致化：启用后才可配置（用户裁定优先于旧代码注释中的设计意图）；需求文档无明文依据，出处仅代码注释
-- 验证：vue-tsc / vite build 过；18981 实测：未启用对象仅空态卡（无动作绑定卡片）、启用对象四页签含动作绑定；修改实例识别表单截图四字段纵向全宽排列；编辑表单仅打开未保存（取消退出），未写项目数据
-- 下一步：交 Codex 独立验收（验收 HEAD=a0d057b，端口 18981）；通过后停在待用户授权集成
-- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@a0d057b；frontend/src/project/ProjectBinding.vue；frontend/src/project/ObjectSources.vue
+- 决定：参数卡删除按钮统一为右上角红色文字链接（对齐全仓删除样式），字段逐行全宽对齐既定表单风格
+- 验证：vue-tsc / vite build 过；18981 流程编辑器实测：打开设备SOC计算流程 → 编排输入节点面板截图核对——删除置右上、技术名/显示名/类型纵向全宽；仅查看未保存，未写编排数据
+- 下一步：交 Codex 独立验收（验收 HEAD=dc2c452，端口 18981）；通过后停在待用户授权集成
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@dc2c452；frontend/src/flow/BoundaryConfig.vue；frontend/src/flow/NodeConfig.vue
 
 ### fix/model-setting-500-db-migration · zcode · 已验证
 
