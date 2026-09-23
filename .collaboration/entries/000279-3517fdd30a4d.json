@@ -1,0 +1,27 @@
+{
+  "ticket": "4fdf082cb36b495d8cd283faf87f969e",
+  "task": "fix_ui",
+  "status": "implemented",
+  "summary": "【UI 打磨第 9 轮完成，待验收】按用户指令移除函数编排节点配置面板的「名称与说明」块（2385cc2，-10 行）：节点名称输入、说明文本域及专属 setNodeName/setNodeDesc 一并删除，面板直接从「输入」区块开始；节点保留类型默认名（SQL节点/编排输入等），画布与节点列表照常显示既有名称；flowModel 签名中的 description 字段保留（历史数据零丢失，仅删编辑 UI）。分支 fix_ui 验收 HEAD=2385cc2（共十四提交）。",
+  "decisions": [
+    "只删编辑 UI 不动数据字段：node.description 仍在 flowModel 指纹签名内，历史数据零丢失"
+  ],
+  "verification": [
+    "vue-tsc / eslint / vite build 全过，setNodeName/setNodeDesc 无悬挂引用",
+    "18981 流程编辑器实测：编排输入节点面板已无「名称与说明」块与「节点名称」输入"
+  ],
+  "next": [
+    "交 Codex 独立验收（验收 HEAD=2385cc2，端口 18981）；通过后停在待用户授权集成"
+  ],
+  "references": [
+    "workbench-tasks/fix_ui.json",
+    "worktree/fix_ui 分支 fix_ui@2385cc2",
+    "frontend/src/flow/NodeConfig.vue"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-23T14:10:27.948119+00:00",
+  "sequence": 279,
+  "filename": "000279-3517fdd30a4d.json",
+  "record_hash": "cbff47151fd601a8f2b2df7a02fc7d33aa4cb7cc27f47168d9ae4cab69a29881",
+  "context_advanced": false
+}

@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`6de21f2742befaec`
+上下文版本：`4bb7125bd9ba2253`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,28 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### fix_ui · zcode · 已实施，待验收
+
+时间：2026-09-23T14:10:27.948119+00:00；记录：`.collaboration/entries/000279-3517fdd30a4d.json`
+
+【UI 打磨第 9 轮完成，待验收】按用户指令移除函数编排节点配置面板的「名称与说明」块（2385cc2，-10 行）：节点名称输入、说明文本域及专属 setNodeName/setNodeDesc 一并删除，面板直接从「输入」区块开始；节点保留类型默认名（SQL节点/编排输入等），画布与节点列表照常显示既有名称；flowModel 签名中的 description 字段保留（历史数据零丢失，仅删编辑 UI）。分支 fix_ui 验收 HEAD=2385cc2（共十四提交）。
+
+- 决定：只删编辑 UI 不动数据字段：node.description 仍在 flowModel 指纹签名内，历史数据零丢失
+- 验证：vue-tsc / eslint / vite build 全过，setNodeName/setNodeDesc 无悬挂引用；18981 流程编辑器实测：编排输入节点面板已无「名称与说明」块与「节点名称」输入
+- 下一步：交 Codex 独立验收（验收 HEAD=2385cc2，端口 18981）；通过后停在待用户授权集成
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@2385cc2；frontend/src/flow/NodeConfig.vue
+
+### fix/model-setting-500-db-migration · zcode · 已验证
+
+时间：2026-09-23T11:37:18.985092+00:00；记录：`.collaboration/entries/000269-0a6735d9f0cf.json`
+
+【线上500修复已验证】主工作台18765模型设置页500（requestId=a7a84bccb1cf，sqlite3.OperationalError: no such column: thinking）根因为主库schema落后代码：data/workbench.sqlite3 alembic_version停在20260920_0003，缺0004/0005两迁移。按正规CLI路径 python3 -m workbench.storage.transfer init 显式升级（engine.initialize→migrations.upgrade→alembic heads，幂等，服务不重启），0003→20260922_0005成功。升级前备份：data/workbench-before-migration-0004-0005-20260923-193553.sqlite3（11382784B，WAL一致快照）。
+
+- 决定：迁移走 transfer init 官方入口，未手写ALTER TABLE/裸SQL；服务进程未重启（SQLite动态schema，改列后现有进程即可读）
+- 验证：PRAGMA integrity_check=ok；PRAGMA table_info(wb_model_configs) 含 thinking 列=True；HTTP实测：POST /api/auth-login(admin) 200 → GET /api/llm-providers 200，items 为数组含2项，字段含 thinking；备份文件与前后 alembic_version（20260920_0003→20260922_0005）均有命令输出记录
+- 下一步：主服务未更新代码版本（本轮只修库），若后续还有代码落后问题另行处理；本轮按任务约束未做git操作，交接记录未提交，后续提交时可包含
+- 依据/文档：workbench/storage/transfer.py cmd_init；workbench/storage/migrations.py upgrade；workbench/migrations/versions/20260921_0004_build_task_filter.py；workbench/migrations/versions/20260922_0005_llm_thinking.py；.runtime/server.log#L168附近
 
 ### auto_build/fact-quality-v1 · zcode · 已实施，待验收
 
@@ -129,25 +151,3 @@
 - 验证：git worktree list 确认新树与 auto_build 并存、分支从 5bfb605 派生；transfer backup 输出 11382784B 与 main 库一致；sqlite immutable 只读体检 integrity=ok；key_id 匹配验证：副本根密钥 SHA256 前 16hex == wb_credentials.key_id（c26b32a0c13462a5），副本内加密凭据可解密
 - 下一步：待用户开发指令（执行指令.md §1 模板二）；T0 三决策点（目录范围//v1/models/anthropic-messages）未拍板前不冻结契约
 - 依据/文档：workbench-tasks/model_setting.json；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md（§7 环境登记）
-
-### 模型供应商与模型管理改版-需求四件套交付 · zcode · 已确认决定
-
-时间：2026-09-22T15:53:41.606973+00:00；记录：`.collaboration/entries/000256-0332c7e4714b.json`
-
-按用户指令参照 ZCode 开源配置模型（本机 ~/.zcode/v2/provider_config.json 与 kingsword09/zcode-cli 文档、应用内置目录 zcode-builtin.json 已核实）交付模型配置改版四件套：三层配置模型（内置目录→供应商模板继承→模型规则目录覆盖/手动）、默认模型三元组 {providerId,modelId,reasoningLevel}、wb_llm_providers/wb_llm_models 两表+Alembic 迁移（providerId 稳定使密钥零重加密）、9 个 API 端点契约、T1-T10 并行任务表。未实施业务代码。
-
-- 决定：模型配置从扁平单表改为 ZCode 式三层结构：仓库内置目录 JSON + 供应商(模板继承/覆盖) + 模型规则(catalog 增量覆盖 | manual 全量)；默认项升级为 {providerId,modelId,reasoningLevel}，替代 models.default_provider_id；isDefault→defaultSelection 属破坏性接口变更需登记；api_type 支持 openai-chat-completions(P0) 与 anthropic-messages(P1)；不抄 OAuth 账号体系/openai-responses/map 表达式引擎，参数注入用按协议的固定映射枚举；迁移保持 provider_id 原值不变，密钥 AAD 不变零重加密；旧编排节点仅 providerId 的绑定回退该供应商默认模型；开放决策点待用户拍板：内置目录首版收录范围、/v1/models 拉取按钮、anthropic-messages 是否首版做
-- 验证：现状调研：Explore 子代理只读核实 llm_providers/flow_routes/llm_client/schema/前端设置页/接口文档04 全链路；ZCode 侧核实：本机 provider_config.json 实际结构、zcode-builtin.json(rev30) 模板与模型规则计数、开源仓库 provider.example.json 与 PROVIDER_CONFIG 文档；原型 HTML 标签配对与 JS 语法检查通过；文档不含任何真实密钥（provider_config.json 中的 Key 未复制）
-- 下一步：用户拍板 3 个开放决策点后冻结契约（开发计划 T0）；实施需用户按执行指令 §1 下达 worktree 创建指令；接口文档先行（T3）
-- 依据/文档：文档/需求/20260922_模型供应商与模型管理改版/需求说明.md；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md；文档/需求/20260922_模型供应商与模型管理改版/执行指令.md；文档/需求/20260922_模型供应商与模型管理改版/交互原型_v1.html
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### assist-fill-production · zcode · 已实施，待验收
-
-时间：2026-09-22T15:21:05.739883+00:00；记录：`.collaboration/entries/000255-7512133e418a.json`
-
-用户截图反馈：自动填写抽屉在生成中（「正在填写…」态）主按钮渲染成空框。定位为 CSS 特异性反吃——.assist-actions button(0,1,1) 只覆盖 background/border 声明，而裸 .assist-primary(0,1,0) 的 color:#fff 仍生效，按钮变白字白底（disabled 态 opacity:.5 时更明显）。修复：规则抬到 .assist-actions button.assist-primary（hover 同步 .assist-actions button.assist-primary:hover:not(:disabled) 压过 (0,3,1)），并在 DESIGN.md 共享语义类表登记该不变量与失败症状。加 3 项回归锁（tests/assist_panel.test.mjs ⑥a/⑥b/⑥c：必须用抬特异性的写法、hover 同款、不得再出现裸单类声明）。全仓同类反吃扫描（裸变体类 + 同父后代选择器覆盖）结果 0 处。前端 45/47（剩 2 个 main 既有债务）、构建过、18951 已重启。提交 eec8314。
-
-- 验证：修复后源码核对：.assist-actions button.assist-primary + hover 变体，无裸 .assist-primary 声明；tests/assist_panel.test.mjs 25/25（含新增 ⑥a/⑥b/⑥c 三项样式回归锁）；全仓扫描裸变体 + 同父按钮覆盖的潜在反吃：0 处；前端 47 套件 45 过（flow_test_workspace/legacy_graph_bridge 为 main 既有债务）；npm run build 过；18951 重启（PID 81880）
-- 下一步：待独立验收（交付 SHA 更新为 eec8314）；用户可在 18951 刷新页面确认按钮恢复蓝底白字
-- 依据/文档：DESIGN.md（共享语义类表新增 .assist-actions button.assist-primary 行）；frontend/src/assist/AssistPanel.vue:309-313；开发计划 §9

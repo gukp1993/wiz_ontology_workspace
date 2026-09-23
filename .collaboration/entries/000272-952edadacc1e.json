@@ -1,0 +1,32 @@
+{
+  "ticket": "8018ddd2a4554c0abdb796ea977b4c8a",
+  "task": "fix_ui",
+  "status": "implemented",
+  "summary": "【UI 打磨第 2 轮完成，待验收】按用户三条截图/消息反馈在 fix_ui 工作树完成：①共享属性库页头「更多操作」移到最右（026e3f9）：.ont-actions 内顺序由 返回→更多操作→新建 改为 返回→＋新建共享属性→更多操作；页面级更多操作仅此一处。②业务规则编辑表单逐行排列（b47806d，用户消息「新增动作定义同理」扩及动作定义）：两组件 scoped 覆写 .form-grid{grid-template-columns:1fr}，规则名称/业务定义/规则内容与 动作名称/业务定义/预期效果 各占一行全宽。分支 fix_ui 现为 d02af6c→2be283d→f8345fa→026e3f9→b47806d，验收 HEAD=b47806d。",
+  "decisions": [
+    "动作定义编辑器与业务规则同形（名称+定义+选填第三字段），按用户「同理」指示一并收单列，保持一致",
+    "只动组件内 scoped 覆写，不改全局 .form-grid（项目区等其他两列表单不受影响）；ConnectionManager 行内 RowMenu 不属页面级更多操作，不动"
+  ],
+  "verification": [
+    "vue-tsc / vite build 通过",
+    "18981 实测：共享属性库页头控件顺序=新建|更多操作；新建规则表单截图三字段纵向堆叠全宽；新建动作表单截图同理",
+    "编辑器只打开未输入未保存（T00 契约：新建不先插空记录），未产生草稿写入；本轮纯前端样式，既有回归结论不受影响"
+  ],
+  "next": [
+    "交 Codex 独立验收（验收 HEAD=b47806d，端口 18981）；通过后停在待用户授权集成",
+    "观察项不变：全仓 .text/.full 类无样式定义为既有债务，是否统一处理待用户决定"
+  ],
+  "references": [
+    "workbench-tasks/fix_ui.json",
+    "worktree/fix_ui 分支 fix_ui@b47806d",
+    "frontend/src/ontology/SharedLibrary.vue",
+    "frontend/src/ontology/BusinessRuleLibrary.vue",
+    "frontend/src/ontology/ActionLibrary.vue"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-23T12:50:52.184960+00:00",
+  "sequence": 272,
+  "filename": "000272-952edadacc1e.json",
+  "record_hash": "41b0dc96fcb60ce57a985d995852d1da71649502816ccaebfde7859c3c6ad7a3",
+  "context_advanced": false
+}

@@ -1,0 +1,30 @@
+{
+  "ticket": "2f46c405132740579c99d45173b33040",
+  "task": "fix_ui",
+  "status": "implemented",
+  "summary": "【UI 打磨第 5 轮完成，待验收】按用户指令移除项目区对象映射四页签的「说明」块（8b79127，4 文件 -35）：①实例识别（ObjectSources）删来源说明摘要块+编辑说明入口+来源说明编辑弹层+openNote/saveNote 及悬空帮助行；②属性取值（PropertySources）删属性编辑器 MappingDescription；③链接映射（LinkMappings）删成员模式与表字段关联两个编辑器的 MappingDescription 及专属 linkNoteChanged；④动作绑定（ActionBindings）删动作编辑弹层 MappingDescription。范围裁定：仅移除可见 UI；noteDraft 状态/脏检查/保存链路/自动填写说明指纹保持原样（涉及冻结的自动填写协议）；说明数据仍随草稿保存；动作绑定列表「项目说明」列不在本次范围。分支 fix_ui 验收 HEAD=8b79127（共八提交）。",
+  "decisions": [
+    "只删可见 UI 不动 noteDraft 状态机：自动填写面板的 setNote/说明指纹属冻结的填写协议（04 分册），改动会破坏协议；残留的辅助写说明路径成为不可见但一致的行为",
+    "动作绑定列表的项目说明列非本轮圈选范围，保留"
+  ],
+  "verification": [
+    "vue-tsc / eslint / vite build 全过；grep 确认源码与 dist 产物中四条说明文案零残留、无悬挂引用",
+    "18981 实测（强刷排除缓存）：实例识别 tab 无来源说明/编辑说明；链接映射编辑器打开无说明块；属性取值/动作绑定页面无说明文案"
+  ],
+  "next": [
+    "交 Codex 独立验收（验收 HEAD=8b79127，端口 18981）；通过后停在待用户授权集成",
+    "观察项不变：全仓 .text/.full 类无样式定义为既有债务"
+  ],
+  "references": [
+    "workbench-tasks/fix_ui.json",
+    "worktree/fix_ui 分支 fix_ui@8b79127",
+    "frontend/src/project/ObjectSources.vue",
+    "frontend/src/project/LinkMappings.vue"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-23T13:32:18.971952+00:00",
+  "sequence": 275,
+  "filename": "000275-2ef65eb575d6.json",
+  "record_hash": "e8bf15532e37cedd2fe52c532d66d6607478036518c0d3073227873d2f45a5e3",
+  "context_advanced": false
+}

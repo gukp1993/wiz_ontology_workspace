@@ -1,0 +1,31 @@
+{
+  "ticket": "25cf9605c9c14e4fbbe42dd64d22072c",
+  "task": "fix_ui",
+  "status": "implemented",
+  "summary": "【样式打磨轮完成，待验收】按用户两条截图反馈在 fix_ui 工作树完成：①空态欢迎卡「开始动作区」交互层级统一（分支 f8345fa）：.text 类全仓无样式定义，「下载 Excel 模板」渲染成带框挤压小盒且与相邻按钮不齐；重排为 主按钮（创建第一个对象）→ 次级按钮（从物料生成/从 Excel 导入）→ 竖分隔线 → 静音文字链接（下载模板，本地去边框/静音色/8px 内边距对高，≤850px 隐藏分隔线）。②Excel 模板表头补回表格线（分支 2be283d）：表头底色盖住默认网格线而样式只有浅灰下边线（20260920 需求 §5.2 原约定），按用户指示改为表头四边 thin 边框（沿用 #CBD2D9），数据行不动；只改在用的 ontology-import-rule-action-v1.xlsx，无引用的旧 ontology-import-v1.xlsx 未动。分支 fix_ui 现为 d02af6c→2be283d→f8345fa。",
+  "decisions": [
+    "模板下载定位为导入的附属动作（静音链接），不与主/次级按钮同级；分隔线 ≤850px 隐藏防换行悬挂",
+    "模板只改在用的 rule-action-v1；旧 v1 模板无任何引用不扩大范围；解析器按表头名识别（需求 §6）不受样式影响"
+  ],
+  "verification": [
+    "openpyxl 回读：4 sheet 全部 13 个表头单元格四边 thin、freeze A2 与列宽保留；18981 HTTP 下载该模板复验一致",
+    "vue-tsc / vite build 通过；18981 空本体欢迎卡截图核对：按钮行三级视觉层级清晰、高度对齐",
+    "本轮为样式与二进制资产改动，未触后端逻辑；既有回归结论（84/85，唯一失败=18941 环境冲突）不受影响"
+  ],
+  "next": [
+    "交 Codex 独立验收（含此前 d02af6c 更多工具入口移除，验收 HEAD=f8345fa，端口 18981）；通过后停在待用户授权集成",
+    "观察项：全仓 .text 类按钮均无全局样式（如工作概览面板头「查看全部对象 →」），当前呈带框按钮态——是否统一为静音链接样式属独立小需求，待用户决定"
+  ],
+  "references": [
+    "workbench-tasks/fix_ui.json",
+    "worktree/fix_ui 分支 fix_ui@f8345fa",
+    "frontend/public/templates/ontology-import-rule-action-v1.xlsx",
+    "文档/需求/20260920_规则动作字段精简与Excel模板同步/需求说明.md §5.2/§6"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-23T12:37:38.351758+00:00",
+  "sequence": 271,
+  "filename": "000271-cfcc6c518299.json",
+  "record_hash": "cde0dbdc3cdf15d4455a00dd501fb97c50ee719ccb78324f79e1d5193a3b78d4",
+  "context_advanced": false
+}
