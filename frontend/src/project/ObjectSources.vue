@@ -343,6 +343,8 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <template v-if="identityDraft.mode==='database'">
 <div class="row">
 <label>数据连接 *<AppSelect :model-value="identityDraft.connection" aria-label="实例来源数据连接" searchable :options="[{value:'',label:'请选择连接'},...mysqlOptions]" @update:model-value="identityConnChanged"/><small class="field-help">从当前项目已配置的 MySQL 连接中选择；换连接后需重新选择表与主键（已登记补充来源的匹配配置保留，不自动改写）。</small></label>
+</div>
+<div class="row">
 <label>来源表／视图 *<AppSelect :key="identityDraft.connection" :model-value="identityDraft.table" aria-label="来源表或视图" searchable :disabled="!identityDraft.connection" :options="[{value:'',label:'请选择表／视图'},...tableOptions(projectState,identityDraft.connection)]" @update:model-value="identityTableChanged"/><small v-if="!identityDraft.connection" class="field-help">先选择数据连接。</small></label>
 </div>
 <div class="row">
