@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`f17db2bc9a26f87c`
+上下文版本：`6de21f2742befaec`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### auto_build/fact-quality-v1 · zcode · 已实施，待验收
+
+时间：2026-09-23T07:51:52.375534+00:00；记录：`.collaboration/entries/000267-240b766e7036.json`
+
+【实施完成待验收】按用户指令在 auto_build 工作树多子代理并行实施 Fact 查看与质量评测（fact-quality-v1）：T0 契约冻结（08 分册 §15 全新契约+05 速查 33→48+README 变更记录）→ W1 并行 T1 存储/迁移 0006+T2 诊断引擎 diag-v1+T3 计分引擎 eval-v1+T4 原文回看+T7 前端协议层 → W2 T5 分页基线+T8 浏览视图+T9 评测视图 → T6 十五端点接线（冒烟 47/47）→ W4 T10 物料页集成+T11 黑盒 A1–A10（85 断言）→ T12 收口：全量回归 90/91（唯一失败 test_autofill_integration=18941 端口被 fill_by_llm 服务占用，环境冲突）、typecheck/build/lint 过、隔离浏览器实测 8123B 样本 110 Fact 全场景通过（诊断 ARRAY_SUMMARY_ONLY 4 成员、4 金样 recall 0/4、摘要计 FP、无阈值不显示达标）。实测发现并修复 2 缺陷：范围 path 边界不含数组下标成员（后端+前端+测试）、报告卡信封错读。分支 auto_build 4e5b281→949b03f；工作树库显式迁移 0003→0006；为种子类测试复制主仓库 ontology/ 只读播种树（真实数据，登记已注明）。未合并 main、未更新 18765、工作树保留。
+
+- 验证：python3 tests/run.py all → 90/91（唯一失败为 18941 端口环境冲突）；新增测试：fact_storage 110 / fact_diagnostics 101 / fact_evaluation 60 / fact_preview 16 / fact_query 91 / fact_http 85（A1–A10）断言全过；cd frontend && npm run typecheck / build / lint 通过；git diff --check 干净；浏览器实测（18952 隔离会话）：统计条/分页/详情/原文回看命中/诊断/封闭范围二次确认/4 金样/审核/报告 TP0 FN4 FP1 recall 0(0/4) 逐项通过
+- 下一步：交 Codex 独立验收（验收 SHA 949b03f）；验收通过后停在待用户授权集成；工作树含真实数据副本不可自动丢弃
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/Fact查看与质量评测_开发计划及执行指令_20260923.md §8；workbench-tasks/auto_build.json；文档/接口文档/08-从物料自动构建本体接口.md §15
 
 ### 自动填写 v3：输入区模型选择与思考强度 · codex · 需求已交付
 
@@ -141,14 +151,3 @@
 - 验证：修复后源码核对：.assist-actions button.assist-primary + hover 变体，无裸 .assist-primary 声明；tests/assist_panel.test.mjs 25/25（含新增 ⑥a/⑥b/⑥c 三项样式回归锁）；全仓扫描裸变体 + 同父按钮覆盖的潜在反吃：0 处；前端 47 套件 45 过（flow_test_workspace/legacy_graph_bridge 为 main 既有债务）；npm run build 过；18951 重启（PID 81880）
 - 下一步：待独立验收（交付 SHA 更新为 eec8314）；用户可在 18951 刷新页面确认按钮恢复蓝底白字
 - 依据/文档：DESIGN.md（共享语义类表新增 .assist-actions button.assist-primary 行）；frontend/src/assist/AssistPanel.vue:309-313；开发计划 §9
-
-### 整表自动填写 T9 集成与对抗测试（tests/test_autofill_integration.py） · zcode · 已实施，待验收
-
-时间：2026-09-22T12:53:54.209685+00:00；记录：`.collaboration/entries/000253-68f101d5d5e7.json`
-
-交付 tests/test_autofill_integration.py（隔离临时根+自管端口 18941/18942 子进程服务与模型桩，python3 直跑 12 组断言块/130 处 check，实测 5.4s，退出码 0，测后自起进程全部停止）+ tests/fixtures/autofill_integration_seed.json（订单/供应商非储能种子）+ tests/run.py 一行登记 unit 组。覆盖 A09/A14 生命周期（迟到响应零写入、同 token 连轮、无模型 422、超时 504、空 operations→200 empty、截断 502）、A15 安全（伪造/篡改/畸形 token、跨用户、契约外字段与任意 JSON 路径→unresolved、XSS 原样、密钥与 trace 不泄漏）、A16 契约漂移、D1~D7、非储能全链路。生产缺陷 1 项按能力探测+阻塞登记（缺陷修好后自动改跑完整断言）。
-
-- 决定：工作目录已有同名未提交半成品（上一位 agent 遗留）：在其上续接修正，未推倒重写。；修正该半成品两处测试自身缺陷（非生产缺陷）：identity 场景传空草稿，把 P1 分级候选的正确 fail-closed 行为误判为失败；已按 P1 语义改写并补「已选表则主键候选核验通过」正例。；零写入不变式改分段基线：原文把测试自身的管理写（发新版本、登提供方、升级项目引用）也算入，改为 D7 后重取基线，只断言纯生成段零写入。；连接密码改按接口文档 03 §3.4 经 /api/connection-secret 写 vault 播种；原半成品把明文 password 塞进项目 connections 草稿导致其随 /api/project-state 回显，属测试播种方式错误，非生产漏洞。；D1 等值回显前后端口径差异按「记录不裁定」处理，交协调者/独立验收决定。
-- 验证：python3 tests/test_autofill_integration.py → EXIT=0，全部通过（12 组断言块），5.44s。；python3 tests/run.py --test test_autofill_integration.py → 通过 1/1（5.4s）；--list 复核 unit 52 项、all 63 项各含本文件 1 次，组内无重复。；ruff check tests/test_autofill_integration.py tests/run.py → All checks passed。；未触碰 workbench/、contracts/、frontend/（含 dist）、.runtime/、data/、ontology/ 及 tests/ 下他人文件；find -mmin 复核零修改。18951 未停止未连接；18941/18942 已释放。；开场仅只读 git log/status 核对基线，无 git 写操作。
-- 下一步：生产缺陷待修：workbench/assist_schema.py:1042 `_fill_cell_summary` 读 cell['path']/cell['type']，而 workbench/assist_forms.py:703 `FormContract.list_def()` 返回 _normalize_leaf 归一结果（无 path/label）→ KeyError → server.py 兜底 400。复现：任取声明 lists 的契约（actionBinding、propertySource 的 database/redis/flow 变体）发 mode=fill 即 100% 400，4 变体全不可用。；D1 等值口径差异交独立验收：服务端 fill 不做等值过滤（原样下发 ok），等值不落盘靠前端 changed/topLevelChanges；模型只回显旧值时前端走 done+收起、appliedCount=0、状态条为空，不命中 AssistPanel.vue:182 的 empty 提示分支，与需求 §4.3/A14 有落差。；A01/A02/A18 与 A03~A08/A10~A13/A17 的浏览器呈现分支留 T10 独立验收；本文件头已列不覆盖清单。
-- 依据/文档：tests/test_autofill_integration.py；tests/fixtures/autofill_integration_seed.json；tests/run.py；workbench/assist_schema.py 与 workbench/assist_forms.py（缺陷位点）；文档/接口文档/04-编排与LLM接口.md 与 03-项目区接口.md §3.4
