@@ -253,7 +253,7 @@ function distribute() {
 <!-- 编辑态：主内容整体替换为独立共享属性表单 -->
 <PropertyManager v-if="editor" :key="editor.id || 'new'" :state="state" kind="shared" :property-id="editor.id" :canvas-return="canvasReturn" @back-to-graph="backToGraph" @close="editor = null" @saved="onSharedSaved"/>
 <template v-else>
-<!-- 页头（§3.2 资产库）：标题+一句说明在左，更多操作与唯一主入口在右 -->
+<!-- 页头（§3.2 资产库）：标题+一句说明在左；右侧顺序=返回 → 唯一主入口 → 更多操作（20260923 用户指定：更多操作放最右） -->
 <section class="ont-lib-head">
   <div>
     <h2>共享属性库</h2>
@@ -261,8 +261,8 @@ function distribute() {
   </div>
   <div class="ont-actions">
     <button v-if="canvasReturn" type="button" @click="backToGraph">← 返回图谱</button>
-    <RowMenu :items="pageMenuItems" aria-label="页面更多操作" @pick="onPageMenu"/>
     <button type="button" class="primary" @click="openEditor('')">＋ 新建共享属性</button>
+    <RowMenu :items="pageMenuItems" aria-label="页面更多操作" @pick="onPageMenu"/>
   </div>
 </section>
 <!-- 统一标准表格（§5/§6.5）：单个白色内容面板；工具栏/表头/空态/分页由 OntologyList 渲染 -->
