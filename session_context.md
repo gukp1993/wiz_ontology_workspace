@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`158113acd7e01a69`
+上下文版本：`626511c576fd9fb4`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### fix_ui · zcode · 已实施，待验收
 
-时间：2026-09-23T12:50:52.184960+00:00；记录：`.collaboration/entries/000272-952edadacc1e.json`
+时间：2026-09-23T13:01:59.787438+00:00；记录：`.collaboration/entries/000273-cb999f833cde.json`
 
-【UI 打磨第 2 轮完成，待验收】按用户三条截图/消息反馈在 fix_ui 工作树完成：①共享属性库页头「更多操作」移到最右（026e3f9）：.ont-actions 内顺序由 返回→更多操作→新建 改为 返回→＋新建共享属性→更多操作；页面级更多操作仅此一处。②业务规则编辑表单逐行排列（b47806d，用户消息「新增动作定义同理」扩及动作定义）：两组件 scoped 覆写 .form-grid{grid-template-columns:1fr}，规则名称/业务定义/规则内容与 动作名称/业务定义/预期效果 各占一行全宽。分支 fix_ui 现为 d02af6c→2be283d→f8345fa→026e3f9→b47806d，验收 HEAD=b47806d。
+【UI 打磨第 3 轮完成，待验收】按用户截图与补充消息修复统一列表行内水平对齐（70f994a）：业务规则/动作定义列表里「编辑/删除」等 .row-link 按钮与引用徽标是 inline 级盒子、默认按基线对齐，按钮自带内边距使其内容中心比名称/定义文字低约 5px。在全局 .ont-table 样式补 td>*{vertical-align:middle}，单元格直接子元素统一按盒中线对齐；使用 OntologyList 的规则/动作/共享属性/对象列表一处修复同时生效。分支 fix_ui 现为 d02af6c→2be283d→f8345fa→026e3f9→b47806d→70f994a，验收 HEAD=70f994a。
 
-- 决定：动作定义编辑器与业务规则同形（名称+定义+选填第三字段），按用户「同理」指示一并收单列，保持一致；只动组件内 scoped 覆写，不改全局 .form-grid（项目区等其他两列表单不受影响）；ConnectionManager 行内 RowMenu 不属页面级更多操作，不动
-- 验证：vue-tsc / vite build 通过；18981 实测：共享属性库页头控件顺序=新建|更多操作；新建规则表单截图三字段纵向堆叠全宽；新建动作表单截图同理；编辑器只打开未输入未保存（T00 契约：新建不先插空记录），未产生草稿写入；本轮纯前端样式，既有回归结论不受影响
-- 下一步：交 Codex 独立验收（验收 HEAD=b47806d，端口 18981）；通过后停在待用户授权集成；观察项不变：全仓 .text/.full 类无样式定义为既有债务，是否统一处理待用户决定
-- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@b47806d；frontend/src/ontology/SharedLibrary.vue；frontend/src/ontology/BusinessRuleLibrary.vue；frontend/src/ontology/ActionLibrary.vue
+- 决定：修在全局 .ont-table 层而非各页面 scoped：OntologyList 是统一标准表格（样式走 style.css .ont-* 段），一处修复惠及全部使用方，符合组件「统一样式」设计约定
+- 验证：18981 实测（页面 getBoundingClientRect）：规则列表四列内容中心线全部=32px（修复前 编辑/删除=37.5、其余=32）；动作定义列表同样对齐（名称列「名称+副标题」两行块整组居中）；截图核对规则/动作两列表行内水平对齐；vite build 通过；纯样式改动不影响回归结论
+- 下一步：交 Codex 独立验收（验收 HEAD=70f994a，端口 18981）；通过后停在待用户授权集成；观察项不变：全仓 .text/.full 类无样式定义为既有债务
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@70f994a；frontend/src/style.css（.ont-table 段）
 
 ### fix/model-setting-500-db-migration · zcode · 已验证
 
