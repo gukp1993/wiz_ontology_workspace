@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`fdbc242eba103d98`
+上下文版本：`14e77994c919e6c7`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### fill_by_llm 对象轻量填写 harness 开发指令 · codex · 需求已交付
+
+时间：2026-09-23T05:41:03.908680+00:00；记录：`.collaboration/entries/000264-5e9001fe2567.json`
+
+在主仓库需求目录交付对象轻量填写开发计划与 harness 执行指令 v1。范围限定已登记 fill_by_llm 工作树的新建空白对象首轮生成，按契约能力裁剪通用提示/出网候选，沿用 autofill/1 operations 和校验；要求合成 A/B 耗时与质量证据、分支自测提交、Codex 独立验收，未授权合并 main。当前仅文档交付，未实施业务代码。
+
+- 决定：遵循 v2 的通用提示词＋字段策略，不为对象页另复制整套长期提示词。；第一轮保持现有模型输出协议，不采用 label/comment 直接 JSON 转操作，减少同时改动的变量。；实际提速需对比 modelDurationMs、服务端和 HTTP 总耗时，不承诺固定秒数。
+- 验证：核对 fill_by_llm 工作树 fd478ad 干净、main 131d4a7、登记端口 18941；对照 v2 需求与当前对象契约/后端链路；文档路径与内容存在。
+- 下一步：harness 按执行指令在原 fill_by_llm 工作树实施、自测并提交，停在 Codex 独立验收；不得合并 main。
+- 依据/文档：文档/需求/20260922_整表自动填写交互/对象轻量填写_开发计划_v1.md；文档/需求/20260922_整表自动填写交互/对象轻量填写_执行指令_v1.md
 
 ### 自动填写v2简洁需求与harness指令 · codex · 需求已交付
 
@@ -141,15 +152,3 @@
 - 验证：node --import ./tests/ts_hooks.mjs tests/assist_object_workspace.test.mjs → 14/14 通过（对接面/A01/上下文体/直接回填/撤销/手改禁撤销/续轮整轮撤销/切目标作废/契约指纹与 empty 零写入/链接同链路/显式保存不受影响）；node --import ./tests/ts_hooks.mjs tests/assist_workflow.test.mjs → 12/12 通过（rule/action 对接面、DEF-02 新建动作 targetId 空串、回填零保存零 changed、历史 output 不受影响、切目标与关闭）；cd frontend && npx vue-tsc --noEmit → 0 错误；npx eslint 五个改动 src 文件 → 0 违规；回归：assist_panel 22/22、test_autofill_state 69 项 0 失败、object_workspace 7/7、editor_head_consistency 19、list_controls 4/4、ont_list_unified 4/4、dependency_guard 22/22
 - 下一步：浏览器实链路归 T10：SSR 不覆盖模板 ref 通道（二次点击收起/展开、notify 经 ref）、Esc/遮罩/焦点圈闭、aria-expanded 随 done 自动收起回落；已知限制：cancel 后迟到响应被引擎代际丢弃，但已计入的待补充数短暂残留（手动改/新响应/撤销纠正）；面板未暴露 cancel 事件；宿主 undoRound 后引擎待补问题卡保留（引擎无对外复位接口），续答按已恢复草稿校验；字段定位（查看修改聚焦）未接：共享 Field 无锚点，不硬造；aria-controls 指向的抽屉 id 需 T3 给 AssistPanel 加 id prop 后补全（当前 trigger-id 反向接线，与 T6 同思路）；未做 git 提交（任务指令禁止），提交由协调者安排
 - 依据/文档：frontend/src/assist/ontologyBindings.ts；frontend/src/assist/workflowBindings.ts；frontend/src/ontology/ObjectWorkspace.vue；frontend/src/ontology/BusinessRuleLibrary.vue 与 ActionLibrary.vue；tests/assist_object_workspace.test.mjs 与 tests/assist_workflow.test.mjs；文档/接口文档/04-编排与LLM接口.md §6.6
-
-### assist-fill-production T6 属性接入（O2 私有+共享属性，分支 codex/assist-fill-production） · zcode · 已实施，待验收
-
-时间：2026-09-22T11:17:59.928416+00:00；记录：`.collaboration/entries/000250-3e428c824373.json`
-
-三文件交付：propertyBinding.ts 重写为 autofill/1 对接面（契约业务枚举快照、五 codec、applyDraft 落位、typeCore 原子组、formatting 依赖序、只读 refusals）；PropertyManager.vue 页头「✦ 自动填写」+宿主状态条（已填 N 项/撤销/查看修改）+手改通知+只读 api 包装转 unresolved，旧建议卡 UI 移除；测试重写 74 项全过，vue-tsc 0 错误。
-
-- 决定：codec 只做枚举/结构校验+写扁平副本；真正落位统一在 applyDraft（唯一同时可见 dataType+obsType+formatting，保证原子组与依赖序）；formatting kind 与生效数据类型一致性放 applyDraft 拒绝（codec 时点看不到同轮 dataType 操作）；样式白名单/历史样式归后端 blocked+保存校验兜底；离开 timeSeries 须带显式 obsType 空串标记；缺清空标记的不完整离开组按矛盾组整组拒绝，不自动补清；状态条 N 按宿主 applyDraft 前后投影 diff 去重（含类型联动清理的 formatting，比引擎 copy 级计数如实）；引擎 snapshot() 调用点=新撤销单元边界，宿主据此对齐轮次；只读保护：binding 层 writable()+refusals 拒写为主；PM api 包装请求期只读时把 operations 转 unresolved 面板展示
-- 验证：tests/assist_property_manager.test.mjs 重写 74/74 通过（原子组成组/无半组/独立合法内容照填/撤销单元/续轮/手改禁撤销/保存计数不变/只读拒绝/非 assist 回归）；npx vue-tsc --noEmit 0 错误；assist_panel 22/22、test_autofill_state 68/68、dependency_guard 22/22、editor_head_consistency 19、object_workspace 7/7、global_interaction 7/7、undo_history 7/7、formatting_options 全过；npm run lint：本任务文件 0 违规（既有 6 处 no-unused-expressions 在 T7/T8 归属文件）
-- 下一步：assist_object_workspace.test.mjs 7/14 失败：该套件把 PropertyManager 桩为 render:null 且不引用 propertyBinding，失败在对象/链接编辑器流程（T5 归属文件），与 T6 无执行路径交集，待 T5 处理；AssistPanel 无 id prop，按钮 aria-controls 指向的 pm-assist-drawer 暂悬空（已用 trigger-id 反向接线），T3 加 id 支持后补全；浏览器验收与 Codex 独立验收待排；未做 git 提交（任务指令禁止 git 命令，提交由协调者安排）
-- 依据/文档：frontend/src/assist/propertyBinding.ts；frontend/src/ontology/PropertyManager.vue；tests/assist_property_manager.test.mjs；文档/接口文档/04-编排与LLM接口.md §6.6
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
