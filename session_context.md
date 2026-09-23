@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`55a26b6e5d4cb0a8`
+上下文版本：`158113acd7e01a69`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### fix_ui · zcode · 已实施，待验收
 
-时间：2026-09-23T12:37:38.351758+00:00；记录：`.collaboration/entries/000271-cfcc6c518299.json`
+时间：2026-09-23T12:50:52.184960+00:00；记录：`.collaboration/entries/000272-952edadacc1e.json`
 
-【样式打磨轮完成，待验收】按用户两条截图反馈在 fix_ui 工作树完成：①空态欢迎卡「开始动作区」交互层级统一（分支 f8345fa）：.text 类全仓无样式定义，「下载 Excel 模板」渲染成带框挤压小盒且与相邻按钮不齐；重排为 主按钮（创建第一个对象）→ 次级按钮（从物料生成/从 Excel 导入）→ 竖分隔线 → 静音文字链接（下载模板，本地去边框/静音色/8px 内边距对高，≤850px 隐藏分隔线）。②Excel 模板表头补回表格线（分支 2be283d）：表头底色盖住默认网格线而样式只有浅灰下边线（20260920 需求 §5.2 原约定），按用户指示改为表头四边 thin 边框（沿用 #CBD2D9），数据行不动；只改在用的 ontology-import-rule-action-v1.xlsx，无引用的旧 ontology-import-v1.xlsx 未动。分支 fix_ui 现为 d02af6c→2be283d→f8345fa。
+【UI 打磨第 2 轮完成，待验收】按用户三条截图/消息反馈在 fix_ui 工作树完成：①共享属性库页头「更多操作」移到最右（026e3f9）：.ont-actions 内顺序由 返回→更多操作→新建 改为 返回→＋新建共享属性→更多操作；页面级更多操作仅此一处。②业务规则编辑表单逐行排列（b47806d，用户消息「新增动作定义同理」扩及动作定义）：两组件 scoped 覆写 .form-grid{grid-template-columns:1fr}，规则名称/业务定义/规则内容与 动作名称/业务定义/预期效果 各占一行全宽。分支 fix_ui 现为 d02af6c→2be283d→f8345fa→026e3f9→b47806d，验收 HEAD=b47806d。
 
-- 决定：模板下载定位为导入的附属动作（静音链接），不与主/次级按钮同级；分隔线 ≤850px 隐藏防换行悬挂；模板只改在用的 rule-action-v1；旧 v1 模板无任何引用不扩大范围；解析器按表头名识别（需求 §6）不受样式影响
-- 验证：openpyxl 回读：4 sheet 全部 13 个表头单元格四边 thin、freeze A2 与列宽保留；18981 HTTP 下载该模板复验一致；vue-tsc / vite build 通过；18981 空本体欢迎卡截图核对：按钮行三级视觉层级清晰、高度对齐；本轮为样式与二进制资产改动，未触后端逻辑；既有回归结论（84/85，唯一失败=18941 环境冲突）不受影响
-- 下一步：交 Codex 独立验收（含此前 d02af6c 更多工具入口移除，验收 HEAD=f8345fa，端口 18981）；通过后停在待用户授权集成；观察项：全仓 .text 类按钮均无全局样式（如工作概览面板头「查看全部对象 →」），当前呈带框按钮态——是否统一为静音链接样式属独立小需求，待用户决定
-- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@f8345fa；frontend/public/templates/ontology-import-rule-action-v1.xlsx；文档/需求/20260920_规则动作字段精简与Excel模板同步/需求说明.md §5.2/§6
+- 决定：动作定义编辑器与业务规则同形（名称+定义+选填第三字段），按用户「同理」指示一并收单列，保持一致；只动组件内 scoped 覆写，不改全局 .form-grid（项目区等其他两列表单不受影响）；ConnectionManager 行内 RowMenu 不属页面级更多操作，不动
+- 验证：vue-tsc / vite build 通过；18981 实测：共享属性库页头控件顺序=新建|更多操作；新建规则表单截图三字段纵向堆叠全宽；新建动作表单截图同理；编辑器只打开未输入未保存（T00 契约：新建不先插空记录），未产生草稿写入；本轮纯前端样式，既有回归结论不受影响
+- 下一步：交 Codex 独立验收（验收 HEAD=b47806d，端口 18981）；通过后停在待用户授权集成；观察项不变：全仓 .text/.full 类无样式定义为既有债务，是否统一处理待用户决定
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@b47806d；frontend/src/ontology/SharedLibrary.vue；frontend/src/ontology/BusinessRuleLibrary.vue；frontend/src/ontology/ActionLibrary.vue
 
 ### fix/model-setting-500-db-migration · zcode · 已验证
 
