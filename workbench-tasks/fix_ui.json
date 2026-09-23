@@ -12,7 +12,7 @@
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18981；启动用工作树内 ./start.sh",
   "scope": "移除侧栏「更多工具」入口（按钮/ToolsPage 枢纽/导航注册/图标），旧地址 #tools 归一到工作概览；旧辅助视图保留深链可达；8 处「更多工具 → LLM 配置」文案改为「设置 → 模型设置」并重生成金样",
   "status": "implemented（待 Codex 独立验收；未合并 main）",
-  "updatedAt": "2026-09-23（实施轮）",
-  "headSha": "d02af6c",
-  "notes": "分支提交 d02af6c（13 文件，+17/-58）：App.vue 侧栏按钮与挂载分支、navigation.ts pages/alias/navIcon、icons.ts、删 ToolsPage.vue、前后端 8 处文案、金样重生成（差异仅 2 行）。工作树库已显式迁移 0003→0005（transfer init，模型设置可用）；已复制主仓库 ontology/ 只读播种树供种子类测试。服务运行中（18981，PID 37192）。验证：vue-tsc/lint/build 过、金样回放 100 样例 525 断言过、tests/run.py all 84/85（唯一失败 test_autofill_integration=18941 被 fill_by_llm 服务占用，环境冲突）、浏览器实测侧栏无更多工具/模型设置正常/#tools→工作概览/#discover 深链可达。含真实数据副本标注不变。"
+  "updatedAt": "2026-09-23（样式打磨轮）",
+  "headSha": "f8345fa",
+  "notes": "分支现含三提交：d02af6c 更多工具入口移除；2be283d Excel 模板表头补回四边表格线（表头底色盖网格线+原样式只有下边线所致；只改在用的 rule-action-v1 模板，openpyxl 回读 13 表头格四边 thin、freeze/列宽保留、18981 HTTP 下载复验）；f8345fa 空态欢迎卡开始动作区层级统一（.text 全局无定义致带框小盒，重排为主按钮+次级按钮+分隔线+静音文字链接）。其余同前：84/85 回归（唯一失败=18941 环境冲突）、服务运行中（18981）。含真实数据副本标注不变。"
 }

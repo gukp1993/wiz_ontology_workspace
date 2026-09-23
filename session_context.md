@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`a28ee71c05764237`
+上下文版本：`55a26b6e5d4cb0a8`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,15 +24,14 @@
 
 ### fix_ui · zcode · 已实施，待验收
 
-时间：2026-09-23T11:56:08.416681+00:00；记录：`.collaboration/entries/000270-8853270c1f7c.json`
+时间：2026-09-23T12:37:38.351758+00:00；记录：`.collaboration/entries/000271-cfcc6c518299.json`
 
-【实施完成待验收】按用户指令在 fix_ui 工作树实施「更多工具菜单入口删除+相关代码清理」：App.vue 删侧栏按钮与 ToolsPage 挂载分支/导入；navigation.ts pages 去掉 tools、旧地址 #tools 别名归一到 o-home、navIcon 兼容表同步；icons.ts 删三点图标；删除 ToolsPage.vue；旧辅助视图按 implements 下线先例保留深链可达；8 处「更多工具 → LLM 配置/计算契约」文案改为「设置 → 模型设置」/「计算契约」页（前端 BuildScopePage/ImplementationManager + 后端 llm_providers/ontology_build_routes/flows/pipeline/tasks/llm）；金样重生成差异仅 2 行。分支 fix_ui dd7dbe4→d02af6c。另：插入任务已完成——用户报 18765 模型设置 500（requestId a7a84bccb1cf），子代理确认根因=main 库 alembic 停在 0003 缺 0004/0005（no such column: thinking），先 transfer backup 备份再 transfer init 升级到 20260922_0005，/api/llm-providers 复验 200，未重启服务未改代码（详见 entry 000269）。
+【样式打磨轮完成，待验收】按用户两条截图反馈在 fix_ui 工作树完成：①空态欢迎卡「开始动作区」交互层级统一（分支 f8345fa）：.text 类全仓无样式定义，「下载 Excel 模板」渲染成带框挤压小盒且与相邻按钮不齐；重排为 主按钮（创建第一个对象）→ 次级按钮（从物料生成/从 Excel 导入）→ 竖分隔线 → 静音文字链接（下载模板，本地去边框/静音色/8px 内边距对高，≤850px 隐藏分隔线）。②Excel 模板表头补回表格线（分支 2be283d）：表头底色盖住默认网格线而样式只有浅灰下边线（20260920 需求 §5.2 原约定），按用户指示改为表头四边 thin 边框（沿用 #CBD2D9），数据行不动；只改在用的 ontology-import-rule-action-v1.xlsx，无引用的旧 ontology-import-v1.xlsx 未动。分支 fix_ui 现为 d02af6c→2be283d→f8345fa。
 
-- 决定：删除范围=入口及其专属枢纽页（按钮/ToolsPage/pages.tools/图标），旧辅助视图（discover/knowledge/explorer/instances/learning/valuetypes/interfaces/contracts）按 implements 下线先例保留深链可达，未连带删功能；tools/LlmProviders.vue 是模型设置页组件必须保留；旧地址 #tools 归一到 o-home；文案指向改为「设置 → 模型设置」（llm 别名早已归一 settings-models）
-- 验证：金样回放 test_validation_split：100 样例 525 断言逐字节等价通过；git diff 金样仅 2 行文案；cd frontend && npm run typecheck / lint / build 全过；python3 tests/run.py all → 84/85（唯一失败 test_autofill_integration=18941 被 fill_by_llm 服务占用，环境冲突；首轮 6 失败中 5 个为工作树缺 ontology/ 播种树，已复制主仓库只读播种树后全过，登记已注明）；工作树库显式迁移 0003→0005（transfer init）后模型设置页正常；浏览器实测（隔离会话 18981）：登录正常、侧栏 7 项无更多工具、模型设置加载正常（GLM-5.3-Flash/minimax 可见）、#tools→工作概览、#discover 深链可达；18765 修复验证：备份+升级后 integrity ok、wb_model_configs 含 thinking 列、admin 登录 GET /api/llm-providers 200
-- 下一步：交 Codex 独立验收（验收 SHA d02af6c，端口 18981）；验收通过后停在待用户授权集成；18765 服务代码未动，仅库已升级；如需更新主工作台代码另按授权执行
-- 依据/文档：workbench-tasks/fix_ui.json；.collaboration/entries/000269-0a6735d9f0cf.json；worktree/fix_ui 分支 fix_ui@d02af6c；data/workbench-before-migration-0004-0005-20260923-193553.sqlite3（18765 升级前备份）
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+- 决定：模板下载定位为导入的附属动作（静音链接），不与主/次级按钮同级；分隔线 ≤850px 隐藏防换行悬挂；模板只改在用的 rule-action-v1；旧 v1 模板无任何引用不扩大范围；解析器按表头名识别（需求 §6）不受样式影响
+- 验证：openpyxl 回读：4 sheet 全部 13 个表头单元格四边 thin、freeze A2 与列宽保留；18981 HTTP 下载该模板复验一致；vue-tsc / vite build 通过；18981 空本体欢迎卡截图核对：按钮行三级视觉层级清晰、高度对齐；本轮为样式与二进制资产改动，未触后端逻辑；既有回归结论（84/85，唯一失败=18941 环境冲突）不受影响
+- 下一步：交 Codex 独立验收（含此前 d02af6c 更多工具入口移除，验收 HEAD=f8345fa，端口 18981）；通过后停在待用户授权集成；观察项：全仓 .text 类按钮均无全局样式（如工作概览面板头「查看全部对象 →」），当前呈带框按钮态——是否统一为静音链接样式属独立小需求，待用户决定
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@f8345fa；frontend/public/templates/ontology-import-rule-action-v1.xlsx；文档/需求/20260920_规则动作字段精简与Excel模板同步/需求说明.md §5.2/§6
 
 ### fix/model-setting-500-db-migration · zcode · 已验证
 
