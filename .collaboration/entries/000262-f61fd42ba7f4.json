@@ -1,0 +1,28 @@
+{
+  "ticket": "770cd9a1284c41aaa94f5836690c6de5",
+  "task": "auto_build",
+  "status": "in_progress",
+  "summary": "【环境启动】按用户指令启动 auto_build 工作树服务（worktree/auto_build，分支 auto_build@2d27584）：工作树内 ./start.sh start，WIZ_WORKBENCH_PORT=18952 + WIZ_WORKBENCH_ROOT=工作树根。首次启动自动 npm install + 前端构建（vue-tsc+vite 通过）并起服务，PID 91512，URL http://127.0.0.1:18952。验证：auth-state 正常、进程 cwd=工作树、lsof 证实读写工作树内 data/workbench.sqlite3（wal/shm 在工作树内），未触碰 main 真实库与其他任务（fill_by_llm 18941/model_setting 18971）资源。备注：本轮交接 entry 曾在工作树 cwd 误记（000259-c692）并已从分支退回，现从主协调树正式补记；登记 json 的 running 状态更新走 main 提交。",
+  "decisions": [],
+  "verification": [
+    "./start.sh status：✔ 运行中 http://127.0.0.1:18952（PID 91512）",
+    "curl /api/auth-state → {\"user\": null}",
+    "lsof -p 91512：sqlite 打开路径=worktree/auto_build/data/workbench.sqlite3",
+    "前端构建 vue-tsc --noEmit + vite build 通过"
+  ],
+  "next": [
+    "等用户在 18952 登录并下达开发任务",
+    "同 host 不同端口共享 Cookie：浏览器登录 18952 可能覆盖 18765 登录态，验收用隔离上下文",
+    "main 已前进（88404ef），auto_build 分支仍在 2d27584 基线，后续集成时按协议处理"
+  ],
+  "references": [
+    "workbench-tasks/auto_build.json",
+    ".collaboration/entries/000259-01c4f8ea9810.json"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-23T01:39:15.067419+00:00",
+  "sequence": 262,
+  "filename": "000262-f61fd42ba7f4.json",
+  "record_hash": "eaa7470c15bf09a1c89f753f3d1d9e31a933909a433fecae5c9e291c32b0c13e",
+  "context_advanced": false
+}

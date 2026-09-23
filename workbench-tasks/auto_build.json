@@ -10,7 +10,7 @@
   "python": "system Python 3.9（依赖未装；开发时按需独立准备）",
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18952；启动用工作树内 ./start.sh",
   "scope": "待用户下达开发任务（本轮仅创建环境，未开发）",
-  "status": "created",
+  "status": "running",
   "updatedAt": "2026-09-23",
-  "notes": "上一轮 auto-build-output-v3 已 merged_and_cleaned（登记见 git 历史 2d27584）。本轮快照体检：integrity ok、解密探针 4/4 通过、关键表行数与 main 现库一致（assets 11 / releases 7 / model_configs 2 / credentials 4 / users 2 / snapshots 365 / import_items 623）；transfer verify 报「连接凭据/模型配置 0 vs 2」为 CLI 计数口径差异，直查 SQL 证实快照数据齐全。"
+  "notes": "上一轮 auto-build-output-v3 已 merged_and_cleaned（登记见 git 历史 2d27584）。本轮快照体检：integrity ok、解密探针 4/4 通过、关键表行数与 main 现库一致（assets 11 / releases 7 / model_configs 2 / credentials 4 / users 2 / snapshots 365 / import_items 623）；transfer verify 报「连接凭据/模型配置 0 vs 2」为 CLI 计数口径差异，直查 SQL 证实快照数据齐全。 2026-09-23 已启动：WIZ_WORKBENCH_PORT=18952 + WIZ_WORKBENCH_ROOT=工作树根，./start.sh start（PID 见工作树 .runtime/server.pid）；lsof 证实读写工作树内 data/workbench.sqlite3，未触 main 数据。"
 }

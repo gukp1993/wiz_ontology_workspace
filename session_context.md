@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`61b86bfad3a2618c`
+上下文版本：`b85e3c5bc21b86ed`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,16 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### auto_build · zcode · 实施中
+
+时间：2026-09-23T01:39:15.067419+00:00；记录：`.collaboration/entries/000262-f61fd42ba7f4.json`
+
+【环境启动】按用户指令启动 auto_build 工作树服务（worktree/auto_build，分支 auto_build@2d27584）：工作树内 ./start.sh start，WIZ_WORKBENCH_PORT=18952 + WIZ_WORKBENCH_ROOT=工作树根。首次启动自动 npm install + 前端构建（vue-tsc+vite 通过）并起服务，PID 91512，URL http://127.0.0.1:18952。验证：auth-state 正常、进程 cwd=工作树、lsof 证实读写工作树内 data/workbench.sqlite3（wal/shm 在工作树内），未触碰 main 真实库与其他任务（fill_by_llm 18941/model_setting 18971）资源。备注：本轮交接 entry 曾在工作树 cwd 误记（000259-c692）并已从分支退回，现从主协调树正式补记；登记 json 的 running 状态更新走 main 提交。
+
+- 验证：./start.sh status：✔ 运行中 http://127.0.0.1:18952（PID 91512）；curl /api/auth-state → {"user": null}；lsof -p 91512：sqlite 打开路径=worktree/auto_build/data/workbench.sqlite3；前端构建 vue-tsc --noEmit + vite build 通过
+- 下一步：等用户在 18952 登录并下达开发任务；同 host 不同端口共享 Cookie：浏览器登录 18952 可能覆盖 18765 登录态，验收用隔离上下文；main 已前进（88404ef），auto_build 分支仍在 2d27584 基线，后续集成时按协议处理
+- 依据/文档：workbench-tasks/auto_build.json；.collaboration/entries/000259-01c4f8ea9810.json
 
 ### 新建对象自动填写局部交互原型_v2 · codex · 需求已交付
 
@@ -43,17 +53,6 @@
 - 下一步：等待用户下达开发指令后在 fill_by_llm 工作树实施（首开发轮需先安装前端依赖/构建）；未开发未验收；不合并 main
 - 依据/文档：.git/workbench-tasks/fill_by_llm.json；worktree/fill_by_llm
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### auto_build · zcode · 实施中
-
-时间：2026-09-22T16:28:46.769989+00:00；记录：`.collaboration/entries/000259-01c4f8ea9810.json`
-
-【环境创建】用户明确指令「从主干拉分支 auto_build，新建 worktree」，已完成：分支 auto_build 从已提交 main 基线 2d27584 创建，工作树 /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/auto_build，登记端口 18952（已核对空闲）。数据按 2026-09-22 规则全量拷贝：transfer backup WAL 一致快照落 <worktree>/data/workbench.sqlite3 + keys/wb-root.key 副本（0700/0600）+ ontology-build-blobs/tmp 随迁；快照体检 integrity ok、解密探针 4/4、关键表行数与 main 现库逐表一致，含真实数据与根密钥副本（不可自动丢弃）。未装依赖、未启服务、未开发。
-
-- 决定：分支名按用户指定用 auto_build（非 codex/ 前缀）；端口 18952；workbench-tasks/auto_build.json 覆盖更新为本轮登记（上一轮 auto-build-output-v3 merged_and_cleaned 记录在 git 历史 2d27584）；transfer verify 两项 0 vs 2 经直查 SQL 判定为 CLI 计数口径差异，非快照缺数据
-- 验证：git rev-parse auto_build = 2d2758478708dfa977f2eaa9b67cd15eb5553928；transfer backup 成功且 verify integrity_check ok / foreign_key_check 0 违反 / 解密探针 ok=4 fail=0；快照与 live 逐表行数一致（assets 11 / releases 7 / model_configs 2 / credentials 4 / users 2 / snapshots 365 / import_items 623 / sessions 15）
-- 下一步：等用户下达本分支开发任务（需求文档/执行指令）；开发时从工作树内以 WIZ_WORKBENCH_PORT=18952 + 工作树数据根启动（依赖需先准备）
-- 依据/文档：workbench-tasks/auto_build.json；AGENTS.md 独立分支开发与串行集成（2026-09-20/21/22 数据随迁规则）
 
 ### auto-build-output-v3 · zcode · 已验证
 
