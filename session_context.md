@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`a84620fdf4fcc878`
+上下文版本：`188b4f52c6ff6dd5`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### fix_ui · zcode · 已实施，待验收
 
-时间：2026-09-23T13:15:34.714769+00:00；记录：`.collaboration/entries/000274-1b3eb9140e71.json`
+时间：2026-09-23T13:32:18.971952+00:00；记录：`.collaboration/entries/000275-2ef65eb575d6.json`
 
-【UI 打磨第 4 轮完成，待验收】按用户「所有列表都检查下水平对齐」完成全工作台列表普查（6bc19a5）：①根因修复——删除类按钮类名 row-link danger 继承了全局 .danger 提示段落样式的 margin-top:12px，导致所有列表的「删除/移除引用」比「编辑」低 6~12px；.row-link.danger 显式 margin-top:0。②普查其余数据列表并补家族规则 td>*{vertical-align:middle}：home-table/bt-table/ab-list/ct-result/flow-table（FlowList 表格新增 flow-table 类名）。③纯文本预览表无行内按钮不处理；attribute-table Excel 式编辑网格有意不动；卡片式列表本就 flex 居中。分支 fix_ui 验收 HEAD=6bc19a5（共七提交）。
+【UI 打磨第 5 轮完成，待验收】按用户指令移除项目区对象映射四页签的「说明」块（8b79127，4 文件 -35）：①实例识别（ObjectSources）删来源说明摘要块+编辑说明入口+来源说明编辑弹层+openNote/saveNote 及悬空帮助行；②属性取值（PropertySources）删属性编辑器 MappingDescription；③链接映射（LinkMappings）删成员模式与表字段关联两个编辑器的 MappingDescription 及专属 linkNoteChanged；④动作绑定（ActionBindings）删动作编辑弹层 MappingDescription。范围裁定：仅移除可见 UI；noteDraft 状态/脏检查/保存链路/自动填写说明指纹保持原样（涉及冻结的自动填写协议）；说明数据仍随草稿保存；动作绑定列表「项目说明」列不在本次范围。分支 fix_ui 验收 HEAD=8b79127（共八提交）。
 
-- 决定：对齐修复收口在全局样式家族选择器而非逐页 scoped；Excel 式 attribute-table 编辑网格有意排除，避免影响紧凑输入布局
-- 验证：18981 逐页 getBoundingClientRect 实测：规则/动作/共享属性/对象列表组中心 32±1px、操作列按钮顶差 0（修复前 danger 按钮 +6~12px）；工作概览对象表 spread 0；函数编排 mini 按钮 21 与其他列一致；对象映射/构建任务页当前无数据表格行（ab-list/bt-table 规则静态兜底）；vue-tsc / vite build 通过；纯样式改动不影响既有回归结论（84/85，唯一失败=18941 环境冲突）
-- 下一步：交 Codex 独立验收（验收 HEAD=6bc19a5，端口 18981）；通过后停在待用户授权集成；观察项不变：全仓 .text/.full 类无样式定义为既有债务
-- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@6bc19a5；frontend/src/style.css（.ont-table/.row-link.danger/家族规则）；frontend/src/flow/FlowList.vue
+- 决定：只删可见 UI 不动 noteDraft 状态机：自动填写面板的 setNote/说明指纹属冻结的填写协议（04 分册），改动会破坏协议；残留的辅助写说明路径成为不可见但一致的行为；动作绑定列表的项目说明列非本轮圈选范围，保留
+- 验证：vue-tsc / eslint / vite build 全过；grep 确认源码与 dist 产物中四条说明文案零残留、无悬挂引用；18981 实测（强刷排除缓存）：实例识别 tab 无来源说明/编辑说明；链接映射编辑器打开无说明块；属性取值/动作绑定页面无说明文案
+- 下一步：交 Codex 独立验收（验收 HEAD=8b79127，端口 18981）；通过后停在待用户授权集成；观察项不变：全仓 .text/.full 类无样式定义为既有债务
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@8b79127；frontend/src/project/ObjectSources.vue；frontend/src/project/LinkMappings.vue
 
 ### fix/model-setting-500-db-migration · zcode · 已验证
 
