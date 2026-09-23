@@ -461,8 +461,8 @@ const viewNotice = computed(() => viewReason.value === 'flow'
 <div class="ab-root">
   <div class="section-head"><div><h3>动作绑定 · {{ typeName }}</h3>
     <p class="muted">动作与关联来自项目引用的本体版本 {{ projectState.ontologyVersion }}；每个「对象类型＋动作」配置一个有效的 HTTP 接口实现，本期只做配置校验，不发送请求。</p></div></div>
-  <table v-if="rows.length" class="ab-list">
-    <thead><tr><th>动作名称</th><th>项目说明</th><th class="ab-ops-head">操作</th></tr></thead>
+  <table v-if="rows.length" class="ont-table ab-list">
+    <thead><tr><th>动作名称</th><th>项目说明</th><th>操作</th></tr></thead>
     <tbody>
       <tr v-for="row in rows" :key="row.key" :class="{ 'ab-stale': row.status === 'stale' }">
         <td>
@@ -580,9 +580,9 @@ const viewNotice = computed(() => viewReason.value === 'flow'
             </div>
           </section>
 
-          <!-- 4. 认证配置（默认折叠） -->
-          <details class="ab-details" :open="draft.auth.type !== 'none'">
-            <summary>认证配置（选填）</summary>
+          <!-- 4. 认证配置（20260923 起常开平铺，不再折叠） -->
+          <div class="ab-details">
+            <div class="ab-details-head">认证配置（选填）</div>
             <div class="form-grid">
               <Field label="认证方式" type="select" :model-value="draft.auth.type" :options="AUTH_TYPE_OPTIONS" help="默认无认证；密钥保存在受保护凭据库，项目配置只记录凭据引用。" @update:model-value="setAuthType($event)"/>
               <div v-if="draft.auth.type !== 'none'" class="ab-cred-field">
@@ -602,7 +602,7 @@ const viewNotice = computed(() => viewReason.value === 'flow'
             </div>
             <p class="field-help">切换认证方式不会删除已保存的凭据引用，也不会改动凭据库中的密钥。</p>
             <p v-if="assistVisible" class="field-help">自动填写不会修改认证与凭据：{{ ACTION_BINDING_SENSITIVE_REASON }}</p>
-          </details>
+          </div>
 
           <!-- 5. 请求示意 -->
           <section class="ab-section">
@@ -620,10 +620,10 @@ const viewNotice = computed(() => viewReason.value === 'flow'
               <dt>{{ entry.label }}</dt><dd class="ab-pre">{{ entry.value }}</dd>
             </template>
           </dl>
-          <details class="ab-details">
-            <summary>完整历史配置（只读）</summary>
+          <div class="ab-details">
+            <div class="ab-details-head">完整历史配置（只读）</div>
             <pre class="ab-request">{{ viewRawJson }}</pre>
-          </details>
+          </div>
         </template>
 
         <!-- 6. 错误区（校验错误逐条展示；警告提示但允许保存） -->
@@ -666,7 +666,6 @@ const viewNotice = computed(() => viewReason.value === 'flow'
 .muted{color:var(--muted)}
 .ab-list th:nth-child(1){width:34%}
 .ab-list th:nth-child(2){width:50%}
-.ab-ops-head,.ab-tools{text-align:right}
 .ab-tools{white-space:nowrap}
 .ab-tools .row-link{margin-left:10px}
 /* 全局 .danger 自带 margin-top，会顶偏表格内的「移除」 */
@@ -715,7 +714,7 @@ const viewNotice = computed(() => viewReason.value === 'flow'
 .ab-empty{text-align:center;color:var(--muted);padding:22px 10px}
 .ab-readonly-text{display:block;min-height:41px;padding:10px 11px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper-2);color:var(--muted);font-size:13px}
 .ab-details{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 15px;margin-top:22px}
-.ab-details summary{cursor:pointer;font-size:13px;color:var(--muted);padding:4px 0}
+.ab-details-head{font-size:13px;color:var(--muted);padding:4px 0;margin-bottom:6px}
 .ab-details .form-grid{margin-top:10px}
 .ab-cred-field{min-width:0;padding-top:14px}
 .ab-cred-field .field-title{display:flex;align-items:center;gap:7px;font-weight:600;font-size:14px;color:var(--ink)}
