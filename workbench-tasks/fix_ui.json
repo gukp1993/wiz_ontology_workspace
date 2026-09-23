@@ -12,7 +12,7 @@
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18981；启动用工作树内 ./start.sh",
   "scope": "移除侧栏「更多工具」入口（按钮/ToolsPage 枢纽/导航注册/图标），旧地址 #tools 归一到工作概览；旧辅助视图保留深链可达；8 处「更多工具 → LLM 配置」文案改为「设置 → 模型设置」并重生成金样",
   "status": "implemented（待 Codex 独立验收；未合并 main）",
-  "updatedAt": "2026-09-23（UI 打磨第 3 轮）",
-  "headSha": "70f994a",
-  "notes": "分支现含六提交：d02af6c 更多工具入口移除；2be283d Excel 模板表头四边表格线；f8345fa 欢迎卡动作区层级；026e3f9 共享属性库页头「更多操作」移到最右；b47806d 业务规则/动作定义编辑表单逐行排列；70f994a 统一列表行内水平对齐（.ont-table td>*{vertical-align:middle}，修 row-link 按钮基线对齐偏低约 5px，规则/动作/共享属性/对象列表同时生效）。其余同前：84/85 回归（唯一失败=18941 环境冲突）、服务运行中（18981）。含真实数据副本标注不变。"
+  "updatedAt": "2026-09-23（UI 打磨第 4 轮）",
+  "headSha": "6bc19a5",
+  "notes": "分支现含七提交：d02af6c 更多工具入口移除；2be283d Excel 模板表头四边表格线；f8345fa 欢迎卡动作区层级；026e3f9 共享属性库页头「更多操作」移到最右；b47806d 业务规则/动作定义编辑表单逐行排列；70f994a 统一列表行内对齐（ont-table td>* middle）；6bc19a5 全列表对齐普查——根因 .row-link.danger 继承 .danger 段落样式 margin-top:12px 致删除按钮下沉，已显式归零，并补 home-table/bt-table/ab-list/ct-result/flow-table 家族规则，FlowList 表格新增 flow-table 类名。其余同前：84/85 回归（唯一失败=18941 环境冲突）、服务运行中（18981）。含真实数据副本标注不变。"
 }

@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`626511c576fd9fb4`
+上下文版本：`a84620fdf4fcc878`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### fix_ui · zcode · 已实施，待验收
 
-时间：2026-09-23T13:01:59.787438+00:00；记录：`.collaboration/entries/000273-cb999f833cde.json`
+时间：2026-09-23T13:15:34.714769+00:00；记录：`.collaboration/entries/000274-1b3eb9140e71.json`
 
-【UI 打磨第 3 轮完成，待验收】按用户截图与补充消息修复统一列表行内水平对齐（70f994a）：业务规则/动作定义列表里「编辑/删除」等 .row-link 按钮与引用徽标是 inline 级盒子、默认按基线对齐，按钮自带内边距使其内容中心比名称/定义文字低约 5px。在全局 .ont-table 样式补 td>*{vertical-align:middle}，单元格直接子元素统一按盒中线对齐；使用 OntologyList 的规则/动作/共享属性/对象列表一处修复同时生效。分支 fix_ui 现为 d02af6c→2be283d→f8345fa→026e3f9→b47806d→70f994a，验收 HEAD=70f994a。
+【UI 打磨第 4 轮完成，待验收】按用户「所有列表都检查下水平对齐」完成全工作台列表普查（6bc19a5）：①根因修复——删除类按钮类名 row-link danger 继承了全局 .danger 提示段落样式的 margin-top:12px，导致所有列表的「删除/移除引用」比「编辑」低 6~12px；.row-link.danger 显式 margin-top:0。②普查其余数据列表并补家族规则 td>*{vertical-align:middle}：home-table/bt-table/ab-list/ct-result/flow-table（FlowList 表格新增 flow-table 类名）。③纯文本预览表无行内按钮不处理；attribute-table Excel 式编辑网格有意不动；卡片式列表本就 flex 居中。分支 fix_ui 验收 HEAD=6bc19a5（共七提交）。
 
-- 决定：修在全局 .ont-table 层而非各页面 scoped：OntologyList 是统一标准表格（样式走 style.css .ont-* 段），一处修复惠及全部使用方，符合组件「统一样式」设计约定
-- 验证：18981 实测（页面 getBoundingClientRect）：规则列表四列内容中心线全部=32px（修复前 编辑/删除=37.5、其余=32）；动作定义列表同样对齐（名称列「名称+副标题」两行块整组居中）；截图核对规则/动作两列表行内水平对齐；vite build 通过；纯样式改动不影响回归结论
-- 下一步：交 Codex 独立验收（验收 HEAD=70f994a，端口 18981）；通过后停在待用户授权集成；观察项不变：全仓 .text/.full 类无样式定义为既有债务
-- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@70f994a；frontend/src/style.css（.ont-table 段）
+- 决定：对齐修复收口在全局样式家族选择器而非逐页 scoped；Excel 式 attribute-table 编辑网格有意排除，避免影响紧凑输入布局
+- 验证：18981 逐页 getBoundingClientRect 实测：规则/动作/共享属性/对象列表组中心 32±1px、操作列按钮顶差 0（修复前 danger 按钮 +6~12px）；工作概览对象表 spread 0；函数编排 mini 按钮 21 与其他列一致；对象映射/构建任务页当前无数据表格行（ab-list/bt-table 规则静态兜底）；vue-tsc / vite build 通过；纯样式改动不影响既有回归结论（84/85，唯一失败=18941 环境冲突）
+- 下一步：交 Codex 独立验收（验收 HEAD=6bc19a5，端口 18981）；通过后停在待用户授权集成；观察项不变：全仓 .text/.full 类无样式定义为既有债务
+- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui 分支 fix_ui@6bc19a5；frontend/src/style.css（.ont-table/.row-link.danger/家族规则）；frontend/src/flow/FlowList.vue
 
 ### fix/model-setting-500-db-migration · zcode · 已验证
 
