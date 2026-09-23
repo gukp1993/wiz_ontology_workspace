@@ -3,7 +3,7 @@
   "requirement": "用户指令（2026-09-23）：菜单「更多工具」入口删除，相关代码清理",
   "owner": "zcode",
   "role": "实施（开发、自测）；Codex 独立验收",
-  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/fix_ui",
+  "worktree": "（已删除）",
   "branch": "fix_ui",
   "baseSha": "dd7dbe4ac07723b8363478471d4a7ac0334c3068",
   "port": 18981,
@@ -11,8 +11,8 @@
   "python": "system Python 3.9（与本需求无新增依赖；依赖变化时改独立环境）",
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18981；启动用工作树内 ./start.sh",
   "scope": "移除侧栏「更多工具」入口（按钮/ToolsPage 枢纽/导航注册/图标），旧地址 #tools 归一到工作概览；旧辅助视图保留深链可达；8 处「更多工具 → LLM 配置」文案改为「设置 → 模型设置」并重生成金样",
-  "status": "implemented（待 Codex 独立验收；未合并 main）",
-  "updatedAt": "2026-09-23（UI 打磨第 9 轮）",
-  "headSha": "2385cc2",
-  "notes": "分支现含十四提交（前十三见上）：2385cc2 移除节点配置面板「名称与说明」块（节点名称/说明编辑入口删除，节点保留类型默认名，flowModel 签名 description 字段保留零丢失）。其余同前：84/85 回归（唯一失败=18941 环境冲突）、服务运行中（18981）。含真实数据副本标注不变。"
+  "status": "merged（已合并 main 并完成清理；工作树/分支已删除，18981 已释放）",
+  "updatedAt": "2026-09-23（已合并清理）",
+  "headSha": "a266601",
+  "notes": "fix_ui 十四提交 + 合并提交 a266601 已进入 main（ff-only）。内容：更多工具入口移除、Excel 模板表头边框、欢迎卡/列表对齐/表单逐行/更多操作右移/说明块移除/配置折叠平铺/动作绑定仅启用后配置/函数编排参数卡样式等全部 UI 整理。合并组合验证：前端 typecheck/build 过、tests/run.py all 84/85（唯一失败=18941 被 fill_by_llm 占用的环境冲突）。清理：worktree/fix_ui（含数据副本/根密钥副本/播种树/node_modules/dist/.runtime，经用户指令删除）、分支 fix_ui、端口 18981。保留：18765 主工作台未更新（另需授权构建重启）；data/workbench-before-migration-0004-0005-20260923-193553.sqlite3（18765 升级前备份）。"
 }
