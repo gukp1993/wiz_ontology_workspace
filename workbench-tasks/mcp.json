@@ -1,0 +1,18 @@
+{
+  "task": "mcp",
+  "requirement": "待用户下发（本轮仅指令创建 worktree，尚未提供需求文档/执行指令）",
+  "owner": "zcode",
+  "role": "实施（按执行指令开发、自测）；Codex 独立验收",
+  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/mcp",
+  "branch": "mcp",
+  "baseSha": "a64ad9f23dfde37a78bd28c3b1906aa4352d4e32",
+  "port": 18991,
+  "dataRoot": "工作树根（data/workbench.sqlite3 + keys/wb-root.key + data/ontology-build-blobs + data/ontology-build-tmp；含真实数据与根密钥副本，不可自动丢弃）",
+  "python": "system Python 3.9（与本任务无新增依赖；依赖变化时改独立环境）",
+  "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18991；启动用工作树内 ./start.sh",
+  "scope": "待用户下达开发指令后补充",
+  "status": "ready（环境就绪待开发；未装依赖、未启动服务、未开发；未合并 main）",
+  "updatedAt": "2026-09-23（环境创建）",
+  "notes": "从最新已提交 main 创建：分支 mcp @ a64ad9f，工作树 worktree/mcp。按 2026-09-22 规则全量随迁 main 数据：transfer backup WAL 快照（31 表与 main 逐表行数零差异，integrity ok，alembic 20260922_0005）+ keys/wb-root.key 副本（shasum 一致，key_id c26b32a0c13462a5 匹配，解密探针 4/4 通过）+ ontology-build-blobs/tmp 随迁。含真实数据副本，不可自动丢弃。端口 18991 创建前后两次实测无监听。依赖未装、服务未启、未开发。",
+  "headSha": "a64ad9f"
+}

@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`a9feaad653198d5f`
+上下文版本：`dd413271a042f0b9`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### mcp · zcode · 需求已交付
+
+时间：2026-09-23T15:05:25.130273+00:00；记录：`.collaboration/entries/000281-87e1ac7304f7.json`
+
+【环境创建】按用户明确指令为 mcp 创建开发环境（仅建分支/工作树/登记，未开发未装依赖未启动）：分支 mcp 从最新已提交 main a64ad9f 建立，工作树 /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/mcp，端口 18991（登记前后两次实测空闲），WIZ_WORKBENCH_ROOT=工作树根。按 2026-09-22 规则全量随迁 main 数据：transfer backup WAL 快照 + keys/wb-root.key 副本 + ontology-build-blobs/tmp 随迁，登记 workbench-tasks/mcp.json 标注含真实数据不可自动丢弃。
+
+- 决定：分支名用用户指定的 mcp（用户明确命名优先于 codex/<短名> 默认）；端口选 18991：不在既有登记（18941 fill_by_llm/18952 auto_build/18971 model_setting/18765 main）中且实测无监听；数据随迁按 2026-09-22 全量拷贝规则执行；快照校验以逐表行数对比 + key_id 匹配 + 解密探针为准
+- 验证：git worktree add 成功，工作树 HEAD=a64ad9f 与 main 一致；快照库 integrity_check=ok、foreign_key_check 0 行、alembic_version=20260922_0005；31 张表与 main 逐表行数零差异；副本根密钥 shasum 与 main 一致，推导 key_id c26b32a0c13462a5 与 wb_credentials 全部记录匹配，解密探针 4/4 通过；wb_model_configs 2 行随迁；端口 18991 lsof 登记前后两次检查均无监听
+- 下一步：等待用户下达开发指令后在 mcp 工作树实施（首开发轮需先安装前端依赖/构建）；未开发未验收；不合并 main；18765 主工作台不受影响
+- 依据/文档：workbench-tasks/mcp.json；worktree/mcp
 
 ### fix_ui · zcode · 已验证
 
@@ -140,14 +151,3 @@
 - 验证：组合回归 tests/run.py all → 85/85 全绿（/tmp/merge_reg.log，含 main 侧新测试）；前端 npm run typecheck（0 错误）+ npm run build 成功；main 快进前复核：工作树干净、无他人新提交（3e68b89 未动）；git branch --merged main 确认 codex/auto_build 已入
 - 下一步：如需更新主工作台 18765 或真实副本 18890 到新 main，需用户明确授权
 - 依据/文档：merge commit 2bb5e06（main HEAD）；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §13
-
-### model_setting-环境创建 · zcode · 需求已交付
-
-时间：2026-09-22T16:00:40.560421+00:00；记录：`.collaboration/entries/000257-658879a5b43a.json`
-
-按用户指令从 main(5bfb605) 创建 model_setting 分支与 worktree/model_setting，仅建环境：端口 18971 实测空闲；数据根工作树自含（transfer backup WAL 快照 + 根密钥副本 0600 + ontology-build-blobs 随迁，登记含真实数据不可自动丢弃）。快照体检 integrity ok、副本根密钥推导 key_id 与库内凭据记录匹配、wb_model_configs 现存 2 行（GLM-5.3-Flash/minimax）。依赖未装、服务未启、未开发。登记 workbench-tasks/model_setting.json 与开发计划 §7 环境表。
-
-- 决定：分支名用用户指定的 model_setting（非 codex/ 前缀模板）；端口取 18971：18961/18913 被占，18951 有旧任务关联，选无关联空闲口
-- 验证：git worktree list 确认新树与 auto_build 并存、分支从 5bfb605 派生；transfer backup 输出 11382784B 与 main 库一致；sqlite immutable 只读体检 integrity=ok；key_id 匹配验证：副本根密钥 SHA256 前 16hex == wb_credentials.key_id（c26b32a0c13462a5），副本内加密凭据可解密
-- 下一步：待用户开发指令（执行指令.md §1 模板二）；T0 三决策点（目录范围//v1/models/anthropic-messages）未拍板前不冻结契约
-- 依据/文档：workbench-tasks/model_setting.json；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md（§7 环境登记）
