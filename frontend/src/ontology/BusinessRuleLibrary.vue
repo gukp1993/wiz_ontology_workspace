@@ -422,6 +422,8 @@ async function removeRule(id: string) {
 </template>
 
 <style scoped>
+/* 编辑表单逐行排列（20260923 用户指定）：规则名称/业务定义/规则内容各占一行，不并排 */
+.form-grid{grid-template-columns:1fr}
 .rule-feedback{margin-top:12px}
 /* 引用对象抽屉行：名称居左、动作居右（骨架走全局 .ont-ref-row）。 */
 .ont-ref-go{flex:none;margin-left:auto;color:var(--blue);font-size:12px;font-weight:500}

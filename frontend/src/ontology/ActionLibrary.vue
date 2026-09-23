@@ -423,6 +423,8 @@ function setField(key: 'name' | 'description' | 'effect', value: string) { draft
 </OntDrawer>
 </template>
 <style scoped>
+/* 编辑表单逐行排列（20260923 用户指定，同业务规则）：动作名称/业务定义/预期效果各占一行 */
+.form-grid{grid-template-columns:1fr}
 .ont-ref-row small{color:var(--muted);font-size:12px;font-weight:400}
 .blocked-deps{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:6px 0 0}
 .technical-section p{margin:8px 0;line-height:1.7}
