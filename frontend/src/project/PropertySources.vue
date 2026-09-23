@@ -1055,10 +1055,10 @@ if(psPendingOf(props.b.object_type)){
 <p v-for="(r,i) in assistRefusals" :key="i">未能填写「{{propertySourceFieldLabel(r.field)}}」：{{r.reason}}</p>
 </div>
 </div>
-<!-- 取值配置默认折叠为摘要（unknown 只读分支默认展开）；项目说明入口已按 20260923 用户指示移除（说明数据仍随草稿保存） -->
+<!-- 取值配置常开平铺（20260923 用户指示：不再折叠）；项目说明入口已按同日指示移除（说明数据仍随草稿保存） -->
 <div v-if="draft" class="ps-desc-wrap">
-<details class="ps-config-fold" :open="draft.kind==='unknown'">
-<summary><strong>取值配置</strong><small class="muted">{{draft.kind==='unknown'?'未识别结构（只读保留）':(listSummary(draft.kind==='none'?null:propertyView(props.b,selectedApi))||'需要时补充')}}</small></summary>
+<div class="ps-config-fold">
+<div class="ps-config-fold-head"><strong>取值配置</strong><small class="muted">{{draft.kind==='unknown'?'未识别结构（只读保留）':(listSummary(draft.kind==='none'?null:propertyView(props.b,selectedApi))||'需要时补充')}}</small></div>
 <div class="ps-config-body">
 <!-- 未知结构：只读警示分支，原样保留不进入表单 -->
 <div v-if="draft&&draft.kind==='unknown'" class="ps-form-panel">
@@ -1170,8 +1170,8 @@ if(psPendingOf(props.b.object_type)){
 </template>
 <template v-else-if="draft.kind==='database'">
 <p v-if="directIdentityRow" class="ps-info">当前选择的是实例来源表：取值时按实例主键 <strong>{{b.primary_key||'未配置'}}</strong> 自动定位，无需配置匹配条件。</p>
-<details v-if="draft.table" :open="!directIdentityRow||!!draft.lookup.match.length" class="ps-matching">
-<summary>{{directIdentityRow?'额外筛选条件（选填）':'匹配当前对象的记录 *'}}</summary>
+<div v-if="draft.table" class="ps-matching">
+<div class="ps-matching-head">{{directIdentityRow?'额外筛选条件（选填）':'匹配当前对象的记录 *'}}</div>
 <p class="field-help"><strong>匹配条件</strong>：等值条件 AND 组合；至少一条绑定当前实例（身份表本行除外）。不提供手输表名或 SQL。</p>
 <div v-for="(m,i) in (draft.lookup.match as any[])" :key="i">
 <div class="row">
@@ -1195,7 +1195,7 @@ if(psPendingOf(props.b.object_type)){
 <p v-if="dupMatch(i)" class="inline-error">重复条件：来源字段「{{m.field}}」出现在多个条件中。</p>
 </div>
 <div class="tools"><button @click="addMatch">＋ 添加筛选条件</button></div>
-</details>
+</div>
 <div class="param-card" v-if="draftShape==='timeSeries'">
 <div class="panelhead"><strong>查询时间范围（约定）</strong><button v-if="!draft.lookup.timeRange" @click="addTimeRange">添加时间范围</button></div>
 <p class="field-help">查询时间范围由调用上下文提供：startTime ≤ t &lt; endTime（左闭右开）。配置只保存参数角色，不写死具体日期；时间字段从目录选择。</p>
@@ -1226,9 +1226,9 @@ if(psPendingOf(props.b.object_type)){
 <label>取值字段 *<AppSelect :model-value="draft.field||''" aria-label="取值字段" searchable :disabled="!draftFieldCatalog" :options="[{value:'',label:'请选择字段'},...fieldOptions(draftFieldCatalog)]" @update:model-value="draft.field=$event"/></label>
 
 </div>
-<details v-if="draftCardinality!=='many'" class="ps-advanced"><summary>无匹配记录时（选填）</summary>
+<div v-if="draftCardinality!=='many'" class="ps-advanced"><div class="ps-advanced-head">无匹配记录时（选填）</div>
 <label>处理方式<AppSelect :model-value="draft.missing||'null'" aria-label="无匹配记录时" :options="[{value:'null',label:'返回无数据（默认）'},{value:'error',label:'返回错误'}]" @update:model-value="draft.missing=$event"/></label>
-</details>
+</div>
 <p v-if="draft.connection&&!draftFieldCatalog" class="inline-warning">该来源的表结构目录尚未读取，无法选择字段。<button :disabled="!!refreshing" @click="refresh">{{refreshing?'读取中…':'刷新表结构'}}</button></p>
 <p v-if="refreshMessage" class="inline-warning" role="status">{{refreshMessage}}</p>
 <div class="row" v-if="draftCardinality==='many'">
@@ -1269,14 +1269,14 @@ if(psPendingOf(props.b.object_type)){
 </div>
 </template>
 <template v-else>
-<details class="ps-advanced" :open="!directIdentityRow||!!draft.result.selection||draft.result.missing==='error'"><summary>多行与缺失处理（选填）</summary>
+<div class="ps-advanced"><div class="ps-advanced-head">多行与缺失处理（选填）</div>
 <div class="row">
 <label>多行处理<AppSelect :model-value="draft.result.selection||''" aria-label="多行处理" :options="[{value:'',label:'预期零或一条，多行报错（默认）'},{value:'latest',label:'按时间取最新'},{value:'sum',label:'求和',disabled:!numericProperty},{value:'average',label:'求平均',disabled:!numericProperty}]" @update:model-value="setSelection($event)"/></label>
 <label>无匹配记录时<AppSelect :model-value="draft.result.missing||'null'" aria-label="无匹配记录时" :options="[{value:'null',label:'结果为空（null，默认）'},{value:'error',label:'返回错误'}]" @update:model-value="draft.result.missing=$event"/></label>
 </div>
 <p v-if="draft.result.selection==='latest'" class="field-help">按时间取最新：并列且无确定性取舍规则时报冲突。</p>
 <p v-if="draft.result.selection==='sum'||draft.result.selection==='average'" class="field-help">求和／求平均只适用于业务口径允许汇总的数值属性；排序时间不作为聚合输出的采样时间。</p>
-</details>
+</div>
 </template>
 </template>
 <template v-else-if="draft.kind==='redis'">
@@ -1290,10 +1290,10 @@ if(psPendingOf(props.b.object_type)){
 <template v-if="ghostFields.length">
 <p v-for="g in ghostFields" :key="g" class="inline-warning">{{g}}</p>
 </template>
-<details v-if="draft.kind!=='none'" class="ps-advanced">
-<summary>缺失与异常处理（默认）</summary>
+<div v-if="draft.kind!=='none'" class="ps-advanced">
+<div class="ps-advanced-head">缺失与异常处理（默认）</div>
 <p class="field-help">{{advancedNote}}</p>
-</details>
+</div>
 <div class="ps-summary">
 <strong>配置摘要</strong>
 <p v-if="draft.kind==='database'">{{databaseSummary(draft)}}</p>
@@ -1305,7 +1305,7 @@ if(psPendingOf(props.b.object_type)){
 </fieldset>
 </template>
 </div>
-</details>
+</div>
 <p v-if="editError" class="inline-error" role="alert">{{editError}}</p>
 <div class="tools ps-actions">
 <button :disabled="saving" @click="closeEditor">取消</button>
@@ -1325,11 +1325,8 @@ if(psPendingOf(props.b.object_type)){
 /* 列表态 */
 .ps-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;font-size:13px}
 .ps-src{display:block;margin-top:4px}
-.ps-config-fold>summary{cursor:pointer;display:flex;align-items:center;gap:10px;list-style:none;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.ps-config-fold>summary::-webkit-details-marker{display:none}
-.ps-config-fold>summary::before{content:'›';color:var(--muted);transition:transform .12s}
-.ps-config-fold[open]>summary::before{transform:rotate(90deg)}
-.ps-config-fold>summary .muted{margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+.ps-config-fold-head{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.ps-config-fold-head .muted{margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
 .ps-config-body{padding-top:14px}
 .ps-lede{font-size:15px;font-weight:600;margin:0 0 10px}
 .ps-table .prop-name{font-weight:650}
@@ -1369,7 +1366,7 @@ if(psPendingOf(props.b.object_type)){
 .ps-form-panel .row>*{min-width:0}
 .ps-form-fields{border:0;padding:0;margin:0;min-width:0}
 .ps-matching{margin:14px 0}
-.ps-matching summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--ink)}
+.ps-matching-head{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:8px}
 .ps-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0 6px}
 .ps-card{display:block;text-align:left;border:1px solid var(--line);border-radius:9px;background:var(--paper);padding:14px 16px}
 .ps-card strong{display:block;font-size:14px}
@@ -1389,7 +1386,7 @@ if(psPendingOf(props.b.object_type)){
 .ps-missing p{margin:6px 0}
 .ps-range-card strong{font-size:13px}
 .ps-advanced{margin:16px 0 0}
-.ps-advanced summary{cursor:pointer;font-size:13px;color:var(--muted);padding:5px 0}
+.ps-advanced-head{font-size:13px;color:var(--muted);padding:5px 0;margin-bottom:4px}
 .ps-summary{background:var(--blue-soft);border:1px solid var(--blue-line);border-left:3px solid var(--blue);border-radius:6px;padding:12px 16px;margin:16px 0 0}
 .ps-summary strong{font-size:13px;color:var(--blue-ink)}
 .ps-summary p{margin:6px 0 0;font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}

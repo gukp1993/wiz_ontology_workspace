@@ -281,8 +281,8 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <template><div>
 <!-- ========== 浏览态：只读摘要 + 折叠的补充来源 ========== -->
 <template v-if="!editing">
-<details class="os-config">
-<summary><strong>数据来源</strong><small class="muted">{{identityMode==='registered'?'项目登记 · '+(savedInstances.length||0)+' 个实例':(b.connection?connName(b.connection)+' · '+(b.table||'未选表'):'未配置')}}</small></summary>
+<div class="os-config">
+<div class="os-config-head"><strong>数据来源</strong><small class="muted">{{identityMode==='registered'?'项目登记 · '+(savedInstances.length||0)+' 个实例':(b.connection?connName(b.connection)+' · '+(b.table||'未选表'):'未配置')}}</small></div>
 <div class="os-config-body">
 <div class="os-head"><div><h3>如何识别一个{{objectName}}实例</h3><small class="muted">识别有哪些对象实例，不限制属性可以从哪里获取。</small></div><button class="primary" @click="openIdentity">{{identityMode==='registered'||b.table?'修改':'配置'}}</button></div>
 <div class="os-summary">
@@ -300,8 +300,8 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <p v-if="identityMode==='database'&&titleInfo" class="field-help">显示名称由本体标记属性「{{titleInfo}}」决定；在「属性取值」页签把该属性绑定到数据列后生效。</p>
 <p v-else-if="identityMode==='registered'&&titleInfo" class="field-help">显示名称由本体标记属性「{{titleInfo}}」决定；可在「属性取值」页签把该属性绑定到登记信息的显示名称。</p>
 <p v-if="identityMode==='database'&&!b.connection" class="field-help">还没有合适的数据连接？请到「数据连接」页新建并测试后再回来配置。</p>
-<details class="os-sources">
-<summary>已登记补充来源（可选）{{sources.length?' · '+sources.length+' 项':''}}</summary>
+<div class="os-sources">
+<div class="os-sources-head">已登记补充来源（可选）{{sources.length?' · '+sources.length+' 项':''}}</div>
 <p class="field-help">用于复用关联路径或配置对象链接。属性直接选择其他表时，无需先在这里登记。</p>
 <p v-if="identityMode==='registered'" class="inline-warning">当前按项目登记识别实例：补充来源依赖数据库身份表，仅在切回「数据库表／视图」后生效（配置已保留）。</p>
 <div v-for="s in sources" :key="s.id" class="os-source-row">
@@ -311,9 +311,9 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <p v-if="!sources.length" class="field-help">暂无补充来源（允许为零项）：对象只有实例来源即可完成识别；需要时可登记数据库补充表。</p>
 <div v-if="identityMode==='database'" class="tools"><button @click="openSource()">＋ 登记数据库补充来源</button></div>
 <p v-if="removeMessage" class="inline-error" role="alert">{{removeMessage}}</p>
-</details>
 </div>
-</details>
+</div>
+</div>
 <div class="os-footer"><button class="primary" @click="emit('go-tab','properties')">继续配置属性取值 →</button></div>
 </template>
 <!-- ========== 编辑态：实例识别表单 ========== -->
@@ -409,10 +409,8 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 .os-desc-head h3{margin:0}
 .os-note-text{white-space:pre-wrap;line-height:1.9;font-size:13px;margin:0;padding:12px 14px;background:var(--bg);border:1px solid var(--line);border-radius:7px;overflow-wrap:anywhere}
 .os-config{border-top:1px solid var(--line);margin-top:6px;padding-top:12px}
-.os-config>summary{cursor:pointer;display:flex;align-items:center;gap:10px;list-style:none}
-.os-config>summary::-webkit-details-marker{display:none}
-.os-config>summary::before{content:'›';color:var(--muted);transition:transform .12s}
-.os-config[open]>summary::before{transform:rotate(90deg)}
+/* 20260923 用户指示：配置内容不再折叠，常开平铺 */
+.os-config-head{display:flex;align-items:center;gap:10px}
 .os-config-body{padding-top:14px}
 .os-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin:0 0 16px}
 .os-head h3{margin:0 0 4px}
@@ -421,7 +419,7 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 .os-summary small{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
 .os-readonly{padding:9px 12px;background:var(--bg);border:1px solid var(--line);border-radius:7px;overflow-wrap:anywhere;font-size:13px;min-height:39px}
 .os-sources{border-top:1px solid var(--line);margin-top:18px;padding-top:14px}
-.os-sources summary{cursor:pointer;color:var(--muted)}
+.os-sources-head{color:var(--muted)}
 .os-source-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:10px 0;flex-wrap:wrap}
 .os-source-row .os-readonly{flex:1;min-width:260px}
 .os-source-row .tools{flex:none}
