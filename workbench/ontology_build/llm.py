@@ -169,7 +169,7 @@ def _usage(calls=0, prompt_bytes=0, completion_bytes=0, duration_ms=0):
 def _call(provider, messages, timeout, max_tokens=MAX_TOKENS):
     """单次调用；返回 (ok, content, trace, error)。绝不抛未处理异常。"""
     if not isinstance(provider, dict) or not provider.get('endpoint') or not provider.get('model'):
-        return False, '', {}, '尚未配置可用的 LLM 提供方，请先到「更多工具 → LLM 配置」添加'
+        return False, '', {}, '尚未配置可用的 LLM 提供方，请先到「设置 → 模型设置」添加'
     try:
         content, trace = llm_client.chat(provider, messages, max_tokens=max_tokens, timeout=timeout)
     except llm_client.LlmError as exc:

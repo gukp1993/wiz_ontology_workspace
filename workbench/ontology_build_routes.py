@@ -65,7 +65,7 @@ def _v2_count_guard(conn, owner_id, task_id, profile):
                             % (count, batch_contracts.MAX_PLAN_TARGETS))
     return count
 # provider 缺失时的统一可读文案（422 INVALID_STATE 的 message；对话端点写进 assistantError）
-NO_PROVIDER_MESSAGE = '尚未配置可用的 LLM 提供方：请到「更多工具 → LLM 配置」添加后再重试'
+NO_PROVIDER_MESSAGE = '尚未配置可用的 LLM 提供方：请到「设置 → 模型设置」添加后再重试'
 
 # 解析器支持矩阵（08 §2.1/§12.7；需求《结构化格式解析支持_v1》§5）：静态支持矩阵，不查库。
 # 前 7 项 = 三级分派第①层专用解析器（kind → 后缀）；后 2 项 = 排除说明（硬/软黑名单），

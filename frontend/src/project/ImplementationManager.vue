@@ -188,7 +188,7 @@ onBeforeUnmount(()=>{if(focusTimer)clearTimeout(focusTimer);if(locateTimer)clear
 <button class="row-link" @click.stop="openContract(c)">{{implFor(c.id)?'维护实现':'配置实现'}}</button>
 </div>
 </div>
-<div v-else class="empty-state"><div class="empty-state-ico">◇</div><p>引用版本中没有通用契约；历史定义需先在「更多工具 → 计算契约」转为通用契约。</p></div>
+<div v-else class="empty-state"><div class="empty-state-ico">◇</div><p>引用版本中没有通用契约；历史定义需先在「计算契约」页（地址 #/contracts）转为通用契约。</p></div>
 </section>
 </template>
 </template>

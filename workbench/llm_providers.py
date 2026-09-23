@@ -147,7 +147,7 @@ def resolve(provider_id):
         return payload
     payload = default_provider()
     if payload is None:
-        raise ValueError('尚未配置 LLM 提供方：请到「更多工具 → LLM 配置」添加')
+        raise ValueError('尚未配置 LLM 提供方：请到「设置 → 模型设置」添加')
     return payload
 
 

@@ -10,7 +10,7 @@ export const pages: Record<string, string> = {
   'p-home': '项目概览', connections: '数据连接', binding: '对象映射', implements: '取值规则库', 'p-release': '项目校验与发布',
   'p-upgrade': '版本引用',
   'f-home': '函数编排', 'f-editor': '编排编辑',
-  tools: '更多工具', actions: '动作定义', interfaces: '接口定义', discover: '本体浏览', knowledge: '本体画布',
+  actions: '动作定义', interfaces: '接口定义', discover: '本体浏览', knowledge: '本体画布',
   explorer: '对象数据浏览', instances: '实例与计算预览', learning: '历史图谱导览', valuetypes: '值类型管理',
   'settings-models': '模型设置', 'settings-transfer': '配置迁移',
 }
@@ -21,6 +21,7 @@ export const alias: Record<string, string> = {
   properties: 'objects', versions: 'o-release', validation: 'o-release', releases: 'o-release',
   projects: 'p-home', bindings: 'p-home', pvalidation: 'p-release', mapping: 'binding', 'value-types': 'valuetypes',
   flows: 'f-home', flow: 'f-home', 'flow-edit': 'f-editor',
+  tools: 'o-home', // 20260923「更多工具」侧栏入口移除，旧地址落回工作概览（旧辅助页仍可各自深链直达）
   settings: 'settings-models', // 设置中心入口默认到模型分类；llm 旧地址同样归一（下行）
   llm: 'settings-models',
   // 从物料生成本体：带前缀的深链写法（#/ontology/build）与历史简写（#/build）都归一到 build
@@ -42,11 +43,11 @@ export const settingsCategories = [
   { id: 'settings-transfer', title: '配置迁移', group: '数据管理' },
 ] as const
 
-/** 本体区侧栏菜单（扁平顺序即渲染顺序）；「更多工具」不进表，由 App 单独渲染。
+/** 本体区侧栏菜单（扁平顺序即渲染顺序）；「更多工具」入口已于 20260923 移除（tools 归一到 o-home）。
  *  build（从物料生成）是「新建本体」的子入口，只进本体区菜单，不新增平台主菜单。 */
 export const menuOntology: Record<string, string> = { 'o-home': '工作概览', objects: '对象建模', library: '共享属性', rules: '业务规则', actions: '动作定义', 'o-release': '本体校验与发布', build: '从物料生成' }
 /** 字符图标（旧版侧栏）。2026-09 起侧栏改用 shared/icons.ts 的 SVG 线性图标，此处仅为向后兼容保留。 */
-export const navIcon: Record<string, string> = { 'o-home': '▤', objects: '▦', rules: '§', actions: '↯', contracts: '{ }', library: '≣', 'o-release': '⚑', 'p-home': '▤', connections: '⇄', binding: '▦', implements: '{ }', 'f-home': '⌥', 'f-editor': '✎', tools: '⋯' }
+export const navIcon: Record<string, string> = { 'o-home': '▤', objects: '▦', rules: '§', actions: '↯', contracts: '{ }', library: '≣', 'o-release': '⚑', 'p-home': '▤', connections: '⇄', binding: '▦', implements: '{ }', 'f-home': '⌥', 'f-editor': '✎' }
 
 /** 项目区菜单：顺序 = 项目概览 → 数据连接 → 对象映射 → 函数编排 → 项目校验与发布；
  *  函数编排固定在对象映射下方，且不依赖选中项目。 */

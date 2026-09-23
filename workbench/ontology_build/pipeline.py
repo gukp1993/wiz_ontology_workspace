@@ -1166,7 +1166,7 @@ def run_generate(owner_user_id, task_id, run_id, batch_id, provider, resume_mode
     """
     owner_id = str(owner_user_id or '')
     if not isinstance(provider, dict) or not provider.get('endpoint') or not provider.get('model'):
-        raise PipelineError('尚未配置可用的 LLM 提供方，请先到「更多工具 → LLM 配置」添加')
+        raise PipelineError('尚未配置可用的 LLM 提供方，请先到「设置 → 模型设置」添加')
     # 生成控输出 v3：自适应分批启用且 profile 校验通过 → schema2 目标计划路径（08 §14）。
     # 配置不可用（缺值/非法/绑定不符）直接失败，不静默回退 legacy——掩盖误配比失败更糟；
     # HTTP 入口已在状态变更前做同样预检（422），此处是 worker 侧防线（配置可在运行中途变更）。

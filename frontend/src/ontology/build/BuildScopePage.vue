@@ -177,7 +177,7 @@ const blockingIssues = computed(() => {
 const disableReasons = computed(() => {
   const reasons = [...blockingIssues.value]
   if (parsedMaterials.value.length === 0) reasons.push('至少需要一份已成功解析的材料，请先回到物料页完成扫描。')
-  if (providerId.value === '') reasons.push('当前账号没有可用的模型：请先到「更多工具 → LLM 配置」配置并提供默认模型。')
+  if (providerId.value === '') reasons.push('当前账号没有可用的模型：请先到「设置 → 模型设置」配置并提供默认模型。')
   return reasons
 })
 const canConfirm = computed(() => disableReasons.value.length === 0 && !confirming.value && !saving.value)

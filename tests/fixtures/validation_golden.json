@@ -46376,7 +46376,7 @@
    "report": {
     "errors": [
      "属性来源 Station.rated_power：引用的编排 C01空白提供方编排(c01goldenblankprovider) 配置无效：LLM 提供方不存在或已被删除，请重新选择",
-     "属性来源 Station.rated_power：引用的编排 C01空白提供方编排(c01goldenblankprovider) 配置无效：尚未配置 LLM 提供方：请到「更多工具 → LLM 配置」添加后重试"
+     "属性来源 Station.rated_power：引用的编排 C01空白提供方编排(c01goldenblankprovider) 配置无效：尚未配置 LLM 提供方：请到「设置 → 模型设置」添加后重试"
     ],
     "warnings": [
      "对象映射 Station：本体标记的显示名称属性尚未绑定数据字段，实例列表将显示为 ID"
@@ -46410,7 +46410,7 @@
       "status": "invalid",
       "issues": [
        "引用的编排 C01空白提供方编排(c01goldenblankprovider) 配置无效：LLM 提供方不存在或已被删除，请重新选择",
-       "引用的编排 C01空白提供方编排(c01goldenblankprovider) 配置无效：尚未配置 LLM 提供方：请到「更多工具 → LLM 配置」添加后重试"
+       "引用的编排 C01空白提供方编排(c01goldenblankprovider) 配置无效：尚未配置 LLM 提供方：请到「设置 → 模型设置」添加后重试"
       ]
      }
     ]

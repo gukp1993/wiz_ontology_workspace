@@ -197,7 +197,7 @@ def confirm_scope(conn, task_id, revision, provider):
     if not materials:
         raise TaskError('至少需要一份成功解析的材料才能开始生成')
     if provider is None:
-        raise TaskError('尚未配置可用的 LLM 提供方，请先到「更多工具 → LLM 配置」添加')
+        raise TaskError('尚未配置可用的 LLM 提供方，请先到「设置 → 模型设置」添加')
     # 顺序要紧：先把「确认」写回范围（revision 会 +1），再冻结基线。
     # 反过来的话批次基线记录的是确认前的 revision，任何批次一建出来就被判 stale。
     store.put_scope(conn, task_id, owner_id, _scope_payload(scope), expected_revision=None,

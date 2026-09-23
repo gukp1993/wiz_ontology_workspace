@@ -515,7 +515,7 @@ def _check_llm_provider(impl, llm_meta, report, kind, item_id, label):
         report('error', kind, item_id, label, 'LLM 提供方不存在或已被删除，请重新选择',
                code='LLM_PROVIDER_NOT_FOUND', section='implementation', field='providerId')
     if llm_meta is not None and not llm_meta:
-        report('error', kind, item_id, label, '尚未配置 LLM 提供方：请到「更多工具 → LLM 配置」添加后重试',
+        report('error', kind, item_id, label, '尚未配置 LLM 提供方：请到「设置 → 模型设置」添加后重试',
                code='LLM_PROVIDER_NOT_CONFIGURED', section='implementation', field='providerId')
 
 
