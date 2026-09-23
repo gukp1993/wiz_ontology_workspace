@@ -1,0 +1,33 @@
+{
+  "ticket": "e21f7a1c4f3c46cbab3b6e0c273947b2",
+  "task": "fix_ui",
+  "status": "implemented",
+  "summary": "【实施完成待验收】按用户指令在 fix_ui 工作树实施「更多工具菜单入口删除+相关代码清理」：App.vue 删侧栏按钮与 ToolsPage 挂载分支/导入；navigation.ts pages 去掉 tools、旧地址 #tools 别名归一到 o-home、navIcon 兼容表同步；icons.ts 删三点图标；删除 ToolsPage.vue；旧辅助视图按 implements 下线先例保留深链可达；8 处「更多工具 → LLM 配置/计算契约」文案改为「设置 → 模型设置」/「计算契约」页（前端 BuildScopePage/ImplementationManager + 后端 llm_providers/ontology_build_routes/flows/pipeline/tasks/llm）；金样重生成差异仅 2 行。分支 fix_ui dd7dbe4→d02af6c。另：插入任务已完成——用户报 18765 模型设置 500（requestId a7a84bccb1cf），子代理确认根因=main 库 alembic 停在 0003 缺 0004/0005（no such column: thinking），先 transfer backup 备份再 transfer init 升级到 20260922_0005，/api/llm-providers 复验 200，未重启服务未改代码（详见 entry 000269）。",
+  "decisions": [
+    "删除范围=入口及其专属枢纽页（按钮/ToolsPage/pages.tools/图标），旧辅助视图（discover/knowledge/explorer/instances/learning/valuetypes/interfaces/contracts）按 implements 下线先例保留深链可达，未连带删功能；tools/LlmProviders.vue 是模型设置页组件必须保留",
+    "旧地址 #tools 归一到 o-home；文案指向改为「设置 → 模型设置」（llm 别名早已归一 settings-models）"
+  ],
+  "verification": [
+    "金样回放 test_validation_split：100 样例 525 断言逐字节等价通过；git diff 金样仅 2 行文案",
+    "cd frontend && npm run typecheck / lint / build 全过",
+    "python3 tests/run.py all → 84/85（唯一失败 test_autofill_integration=18941 被 fill_by_llm 服务占用，环境冲突；首轮 6 失败中 5 个为工作树缺 ontology/ 播种树，已复制主仓库只读播种树后全过，登记已注明）",
+    "工作树库显式迁移 0003→0005（transfer init）后模型设置页正常；浏览器实测（隔离会话 18981）：登录正常、侧栏 7 项无更多工具、模型设置加载正常（GLM-5.3-Flash/minimax 可见）、#tools→工作概览、#discover 深链可达",
+    "18765 修复验证：备份+升级后 integrity ok、wb_model_configs 含 thinking 列、admin 登录 GET /api/llm-providers 200"
+  ],
+  "next": [
+    "交 Codex 独立验收（验收 SHA d02af6c，端口 18981）；验收通过后停在待用户授权集成",
+    "18765 服务代码未动，仅库已升级；如需更新主工作台代码另按授权执行"
+  ],
+  "references": [
+    "workbench-tasks/fix_ui.json",
+    ".collaboration/entries/000269-0a6735d9f0cf.json",
+    "worktree/fix_ui 分支 fix_ui@d02af6c",
+    "data/workbench-before-migration-0004-0005-20260923-193553.sqlite3（18765 升级前备份）"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-23T11:56:08.416681+00:00",
+  "sequence": 270,
+  "filename": "000270-8853270c1f7c.json",
+  "record_hash": "16b3665379f73d360ec60bb672beac4e634df1e69686ea075967c025358491c6",
+  "context_advanced": true
+}

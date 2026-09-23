@@ -1,18 +1,18 @@
 {
   "task": "fix_ui",
-  "requirement": "待补充（用户仅下达创建指令，需求文档/执行指令尚未提供）",
+  "requirement": "用户指令（2026-09-23）：菜单「更多工具」入口删除，相关代码清理",
   "owner": "zcode",
-  "role": "实施（按后续执行指令开发、自测）；Codex 独立验收",
+  "role": "实施（开发、自测）；Codex 独立验收",
   "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/fix_ui",
   "branch": "fix_ui",
   "baseSha": "dd7dbe4ac07723b8363478471d4a7ac0334c3068",
   "port": 18981,
-  "dataRoot": "工作树根（data/workbench.sqlite3 + keys/wb-root.key + data/ontology-build-blobs + data/ontology-build-tmp；含真实数据与根密钥副本，不可自动丢弃）",
+  "dataRoot": "工作树根（data/workbench.sqlite3 + keys/wb-root.key + data/ontology-build-blobs + data/ontology-build-tmp + ontology/ 只读播种树；含真实数据与根密钥副本，不可自动丢弃）",
   "python": "system Python 3.9（与本需求无新增依赖；依赖变化时改独立环境）",
-  "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18981；启动用工作树内 ./start.sh（首开发轮需先 npm install + 前端构建）",
-  "scope": "待用户下达开发指令后补充",
-  "status": "created（仅建分支/工作树/登记，未装依赖、未启服务、未开发）",
-  "updatedAt": "2026-09-23（创建轮）",
-  "notes": "按 2026-09-22 规则全量随迁 main 数据：transfer backup WAL 一致快照（30 表与 main 逐表行数零差异、integrity ok、外键违规 0）+ keys/wb-root.key 副本（shasum 一致，key_id c26b32a0c13462a5 与库内 4 条凭据匹配，解密探针 4/4 通过）+ ontology-build-blobs/ontology-build-tmp 随迁。端口 18981 创建时与登记前两次实测均无监听，且不在既有登记（18765/18941/18952/18971）中。",
-  "headSha": "dd7dbe4"
+  "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18981；启动用工作树内 ./start.sh",
+  "scope": "移除侧栏「更多工具」入口（按钮/ToolsPage 枢纽/导航注册/图标），旧地址 #tools 归一到工作概览；旧辅助视图保留深链可达；8 处「更多工具 → LLM 配置」文案改为「设置 → 模型设置」并重生成金样",
+  "status": "implemented（待 Codex 独立验收；未合并 main）",
+  "updatedAt": "2026-09-23（实施轮）",
+  "headSha": "d02af6c",
+  "notes": "分支提交 d02af6c（13 文件，+17/-58）：App.vue 侧栏按钮与挂载分支、navigation.ts pages/alias/navIcon、icons.ts、删 ToolsPage.vue、前后端 8 处文案、金样重生成（差异仅 2 行）。工作树库已显式迁移 0003→0005（transfer init，模型设置可用）；已复制主仓库 ontology/ 只读播种树供种子类测试。服务运行中（18981，PID 37192）。验证：vue-tsc/lint/build 过、金样回放 100 样例 525 断言过、tests/run.py all 84/85（唯一失败 test_autofill_integration=18941 被 fill_by_llm 服务占用，环境冲突）、浏览器实测侧栏无更多工具/模型设置正常/#tools→工作概览/#discover 深链可达。含真实数据副本标注不变。"
 }

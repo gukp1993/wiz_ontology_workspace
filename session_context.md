@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`8049c29e16cf497c`
+上下文版本：`a28ee71c05764237`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,16 +22,28 @@
 
 ## 最近交接（新 → 旧）
 
-### fix_ui · zcode · 已确认决定
+### fix_ui · zcode · 已实施，待验收
 
-时间：2026-09-23T11:23:22.991129+00:00；记录：`.collaboration/entries/000268-cf3baec75c8c.json`
+时间：2026-09-23T11:56:08.416681+00:00；记录：`.collaboration/entries/000270-8853270c1f7c.json`
 
-【环境创建】按用户明确指令从最新已提交 main dd7dbe4 创建 fix_ui 分支与 worktree/fix_ui 独立工作树（仅建环境：未装依赖、未启服务、未开发）。端口 18981（创建与登记前两次实测无监听，不在既有登记 18765/18941/18952/18971 中）。数据按 2026-09-22 规则全量随迁 main：transfer backup WAL 一致快照落位工作树 data/workbench.sqlite3 + keys/wb-root.key 副本（shasum 一致）+ data/ontology-build-blobs 与 data/ontology-build-tmp 随迁，登记 workbench-tasks/fix_ui.json 标注含真实数据不可自动丢弃。
+【实施完成待验收】按用户指令在 fix_ui 工作树实施「更多工具菜单入口删除+相关代码清理」：App.vue 删侧栏按钮与 ToolsPage 挂载分支/导入；navigation.ts pages 去掉 tools、旧地址 #tools 别名归一到 o-home、navIcon 兼容表同步；icons.ts 删三点图标；删除 ToolsPage.vue；旧辅助视图按 implements 下线先例保留深链可达；8 处「更多工具 → LLM 配置/计算契约」文案改为「设置 → 模型设置」/「计算契约」页（前端 BuildScopePage/ImplementationManager + 后端 llm_providers/ontology_build_routes/flows/pipeline/tasks/llm）；金样重生成差异仅 2 行。分支 fix_ui dd7dbe4→d02af6c。另：插入任务已完成——用户报 18765 模型设置 500（requestId a7a84bccb1cf），子代理确认根因=main 库 alembic 停在 0003 缺 0004/0005（no such column: thinking），先 transfer backup 备份再 transfer init 升级到 20260922_0005，/api/llm-providers 复验 200，未重启服务未改代码（详见 entry 000269）。
 
-- 决定：分支名用用户指定的 fix_ui（用户明确命名优先于 codex/<短名> 默认）；端口取 18981：空闲且与既有任务无关联；需求文档尚未提供，登记 scope 留待用户开发指令补充，不自行推断实施范围
-- 验证：git worktree add 成功：worktree/fix_ui HEAD=dd7dbe4 与 main 一致、工作树干净；快照体检：integrity_check ok、foreign_key_check 违规 0、30 表与 main 逐表行数零差异；副本根密钥 shasum 与 main 一致（99d4bf52…）；key_id c26b32a0c13462a5 与快照内 4 条 wb_credentials 全部匹配；以 WIZ_WORKBENCH_ROOT=工作树根 走真实读取路径解密探针 4/4 通过；端口 18981 两次 lsof 实测无监听
-- 下一步：等待用户下达 fix_ui 开发指令（首开发轮需在工作树内 npm install + 前端构建后再启服务）；开发、自测、提交后交 Codex 独立验收；不合并 main，不更新 18765
-- 依据/文档：workbench-tasks/fix_ui.json；worktree/fix_ui；AGENTS.md 独立分支开发与串行集成（2026-09-20/21/22 规则）
+- 决定：删除范围=入口及其专属枢纽页（按钮/ToolsPage/pages.tools/图标），旧辅助视图（discover/knowledge/explorer/instances/learning/valuetypes/interfaces/contracts）按 implements 下线先例保留深链可达，未连带删功能；tools/LlmProviders.vue 是模型设置页组件必须保留；旧地址 #tools 归一到 o-home；文案指向改为「设置 → 模型设置」（llm 别名早已归一 settings-models）
+- 验证：金样回放 test_validation_split：100 样例 525 断言逐字节等价通过；git diff 金样仅 2 行文案；cd frontend && npm run typecheck / lint / build 全过；python3 tests/run.py all → 84/85（唯一失败 test_autofill_integration=18941 被 fill_by_llm 服务占用，环境冲突；首轮 6 失败中 5 个为工作树缺 ontology/ 播种树，已复制主仓库只读播种树后全过，登记已注明）；工作树库显式迁移 0003→0005（transfer init）后模型设置页正常；浏览器实测（隔离会话 18981）：登录正常、侧栏 7 项无更多工具、模型设置加载正常（GLM-5.3-Flash/minimax 可见）、#tools→工作概览、#discover 深链可达；18765 修复验证：备份+升级后 integrity ok、wb_model_configs 含 thinking 列、admin 登录 GET /api/llm-providers 200
+- 下一步：交 Codex 独立验收（验收 SHA d02af6c，端口 18981）；验收通过后停在待用户授权集成；18765 服务代码未动，仅库已升级；如需更新主工作台代码另按授权执行
+- 依据/文档：workbench-tasks/fix_ui.json；.collaboration/entries/000269-0a6735d9f0cf.json；worktree/fix_ui 分支 fix_ui@d02af6c；data/workbench-before-migration-0004-0005-20260923-193553.sqlite3（18765 升级前备份）
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
+### fix/model-setting-500-db-migration · zcode · 已验证
+
+时间：2026-09-23T11:37:18.985092+00:00；记录：`.collaboration/entries/000269-0a6735d9f0cf.json`
+
+【线上500修复已验证】主工作台18765模型设置页500（requestId=a7a84bccb1cf，sqlite3.OperationalError: no such column: thinking）根因为主库schema落后代码：data/workbench.sqlite3 alembic_version停在20260920_0003，缺0004/0005两迁移。按正规CLI路径 python3 -m workbench.storage.transfer init 显式升级（engine.initialize→migrations.upgrade→alembic heads，幂等，服务不重启），0003→20260922_0005成功。升级前备份：data/workbench-before-migration-0004-0005-20260923-193553.sqlite3（11382784B，WAL一致快照）。
+
+- 决定：迁移走 transfer init 官方入口，未手写ALTER TABLE/裸SQL；服务进程未重启（SQLite动态schema，改列后现有进程即可读）
+- 验证：PRAGMA integrity_check=ok；PRAGMA table_info(wb_model_configs) 含 thinking 列=True；HTTP实测：POST /api/auth-login(admin) 200 → GET /api/llm-providers 200，items 为数组含2项，字段含 thinking；备份文件与前后 alembic_version（20260920_0003→20260922_0005）均有命令输出记录
+- 下一步：主服务未更新代码版本（本轮只修库），若后续还有代码落后问题另行处理；本轮按任务约束未做git操作，交接记录未提交，后续提交时可包含
+- 依据/文档：workbench/storage/transfer.py cmd_init；workbench/storage/migrations.py upgrade；workbench/migrations/versions/20260921_0004_build_task_filter.py；workbench/migrations/versions/20260922_0005_llm_thinking.py；.runtime/server.log#L168附近
 
 ### auto_build/fact-quality-v1 · zcode · 已实施，待验收
 
@@ -140,15 +152,3 @@
 - 验证：git worktree list 确认新树与 auto_build 并存、分支从 5bfb605 派生；transfer backup 输出 11382784B 与 main 库一致；sqlite immutable 只读体检 integrity=ok；key_id 匹配验证：副本根密钥 SHA256 前 16hex == wb_credentials.key_id（c26b32a0c13462a5），副本内加密凭据可解密
 - 下一步：待用户开发指令（执行指令.md §1 模板二）；T0 三决策点（目录范围//v1/models/anthropic-messages）未拍板前不冻结契约
 - 依据/文档：workbench-tasks/model_setting.json；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md（§7 环境登记）
-
-### 模型供应商与模型管理改版-需求四件套交付 · zcode · 已确认决定
-
-时间：2026-09-22T15:53:41.606973+00:00；记录：`.collaboration/entries/000256-0332c7e4714b.json`
-
-按用户指令参照 ZCode 开源配置模型（本机 ~/.zcode/v2/provider_config.json 与 kingsword09/zcode-cli 文档、应用内置目录 zcode-builtin.json 已核实）交付模型配置改版四件套：三层配置模型（内置目录→供应商模板继承→模型规则目录覆盖/手动）、默认模型三元组 {providerId,modelId,reasoningLevel}、wb_llm_providers/wb_llm_models 两表+Alembic 迁移（providerId 稳定使密钥零重加密）、9 个 API 端点契约、T1-T10 并行任务表。未实施业务代码。
-
-- 决定：模型配置从扁平单表改为 ZCode 式三层结构：仓库内置目录 JSON + 供应商(模板继承/覆盖) + 模型规则(catalog 增量覆盖 | manual 全量)；默认项升级为 {providerId,modelId,reasoningLevel}，替代 models.default_provider_id；isDefault→defaultSelection 属破坏性接口变更需登记；api_type 支持 openai-chat-completions(P0) 与 anthropic-messages(P1)；不抄 OAuth 账号体系/openai-responses/map 表达式引擎，参数注入用按协议的固定映射枚举；迁移保持 provider_id 原值不变，密钥 AAD 不变零重加密；旧编排节点仅 providerId 的绑定回退该供应商默认模型；开放决策点待用户拍板：内置目录首版收录范围、/v1/models 拉取按钮、anthropic-messages 是否首版做
-- 验证：现状调研：Explore 子代理只读核实 llm_providers/flow_routes/llm_client/schema/前端设置页/接口文档04 全链路；ZCode 侧核实：本机 provider_config.json 实际结构、zcode-builtin.json(rev30) 模板与模型规则计数、开源仓库 provider.example.json 与 PROVIDER_CONFIG 文档；原型 HTML 标签配对与 JS 语法检查通过；文档不含任何真实密钥（provider_config.json 中的 Key 未复制）
-- 下一步：用户拍板 3 个开放决策点后冻结契约（开发计划 T0）；实施需用户按执行指令 §1 下达 worktree 创建指令；接口文档先行（T3）
-- 依据/文档：文档/需求/20260922_模型供应商与模型管理改版/需求说明.md；文档/需求/20260922_模型供应商与模型管理改版/开发计划.md；文档/需求/20260922_模型供应商与模型管理改版/执行指令.md；文档/需求/20260922_模型供应商与模型管理改版/交互原型_v1.html
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
