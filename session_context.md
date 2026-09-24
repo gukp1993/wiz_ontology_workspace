@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`a419a16cd8210276`
+上下文版本：`a91f2b80fbfc59e0`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,15 +24,14 @@
 
 ### mcp · zcode · 已实施，待验收
 
-时间：2026-09-24T01:08:05.486885+00:00；记录：`.collaboration/entries/000283-e6d1de0681cd.json`
+时间：2026-09-24T01:18:44.496394+00:00；记录：`.collaboration/entries/000284-e16fe6eeee59.json`
 
-【智能问数 P0 实施完成待验收】在 mcp 工作树按 SQ-REQ/DEV-001 实施：semantic_query 16 模块（契约22错误码/元数据适配/编译器/快照存储/检索解析/计划器/SQL+编排执行器/混合协调/生命周期/service门面/MCP JSON-RPC）+迁移0007（5张wb_sq_*表）+12路由挂白名单+前端#sq全局页。多代理并行+协调者收口，配额中断后主代理补齐 T6/T8~T12。
+【侧栏常驻智能问数菜单】按用户指令为 18991 的智能问数页补侧栏入口（原仅 #sq 深链不可发现）：sq 保留全局页属性，新增 onSettingsView 使设置中心专用侧栏仅限两个设置页，sq 落回业务侧栏；业务 nav 末尾追加常驻「智能问数」按钮（本体/项目两空间可见，active 高亮），面包屑「智能问数 · 语义查询」，状态条独立文案。mcp 分支提交 59e14b5+0234a73，浏览器实测过。
 
-- 决定：D2 首个真实适配器=SQLite；MySQL 路径实现但真实联调 BLOCKED 不宣称；D3 聚合策略从 database 来源 selection 推导+semantic 覆盖块；SOC/累计聚合拒绝；D4 权限=owner 隔离+wb_sq_access 策略；scope_fingerprint 变化旧计划拒绝执行；D5 WORKFLOW 准入=flow+queryRule v1/v2；v3/v4/calc/inlineSql/redis 等拒绝或仅解释（真实项目实测验证分类）；D6 版本固定=flow head revision token，漂移 SCHEMA_DRIFT；D8 NL 层本期不接（MCP JSON-RPC E2E 覆盖）
-- 验证：sq 专项 12 测试文件约 566 断言全绿；混合黄金：完整候选 Top2=D3/D1、limited=D1/D2、失败不输出完整前二；全仓回归 96/97，唯一失败=18941 被 fill_by_llm 占用（环境冲突）；前端 typecheck/build/lint 过；ruff 全绿；浏览器实测 18991：admin→#sq→真实项目创智园二期编译→15 条诊断正确分类（redis warning/calcFunction invalid/缺主键 invalid）→候选阻止生效（REQ-008）；工作树库 transfer init 0005→0007；复制主仓库 ontology/ 只读播种树 8.4MB（真实数据，登记注明不可自动丢弃）
-- 下一步：交 Codex 独立验收（分支 mcp HEAD=29e8dc4，基线 a64ad9f）；通过后停在待授权集成；与 auto_build(0006)/model_setting 集成时迁移多 head 由集成负责人处理；阻塞项如实记录：MySQL 真实联调/NL Agent/图形 MCP 客户端未完成（docs/semantic-query/implementation-status.md）；18991 实例运行中（PID 94724）可直接验收；18765 未动
-- 依据/文档：workbench-tasks/mcp.json（主仓 cab6dea）；分支 mcp：docs/semantic-query/ 三份文档；文档/需求/20260923_智能问数/（需求副本+开发计划含实施结果）；文档/接口文档/09-智能问数接口.md
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+- 决定：sq 用业务侧栏而非设置侧栏（非设置语义）；菜单按钮在 nav 内无条件渲染，不随空间菜单显隐
+- 验证：浏览器实测 18991：业务侧栏「智能问数」渲染、active 跟随、点击跳转 #sq 挂载正常；typecheck/build 过；过程失误已纠正：一次 shell cwd 漂移致编辑误落主仓 App.vue，已 checkout 还原并重建主仓 dist（复现 index-CcrXiB9h.js 原哈希，主仓零残留）；顺手修 test_sq_service 溯源断言 camelCase 跟随（0234a73）
+- 下一步：智能问数仍停在待 Codex 独立验收（分支 mcp）；本轮菜单改动纳入同分支一并验收
+- 依据/文档：分支 mcp 59e14b5/0234a73；worktree/mcp/frontend/src/App.vue
 
 ### hide-autofill-entry-main · zcode · 已实施，待验收
 

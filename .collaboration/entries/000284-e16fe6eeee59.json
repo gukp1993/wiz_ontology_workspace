@@ -1,0 +1,27 @@
+{
+  "ticket": "1832c275c34a40e8861eae4a9c6d49a9",
+  "task": "mcp",
+  "status": "implemented",
+  "summary": "【侧栏常驻智能问数菜单】按用户指令为 18991 的智能问数页补侧栏入口（原仅 #sq 深链不可发现）：sq 保留全局页属性，新增 onSettingsView 使设置中心专用侧栏仅限两个设置页，sq 落回业务侧栏；业务 nav 末尾追加常驻「智能问数」按钮（本体/项目两空间可见，active 高亮），面包屑「智能问数 · 语义查询」，状态条独立文案。mcp 分支提交 59e14b5+0234a73，浏览器实测过。",
+  "decisions": [
+    "sq 用业务侧栏而非设置侧栏（非设置语义）；菜单按钮在 nav 内无条件渲染，不随空间菜单显隐"
+  ],
+  "verification": [
+    "浏览器实测 18991：业务侧栏「智能问数」渲染、active 跟随、点击跳转 #sq 挂载正常；typecheck/build 过",
+    "过程失误已纠正：一次 shell cwd 漂移致编辑误落主仓 App.vue，已 checkout 还原并重建主仓 dist（复现 index-CcrXiB9h.js 原哈希，主仓零残留）",
+    "顺手修 test_sq_service 溯源断言 camelCase 跟随（0234a73）"
+  ],
+  "next": [
+    "智能问数仍停在待 Codex 独立验收（分支 mcp）；本轮菜单改动纳入同分支一并验收"
+  ],
+  "references": [
+    "分支 mcp 59e14b5/0234a73",
+    "worktree/mcp/frontend/src/App.vue"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-24T01:18:44.496394+00:00",
+  "sequence": 284,
+  "filename": "000284-e16fe6eeee59.json",
+  "record_hash": "1c3a5bc20f2cfbd82f3202c0eae8884468aec0434fc0bdade2e3f60d422d7d9a",
+  "context_advanced": false
+}
