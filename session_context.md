@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`56e62ae0c40f578b`
+上下文版本：`82ce32ac428a0455`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### mcp · zcode · 已实施，待验收
 
-时间：2026-09-24T01:49:58.408591+00:00；记录：`.collaboration/entries/000286-8cfaafe8193f.json`
+时间：2026-09-24T01:56:31.758722+00:00；记录：`.collaboration/entries/000287-3f3659a606fc.json`
 
-【MCP 实例化】按用户指令（参照参考仓库版式：项目/MCP 状态/端口/操作，可指定端口启动否则随机）把 MCP 接入页表格化，后端支持每项目独立 MCP 服务进程：mcp_server.py 子进程（127.0.0.1+启动时随机 Bearer token+进程边界强制绑定项目，projectId 传参被改写），注册表 <DATA_ROOT>/mcp_instances（0700/0600，pid 探测+僵留清理），三端点 sq-mcp-start（端口留空自动 20000-39999/占用 409/健康探测失败 500）sq-mcp-instances sq-mcp-stop，前端表格+搜索+统计条+5s 轮询+复制客户端配置（含 token）。09 分册 §9 契约。mcp 分支 b5b7313+2511ed7。
+【MCP 接入页样式优化】按用户指令紧凑化：工具栏一行（搜索框 300px+统计 pill 徽章+刷新）、消息提示条化、表格 padding 收紧、脚注 11px 淡化。mcp 分支样式提交，浏览器截图对比确认。
 
-- 决定：token 只在启动响应与 0600 注册文件中，等同该项目查询权；实例绑定 127.0.0.1 不对外；进程边界即项目隔离：实例内所有工具调用 projectId 被强制改写为绑定项目；实例生命周期与工作台解耦：工作台重启后注册表仍在，可继续管理
-- 验证：test_sq_mcp_server 18 断言：子进程起停/token 401/跨项目参数改写/混合黄金 Top2=D3、D1/注册表生命周期/僵留清理；HTTP 实测 18991（重启加载新路由）：start（自动端口）→Bearer tools/list 200→无 token 401→stop→列表归零；指定端口 21001 同样通过；浏览器实测：表格渲染（#/项目/状态/端口/操作）→点启动→运行中·端口 20820→点停止→统计归零，截图留证；ruff 全绿；sq_service 34/sq_http 24 复验过
-- 下一步：纳入 mcp 分支一并交 Codex 独立验收（前端 HEAD=2511ed7）；真实外部 MCP 客户端（Claude Desktop 等）经实例端口+Bearer 联调仍属待验收项，未宣称完成
-- 依据/文档：分支 mcp b5b7313/2511ed7；文档/接口文档/09-智能问数接口.md §9；worktree/mcp/workbench/semantic_query/mcp_server.py
+- 决定：统计改 pill 徽章贴近参考版式；纯样式改动不动逻辑
+- 验证：浏览器截图对比（18991）；typecheck/build 过
+- 下一步：纳入 mcp 分支一并交 Codex 独立验收
+- 依据/文档：分支 mcp 样式提交
 
 ### hide-autofill-entry-main · zcode · 已实施，待验收
 

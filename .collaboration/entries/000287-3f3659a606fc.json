@@ -1,0 +1,24 @@
+{
+  "ticket": "7c2f5d9cfafe4bd7a8b02eefb1d1b96e",
+  "task": "mcp",
+  "status": "implemented",
+  "summary": "【MCP 接入页样式优化】按用户指令紧凑化：工具栏一行（搜索框 300px+统计 pill 徽章+刷新）、消息提示条化、表格 padding 收紧、脚注 11px 淡化。mcp 分支样式提交，浏览器截图对比确认。",
+  "decisions": [
+    "统计改 pill 徽章贴近参考版式；纯样式改动不动逻辑"
+  ],
+  "verification": [
+    "浏览器截图对比（18991）；typecheck/build 过"
+  ],
+  "next": [
+    "纳入 mcp 分支一并交 Codex 独立验收"
+  ],
+  "references": [
+    "分支 mcp 样式提交"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-24T01:56:31.758722+00:00",
+  "sequence": 287,
+  "filename": "000287-3f3659a606fc.json",
+  "record_hash": "6f9aadacec4a783a8b749da552bf2b6f0964e465b0b047997ac636ae4fecf70a",
+  "context_advanced": false
+}
