@@ -10,9 +10,9 @@
   "dataRoot": "工作树根（data/workbench.sqlite3 + keys/wb-root.key + data/ontology-build-blobs + data/ontology-build-tmp；含真实数据与根密钥副本，不可自动丢弃）",
   "python": "system Python 3.9（与本任务无新增依赖；依赖变化时改独立环境）",
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18991；启动用工作树内 ./start.sh",
-  "scope": "待用户下达开发指令后补充",
-  "status": "ready（环境就绪待开发；未装依赖、未启动服务、未开发；未合并 main）",
-  "updatedAt": "2026-09-23（环境创建）",
-  "notes": "从最新已提交 main 创建：分支 mcp @ a64ad9f，工作树 worktree/mcp。按 2026-09-22 规则全量随迁 main 数据：transfer backup WAL 快照（31 表与 main 逐表行数零差异，integrity ok，alembic 20260922_0005）+ keys/wb-root.key 副本（shasum 一致，key_id c26b32a0c13462a5 匹配，解密探针 4/4 通过）+ ontology-build-blobs/tmp 随迁。含真实数据副本，不可自动丢弃。端口 18991 创建前后两次实测无监听。依赖未装、服务未启、未开发。",
+  "scope": "本体与项目映射驱动的智能问数：语义快照编译、受限 QuerySpec、SQL/编排双执行器、混合协调、七工具 HTTP+MCP、最小管理页（需求与开发计划在分支 mcp 文档/需求/20260923_智能问数/，实施证据 docs/semantic-query/）",
+  "status": "implemented（智能问数 P0 已实施，待 Codex 独立验收；未合并 main）",
+  "updatedAt": "2026-09-24（智能问数实施轮）",
+  "notes": "实施 HEAD 见分支 mcp git log（基线 a64ad9f 起）。sq 专项测试 12 文件约 566 断言全绿；全仓回归 96/97（唯一失败 test_autofill_integration=18941 被 fill_by_llm 占用，环境冲突）；前端 typecheck/build/lint 过。2026-09-24 为种子类测试复制主仓库 ontology/ 只读播种树（8.4MB 真实数据）——含真实数据副本标注不变，不可自动丢弃。工作树库已显式迁移 0005→0007（transfer init，5 张 wb_sq_* 表）。浏览器实测 18991：admin→#sq→真实项目创智园二期(9803ea198cbc)编译→15 条诊断正确分类（redis warning/calcFunction invalid/缺主键 invalid）→候选阻止生效（REQ-008）。阻塞项：MySQL 真实联调、NL Agent、图形 MCP 客户端（docs/semantic-query/implementation-status.md 逐项列明）。",
   "headSha": "a64ad9f"
 }
