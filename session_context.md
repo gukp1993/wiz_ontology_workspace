@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`b07d076b68b7969c`
+上下文版本：`257fe30a1d67cb5e`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,25 @@
 
 ### mcp · zcode · 已实施，待验收
 
-时间：2026-09-24T02:11:16.852991+00:00；记录：`.collaboration/entries/000288-5598d5166db7.json`
+时间：2026-09-24T02:42:11.293988+00:00；记录：`.collaboration/entries/000290-62b296c72c05.json`
 
-【客户端配置极简化】按用户指定样例把「复制客户端配置」输出改为 {"type":"remote","url":".../mcp?token=..."} 两行形态：mcp_server 端点新增 ?token= 查询参数鉴权（与 Bearer/X-MCP-Token 并列）并修复 do_POST 路径未剥查询串的 404；前端 configJson 改 remote 形态（运行中=实例 URL+token，未启动=工作台端点占位）。mcp 分支提交，test_sq_mcp_server 19 断言过，真实实例 URL 直连 tools/list=7 实测。
+【MCP 实例改无 token 模式】按用户指令移除实例鉴权：mcp_server 不做 token 校验（--token 参数兼容保留但忽略），安全边界=仅绑定 127.0.0.1（外网不可达，本机其他进程可访问该项目数据，用户知情选择）；路由 start/instances 响应去 token；前端「复制客户端配置」输出纯净两行 {"type":"remote","url":"http://127.0.0.1:<端口>/mcp"}，脚注改无鉴权警示；09 分册 §9 同步。mcp 分支 e57de58。
 
-- 决定：token 经 URL 查询参数携带以满足两行 remote 配置；脚注保持含 token URL 勿外传警示
-- 验证：test_sq_mcp_server 19 断言（新增 query-token 用例）；真实链路：start→remote URL（无 header）tools/list=7→stop；frontend build 过
+- 决定：无鉴权为用户知情选择（本机单用户场景，同 stdio MCP 惯例）；仅绑定 127.0.0.1 是唯一边界，端口不得暴露本机之外
+- 验证：test_sq_mcp_server 改无 token 直连口径 16 断言过；真实链路实测：start(21501)→无任何鉴权 tools/list=7→stop；前端 typecheck/build 过；lint 无告警
 - 下一步：纳入 mcp 分支一并交 Codex 独立验收
-- 依据/文档：分支 mcp 最新提交；文档/接口文档/09-智能问数接口.md §9
+- 依据/文档：分支 mcp e57de58；文档/接口文档/09-智能问数接口.md §9
+
+### auto_build · zcode · 需求已交付
+
+时间：2026-09-24T02:13:28.692880+00:00；记录：`.collaboration/entries/000289-e3f77b9a0a96.json`
+
+【对照表交付】按用户要求产出《03_GPT方案与现行对照表_20260924》（auto_build 分支 507ceba，与 01/02 文档并列）：A-F 六节对照表逐环节对比项目现状（每格附代码事实：文件/常量/行号，基线 ba90bf9）与 01 方案建议，附六项指控的代码核对结论（P0-1/P0-2/P1-1/P1-3 属实、P0-3 需按 v3 后代码重新核验、P1-2 结构性）。纯文档交付，不构成实施授权；01/02 方案的采纳与 D1-D7 拍板仍待用户决定。
+
+- 验证：现状列关键事实均在本轮及此前轮次以 grep/读码核对（MAX_MODEL_FACTS=500、pipeline.py:1546 候选裁切、retrieval.py related 语义、structwalk 数组摘要）；文档已提交 507ceba
+- 下一步：等用户/产品拍板：是否采纳 01 方案第一阶段（数组展开策略/500 上限处置/确定性直转适配器）；fact-quality-v1（949b03f）仍待 Codex 独立验收
+- 依据/文档：文档/需求/20260920_从物料自动构建本体/03_GPT方案与现行实现对照表_20260924.md；文档/需求/20260920_从物料自动构建本体/01_本体自动化构建_解决方案与开源对标_20260924.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
 
 ### hide-autofill-entry-main · zcode · 已实施，待验收
 
@@ -119,16 +130,6 @@
 - 验证：核对既有v1需求、局部原型v2、fill_by_llm与model_setting现有工作树及接口文档；新文档限定已登记工作树和停止点。
 - 依据/文档：文档/需求/20260922_整表自动填写交互/需求说明_v2.md；文档/需求/20260922_整表自动填写交互/执行指令_v2.md；文档/需求/20260922_整表自动填写交互/交互原型_v2.html
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### auto_build · zcode · 实施中
-
-时间：2026-09-23T01:39:15.067419+00:00；记录：`.collaboration/entries/000262-f61fd42ba7f4.json`
-
-【环境启动】按用户指令启动 auto_build 工作树服务（worktree/auto_build，分支 auto_build@2d27584）：工作树内 ./start.sh start，WIZ_WORKBENCH_PORT=18952 + WIZ_WORKBENCH_ROOT=工作树根。首次启动自动 npm install + 前端构建（vue-tsc+vite 通过）并起服务，PID 91512，URL http://127.0.0.1:18952。验证：auth-state 正常、进程 cwd=工作树、lsof 证实读写工作树内 data/workbench.sqlite3（wal/shm 在工作树内），未触碰 main 真实库与其他任务（fill_by_llm 18941/model_setting 18971）资源。备注：本轮交接 entry 曾在工作树 cwd 误记（000259-c692）并已从分支退回，现从主协调树正式补记；登记 json 的 running 状态更新走 main 提交。
-
-- 验证：./start.sh status：✔ 运行中 http://127.0.0.1:18952（PID 91512）；curl /api/auth-state → {"user": null}；lsof -p 91512：sqlite 打开路径=worktree/auto_build/data/workbench.sqlite3；前端构建 vue-tsc --noEmit + vite build 通过
-- 下一步：等用户在 18952 登录并下达开发任务；同 host 不同端口共享 Cookie：浏览器登录 18952 可能覆盖 18765 登录态，验收用隔离上下文；main 已前进（88404ef），auto_build 分支仍在 2d27584 基线，后续集成时按协议处理
-- 依据/文档：workbench-tasks/auto_build.json；.collaboration/entries/000259-01c4f8ea9810.json
 
 ### 新建对象自动填写局部交互原型_v2 · codex · 需求已交付
 

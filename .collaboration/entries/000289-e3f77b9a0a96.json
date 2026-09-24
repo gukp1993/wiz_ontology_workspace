@@ -1,0 +1,25 @@
+{
+  "ticket": "136bbb9173534ac5a602ebc0e72bb055",
+  "task": "auto_build",
+  "status": "ready",
+  "summary": "【对照表交付】按用户要求产出《03_GPT方案与现行对照表_20260924》（auto_build 分支 507ceba，与 01/02 文档并列）：A-F 六节对照表逐环节对比项目现状（每格附代码事实：文件/常量/行号，基线 ba90bf9）与 01 方案建议，附六项指控的代码核对结论（P0-1/P0-2/P1-1/P1-3 属实、P0-3 需按 v3 后代码重新核验、P1-2 结构性）。纯文档交付，不构成实施授权；01/02 方案的采纳与 D1-D7 拍板仍待用户决定。",
+  "decisions": [],
+  "verification": [
+    "现状列关键事实均在本轮及此前轮次以 grep/读码核对（MAX_MODEL_FACTS=500、pipeline.py:1546 候选裁切、retrieval.py related 语义、structwalk 数组摘要）",
+    "文档已提交 507ceba"
+  ],
+  "next": [
+    "等用户/产品拍板：是否采纳 01 方案第一阶段（数组展开策略/500 上限处置/确定性直转适配器）",
+    "fact-quality-v1（949b03f）仍待 Codex 独立验收"
+  ],
+  "references": [
+    "文档/需求/20260920_从物料自动构建本体/03_GPT方案与现行实现对照表_20260924.md",
+    "文档/需求/20260920_从物料自动构建本体/01_本体自动化构建_解决方案与开源对标_20260924.md"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-24T02:13:28.692880+00:00",
+  "sequence": 289,
+  "filename": "000289-e3f77b9a0a96.json",
+  "record_hash": "bd9628c2a03f0ff62ddad5b570bc31a917389c8b41c543b1920efa659b1fc927",
+  "context_advanced": true
+}
