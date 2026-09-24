@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`dd413271a042f0b9`
+上下文版本：`3123426f4feb0804`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -21,6 +21,17 @@
 - 2026-09-20 最新分支约定：用户明确发出创建worktree指令后由zcode创建独立分支/目录/环境；开发与修复复用该环境，Codex独立验收。验收通过停在“待用户授权集成”；只有用户明确要求集成并合并，Codex才串行集成重验并更新main。可一次明确授权多个阶段，不重复请示；临时集成worktree包含在合并授权内。集成验证和合并成功后自动停止本人服务，清理该任务开发/临时集成worktree、已合并分支及登记可丢弃的隔离数据，无需另发清理指令；异常或需保留内容明确报告，不强删。主工作台更新另行授权。当前main未提交开发不自动搬移/stash。后续计划与指令自包含AGENTS标准提示词；这是协作规则，不是自动化服务。
 
 ## 最近交接（新 → 旧）
+
+### hide-autofill-entry-main · zcode · 已实施，待验收
+
+时间：2026-09-24T00:57:11.426582+00:00；记录：`.collaboration/entries/000282-edff19203e70.json`
+
+【主干直接实施】按用户明确指令「主干的自动填写功能入口先给我隐藏」在 main 工作树直接实施（用户指名主干，作为 worktree 流程的例外记录在案）：新增 useAssistPanel.ASSIST_ENTRY_ENABLED=false 总开关，8 个宿主 9 处「✦ 自动填写」入口按钮 v-if 跟随开关（对象/链接编辑 O1/O3、属性与共享属性 O2、业务规则 O4、动作定义 O5、实例识别 P1、链接映射 P5、属性取值来源 P2-P4 经 assistAvailable、动作接口映射 P6）。后端 /api/assist-* 与面板/引擎实现全部保留，恢复入口改回 true 一处即可。提交 d4aebd1（main）。
+
+- 决定：用户指名主干直接改，作为独立分支开发约定的用户明确例外执行，不建 worktree；开关放 assist 门面 useAssistPanel.ts（各宿主既有 import 点），入口隐藏仅前端渲染层，后端接口不动；设置页「自动填写」模型用途配置不在本次范围（该页归 model_setting 工作树在改）；assist 四个 SSR 测试的入口存在类断言改为跟随开关分支，面板链路仍经 toggleAssist/openAssist 程序化驱动，引擎覆盖不丢
+- 验证：vue-tsc 0 错误；vite build 通过（index-CcrXiB9h.js）；node assist_workflow 12/12、assist_object_workspace 14/14、assist_property_manager 74/74、assist_property_sources 18/18、assist_panel 25/25；python3 tests/run.py all 84/85：唯一失败 test_autofill_integration=18941 端口被 fill_by_llm 服务占用的已知环境冲突，与本次无关（失败输出：端口 18941 已被占用）；18765 主工作台服务按请求读 dist：curl 首页引用 assets/index-CcrXiB9h.js 与新构建一致，入口隐藏已生效，服务未重启（PID 81869 未动）
+- 下一步：恢复入口：frontend/src/assist/useAssistPanel.ts 把 ASSIST_ENTRY_ENABLED 改回 true 并重新 build；如需隐藏设置页自动填写模型用途配置，建议待 model_setting 工作树合入后统一处理；未做浏览器实机走查（SSR 断言+dist 替换已覆盖），如需可另行验证
+- 依据/文档：commit d4aebd1；frontend/src/assist/useAssistPanel.ts；tests/assist_object_workspace.test.mjs 等 4 个测试
 
 ### mcp · zcode · 需求已交付
 
@@ -140,14 +151,3 @@
 - 下一步：等待用户下达开发指令后在 fill_by_llm 工作树实施（首开发轮需先安装前端依赖/构建）；未开发未验收；不合并 main
 - 依据/文档：.git/workbench-tasks/fill_by_llm.json；worktree/fill_by_llm
 - 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
-
-### auto-build-output-v3 · zcode · 已验证
-
-时间：2026-09-22T16:14:00.625488+00:00；记录：`.collaboration/entries/000258-3a96d0fb49a2.json`
-
-【集成完成】用户明确授权合并 main，已完成：在 auto_build 工作树把 main（已前进 80 提交，含 assist-fill/model_setting 等）合并进来（冲突仅 2 个追加型文档：README 变更记录保留双方、session_context 用 render 脚本重建），组合回归 85/85 全绿 + 前端 typecheck/build 通过，随后 main ff-only 快进到合并提交 2bb5e06。本任务全部交付：控输出 v3 D00–D19（含验收修复 5 项 1df156f、accept 修复 0057e9f）+ 分支上他人任务 c4ba68a（模型思考强度）随合并一并入 main。按用户指令删除 auto_build 工作树与分支（数据副本经核对为 main 库快照、无独有数据）。主工作台 18765 与真实副本服务 18890 未更新（另需授权）。
-
-- 决定：合并以 ff-only 方式落在 main，组合重验基线=合并提交 2bb5e06；冲突处理：仅追加型文档冲突，保留双方内容；session_context.md 按 AGENTS 规则由脚本 render 重建，不手工拼接；worktree 删除前置核对：分支已入 main、无未提交内容、数据副本为 main 快照无独有数据（main 库 11 份资产完整）
-- 验证：组合回归 tests/run.py all → 85/85 全绿（/tmp/merge_reg.log，含 main 侧新测试）；前端 npm run typecheck（0 错误）+ npm run build 成功；main 快进前复核：工作树干净、无他人新提交（3e68b89 未动）；git branch --merged main 确认 codex/auto_build 已入
-- 下一步：如需更新主工作台 18765 或真实副本 18890 到新 main，需用户明确授权
-- 依据/文档：merge commit 2bb5e06（main HEAD）；文档/需求/20260920_从物料自动构建本体/本体生成控输出_整合方案与并行开发计划_v3.md §13
