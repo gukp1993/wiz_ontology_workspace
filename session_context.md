@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`e89582965288f728`
+上下文版本：`15bd419f2f147f9a`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### mcp · zcode · 已实施，待验收
 
-时间：2026-09-24T02:56:29.750574+00:00；记录：`.collaboration/entries/000291-4a27fd09a449.json`
+时间：2026-09-24T03:15:48.658807+00:00；记录：`.collaboration/entries/000292-78443f492db2.json`
 
-【问数免 projectId】回答用户「为什么问数要提供 projectId」：旧实例是改动前进程且工具 schema 把 projectId 设为必填。已改：实例 tools/list 每个工具 description 注入绑定项目说明、required 移除 projectId，实例侧强制改写/补全 projectId（跨项目不可达）；spawn 传 --project-name（修 projects.load tuple 取名）。mcp 分支 a68cdbf，新实例 31309 验证描述含「创智园二期」。
+【MCP 启动前置=项目已发布】按用户指令在 sq-mcp-start 加发布检查（projects.published_versions 空 → 409 PROJECT_NOT_PUBLISHED）；前端接入页项目列显示「已发布 vX/未发布」徽章、未发布禁用启动并提示；夹具 project_demo_a 改为发布、project_demo_b 保持草稿作负向用例；09 分册 §9.1 同步。mcp 分支 81f7aa1。
 
-- 决定：实例模式 projectId 可省略（自动填绑定值）；工作台主端点 /mcp 仍要求显式 projectId（多项目场景）
-- 验证：新实例 tools/list desc=「本 MCP 实例已绑定项目「创智园二期」…required=[spec]；模拟客户端不传 projectId 调 search → 报错变为 SNAPSHOT_UNAVAILABLE（创智园二期编译 invalid 阻断，非缺 ID）；诊断明细已查明：invalid 3 处=储能系统/充放电计划对象绑定缺连接表主键+储能设备某属性 calcFunction 来源；储能设备/储能簇对象绑定齐全可查
-- 下一步：需用户在「对象映射」页修复 3 处 invalid（储能系统/充放电计划配数据来源或移除；calcFunction 属性改可准入来源）→ 重新编译生效后 MCP 即可回答「创智园有几台储能」；该修复属真实项目映射配置，由用户操作
-- 依据/文档：分支 mcp a68cdbf；http://127.0.0.1:18991/#settings-mcp（实例 31309 运行中）
+- 决定：发布判定=projects.published_versions 非空；未发布返回 409（状态冲突语义）
+- 验证：test_sq_mcp_server 19 断言（含发布判定一致性与未发布负向）；test_sq_fixture 61 断言过；实测 18991：创智园二期已发布(v1)启动放行；/api/project-releases?project= 正常返回 v1；前端 build/lint 过
+- 下一步：纳入 mcp 分支一并交 Codex 独立验收
+- 依据/文档：分支 mcp 81f7aa1；文档/接口文档/09-智能问数接口.md §9.1
 
 ### auto_build · zcode · 需求已交付
 
