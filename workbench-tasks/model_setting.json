@@ -11,7 +11,8 @@
   "python": "system Python 3.9（与本需求无新增依赖；依赖变化时改独立环境）",
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18971；启动用工作树内 ./start.sh",
   "scope": "模型供应商与模型管理改版：llm_catalog 目录、wb_llm_providers/wb_llm_models、9 端点、前端设置页与消费方、迁移；范围以需求说明 v1/开发计划 v1 为准",
-  "status": "created",
-  "updatedAt": "2026-09-22",
-  "notes": "仅创建环境：依赖未装、服务未启、未开发。3 个开放决策点（目录收录范围//v1/models 拉取/anthropic-messages）未拍板前不冻结契约（T0）。快照体检：integrity ok、key_id 匹配、wb_model_configs 2 行（GLM-5.3-Flash/minimax）"
+  "status": "implemented（交互v4 已实施，待 Codex 独立验收；未合并 main）",
+  "updatedAt": "2026-09-23（交互v4轮）",
+  "notes": "交互 v4（v5 原型落地 + v2/v3 验收缺陷收口）实施完成：4 提交，全量回归 64/69（环境项），浏览器走查八项全过。隔离验收环境运行中（19502 工作台/19504 代理/19503 假上游，账号 v4accept/v4pass123）；18971 未动。含真实数据副本标注不变。",
+  "headSha": "75fa3bd"
 }
