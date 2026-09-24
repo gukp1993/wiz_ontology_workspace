@@ -1,5 +1,5 @@
 project:
-  name: wiz-kq-builder-workbench
+  name: wiz-ontology-workbench
   baseUrl: http://127.0.0.1:18882
   outputDir: .design-qa
 

@@ -3,7 +3,7 @@
   "requirement": "文档/需求/20260922_模型供应商与模型管理改版/（四件套 v1，commit 5bfb605）",
   "owner": "zcode",
   "role": "实施（按执行指令开发、自测）；Codex 独立验收",
-  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/model_setting",
+  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_ontology_workspace/worktree/model_setting",
   "branch": "model_setting",
   "baseSha": "5bfb605bf3265632075e7d5df7f072496f154c06",
   "port": 18971,

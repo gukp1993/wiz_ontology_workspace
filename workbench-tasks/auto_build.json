@@ -2,7 +2,7 @@
   "task": "auto_build",
   "owner": "zcode",
   "role": "实施（等用户下达开发任务）；Codex 独立验收",
-  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/auto_build",
+  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_ontology_workspace/worktree/auto_build",
   "branch": "auto_build",
   "baseSha": "2d2758478708dfa977f2eaa9b67cd15eb5553928",
   "port": 18952,

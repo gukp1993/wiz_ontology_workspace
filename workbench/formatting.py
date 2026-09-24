@@ -14,7 +14,7 @@ def format_value(value, data_type, config):
     if len(json.dumps(value,ensure_ascii=False))>20000:raise ValueError('输入样本过大')
     if len(json.dumps(config,ensure_ascii=False))>20000:raise ValueError('格式定义过大')
     if config.get('mode')=='natural':
-        path=Path.home()/'.config/wiz-kq-builder-v2/format-llm.json'
+        path=Path.home()/'.config/wiz-ontology-workspace/format-llm.json'
         settings=json.loads(path.read_text()) if path.exists() else {}
         endpoint=os.environ.get('FORMAT_LLM_URL',settings.get('url',''));model=os.environ.get('FORMAT_LLM_MODEL',settings.get('model',''));key=os.environ.get('FORMAT_LLM_API_KEY',settings.get('api_key',''))
         if not endpoint or not model:raise ValueError('尚未配置大模型。规则可保存；请配置 FORMAT_LLM_URL 和 FORMAT_LLM_MODEL 后试运行。')

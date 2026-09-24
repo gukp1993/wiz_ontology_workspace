@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Q05 专属实例（18932）受控重启：只按 PID+cwd 确认属于本任务进程再操作。
 set -euo pipefail
-ROOT="/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/test"
+ROOT="/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_ontology_workspace/worktree/test"
 EVID="$ROOT/.runtime/test-evidence/q05"
 PIDFILE="$EVID/server-18932.pid"
 LOGF="$ROOT/.runtime/test-evidence/server-18932.log"

@@ -3,7 +3,7 @@
   "requirement": "待用户下发（本轮仅指令创建 worktree，尚未提供需求文档/执行指令）",
   "owner": "zcode",
   "role": "实施（按执行指令开发、自测）；Codex 独立验收",
-  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/mcp",
+  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_ontology_workspace/worktree/mcp",
   "branch": "mcp",
   "baseSha": "a64ad9f23dfde37a78bd28c3b1906aa4352d4e32",
   "port": 18991,

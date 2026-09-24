@@ -1,7 +1,7 @@
 # 本体工作台 HTTP 接口文档
 
 > 版本：v1.0（2026-09-18 首次整理）
-> 适用：`wiz_kq_builder_v2` 后端 `workbench/server.py` + 前端 `frontend/src`
+> 适用：`wiz_ontology_workspace` 后端 `workbench/server.py` + 前端 `frontend/src`
 > 服务地址：`http://127.0.0.1:18765`（默认；`WIZ_WORKBENCH_PORT` 仅用于测试并行实例，8765 永久禁用）
 
 ---

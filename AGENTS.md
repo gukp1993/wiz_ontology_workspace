@@ -1,4 +1,4 @@
-# AGENTS.md — 本体工作台（wiz_kq_builder_v2）
+# AGENTS.md — 本体工作台（wiz_ontology_workspace，2026-09-24 由 wiz_kq_builder_v2 改名）
 
 本地本体建模工作台：Python 标准库 HTTP 服务 + Vue3 前端，仅绑定 127.0.0.1。语义参考 Palantir Foundry 本体（对象/链接/属性/契约），但格式是自有设计，不是 Foundry 导入格式。
 
@@ -68,7 +68,7 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 ### 2. 开工登记与工作树
 
-- **worktree统一位置（2026-09-20）**：所有新建开发工作树和临时集成工作树必须位于主仓库的 `worktree/` 目录下，不得与主仓库平级。当前路径为 `/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/<任务名>/`；临时集成目录可用 `worktree/integration-<任务名>/`。这里的主仓库指main所在的协调目录，不是执行者当前所在的子工作树；从子工作树操作也不得再嵌套创建 `worktree/`。登记完整绝对路径，并先核对已有目录归属，禁止覆盖。
+- **worktree统一位置（2026-09-20）**：所有新建开发工作树和临时集成工作树必须位于主仓库的 `worktree/` 目录下，不得与主仓库平级。当前路径为 `/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_ontology_workspace/worktree/<任务名>/`；临时集成目录可用 `worktree/integration-<任务名>/`。这里的主仓库指main所在的协调目录，不是执行者当前所在的子工作树；从子工作树操作也不得再嵌套创建 `worktree/`。登记完整绝对路径，并先核对已有目录归属，禁止覆盖。
 - 主仓库 `.gitignore` 必须忽略根目录 `/worktree/`，防止将嵌套工作树、依赖及运行数据误提交。代码扫描、物料采集和批量清理默认排除该目录；清理仍只针对已登记的具体任务目录，不得删除整个 `worktree/` 父目录。新计划与执行指令须使用此路径约定；旧文档的“仓库外/平级”通用模板不再适用。
 - 已登记在其他位置的工作树保留实际路径记录，不因本规则自动搬迁；用户要求迁移时先检查运行进程、未提交内容与依赖，用Git工作树管理方式迁移并同步环境路径、启动配置和指令，不能只修改文档假称迁移完成。
 - 检查 `git status`、`git worktree list`、main提交和remote。收到明确创建指令后，从**已提交的最新本地main**创建 `codex/<需求短名>`（用户明确命名优先）及主仓库根目录下 `worktree/<需求短名>/` 独立目录。没有remote不执行git pull；有remote先核对用户需要的基线，不盲目pull/改写历史。
