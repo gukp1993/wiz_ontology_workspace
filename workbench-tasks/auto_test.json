@@ -1,0 +1,18 @@
+{
+  "task": "auto_test",
+  "requirement": "待用户下发（2026-09-25 用户指令：新拉 auto_test 分支并新建 worktree，尚未提供需求/执行指令）",
+  "owner": "zcode",
+  "role": "实施（待用户下达开发任务）；Codex 独立验收",
+  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_ontology_workspace/worktree/auto_test",
+  "branch": "auto_test",
+  "baseSha": "3f29a226c79fef159539c64dd03a519fd59e9869",
+  "port": 18981,
+  "dataRoot": "工作树根（data/workbench.sqlite3 快照自 main@3f29a22 + keys/wb-root.key 副本 + data/ontology-build-blobs；含真实数据与根密钥副本，不可自动丢弃）",
+  "python": "system Python 3.9（依赖未安装；开发时按需独立准备）",
+  "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18981；启动用工作树内 ./start.sh 或 python3 -m workbench.server",
+  "scope": "待用户下达开发任务（本轮仅创建分支/工作树/数据环境，未安装依赖、未启动服务、未开发）",
+  "status": "ready（环境已建，待用户开发指令）",
+  "updatedAt": "2026-09-25",
+  "headSha": null,
+  "notes": "快照校验：transfer verify 库侧全过（integrity ok、外键 ok、凭据解密探针 ok=4 fail=0、迁移 623 条）；wb_credentials=4/wb_model_configs=2/wb_users=2/wb_assets=11/wb_releases=7 与源库逐一相等。verify 报「连接凭据数量/模型配置数量 0 vs 2」为旧文件 vault（ontology/vault/）与库内行的迁移时代核对项——新 worktree 无 ontology/ 树（.gitignore 忽略，不入新工作树），库为权威，属预期非缺陷；如后续测试需要 ontology/ 播种树再按需只读复制。端口 18981 为 fix_ui 合并清理后释放复用。"
+}
