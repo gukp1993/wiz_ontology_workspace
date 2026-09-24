@@ -1,3 +1,0 @@
-# 开发/验收期工具依赖（运行工作台不需要；运行依赖见 requirements.txt）
-# 安装：pip3 install --user -r requirements-dev.txt
-ruff>=0.6            # Python lint（配置 ruff.toml；基准 PEP 8 + Google Style Guide，20260921）

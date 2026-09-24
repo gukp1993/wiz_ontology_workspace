@@ -173,9 +173,9 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 ## 代码规范（2026-09-21 起）
 
-**Python（workbench/ tests/）**：基准 PEP 8 + Google Python Style Guide，工具 Ruff（配置 `ruff.toml`，`~/Library/Python/3.9/bin/ruff check workbench tests` 或安装后 `ruff check`）。启用错误级规则（E4/E7/E9/F/B）；E501 行长、紧凑单行写法（E701/E702）、E402 延迟导入、B023 闭包循环变量为**登记的明确偏离**（配置内注明理由），既有代码不重排。未使用变量/参数一律 `_` 前缀豁免。
+**Python（workbench/ tests/）**：基准 PEP 8 + Google Python Style Guide。原配套 Ruff 工具与 `ruff.toml`、`requirements-dev.txt` 已于 2026-09-24 按用户指令删除（Python 侧暂无强制 lint 门禁，从 git 历史可找回），写码约定继续有效：错误级规则（E4/E7/E9/F/B）关注点自查；E501 行长、紧凑单行写法（E701/E702）、E402 延迟导入、B023 闭包循环变量为**登记的明确偏离**，既有代码不重排；未使用变量/参数一律 `_` 前缀豁免。
 
-**前端（frontend/src/）**：基准 Vue 官方风格指南（vuejs.org/style-guide）A–C 级语义规则，工具 ESLint + eslint-plugin-vue + @vue/eslint-config-typescript（配置 `frontend/eslint.config.js`，`cd frontend && npm run lint`）。模板格式化类规则（换行/缩进/属性顺序/自闭合）关闭——仓库不引入 Prettier、不重排既有排版；类型安全由 vue-tsc 严格检查兜底（`no-explicit-any` 不阻断，渐进治理）；`legacyGraph/` 为迁入的 JS 代码保持 `<script setup>` 无 lang。新增/修改代码遵循两份配置；改配置规则必须在配置内注明理由。
+**前端（frontend/src/）**：基准 Vue 官方风格指南（vuejs.org/style-guide）A–C 级语义规则，工具 ESLint + eslint-plugin-vue + @vue/eslint-config-typescript（配置 `frontend/eslint.config.js`，`cd frontend && npm run lint`）。模板格式化类规则（换行/缩进/属性顺序/自闭合）关闭——仓库不引入 Prettier、不重排既有排版；类型安全由 vue-tsc 严格检查兜底（`no-explicit-any` 不阻断，渐进治理）；`legacyGraph/` 为迁入的 JS 代码保持 `<script setup>` 无 lang。新增/修改代码遵循本配置；改配置规则必须在配置内注明理由。
 
 **已知债务（专项治理前不作为缺陷）**：Vue `no-mutating-props` 既有 69 处（行为级重构需配合浏览器回归分批处理）；TS 显式 `any` 既有约 1400 处（渐进收紧）；Python B023 35 处（经测试验证的安全用法）。
 
