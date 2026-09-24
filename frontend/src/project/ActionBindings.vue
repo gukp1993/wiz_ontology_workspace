@@ -22,7 +22,7 @@ import { descTextOf, commitDesc } from './bindingModel'
 import AssistPanel from '../assist/AssistPanel.vue'
 import { actionBindingAssistBinding, ACTION_BINDING_SENSITIVE_REASON } from '../assist/actionBindingAdapter'
 import type { ActionBindingAssistBinding } from '../assist/actionBindingAdapter'
-import { defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
+import { ASSIST_ENTRY_ENABLED, defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
 import {
   AUTH_TYPE_OPTIONS, BODY_FORMAT_OPTIONS, CONSTANT_TYPE_OPTIONS, IN_LABELS, IN_OPTIONS, METHOD_OPTIONS,
   SOURCE_LABELS, apiContext, apiView, buildPreview, draftFrom, emptyApi, inheritedTypeText, isApiV2,
@@ -497,7 +497,7 @@ const viewNotice = computed(() => viewReason.value === 'flow'
           <h2>{{ (editable ? '配置接口 · ' : '查看配置 · ') + (editingAction?.name || meta?.actionId || '') }}</h2>
         </div>
         <div class="ab-headtools">
-          <button v-if="editable" id="ab-assist-trigger" type="button" class="mini ab-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
+          <button v-if="editable && ASSIST_ENTRY_ENABLED" id="ab-assist-trigger" type="button" class="mini ab-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
           <button type="button" @click="closeEditor()">关闭</button>
         </div>
       </div>

@@ -70,6 +70,7 @@ globalThis.__assistPanelComp = Panel
 const Component = await loadSFC(resolve('frontend/src/ontology/ObjectWorkspace.vue'), 'object_ws_assist', { AssistPanel: '__assistPanelComp' })
 
 const { FORM_SCHEMA_DIGESTS } = await import('../frontend/src/assist/formContracts.gen.ts')
+const { ASSIST_ENTRY_ENABLED } = await import('../frontend/src/assist/useAssistPanel.ts')
 
 // ── 捕获每次挂载的 setup 状态（多场景互不串线）────────────────────────────────
 let activeSlot = null
@@ -239,15 +240,19 @@ try {
 
     await check('② A01 默认无 AI 区：页头次要按钮「✦ 自动填写」（aria-expanded/aria-haspopup），未点开不渲染抽屉', async () => {
       let page = await ctx.html()
-      assert.match(page, /✦ 自动填写/, '页头次要入口存在')
-      assert.match(page, /aria-expanded="false"/)
-      assert.match(page, /aria-haspopup="dialog"/)
-      assert.ok(page.includes('id="ow-assist-trigger-object"'), '入口按钮 id（面板 triggerId 指向它）')
+      if (ASSIST_ENTRY_ENABLED) {
+        assert.match(page, /✦ 自动填写/, '页头次要入口存在')
+        assert.match(page, /aria-expanded="false"/)
+        assert.match(page, /aria-haspopup="dialog"/)
+        assert.ok(page.includes('id="ow-assist-trigger-object"'), '入口按钮 id（面板 triggerId 指向它）')
+      } else {
+        assert.ok(!page.includes('✦ 自动填写'), '功能开关关闭：页头不渲染自动填写入口')
+      }
       assert.ok(!page.includes('assist-drawer'), '默认不渲染任何 AI 区域')
       assert.ok(!page.includes('建议'), '旧建议卡 UI 不再出现')
       ctx.api.toggleAssist() // 与按钮 @click 同一函数：首次点击挂载面板
       page = await ctx.html()
-      assert.match(page, /aria-expanded="true"/)
+      if (ASSIST_ENTRY_ENABLED) assert.match(page, /aria-expanded="true"/)
       assert.ok(ctx.panel, '面板实例已随页面创建')
       assert.equal(ctx.panel.checked, undefined, '旧勾选/采纳 API 已移除')
       assert.equal(ctx.panel.adopt, undefined); assert.equal(ctx.panel.setChecked, undefined)
@@ -434,8 +439,12 @@ try {
 
     await check('⑪ 链接编辑器：入口、上下文请求（新建 targetId 空串）、回填只改草稿、撤销、手改禁撤销', async () => {
       let page = await ctx.html()
-      assert.match(page, /✦ 自动填写/, '链接表单头同样有次要入口')
-      assert.ok(page.includes('id="ow-assist-trigger-link"'))
+      if (ASSIST_ENTRY_ENABLED) {
+        assert.match(page, /✦ 自动填写/, '链接表单头同样有次要入口')
+        assert.ok(page.includes('id="ow-assist-trigger-link"'))
+      } else {
+        assert.ok(!page.includes('✦ 自动填写'), '功能开关关闭：链接表单头不渲染入口')
+      }
       ctx.api.toggleAssist()
       await ctx.html()
       await ctx.panel.open(ctx.api.assistBinding.value)

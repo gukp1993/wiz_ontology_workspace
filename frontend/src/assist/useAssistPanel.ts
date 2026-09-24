@@ -37,6 +37,10 @@ export type { AutofillEngine }
 // AssistApi 保持旧名；形状随 autofill/1 扩展（protocol:2 / sessionId / answers 数组形态）。
 export type AssistApi = EngineApi
 
+/** 功能开关：暂时隐藏各表单页头的「✦ 自动填写」入口（2026-09-24 用户要求，主干先下线入口）。
+ *  后端 /api/assist-* 接口与面板实现保留；恢复入口改回 true，各宿主入口按钮与测试断言都跟随本常量。 */
+export const ASSIST_ENTRY_ENABLED = false
+
 /** 默认 API 工厂：POST /api/assist-context、/api/assist-generate；错误经 SaveRequestError 透传。 */
 export function defaultAssistApi(): AssistApi {
   return {

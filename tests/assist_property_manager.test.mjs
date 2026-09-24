@@ -63,7 +63,7 @@ const PMComponent = await loadSfc('frontend/src/ontology/PropertyManager.vue', {
 })
 
 const { propertyAssistBinding, PROPERTY_ASSIST_READONLY_REASON } = await import('../frontend/src/assist/propertyBinding.ts')
-const { useAssistPanel } = await import('../frontend/src/assist/useAssistPanel.ts')
+const { useAssistPanel, ASSIST_ENTRY_ENABLED } = await import('../frontend/src/assist/useAssistPanel.ts')
 const { applyOperations } = await import('../frontend/src/assist/formAutofill.ts')
 const { FORM_PROPERTY, FORM_SHARED_PROPERTY } = await import('../frontend/src/assist/formContracts.gen.ts')
 const { setPropertyDataType, propertyDataType } = await import('../frontend/src/ontology/propertyModel.ts')
@@ -304,10 +304,10 @@ function makeBinding(d, over = {}) {
 // ⑥ 组件接线：入口/aria、binding 组装、生成→直接回填→状态条→撤销→手改禁撤销→保存计数
 {
   const m = await mountPM({ kind: 'property', propertyId: 'mg:p_power', targetTypeId: 'mg:cluster' })
-  assertName('⑥a 默认无 AI 区（入口按钮存在但面板未开）', (await m.html()).includes('pm-assist-trigger') && !(await m.html()).includes('assist-statusbar'))
+  assertName('⑥a 默认无 AI 区（入口跟随开关渲染，面板未开）', (await m.html()).includes('pm-assist-trigger') === ASSIST_ENTRY_ENABLED && !(await m.html()).includes('assist-statusbar'))
   m.api.openAssist()
   const openHtml = await m.html()
-  assertName('⑥b 入口 aria-expanded 随面板切换', /aria-expanded="true"/.test(openHtml), openHtml.slice(0, 200))
+  assertName('⑥b 入口 aria-expanded 随面板切换（开关关闭时入口不渲染）', ASSIST_ENTRY_ENABLED ? /aria-expanded="true"/.test(openHtml) : !openHtml.includes('pm-assist-trigger'), openHtml.slice(0, 200))
   const binding = m.api.assistBinding.value
   assertName('⑥c 私有属性 binding：formId/目标/契约指纹/refusals 出口', binding.targetKind === 'property' && binding.targetId === 'mg:p_power' && binding.formId === 'property' && binding.contractInfo().schemaDigest === FORM_PROPERTY.schemaDigest && binding.refusals !== undefined)
 
@@ -387,7 +387,7 @@ function makeBinding(d, over = {}) {
 // ⑧ 共享场景：就地维护/共享库面向 sharedProperty；采纳语义已废除；影响确认只绑显式保存
 {
   const s = await mountPM({ kind: 'shared', propertyId: 'mg:shared_soc' })
-  assertName('⑧a 共享属性库入口存在', /✦ 自动填写/.test(await s.html()))
+  assertName('⑧a 共享属性库入口跟随开关渲染', /✦ 自动填写/.test(await s.html()) === ASSIST_ENTRY_ENABLED)
   s.api.openAssist()
   assertName('⑧b 共享库 binding 面向 sharedProperty', s.api.assistBinding.value.formId === 'sharedProperty' && s.api.assistBinding.value.targetKind === 'sharedProperty' && s.api.assistBinding.value.targetId === 'mg:shared_soc')
   const stub = stubApi({ fillPlan: [fillResp({ formId: 'sharedProperty', schemaDigest: FORM_SHARED_PROPERTY.schemaDigest, target: { space: 'ontology', targetKind: 'sharedProperty', targetId: 'mg:shared_soc' }, operations: [setOp('comment', '共享SOC统一口径v2')] })] })

@@ -23,7 +23,7 @@ import type {RelationView,DbSourceView} from './bindingModel'
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 import AssistPanel from '../assist/AssistPanel.vue'
 import {linkMappingAssistBinding} from '../assist/identityLinkBindings'
-import {defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
+import {ASSIST_ENTRY_ENABLED,defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
 const props=defineProps<{projectState:any;refState:any;b:any}>()
 const emit=defineEmits(['before-change','changed','edit-state','setup-end','goto-object'])
 function before(){emit('before-change')}
@@ -427,7 +427,7 @@ defineExpose({dirty,discard:closeEditor})
 </template>
 <!-- ===== 表字段关联编辑器（原有） ===== -->
 <template v-else>
-<div class="lm-assist-row"><button type="button" class="lm-assist-trigger" id="lm-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button></div>
+<div class="lm-assist-row" v-if="ASSIST_ENTRY_ENABLED"><button type="button" class="lm-assist-trigger" id="lm-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button></div>
 <h2>配置链接映射</h2>
 <!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->
 <div v-if="assistBinding&&(assistBinding.round.statusBarText||assistBinding.round.undone)" class="assist-bar" role="status">

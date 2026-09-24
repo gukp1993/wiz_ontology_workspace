@@ -91,7 +91,7 @@ const {
   propertySourceBinding, propertySourceAssistKind,
   PROPERTY_SOURCE_KIND_REASON, propertySourceFieldLabel,
 } = await import('../frontend/src/assist/propertySourceBinding.ts')
-const { useAssistPanel } = await import('../frontend/src/assist/useAssistPanel.ts')
+const { useAssistPanel, ASSIST_ENTRY_ENABLED } = await import('../frontend/src/assist/useAssistPanel.ts')
 const { applyOperations } = await import('../frontend/src/assist/formAutofill.ts')
 const { FORM_PROPERTY_SOURCE } = await import('../frontend/src/assist/formContracts.gen.ts')
 
@@ -613,15 +613,19 @@ try {
     assert.ok(!page.includes('✦ 自动填写'), 'kind=none 无入口')
     ctx.api.draft.value = ctx.api.freshDbDraft()
     page = await ctx.html()
-    assert.match(page, /✦ 自动填写/, 'field 草稿出现入口（页头次要按钮）')
-    assert.match(page, /id="ps-assist-trigger"/, '入口按钮 id 供面板 aria-controls 反向接线')
-    assert.match(page, /aria-expanded="false"/, '未打开时 aria-expanded=false')
+    if (ASSIST_ENTRY_ENABLED) {
+      assert.match(page, /✦ 自动填写/, 'field 草稿出现入口（页头次要按钮）')
+      assert.match(page, /id="ps-assist-trigger"/, '入口按钮 id 供面板 aria-controls 反向接线')
+      assert.match(page, /aria-expanded="false"/, '未打开时 aria-expanded=false')
+    } else {
+      assert.ok(!page.includes('✦ 自动填写') && !page.includes('ps-assist-trigger'), '功能开关关闭：来源表单不渲染入口')
+    }
     assert.ok(!page.includes('ps-assist-panel'), '未点击前不渲染面板')
     ctx.api.toggleAssist()
     page = await ctx.html()
     assert.ok(ctx.panel, '点击后面板实例已挂载（SSR 不跑 onMounted，新实例抽屉根默认收起）')
     assert.equal(ctx.api.assistVisible.value, true, '入口切换后面板可见标记为真')
-    assert.match(page, /aria-expanded="true"/, '打开后 aria-expanded=true')
+    if (ASSIST_ENTRY_ENABLED) assert.match(page, /aria-expanded="true"/, '打开后 aria-expanded=true')
     ctx.panel.expand()
     const drawer = await renderPanel(ctx)
     assert.match(drawer, /assist-drawer/, '展开后抽屉渲染')

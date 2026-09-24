@@ -25,7 +25,7 @@ import {localProperties,effectiveProperty,valueShapeOf,propertyTypeLabel,signatu
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 import AssistPanel from '../assist/AssistPanel.vue'
 import {propertySourceBinding,propertySourceAssistKind,propertySourceFieldLabel,type PropertySourceAssistHostBinding} from '../assist/propertySourceBinding'
-import {defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
+import {ASSIST_ENTRY_ENABLED,defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
 const props=defineProps<{projectState:any;refState:any;b:any;report?:any}>()
 const emit=defineEmits(['before-change','changed','edit-state','go-tab','setup-end','goto-properties','open-ontology'])
 function mutate(fn){emit('before-change');fn();emit('changed')}
@@ -595,7 +595,7 @@ const assistVisible=ref(false)
 const assistBinding=shallowRef<PropertySourceAssistHostBinding|null>(null)
 const assistPanelRef=ref<InstanceType<typeof AssistPanel>|null>(null)
 const assistTouchTick=ref(0) // 手改计数（测试观察点；面板通知经模板 ref，SSR 下为 null 自动跳过）
-const assistAvailable=computed(()=>propertySourceAssistKind(draft.value)!=='')
+const assistAvailable=computed(()=>ASSIST_ENTRY_ENABLED&&propertySourceAssistKind(draft.value)!=='')
 const assistExpanded=computed(()=>!!assistVisible.value&&!(assistPanelRef.value?.collapsed??false))
 const assistRefusals=computed(()=>assistBinding.value?assistBinding.value.refusals.value:[])
 const assistBarVisible=computed(()=>!!assistBinding.value&&(!!assistBinding.value.round.statusBarText||assistBinding.value.round.undone))

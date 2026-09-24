@@ -25,7 +25,7 @@ import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
 import AssistPanel from '../assist/AssistPanel.vue'
 import { ruleAssistBinding, type RuleAssistDraft } from '../assist/workflowBindings'
-import { defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
+import { ASSIST_ENTRY_ENABLED, defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
 import { useOntTable } from './ontList'
 import { objectsOfRule, RULE_FIELDS, RULE_LEGACY_FIELDS, rulesOf, ruleFieldErrors } from './businessRuleModel'
 import { externalDependencies, externalDependencyTarget, ruleDeleteCheck } from './dependencyModel'
@@ -379,7 +379,7 @@ async function removeRule(id: string) {
 <section v-if="mode === 'edit'" class="card detail-card">
   <EditorHead :canvas-return="canvasReturn" back-label="← 返回规则列表" @back-to-graph="backToGraph" @close="cancelEdit"/>
   <div class="lib-assist-row">
-    <button type="button" class="lib-assist-trigger" id="rule-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
+    <button v-if="ASSIST_ENTRY_ENABLED" type="button" class="lib-assist-trigger" id="rule-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
   </div>
   <div class="detail-heading">
     <div><span class="eyebrow">{{ isNewRule ? '新建规则' : '编辑规则' }}</span><h2>{{ draft?.name || '未命名规则' }}</h2></div>

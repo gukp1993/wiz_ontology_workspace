@@ -22,7 +22,7 @@ import Field from '../shared/EditorField.vue'
 import EditorHead from '../shared/EditorHead.vue'
 import AssistPanel from '../assist/AssistPanel.vue'
 import { actionAssistBinding, type ActionAssistDraft } from '../assist/workflowBindings'
-import { defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
+import { ASSIST_ENTRY_ENABLED, defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
 import { actionsOf, isActionV2, objectsOfAction, actionFieldErrors } from './actionModel'
 import { useOntTable } from './ontList'
 import { actionDeleteCheck, externalDependencies, externalDependencyTarget } from './dependencyModel'
@@ -353,7 +353,7 @@ function setField(key: 'name' | 'description' | 'effect', value: string) { draft
 <section v-else class="card detail-card action-form" :key="'edit-' + editId">
   <EditorHead :canvas-return="canvasReturn" back-label="← 返回动作列表" @back-to-graph="backToGraph" @close="closeEditor"/>
   <div class="lib-assist-row">
-    <button type="button" class="lib-assist-trigger" id="action-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
+    <button v-if="ASSIST_ENTRY_ENABLED" type="button" class="lib-assist-trigger" id="action-assist-trigger" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
   </div>
   <div class="detail-heading"><div><span class="eyebrow">{{ editingExisting ? '编辑动作' : '新建动作' }}</span><h2>{{ draft.name || '未命名动作' }}</h2></div><span class="status-pill">仅三项业务字段</span></div>
   <!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->

@@ -46,7 +46,7 @@ import { commitRuleAssociations, ruleAssociationsOf, rulesOf, rulesOfObject } fr
 import type { FormGuardAPI, FormSaveAPI } from '../app/formGuard'
 import AssistPanel from '../assist/AssistPanel.vue'
 import { objectAssistBinding, linkAssistBinding } from '../assist/ontologyBindings'
-import { defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
+import { ASSIST_ENTRY_ENABLED, defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
 
 // focusType/focusProperty：共享属性库「查看引用」/校验问题/旧深链跳转定位
 // （propertyFocusId 存 apiName 或 @id，此处换算为节点 @id；指向共享定义时落到首个引用属性）。
@@ -744,7 +744,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
     <section v-else-if="editor.kind === 'object'" class="card detail-card ow-editor">
       <EditorHead :canvas-return="canvasReturn" back-label="← 返回对象" @back-to-graph="backToGraph" @close="closeEditor"/>
       <div class="ow-assist-row">
-        <button type="button" class="ow-assist-trigger" id="ow-assist-trigger-object" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
+        <button v-if="ASSIST_ENTRY_ENABLED" type="button" class="ow-assist-trigger" id="ow-assist-trigger-object" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
       </div>
       <div class="detail-heading"><div><span class="eyebrow">对象类型</span><h2>{{ editor.isNew ? '新建对象类型' : '维护对象定义' }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>
@@ -774,7 +774,7 @@ async function removeNode(id: string, label: string, confirmText?: string) {
     <section v-else-if="editor.kind === 'link'" class="card detail-card ow-editor">
       <EditorHead :canvas-return="canvasReturn" back-label="← 返回对象" @back-to-graph="backToGraph" @close="closeEditor"/>
       <div class="ow-assist-row">
-        <button type="button" class="ow-assist-trigger" id="ow-assist-trigger-link" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
+        <button v-if="ASSIST_ENTRY_ENABLED" type="button" class="ow-assist-trigger" id="ow-assist-trigger-link" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button>
       </div>
       <div class="detail-heading"><div><span class="eyebrow">业务链接</span><h2>{{ editor.isNew ? '定义业务链接' : '维护 · ' + (linkDraft?.label || '未命名链接') }}</h2></div></div>
       <p v-if="editorError" class="inline-error" role="alert">{{ editorError }}</p>

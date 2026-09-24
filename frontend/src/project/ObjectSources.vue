@@ -16,7 +16,7 @@ import {effectiveProperty} from '../ontology/propertyModel'
 import type {FormGuardAPI,FormSaveAPI} from '../app/formGuard'
 import AssistPanel from '../assist/AssistPanel.vue'
 import {identityAssistBinding} from '../assist/identityLinkBindings'
-import {defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
+import {ASSIST_ENTRY_ENABLED,defaultAssistApi,type AssistApi} from '../assist/useAssistPanel'
 const props=defineProps<{projectState:any;refState:any;b:any}>()
 const emit=defineEmits(['before-change','changed','edit-state','go-tab'])
 function before(){emit('before-change')}
@@ -319,7 +319,7 @@ defineExpose({dirty:()=>dirty.value,discard:closeEditor,openIdentity})
 <!-- ========== 编辑态：实例识别表单 ========== -->
 <template v-else-if="editing==='identity'">
 <div class="os-editor-top"><button class="os-back" @click="closeEditor">← 返回实例识别</button><small class="muted">当前对象 · {{objectName}}</small></div>
-<div class="os-assist-row"><button type="button" class="os-assist-trigger" id="os-assist-trigger-identity" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button></div>
+<div class="os-assist-row" v-if="ASSIST_ENTRY_ENABLED"><button type="button" class="os-assist-trigger" id="os-assist-trigger-identity" :aria-expanded="assistExpanded" aria-haspopup="dialog" @click="toggleAssist">✦ 自动填写</button></div>
 <h2>{{identityMode==='registered'||b.table?'修改':'配置'}}实例识别</h2>
 <p class="os-note">识别“有哪些{{objectName}}实例”，不限制其属性从哪里获取。</p>
 <!-- 整表自动填写状态条（§6.6）：已填写 N 项，尚未保存 ＋ 撤销本次填写 ＋ 查看修改 -->

@@ -69,6 +69,7 @@ const RuleLib = await loadSFC(resolve('frontend/src/ontology/BusinessRuleLibrary
 const ActionLib = await loadSFC(resolve('frontend/src/ontology/ActionLibrary.vue'), 'action_lib_assist', { AssistPanel: '__assistPanelComp' })
 
 const { FORM_SCHEMA_DIGESTS } = await import('../frontend/src/assist/formContracts.gen.ts')
+const { ASSIST_ENTRY_ENABLED } = await import('../frontend/src/assist/useAssistPanel.ts')
 
 // ── 捕获每次挂载的 setup 状态（多场景互不串线）────────────────────────────────
 let activeSlot = null
@@ -244,14 +245,18 @@ try {
       assert.equal(b.targetKind, 'rule'); assert.equal(b.targetId, '', '新建规则尚未入库，targetId 传空串')
       assert.equal(b.formId, 'rule')
       let page = await ctx.html()
-      assert.match(page, /✦ 自动填写/, '编辑表单页头次要入口')
-      assert.match(page, /aria-expanded="false"/)
-      assert.match(page, /aria-haspopup="dialog"/)
-      assert.ok(page.includes('id="rule-assist-trigger"'), '入口按钮 id（面板 triggerId 指向它）')
+      if (ASSIST_ENTRY_ENABLED) {
+        assert.match(page, /✦ 自动填写/, '编辑表单页头次要入口')
+        assert.match(page, /aria-expanded="false"/)
+        assert.match(page, /aria-haspopup="dialog"/)
+        assert.ok(page.includes('id="rule-assist-trigger"'), '入口按钮 id（面板 triggerId 指向它）')
+      } else {
+        assert.ok(!page.includes('✦ 自动填写'), '功能开关关闭：编辑表单页头不渲染入口')
+      }
       assert.ok(!page.includes('assist-drawer'), '默认不渲染任何 AI 区域')
       ctx.api.toggleAssist() // 与按钮 @click 同一函数：首次点击挂载面板
       page = await ctx.html()
-      assert.match(page, /aria-expanded="true"/)
+      if (ASSIST_ENTRY_ENABLED) assert.match(page, /aria-expanded="true"/)
       assert.ok(ctx.panel, '面板实例已随页面创建')
       assert.equal(ctx.panel.checked, undefined, '旧勾选/采纳 API 已移除')
       assert.equal(ctx.panel.adopt, undefined); assert.equal(ctx.panel.setChecked, undefined)
@@ -396,7 +401,8 @@ try {
       assert.equal(b.targetKind, 'action'); assert.equal(b.formId, 'action')
       assert.equal(b.targetId, '', '新建动作未入库，targetId 按 DEF-02 传空串')
       let page = await actx.html()
-      assert.match(page, /✦ 自动填写/, '动作编辑表单页头次要入口')
+      if (ASSIST_ENTRY_ENABLED) assert.match(page, /✦ 自动填写/, '动作编辑表单页头次要入口')
+      else assert.ok(!page.includes('✦ 自动填写'), '功能开关关闭：动作编辑表单不渲染入口')
       assert.ok(!page.includes('assist-drawer'), '默认无 AI 区')
       actx.api.toggleAssist()
       await actx.html()

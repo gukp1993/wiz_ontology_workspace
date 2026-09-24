@@ -30,7 +30,7 @@ import EditorHead from '../shared/EditorHead.vue'
 import PropertyFormatting from './PropertyFormatting.vue'
 import AssistPanel from '../assist/AssistPanel.vue'
 import { propertyAssistBinding, PROPERTY_ASSIST_READONLY_REASON, type PropertyAssistHostBinding } from '../assist/propertyBinding'
-import { defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
+import { ASSIST_ENTRY_ENABLED, defaultAssistApi, type AssistApi } from '../assist/useAssistPanel'
 import type { AutofillFillResponse } from '../assist/types'
 import { dataTypeOptionsFor } from './editorModel'
 import { makeProperty, effectiveProperty, localProperties, detachProperty, asShared, propertyDataType, setPropertyDataType, referencesOf } from './propertyModel'
@@ -385,7 +385,7 @@ async function doSave() {
   <div class="detail-heading">
     <div><p class="prop-form-context">{{ kind === 'shared' || editingShared ? '共享属性库' : contextName }}</p><h2>{{ title }}</h2></div>
     <!-- 整表自动填写入口（T6 改版）：页头次要按钮，保存仍是主操作；只读共享引用不提供 -->
-    <button v-if="!readonly" id="pm-assist-trigger" type="button" class="mini assist-trigger"
+    <button v-if="ASSIST_ENTRY_ENABLED && !readonly" id="pm-assist-trigger" type="button" class="mini assist-trigger"
             :aria-expanded="assistVisible ? 'true' : 'false'" aria-controls="pm-assist-drawer"
             @click="toggleAssist">✦ 自动填写</button>
   </div>
