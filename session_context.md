@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`82ce32ac428a0455`
+上下文版本：`b07d076b68b7969c`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### mcp · zcode · 已实施，待验收
 
-时间：2026-09-24T01:56:31.758722+00:00；记录：`.collaboration/entries/000287-3f3659a606fc.json`
+时间：2026-09-24T02:11:16.852991+00:00；记录：`.collaboration/entries/000288-5598d5166db7.json`
 
-【MCP 接入页样式优化】按用户指令紧凑化：工具栏一行（搜索框 300px+统计 pill 徽章+刷新）、消息提示条化、表格 padding 收紧、脚注 11px 淡化。mcp 分支样式提交，浏览器截图对比确认。
+【客户端配置极简化】按用户指定样例把「复制客户端配置」输出改为 {"type":"remote","url":".../mcp?token=..."} 两行形态：mcp_server 端点新增 ?token= 查询参数鉴权（与 Bearer/X-MCP-Token 并列）并修复 do_POST 路径未剥查询串的 404；前端 configJson 改 remote 形态（运行中=实例 URL+token，未启动=工作台端点占位）。mcp 分支提交，test_sq_mcp_server 19 断言过，真实实例 URL 直连 tools/list=7 实测。
 
-- 决定：统计改 pill 徽章贴近参考版式；纯样式改动不动逻辑
-- 验证：浏览器截图对比（18991）；typecheck/build 过
+- 决定：token 经 URL 查询参数携带以满足两行 remote 配置；脚注保持含 token URL 勿外传警示
+- 验证：test_sq_mcp_server 19 断言（新增 query-token 用例）；真实链路：start→remote URL（无 header）tools/list=7→stop；frontend build 过
 - 下一步：纳入 mcp 分支一并交 Codex 独立验收
-- 依据/文档：分支 mcp 样式提交
+- 依据/文档：分支 mcp 最新提交；文档/接口文档/09-智能问数接口.md §9
 
 ### hide-autofill-entry-main · zcode · 已实施，待验收
 
