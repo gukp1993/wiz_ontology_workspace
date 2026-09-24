@@ -1,0 +1,34 @@
+{
+  "ticket": "bc812bb225ed4b85871981943710da23",
+  "task": "hide-autofill-entry-main",
+  "status": "implemented",
+  "summary": "【主干直接实施】按用户明确指令「主干的自动填写功能入口先给我隐藏」在 main 工作树直接实施（用户指名主干，作为 worktree 流程的例外记录在案）：新增 useAssistPanel.ASSIST_ENTRY_ENABLED=false 总开关，8 个宿主 9 处「✦ 自动填写」入口按钮 v-if 跟随开关（对象/链接编辑 O1/O3、属性与共享属性 O2、业务规则 O4、动作定义 O5、实例识别 P1、链接映射 P5、属性取值来源 P2-P4 经 assistAvailable、动作接口映射 P6）。后端 /api/assist-* 与面板/引擎实现全部保留，恢复入口改回 true 一处即可。提交 d4aebd1（main）。",
+  "decisions": [
+    "用户指名主干直接改，作为独立分支开发约定的用户明确例外执行，不建 worktree",
+    "开关放 assist 门面 useAssistPanel.ts（各宿主既有 import 点），入口隐藏仅前端渲染层，后端接口不动",
+    "设置页「自动填写」模型用途配置不在本次范围（该页归 model_setting 工作树在改）",
+    "assist 四个 SSR 测试的入口存在类断言改为跟随开关分支，面板链路仍经 toggleAssist/openAssist 程序化驱动，引擎覆盖不丢"
+  ],
+  "verification": [
+    "vue-tsc 0 错误；vite build 通过（index-CcrXiB9h.js）",
+    "node assist_workflow 12/12、assist_object_workspace 14/14、assist_property_manager 74/74、assist_property_sources 18/18、assist_panel 25/25",
+    "python3 tests/run.py all 84/85：唯一失败 test_autofill_integration=18941 端口被 fill_by_llm 服务占用的已知环境冲突，与本次无关（失败输出：端口 18941 已被占用）",
+    "18765 主工作台服务按请求读 dist：curl 首页引用 assets/index-CcrXiB9h.js 与新构建一致，入口隐藏已生效，服务未重启（PID 81869 未动）"
+  ],
+  "next": [
+    "恢复入口：frontend/src/assist/useAssistPanel.ts 把 ASSIST_ENTRY_ENABLED 改回 true 并重新 build",
+    "如需隐藏设置页自动填写模型用途配置，建议待 model_setting 工作树合入后统一处理",
+    "未做浏览器实机走查（SSR 断言+dist 替换已覆盖），如需可另行验证"
+  ],
+  "references": [
+    "commit d4aebd1",
+    "frontend/src/assist/useAssistPanel.ts",
+    "tests/assist_object_workspace.test.mjs 等 4 个测试"
+  ],
+  "actor": "zcode",
+  "created_at": "2026-09-24T00:57:11.426582+00:00",
+  "sequence": 282,
+  "filename": "000282-edff19203e70.json",
+  "record_hash": "7b379898ba31c6e01e8c25b8891169ab76ca78481467b4c8b57b73951fe7fa26",
+  "context_advanced": false
+}
