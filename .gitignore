@@ -26,6 +26,7 @@ wb-root.key
 # Design Review 插件的扫描报告产物（可由 design.qa.yaml 重新生成，不入库）
 .design-qa/
 
-# Codex/zcode 共享交接与 ZCode 本地配置（20260924 用户指令：退出 git 跟踪，仅本机保留）
+# Codex/zcode 共享交接与各工具本地配置（20260924 用户指令：退出 git 跟踪，仅本机保留）
 /.collaboration/
 /.zcode/
+/.codex/
