@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`3123426f4feb0804`
+上下文版本：`a419a16cd8210276`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,6 +22,18 @@
 
 ## 最近交接（新 → 旧）
 
+### mcp · zcode · 已实施，待验收
+
+时间：2026-09-24T01:08:05.486885+00:00；记录：`.collaboration/entries/000283-e6d1de0681cd.json`
+
+【智能问数 P0 实施完成待验收】在 mcp 工作树按 SQ-REQ/DEV-001 实施：semantic_query 16 模块（契约22错误码/元数据适配/编译器/快照存储/检索解析/计划器/SQL+编排执行器/混合协调/生命周期/service门面/MCP JSON-RPC）+迁移0007（5张wb_sq_*表）+12路由挂白名单+前端#sq全局页。多代理并行+协调者收口，配额中断后主代理补齐 T6/T8~T12。
+
+- 决定：D2 首个真实适配器=SQLite；MySQL 路径实现但真实联调 BLOCKED 不宣称；D3 聚合策略从 database 来源 selection 推导+semantic 覆盖块；SOC/累计聚合拒绝；D4 权限=owner 隔离+wb_sq_access 策略；scope_fingerprint 变化旧计划拒绝执行；D5 WORKFLOW 准入=flow+queryRule v1/v2；v3/v4/calc/inlineSql/redis 等拒绝或仅解释（真实项目实测验证分类）；D6 版本固定=flow head revision token，漂移 SCHEMA_DRIFT；D8 NL 层本期不接（MCP JSON-RPC E2E 覆盖）
+- 验证：sq 专项 12 测试文件约 566 断言全绿；混合黄金：完整候选 Top2=D3/D1、limited=D1/D2、失败不输出完整前二；全仓回归 96/97，唯一失败=18941 被 fill_by_llm 占用（环境冲突）；前端 typecheck/build/lint 过；ruff 全绿；浏览器实测 18991：admin→#sq→真实项目创智园二期编译→15 条诊断正确分类（redis warning/calcFunction invalid/缺主键 invalid）→候选阻止生效（REQ-008）；工作树库 transfer init 0005→0007；复制主仓库 ontology/ 只读播种树 8.4MB（真实数据，登记注明不可自动丢弃）
+- 下一步：交 Codex 独立验收（分支 mcp HEAD=29e8dc4，基线 a64ad9f）；通过后停在待授权集成；与 auto_build(0006)/model_setting 集成时迁移多 head 由集成负责人处理；阻塞项如实记录：MySQL 真实联调/NL Agent/图形 MCP 客户端未完成（docs/semantic-query/implementation-status.md）；18991 实例运行中（PID 94724）可直接验收；18765 未动
+- 依据/文档：workbench-tasks/mcp.json（主仓 cab6dea）；分支 mcp：docs/semantic-query/ 三份文档；文档/需求/20260923_智能问数/（需求副本+开发计划含实施结果）；文档/接口文档/09-智能问数接口.md
+- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+
 ### hide-autofill-entry-main · zcode · 已实施，待验收
 
 时间：2026-09-24T00:57:11.426582+00:00；记录：`.collaboration/entries/000282-edff19203e70.json`
@@ -32,17 +44,6 @@
 - 验证：vue-tsc 0 错误；vite build 通过（index-CcrXiB9h.js）；node assist_workflow 12/12、assist_object_workspace 14/14、assist_property_manager 74/74、assist_property_sources 18/18、assist_panel 25/25；python3 tests/run.py all 84/85：唯一失败 test_autofill_integration=18941 端口被 fill_by_llm 服务占用的已知环境冲突，与本次无关（失败输出：端口 18941 已被占用）；18765 主工作台服务按请求读 dist：curl 首页引用 assets/index-CcrXiB9h.js 与新构建一致，入口隐藏已生效，服务未重启（PID 81869 未动）
 - 下一步：恢复入口：frontend/src/assist/useAssistPanel.ts 把 ASSIST_ENTRY_ENABLED 改回 true 并重新 build；如需隐藏设置页自动填写模型用途配置，建议待 model_setting 工作树合入后统一处理；未做浏览器实机走查（SSR 断言+dist 替换已覆盖），如需可另行验证
 - 依据/文档：commit d4aebd1；frontend/src/assist/useAssistPanel.ts；tests/assist_object_workspace.test.mjs 等 4 个测试
-
-### mcp · zcode · 需求已交付
-
-时间：2026-09-23T15:05:25.130273+00:00；记录：`.collaboration/entries/000281-87e1ac7304f7.json`
-
-【环境创建】按用户明确指令为 mcp 创建开发环境（仅建分支/工作树/登记，未开发未装依赖未启动）：分支 mcp 从最新已提交 main a64ad9f 建立，工作树 /Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_kq_builder_v2/worktree/mcp，端口 18991（登记前后两次实测空闲），WIZ_WORKBENCH_ROOT=工作树根。按 2026-09-22 规则全量随迁 main 数据：transfer backup WAL 快照 + keys/wb-root.key 副本 + ontology-build-blobs/tmp 随迁，登记 workbench-tasks/mcp.json 标注含真实数据不可自动丢弃。
-
-- 决定：分支名用用户指定的 mcp（用户明确命名优先于 codex/<短名> 默认）；端口选 18991：不在既有登记（18941 fill_by_llm/18952 auto_build/18971 model_setting/18765 main）中且实测无监听；数据随迁按 2026-09-22 全量拷贝规则执行；快照校验以逐表行数对比 + key_id 匹配 + 解密探针为准
-- 验证：git worktree add 成功，工作树 HEAD=a64ad9f 与 main 一致；快照库 integrity_check=ok、foreign_key_check 0 行、alembic_version=20260922_0005；31 张表与 main 逐表行数零差异；副本根密钥 shasum 与 main 一致，推导 key_id c26b32a0c13462a5 与 wb_credentials 全部记录匹配，解密探针 4/4 通过；wb_model_configs 2 行随迁；端口 18991 lsof 登记前后两次检查均无监听
-- 下一步：等待用户下达开发指令后在 mcp 工作树实施（首开发轮需先安装前端依赖/构建）；未开发未验收；不合并 main；18765 主工作台不受影响
-- 依据/文档：workbench-tasks/mcp.json；worktree/mcp
 
 ### fix_ui · zcode · 已验证
 
