@@ -10,9 +10,9 @@
   "dataRoot": "工作树根（data/workbench.sqlite3 快照自 main@3f29a22 + keys/wb-root.key 副本 + data/ontology-build-blobs；含真实数据与根密钥副本，不可自动丢弃）",
   "python": "system Python 3.9（依赖未安装；开发时按需独立准备）",
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18981；启动用工作树内 ./start.sh 或 python3 -m workbench.server",
-  "scope": "本体与项目映射版本迭代测试发布治理（文档/v2/需求/2026_0924自动化测试/ 三份 Codex 交付文档）。本轮 Wave1/W0：T00 基线矩阵 + T01 状态机冻结 + T02 统一契约层 + T03 存储底座（15 表+迁移+store）。后续 Wave2~4（T04~T31 版本服务/Bundle/差分/门禁/激活回滚）未实施，待用户排期",
-  "status": "implemented（W0=T00/T01/T02/T03 已实施，待 Codex 独立验收；未合并 main）",
-  "updatedAt": "2026-09-25（W0 实施轮）",
-  "headSha": "81ebd42",
-  "notes": "分支 auto_test 三提交：15e6e2d(docs) → 84878a3(T01+T02 契约层) → 81ebd42(T03 存储底座)，基线 3f29a22。迁移链 0001..0005→20260925_at06（at=auto_test 分支链，规避与 gpt_fix 0006/0007 撞号；集成时需与各分支迁移链协调接链）。工作树补齐 ontology/ 只读播种树（8.4MB，自主库复制，回归种子）与 .collaboration 副本（gitignore 项，不入库）。验证：全量回归 88/88（含新增 states 26/contracts 26/store 48 用例；首轮 6 失败均为缺播种树/协作目录的环境项，补齐后全绿）；存量契约 test_storage_contract 75/75、test_storage_transfer 27/27 零修改；vue-tsc/eslint/vite build 过。真实库未动（data/workbench.sqlite3 处理前后 SHA256 一致）。含真实数据副本标注不变，不可自动丢弃。"
+  "scope": "本体与项目映射版本迭代测试发布治理。已实施：W0（T00 基线矩阵/T01 状态机/T02 契约层/T03 存储底座 15 表）+ Wave2（T04 本体版本服务/T05 映射版本服务/T06 Release Bundle 服务，服务层无 HTTP）。测试-验收-开发循环：R1 双验收代理对抗审查 FAIL（P0×1+P1×5+P2 批）→ 修复（frozen_at 裁定/门禁 TOCTOU/并发资源行/canonical 稳定码/P2 批）→ R2 双代理复验 PASS（无 P0/P1，冻结包可派生裁定经双方独立判定正确）。Wave3+（差分/快照/双构建/门禁/激活回滚）未实施待排期",
+  "status": "implemented（W0+W2 已实施并通过两轮独立验收循环，待 Codex 独立验收；未合并 main）",
+  "updatedAt": "2026-09-25（W2+验收循环收敛轮）",
+  "headSha": "6badd95",
+  "notes": "分支 auto_test 六提交：15e6e2d(docs)/84878a3(T01+T02)/81ebd42(T03)/e268fec(Wave2)/a672edc(R1修复)/6badd95(doc 收尾)。验收循环证据：R1 契约域 FAIL(P0=1,P1=2)+服务域 FAIL(P1=3)；修复 17 文件含回归锁定；R2 复验探针 107+ 断言全过、独立复跑 91/91 全量回归与 vue-tsc，双域 PASS。遗留：P3 级观察项已记录（集成时 e268fec 旧形态库升级需迁移处理，迁移 docstring 已登记；Wave3 证据绑定须按 bundle_id 不仅 hash）。工作树内 session_context.md（auto-generated）未提交，属协作摘要噪声。真实库未动。含真实数据副本标注不变，不可自动丢弃。"
 }
