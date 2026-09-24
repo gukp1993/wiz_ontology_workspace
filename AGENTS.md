@@ -10,7 +10,7 @@
 - `session_context.md` 为自动汇总，禁止双方直接改写；各方通过脚本追加 `.collaboration/entries/`，加锁汇总。重大稳定基线变更更新 `.collaboration/baseline.md` 后运行 `render`。旧记录不覆盖；纠错追加新记录。
 - 本轮结束检查只补交接、不重做任务；未信任/未加载 Hook 的持续会话必须主动执行上述命令，不能声称自动化已生效。写入失败须在交付说明中明确报告。
 - 不写原始聊天、密钥或未经验证的完成结论；已实施不等于已验收。提交时包含本轮交接与自动摘要，仅提交自己负责的文件；如遇他人新交接先重新读取、核对。
-- 详细用法与 zcode 指令见 `文档/需求/20260918_共享上下文自动交接/`。这是一项开发协作设施，不属于工作台运行数据，不连接业务数据库。
+- 详细用法与 zcode 指令见 `文档/v1/需求/20260918_共享上下文自动交接/`。这是一项开发协作设施，不属于工作台运行数据，不连接业务数据库。
 
 ## 常用命令
 
@@ -135,11 +135,11 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 - 2026-09-15 已按用户要求删除根目录 `待删除_非运行资料/`、`tools/`、`service/`；`outputs/`、`发布包/` 已不存在。不要重建旧兼容入口或引用已删归档作为必要步骤。`workbench/demo` 仍是运行依赖。
 - 2026-09-21 已按用户要求删除根目录 `resources/`（source.jsonId 已随 2026-09-18 SQLite 存储迁移入库为 source-reference 附件，运行时接口读库内副本，仅 `transfer import` 迁移 CLI 引用文件路径且有 is_dir 守卫；需要时从 git 历史找回）与 `backup-20260918-202932/`（存储迁移日快照+根密钥副本，git 忽略未入库）。
 - `.idea/` 等 IDE 本地配置已退出 git 跟踪（2026-09-21），不入库。
-- `文档/` — 根级三份跨期文档：设计方案（以 `通用储能本体工作台设计方案_v3.md` 为准）、`迁移清单_20260915.md`、`架构优化实施说明_20260915.md`；`文档/需求/` 各期需求四件套归档；`文档/交付物/` 实施说明与指令；`文档/接口文档/` 前后端契约；`文档/评审与纪要/` 评审与审查记录；`文档/概念与说明/` 概念与使用说明；`文档/历史归档_20260916前/` 2026-09-15 目录迁移时留存的早期文档快照；`文档/导出/` 导入测试物料；`文档/prototypes/` 早期原型
+- `文档/` — 2026-09-24 起按版本分层：`文档/v1/` = 历史封存区（2026-09-24 前的全部文档整体迁入：`需求/`、`交付物/`、`接口文档/`、`prototypes/`、`评审与纪要/`、`概念与说明/`、`导出/`、`历史归档_20260916前/`、`本体自动化构建评审_20260921/` 及设计方案/迁移清单/架构优化实施说明三份根级文档，只读不再更新）；`文档/v2/` = 现行产出区（后续需求四件套、原型等新交付一律放这里，子目录结构沿用原约定，如 `文档/v2/需求/YYYYMMDD_需求名称/`）
 
 ## 接口文档与前后端契约（2026-09-18，强制）
 
-前后端一律通过接口文档交互，接口文档是唯一契约来源。文档在 `文档/接口文档/`：`README.md`（HTTP 规范总纲 + 变更记录 + 索引）、`01-通用约定与数据模型.md`、`02-本体区接口.md`、`03-项目区接口.md`、`04-编排与LLM接口.md`、`05-接口清单与规范差距.md`。
+前后端一律通过接口文档交互，接口文档是唯一契约来源。文档在 `文档/v1/接口文档/`（2026-09-24 随旧文档整体迁入 v1；接口文档是持续更新的契约而非归档，用户未另行指定前契约更新仍在 v1 现位置进行，是否整体迁 v2 待用户明确）：`README.md`（HTTP 规范总纲 + 变更记录 + 索引）、`01-通用约定与数据模型.md`、`02-本体区接口.md`、`03-项目区接口.md`、`04-编排与LLM接口.md`、`05-接口清单与规范差距.md`。
 
 1. **接口变更必须先更新接口文档，再改代码。** 改文档 → 改后端 → 改前端 → 回归 → 提交；文档与代码进同一 commit，并在 `README.md` 的「变更记录」登记一行（日期/变更/影响接口）。
 2. **新增接口必须登记**：写进对应分册 + `05` 速查表 + `server.py` 的 `GET_ROUTES`/`POST_ROUTES` 白名单表（白名单即表键，未登记一律 404）。
@@ -159,17 +159,17 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 7. **并发与安全**：写操作持 `LOCK`；保存/发布校验 revision（乐观并发，409 拒绝旧页面）；POST 白名单 + Origin 校验 + 2MB 请求上限在 server.py，勿放松。
 8. **数据连接（2026-09 新增）**：`/api/connection-test`、`/api/connection-catalog` 是真实网络探测，**不得持有 LOCK**（会阻塞其他保存）；`/api/connection-secret` 只写 `secrets.py` 管理的 vault，密码永不回传、不进项目 YAML/快照/日志；dbdrivers 只执行固定只读操作（SELECT 1 / PING / information_schema），不执行用户提交的 SQL。项目绑定新格式：对象 `sources[]`（db/redis 补充来源）、属性来源 `{kind:'field'|'redis'|'computed'}`（identity 普通字段仍编码为字符串供演示引擎）、链接 `{sourceId,field,targetSourceId,targetField}`、目录 `bindings.catalogs[连接ID]`；旧 related_sources/字符串映射/仅 column 链接由 `bindingModel.ts` 与 `projects._sources_of` 内存适配，保存即迁移出旧格式。表单状态机防旧响应覆盖靠 generation 计数（改技术字段即失效，仅改名不失效）。
 9. **测试隔离**：`WIZ_WORKBENCH_ROOT=<临时目录>` 挂载独立数据目录、`WIZ_WORKBENCH_PORT=<端口>` 起并行实例；自动化测试一律用这两个变量，绝不对真实 ontology/ 写入。注意 IAB 内 `tab.reload()` 可能不真正重建页面，需要全新会话时用关闭标签页再新开。
-10. **通用属性来源配置（2026-09 新增）**：本体属性统一按数据类型描述，时间序列为 `dataType:{type:"timeSeries",valueType:"double"}`；旧 `valueShape` 仅兼容读取，JSON-LD 编辑适配层保留旧内部表示，不提供独立结果形态选项。新旧等价表示不构成业务变更，普通值↔序列或观测值类型变化按 dataType 判定破坏性变更；共享引用继承数据类型。属性来源新增 `{kind:'database'}`（直选项目连接目录中的表，lookup 多条件 AND 至少一条绑定当前实例，result 按 scalar/timeSeries 分支）与 redis 直连（`connection` 与 `source` 互斥、params 支持 `{from:'identityField',field}`）；timeSeries 目标仅接受 database 或输出类型为时间序列的 computed（新实现从契约推导，旧 outputDeclarations[].valueShape 兼容读取）；database 等价旧身份表直取时压缩为字符串，未知 kind 一律按 unknown 保留零丢失（前端 propertyView/commitProperty 与后端 validate_project 镜像）。本轮仅配置校验无业务执行 API；演示 merged() 仍只放行字符串映射并把被过滤来源上报 `bindings.unsupportedSources`。协议全文见 `文档/交付物/通用属性来源配置_数据契约与实施设计_20260914.md` 与 `文档/交付物/通用属性来源配置实施说明_20260914.md`；数据类型调整见 `文档/交付物/时间序列数据类型调整说明_20260915.md`；回归测试 `tests/test_time_series_type.py`、`tests/test_value_shape.py`、`tests/test_property_sources.py`、`tests/test_project_api_roundtrip.py`（纯 python3 直跑）。
-11. **整体交互迭代（2026-09 新增）**：导航重组为两工作区 4+5 页（本体：工作概览/对象建模/共享属性库/校验与发布；项目：项目概览/数据连接/对象映射/计算实现/校验与发布），辅助页归并 `tools`，旧 hash 全量 alias（见 `app/navigation.ts`）。**保存直通**：`app/saveCoordinator.ts` 每区一个 Saver（串行队列、revision 管理、409 currentRevision 换基线重试、900ms touch 合并、beforeunload/flush）；组件表单"保存"按钮经 `inject('commit-now')` 立即持久化，即时编辑走 touch 自动保存；顶栏无保存/发布按钮，仅五态状态条，发布移入两区"校验与发布"页（发布前强制 commit-now 再取服务端最新草稿）。画布在 `ontology/ObjectCanvas.vue`（zoom/pan 不触发保存）；对象建模 `ontology/ObjectWorkspace.vue` 内嵌 PropertyManager 编辑属性；校验页"去处理"按 validate items 的 kind/id 结构化跳转。后端 409 响应带 `currentRevision`，`save_draft` 失败不再假成功。测试新增 `tests/test_save_iteration.py`。事实全文见 `文档/交付物/工作台整体交互迭代实施说明_20260914.md` 与 `文档/交付物/工作台整体交互迭代_并行任务板.md`。
-12. **架构优化（2026-09-15 新增）**：前后端按业务模块组织（见目录节）；`paths.py` 统一 CODE_ROOT/DATA_ROOT，核心存储模块不得 import 演示模块（`tests/test_paths_isolation.py` 守护）；项目校验拆在 `project_validation.py`（`projects.validate_project` 兼容转发），**改校验规则必须同步加金样样例**（`tests/make_validation_golden.py` 生成，`tests/test_validation_split.py` 回放）并保持 errors/warnings/items 顺序逐字节等价；保存协调器行为由 `tests/save_queue.test.mjs` 15 项锁定（提交基线取本客户端最近确认 revision、error 状态 retry/commitNow 强制发送、失败后编辑 retry 提交最新内容、beforeunload 非 saved 一律拦截），改 `saveCoordinator.ts` 必须先加用例；HTTP 层只做安全边界+分派，新接口加进 `server.py` 的 `GET_ROUTES/POST_ROUTES` 表（白名单即表键），业务写在 `model_routes`/`project_routes`，探测类接口永不持 `locking.LOCK`；前端请求一律经 `app/http` + 两区 `api.ts`（catalogs 剥除只在 `project/api.stripCatalogs`）。本轮修复并回归验证：versions.py 遗留裸 ROOT（真实根 500）、保存队列三缺陷等。事实与耗时对比见 `文档/架构优化实施说明_20260915.md`。
+10. **通用属性来源配置（2026-09 新增）**：本体属性统一按数据类型描述，时间序列为 `dataType:{type:"timeSeries",valueType:"double"}`；旧 `valueShape` 仅兼容读取，JSON-LD 编辑适配层保留旧内部表示，不提供独立结果形态选项。新旧等价表示不构成业务变更，普通值↔序列或观测值类型变化按 dataType 判定破坏性变更；共享引用继承数据类型。属性来源新增 `{kind:'database'}`（直选项目连接目录中的表，lookup 多条件 AND 至少一条绑定当前实例，result 按 scalar/timeSeries 分支）与 redis 直连（`connection` 与 `source` 互斥、params 支持 `{from:'identityField',field}`）；timeSeries 目标仅接受 database 或输出类型为时间序列的 computed（新实现从契约推导，旧 outputDeclarations[].valueShape 兼容读取）；database 等价旧身份表直取时压缩为字符串，未知 kind 一律按 unknown 保留零丢失（前端 propertyView/commitProperty 与后端 validate_project 镜像）。本轮仅配置校验无业务执行 API；演示 merged() 仍只放行字符串映射并把被过滤来源上报 `bindings.unsupportedSources`。协议全文见 `文档/v1/交付物/通用属性来源配置_数据契约与实施设计_20260914.md` 与 `文档/v1/交付物/通用属性来源配置实施说明_20260914.md`；数据类型调整见 `文档/v1/交付物/时间序列数据类型调整说明_20260915.md`；回归测试 `tests/test_time_series_type.py`、`tests/test_value_shape.py`、`tests/test_property_sources.py`、`tests/test_project_api_roundtrip.py`（纯 python3 直跑）。
+11. **整体交互迭代（2026-09 新增）**：导航重组为两工作区 4+5 页（本体：工作概览/对象建模/共享属性库/校验与发布；项目：项目概览/数据连接/对象映射/计算实现/校验与发布），辅助页归并 `tools`，旧 hash 全量 alias（见 `app/navigation.ts`）。**保存直通**：`app/saveCoordinator.ts` 每区一个 Saver（串行队列、revision 管理、409 currentRevision 换基线重试、900ms touch 合并、beforeunload/flush）；组件表单"保存"按钮经 `inject('commit-now')` 立即持久化，即时编辑走 touch 自动保存；顶栏无保存/发布按钮，仅五态状态条，发布移入两区"校验与发布"页（发布前强制 commit-now 再取服务端最新草稿）。画布在 `ontology/ObjectCanvas.vue`（zoom/pan 不触发保存）；对象建模 `ontology/ObjectWorkspace.vue` 内嵌 PropertyManager 编辑属性；校验页"去处理"按 validate items 的 kind/id 结构化跳转。后端 409 响应带 `currentRevision`，`save_draft` 失败不再假成功。测试新增 `tests/test_save_iteration.py`。事实全文见 `文档/v1/交付物/工作台整体交互迭代实施说明_20260914.md` 与 `文档/v1/交付物/工作台整体交互迭代_并行任务板.md`。
+12. **架构优化（2026-09-15 新增）**：前后端按业务模块组织（见目录节）；`paths.py` 统一 CODE_ROOT/DATA_ROOT，核心存储模块不得 import 演示模块（`tests/test_paths_isolation.py` 守护）；项目校验拆在 `project_validation.py`（`projects.validate_project` 兼容转发），**改校验规则必须同步加金样样例**（`tests/make_validation_golden.py` 生成，`tests/test_validation_split.py` 回放）并保持 errors/warnings/items 顺序逐字节等价；保存协调器行为由 `tests/save_queue.test.mjs` 15 项锁定（提交基线取本客户端最近确认 revision、error 状态 retry/commitNow 强制发送、失败后编辑 retry 提交最新内容、beforeunload 非 saved 一律拦截），改 `saveCoordinator.ts` 必须先加用例；HTTP 层只做安全边界+分派，新接口加进 `server.py` 的 `GET_ROUTES/POST_ROUTES` 表（白名单即表键），业务写在 `model_routes`/`project_routes`，探测类接口永不持 `locking.LOCK`；前端请求一律经 `app/http` + 两区 `api.ts`（catalogs 剥除只在 `project/api.stripCatalogs`）。本轮修复并回归验证：versions.py 遗留裸 ROOT（真实根 500）、保存队列三缺陷等。事实与耗时对比见 `文档/v1/架构优化实施说明_20260915.md`。
 
 13. **SQLite 存储库（2026-09-18 新增，已实施）**：工作台在线权威存储为 SQLite（默认 `<DATA_ROOT>/data/workbench.sqlite3`，目录 0700），`workbench/storage/` 一套 SQLAlchemy Core 实现（SQLite 已验证，MySQL 预留：方言差异收口在 schema.py 的 with_variant；**运行时未实测，不得宣称已支持**）。本体/项目/编排三类资产的草稿与发布、目录缓存、模型配置、连接密码/API 凭据/模型密钥（AES-GCM，根密钥在库外 `<DATA_ROOT>/keys/`）全部入库；`ontology/` 旧文件目录只作迁移输入与备份，**在线服务无文件回退**（2026-09-21 起该文件树已退出 git 跟踪、`.gitignore` 忽略 `/ontology/`，本地保留；新环境初始化只依赖 transfer CLI 与库内数据）。要点：
     - revision 是不透明 token（`r-<uuid>`），与内容 hash 分离；CAS+generation 保证并发（409 带 currentRevision，A→B→A 旧 token 必拒）；发布为单事务，requestId 幂等。
     - 初始化/迁移/备份必须显式 CLI：`python3 -m workbench.storage.transfer init|inspect|import|verify|export|backup`。服务启动与请求路径**绝不隐式 DDL/导入/回退文件**；真实根未初始化直接拒启。隔离根（WIZ_WORKBENCH_ROOT 已设）允许惰性建空库（测试专用）。
     - 改 `storage/schema.py` 必须新增 Alembic 迁移（程序化，`workbench/migrations/`）；存储契约测试 `tests/test_storage_contract.py`（45 项，含故障注入；设 WIZ_MYSQL_TEST_URL 加跑 MySQL），迁移演练 `tests/test_storage_transfer.py`。
-    - 实施事实与冻结契约全文见 `文档/需求/20260918_SQLite存储迁移与MySQL预留/开发计划.md` §9。
+    - 实施事实与冻结契约全文见 `文档/v1/需求/20260918_SQLite存储迁移与MySQL预留/开发计划.md` §9。
 
-14. **登录与账号体系（2026-09-18 新增，已实施）**：`/api/*` 除 4 个免登录认证端点（`auth-state/auth-login/auth-register/auth-logout`）外**全部要求登录**，未登录 401 `UNAUTHENTICATED`；身份来自 Cookie `wiz_session`（HttpOnly+SameSite=Strict，库中只存令牌摘要，30 天滑动续期）。**数据按账号完全隔离**：本体/项目/编排/模型配置与密钥/连接与 API 凭据全部按 `owner_user_id` 归属，跨账号 id 一律按不存在处理（404/空）；归属过滤收口在 `storage/assets.py`（对外函数必带 `owner_user_id`）与 `storage/configuration.py`（用户级设置走 `wb_user_settings`），域层统一 `auth.require_user_id()`。口令只存 PBKDF2-HMAC-SHA256 哈希（600000 轮；本机 Python 3.9 无 `hashlib.scrypt`，勿改回）。界面未登录只渲染登录页（`app/LoginView.vue` + `main.ts` 引导层），任意接口 401 自动回登录页；浏览器本地偏好按 `u:<用户名>:` 前缀隔离。迁移运维一律用 CLI：`transfer create-user` / `transfer assign-owner`（后者对 LLM 密钥按新 AAD **重加密**，不能直接 UPDATE owner_key）；协议全文见 `文档/接口文档/06-认证与账户接口.md`，实施记录见 `文档/需求/20260918_登录与账号体系/开发计划.md` §5。
+14. **登录与账号体系（2026-09-18 新增，已实施）**：`/api/*` 除 4 个免登录认证端点（`auth-state/auth-login/auth-register/auth-logout`）外**全部要求登录**，未登录 401 `UNAUTHENTICATED`；身份来自 Cookie `wiz_session`（HttpOnly+SameSite=Strict，库中只存令牌摘要，30 天滑动续期）。**数据按账号完全隔离**：本体/项目/编排/模型配置与密钥/连接与 API 凭据全部按 `owner_user_id` 归属，跨账号 id 一律按不存在处理（404/空）；归属过滤收口在 `storage/assets.py`（对外函数必带 `owner_user_id`）与 `storage/configuration.py`（用户级设置走 `wb_user_settings`），域层统一 `auth.require_user_id()`。口令只存 PBKDF2-HMAC-SHA256 哈希（600000 轮；本机 Python 3.9 无 `hashlib.scrypt`，勿改回）。界面未登录只渲染登录页（`app/LoginView.vue` + `main.ts` 引导层），任意接口 401 自动回登录页；浏览器本地偏好按 `u:<用户名>:` 前缀隔离。迁移运维一律用 CLI：`transfer create-user` / `transfer assign-owner`（后者对 LLM 密钥按新 AAD **重加密**，不能直接 UPDATE owner_key）；协议全文见 `文档/v1/接口文档/06-认证与账户接口.md`，实施记录见 `文档/v1/需求/20260918_登录与账号体系/开发计划.md` §5。
 
 ## 代码规范（2026-09-21 起）
 
@@ -196,7 +196,7 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 ## 参考文档
 
-改敏感区前先读：`文档/通用储能本体工作台设计方案_v3.md`（行为规范）、`文档/交付物/V3实施方案说明.md`（实施细节与 API 清单）、`文档/交付物/会话记录与演示指南_20260911.md`（概念 FAQ 与文件导览）。
+改敏感区前先读：`文档/v1/通用储能本体工作台设计方案_v3.md`（行为规范）、`文档/v1/交付物/V3实施方案说明.md`（实施细节与 API 清单）、`文档/v1/交付物/会话记录与演示指南_20260911.md`（概念 FAQ 与文件导览）。
 
 ## 当前产品决定（2026-09-15）
 
@@ -206,13 +206,13 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 ## 项目独立取值规则（2026-09-15）
 
-项目 `implementations` 新增 `kind: queryRule, schemaVersion: 1`，不要求 `contractId`。页面 `project/QueryRuleManager.vue`，模板与本地校验 `project/queryRules.ts`，后端规则校验 `workbench/query_rules.py`；原有实现兼容保留。项目菜单显示“属性取值规则”，仍用 implements hash。属性来源复用 computed/implementation/output=series。支持按实例主键与时间范围做多步动态表/字段定位；前序输出引用必须指向已执行的唯一记录步骤。仅配置/存储/校验，不执行真实 SQL；不要放松 dbdrivers 的固定只读探测边界。规则存项目 implementations.yaml，禁止移入本体。规范见 文档/交付物/项目属性取值规则_SOC采样查询_20260915.md。
+项目 `implementations` 新增 `kind: queryRule, schemaVersion: 1`，不要求 `contractId`。页面 `project/QueryRuleManager.vue`，模板与本地校验 `project/queryRules.ts`，后端规则校验 `workbench/query_rules.py`；原有实现兼容保留。项目菜单显示“属性取值规则”，仍用 implements hash。属性来源复用 computed/implementation/output=series。支持按实例主键与时间范围做多步动态表/字段定位；前序输出引用必须指向已执行的唯一记录步骤。仅配置/存储/校验，不执行真实 SQL；不要放松 dbdrivers 的固定只读探测边界。规则存项目 implementations.yaml，禁止移入本体。规范见 文档/v1/交付物/项目属性取值规则_SOC采样查询_20260915.md。
 
 通用规则最新协议：`queryRule.schemaVersion=2` 无适用对象，引用 `inputs.model_name/attr_name/model_id`；computed 来源增加 `inputs:{model_name,attr_name,model_id:"{id}"}`，存项目 bindings.yaml。参数在属性绑定处维护，规则仅保存流程、名称、连接、输出。schemaVersion=1 继续兼容；不要用旧 objectType 校验阻断 v2 规则。新增/修改 computed 适配时必须保留 inputs。
 
-## 需求交付归档规则（2026-09-17）
+## 需求交付归档规则（2026-09-17；2026-09-24 起产出目录改为 文档/v2/）
 
-后续每次需求默认交付四份核心文件，统一放到 `文档/需求/YYYYMMDD_本次需求名称/`：
+后续每次需求默认交付四份核心文件，统一放到 `文档/v2/需求/YYYYMMDD_本次需求名称/`（`文档/v1/` 为 2026-09-24 前全部旧文档的封存区，只读不再更新、不再新增文件）：
 
 1. `交互原型_vN.html`：可查看、可操作的原型，标明模拟范围与实际未实现能力。
 2. `需求说明.md`：已确认需求、结构化字段、范围与非目标、数据/版本/兼容约束、验收标准。
@@ -223,4 +223,4 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 
 执行指令必须包含项目根路径、需求文件路径、必读顺序、明确要求遵循交互原型、具体实施任务与顺序、范围边界、真实数据保护、兼容与保存规则、验收步骤和最终交付要求；必须自包含本文件「独立分支开发与串行集成」流程，不得默认在main工作目录直接开发或只写一句遵循AGENTS。说明原型模拟与正式实现的差别，不让执行者自行发散。以当前需求已确认决定为依据；技术建议标明可按现状落实，不将未经确认的业务选择写成强制要求。可使用当前 harness 可用能力，但不得依赖某个特定模型、插件、聊天历史或并发数量。用户明确要求其他交付形式时遵循用户要求。
 
-归档和指令生成不授权立即实施业务功能、不授权修改或迁移真实 ontology 数据。当前本次需求基准为 `文档/需求/20260917_动作库与对象动作关联/` 中的四份文件；仅方案与原型交付，不能据此声称工作台已实现。
+归档和指令生成不授权立即实施业务功能、不授权修改或迁移真实 ontology 数据。当前本次需求基准为 `文档/v1/需求/20260917_动作库与对象动作关联/` 中的四份文件；仅方案与原型交付，不能据此声称工作台已实现。
