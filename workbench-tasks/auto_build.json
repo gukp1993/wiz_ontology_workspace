@@ -10,8 +10,8 @@
   "python": "system Python 3.9（依赖未装；开发时按需独立准备）",
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18952；启动用工作树内 ./start.sh",
   "scope": "待用户下达开发任务（本轮仅创建环境，未开发）",
-  "status": "implemented（待 Codex 独立验收；未合并 main）",
-  "updatedAt": "2026-09-23",
-  "notes": "上一轮 auto-build-output-v3 已 merged_and_cleaned（git 历史 2d27584）。本轮 fact-quality-v1 已实施：auto_build 分支 4e5b281→949b03f（14 功能/修复提交），T0–T12 全部完成（细节见分支 文档/需求/20260920_从物料自动构建本体/Fact查看与质量评测_开发计划及执行指令_20260923.md §8）。迁移 20260923_0006 已对工作树库显式执行（连升 0004/0005/0006）。全量回归 90/91（唯一失败 test_autofill_integration：端口 18941 被 fill_by_llm 服务占用，环境冲突）；浏览器实测通过（8123B 样本 110 Fact、recall 0/4 场景）。2026-09-23 补充：为修复种子类测试从主仓库复制了只读 ontology/ 播种树（8.4MB 真实数据）——含真实数据副本标注不变，不可自动丢弃。",
-  "headSha": "949b03f"
+  "status": "implemented（fact-v3 第一阶段待 Codex 独立验收；连同 fact-quality-v1 均未合并 main）",
+  "updatedAt": "2026-09-24",
+  "notes": "上一轮 auto-build-output-v3 已 merged_and_cleaned。两轮开发在 Branch auto_build 堆叠：①fact-quality-v1（949b03f，2026-09-23）；②fact-v3 可信性修复第一阶段（2026-09-24，cf678cf→6419746 共 13 提交）：T0 契约 §16 冻结、T03 解析器 v3（数组逐成员展开/采样/重复键边界+结构清单表+迁移 0007+诊断 diag-v2）、T02 容量语义（移除最终候选 500 裁切+capacity 块）、T04 共享 Finalizer（核验证实 v2 自适应路径缺失整条收尾链——P0-3 指控成立，已统一 finalization.py 并确定性排序）、T05 页面状态与范围保存确认、T15 执行权核验 66 断言。门禁：全量回归 94/95（唯一失败=autofill 18941 端口环境冲突）；前端构建过；浏览器实测（18952，真实样本重扫）：110→214 Fact、known_issues_found 4 条业务问题逐条可回查、diag-v2 结构清单落库可见。迁移 20260924_0007 已对工作树库显式执行；含真实数据副本标注不变不可自动丢弃。遗留：P1 任务（范围快照/证据包/确定性直转/分阶段目标等 TASK-07~14）未实施；为种子测试复制过主仓库 ontology/ 播种树。",
+  "headSha": "6419746"
 }
