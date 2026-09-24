@@ -10,9 +10,9 @@
   "dataRoot": "工作树根（data/workbench.sqlite3 快照自 main@3f29a22 + keys/wb-root.key 副本 + data/ontology-build-blobs；含真实数据与根密钥副本，不可自动丢弃）",
   "python": "system Python 3.9（依赖未安装；开发时按需独立准备）",
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18981；启动用工作树内 ./start.sh 或 python3 -m workbench.server",
-  "scope": "待用户下达开发任务（本轮仅创建分支/工作树/数据环境，未安装依赖、未启动服务、未开发）",
-  "status": "ready（环境已建，待用户开发指令）",
-  "updatedAt": "2026-09-25",
-  "headSha": null,
-  "notes": "快照校验：transfer verify 库侧全过（integrity ok、外键 ok、凭据解密探针 ok=4 fail=0、迁移 623 条）；wb_credentials=4/wb_model_configs=2/wb_users=2/wb_assets=11/wb_releases=7 与源库逐一相等。verify 报「连接凭据数量/模型配置数量 0 vs 2」为旧文件 vault（ontology/vault/）与库内行的迁移时代核对项——新 worktree 无 ontology/ 树（.gitignore 忽略，不入新工作树），库为权威，属预期非缺陷；如后续测试需要 ontology/ 播种树再按需只读复制。端口 18981 为 fix_ui 合并清理后释放复用。"
+  "scope": "本体与项目映射版本迭代测试发布治理（文档/v2/需求/2026_0924自动化测试/ 三份 Codex 交付文档）。本轮 Wave1/W0：T00 基线矩阵 + T01 状态机冻结 + T02 统一契约层 + T03 存储底座（15 表+迁移+store）。后续 Wave2~4（T04~T31 版本服务/Bundle/差分/门禁/激活回滚）未实施，待用户排期",
+  "status": "implemented（W0=T00/T01/T02/T03 已实施，待 Codex 独立验收；未合并 main）",
+  "updatedAt": "2026-09-25（W0 实施轮）",
+  "headSha": "81ebd42",
+  "notes": "分支 auto_test 三提交：15e6e2d(docs) → 84878a3(T01+T02 契约层) → 81ebd42(T03 存储底座)，基线 3f29a22。迁移链 0001..0005→20260925_at06（at=auto_test 分支链，规避与 gpt_fix 0006/0007 撞号；集成时需与各分支迁移链协调接链）。工作树补齐 ontology/ 只读播种树（8.4MB，自主库复制，回归种子）与 .collaboration 副本（gitignore 项，不入库）。验证：全量回归 88/88（含新增 states 26/contracts 26/store 48 用例；首轮 6 失败均为缺播种树/协作目录的环境项，补齐后全绿）；存量契约 test_storage_contract 75/75、test_storage_transfer 27/27 零修改；vue-tsc/eslint/vite build 过。真实库未动（data/workbench.sqlite3 处理前后 SHA256 一致）。含真实数据副本标注不变，不可自动丢弃。"
 }
