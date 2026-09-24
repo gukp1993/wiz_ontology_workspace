@@ -135,11 +135,11 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
 - 2026-09-15 已按用户要求删除根目录 `待删除_非运行资料/`、`tools/`、`service/`；`outputs/`、`发布包/` 已不存在。不要重建旧兼容入口或引用已删归档作为必要步骤。`workbench/demo` 仍是运行依赖。
 - 2026-09-21 已按用户要求删除根目录 `resources/`（source.jsonId 已随 2026-09-18 SQLite 存储迁移入库为 source-reference 附件，运行时接口读库内副本，仅 `transfer import` 迁移 CLI 引用文件路径且有 is_dir 守卫；需要时从 git 历史找回）与 `backup-20260918-202932/`（存储迁移日快照+根密钥副本，git 忽略未入库）。
 - `.idea/` 等 IDE 本地配置已退出 git 跟踪（2026-09-21），不入库。
-- `文档/` — 2026-09-24 起按版本分层：`文档/v1/` = 历史封存区（2026-09-24 前的全部文档整体迁入：`需求/`、`交付物/`、`接口文档/`、`prototypes/`、`评审与纪要/`、`概念与说明/`、`导出/`、`历史归档_20260916前/`、`本体自动化构建评审_20260921/` 及设计方案/迁移清单/架构优化实施说明三份根级文档，只读不再更新）；`文档/v2/` = 现行产出区（后续需求四件套、原型等新交付一律放这里，子目录结构沿用原约定，如 `文档/v2/需求/YYYYMMDD_需求名称/`）
+- `文档/` — 2026-09-24 起分层：`文档/接口文档/` = 前后端契约（持续更新，独立于版本分层）；`文档/v1/` = 历史封存区（2026-09-24 前的全部其余文档整体迁入：`需求/`、`交付物/`、`prototypes/`、`评审与纪要/`、`概念与说明/`、`导出/`、`历史归档_20260916前/`、`本体自动化构建评审_20260921/` 及设计方案/迁移清单/架构优化实施说明三份根级文档，只读不再更新）；`文档/v2/` = 现行产出区（后续需求四件套、原型等新交付一律放这里，子目录结构沿用原约定，如 `文档/v2/需求/YYYYMMDD_需求名称/`）
 
 ## 接口文档与前后端契约（2026-09-18，强制）
 
-前后端一律通过接口文档交互，接口文档是唯一契约来源。文档在 `文档/v1/接口文档/`（2026-09-24 随旧文档整体迁入 v1；接口文档是持续更新的契约而非归档，用户未另行指定前契约更新仍在 v1 现位置进行，是否整体迁 v2 待用户明确）：`README.md`（HTTP 规范总纲 + 变更记录 + 索引）、`01-通用约定与数据模型.md`、`02-本体区接口.md`、`03-项目区接口.md`、`04-编排与LLM接口.md`、`05-接口清单与规范差距.md`。
+前后端一律通过接口文档交互，接口文档是唯一契约来源。文档在 `文档/接口文档/`（2026-09-24 用户指令：接口文档作为持续更新的契约，独立于 v1/v2 封存分层，单独放在文档根下；v1 内不保留副本）：`README.md`（HTTP 规范总纲 + 变更记录 + 索引）、`01-通用约定与数据模型.md`、`02-本体区接口.md`、`03-项目区接口.md`、`04-编排与LLM接口.md`、`05-接口清单与规范差距.md`。
 
 1. **接口变更必须先更新接口文档，再改代码。** 改文档 → 改后端 → 改前端 → 回归 → 提交；文档与代码进同一 commit，并在 `README.md` 的「变更记录」登记一行（日期/变更/影响接口）。
 2. **新增接口必须登记**：写进对应分册 + `05` 速查表 + `server.py` 的 `GET_ROUTES`/`POST_ROUTES` 白名单表（白名单即表键，未登记一律 404）。
@@ -169,7 +169,7 @@ python3 tests/run.py --test tests/test_xxx.py   # 只跑指定测试
     - 改 `storage/schema.py` 必须新增 Alembic 迁移（程序化，`workbench/migrations/`）；存储契约测试 `tests/test_storage_contract.py`（45 项，含故障注入；设 WIZ_MYSQL_TEST_URL 加跑 MySQL），迁移演练 `tests/test_storage_transfer.py`。
     - 实施事实与冻结契约全文见 `文档/v1/需求/20260918_SQLite存储迁移与MySQL预留/开发计划.md` §9。
 
-14. **登录与账号体系（2026-09-18 新增，已实施）**：`/api/*` 除 4 个免登录认证端点（`auth-state/auth-login/auth-register/auth-logout`）外**全部要求登录**，未登录 401 `UNAUTHENTICATED`；身份来自 Cookie `wiz_session`（HttpOnly+SameSite=Strict，库中只存令牌摘要，30 天滑动续期）。**数据按账号完全隔离**：本体/项目/编排/模型配置与密钥/连接与 API 凭据全部按 `owner_user_id` 归属，跨账号 id 一律按不存在处理（404/空）；归属过滤收口在 `storage/assets.py`（对外函数必带 `owner_user_id`）与 `storage/configuration.py`（用户级设置走 `wb_user_settings`），域层统一 `auth.require_user_id()`。口令只存 PBKDF2-HMAC-SHA256 哈希（600000 轮；本机 Python 3.9 无 `hashlib.scrypt`，勿改回）。界面未登录只渲染登录页（`app/LoginView.vue` + `main.ts` 引导层），任意接口 401 自动回登录页；浏览器本地偏好按 `u:<用户名>:` 前缀隔离。迁移运维一律用 CLI：`transfer create-user` / `transfer assign-owner`（后者对 LLM 密钥按新 AAD **重加密**，不能直接 UPDATE owner_key）；协议全文见 `文档/v1/接口文档/06-认证与账户接口.md`，实施记录见 `文档/v1/需求/20260918_登录与账号体系/开发计划.md` §5。
+14. **登录与账号体系（2026-09-18 新增，已实施）**：`/api/*` 除 4 个免登录认证端点（`auth-state/auth-login/auth-register/auth-logout`）外**全部要求登录**，未登录 401 `UNAUTHENTICATED`；身份来自 Cookie `wiz_session`（HttpOnly+SameSite=Strict，库中只存令牌摘要，30 天滑动续期）。**数据按账号完全隔离**：本体/项目/编排/模型配置与密钥/连接与 API 凭据全部按 `owner_user_id` 归属，跨账号 id 一律按不存在处理（404/空）；归属过滤收口在 `storage/assets.py`（对外函数必带 `owner_user_id`）与 `storage/configuration.py`（用户级设置走 `wb_user_settings`），域层统一 `auth.require_user_id()`。口令只存 PBKDF2-HMAC-SHA256 哈希（600000 轮；本机 Python 3.9 无 `hashlib.scrypt`，勿改回）。界面未登录只渲染登录页（`app/LoginView.vue` + `main.ts` 引导层），任意接口 401 自动回登录页；浏览器本地偏好按 `u:<用户名>:` 前缀隔离。迁移运维一律用 CLI：`transfer create-user` / `transfer assign-owner`（后者对 LLM 密钥按新 AAD **重加密**，不能直接 UPDATE owner_key）；协议全文见 `文档/接口文档/06-认证与账户接口.md`，实施记录见 `文档/v1/需求/20260918_登录与账号体系/开发计划.md` §5。
 
 ## 代码规范（2026-09-21 起）
 
