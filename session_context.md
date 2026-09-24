@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`257fe30a1d67cb5e`
+上下文版本：`e89582965288f728`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -24,14 +24,14 @@
 
 ### mcp · zcode · 已实施，待验收
 
-时间：2026-09-24T02:42:11.293988+00:00；记录：`.collaboration/entries/000290-62b296c72c05.json`
+时间：2026-09-24T02:56:29.750574+00:00；记录：`.collaboration/entries/000291-4a27fd09a449.json`
 
-【MCP 实例改无 token 模式】按用户指令移除实例鉴权：mcp_server 不做 token 校验（--token 参数兼容保留但忽略），安全边界=仅绑定 127.0.0.1（外网不可达，本机其他进程可访问该项目数据，用户知情选择）；路由 start/instances 响应去 token；前端「复制客户端配置」输出纯净两行 {"type":"remote","url":"http://127.0.0.1:<端口>/mcp"}，脚注改无鉴权警示；09 分册 §9 同步。mcp 分支 e57de58。
+【问数免 projectId】回答用户「为什么问数要提供 projectId」：旧实例是改动前进程且工具 schema 把 projectId 设为必填。已改：实例 tools/list 每个工具 description 注入绑定项目说明、required 移除 projectId，实例侧强制改写/补全 projectId（跨项目不可达）；spawn 传 --project-name（修 projects.load tuple 取名）。mcp 分支 a68cdbf，新实例 31309 验证描述含「创智园二期」。
 
-- 决定：无鉴权为用户知情选择（本机单用户场景，同 stdio MCP 惯例）；仅绑定 127.0.0.1 是唯一边界，端口不得暴露本机之外
-- 验证：test_sq_mcp_server 改无 token 直连口径 16 断言过；真实链路实测：start(21501)→无任何鉴权 tools/list=7→stop；前端 typecheck/build 过；lint 无告警
-- 下一步：纳入 mcp 分支一并交 Codex 独立验收
-- 依据/文档：分支 mcp e57de58；文档/接口文档/09-智能问数接口.md §9
+- 决定：实例模式 projectId 可省略（自动填绑定值）；工作台主端点 /mcp 仍要求显式 projectId（多项目场景）
+- 验证：新实例 tools/list desc=「本 MCP 实例已绑定项目「创智园二期」…required=[spec]；模拟客户端不传 projectId 调 search → 报错变为 SNAPSHOT_UNAVAILABLE（创智园二期编译 invalid 阻断，非缺 ID）；诊断明细已查明：invalid 3 处=储能系统/充放电计划对象绑定缺连接表主键+储能设备某属性 calcFunction 来源；储能设备/储能簇对象绑定齐全可查
+- 下一步：需用户在「对象映射」页修复 3 处 invalid（储能系统/充放电计划配数据来源或移除；calcFunction 属性改可准入来源）→ 重新编译生效后 MCP 即可回答「创智园有几台储能」；该修复属真实项目映射配置，由用户操作
+- 依据/文档：分支 mcp a68cdbf；http://127.0.0.1:18991/#settings-mcp（实例 31309 运行中）
 
 ### auto_build · zcode · 需求已交付
 
