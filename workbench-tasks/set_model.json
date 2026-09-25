@@ -1,0 +1,18 @@
+{
+ "task": "set_model",
+ "requirement": "待用户下发（2026-09-25 用户指令：新拉 set_model 分支并新建 worktree，尚未提供需求/执行指令）",
+ "owner": "zcode",
+ "role": "实施（待用户下达开发任务）；Codex 独立验收",
+ "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_ontology_workspace/worktree/set_model",
+ "branch": "set_model",
+ "baseSha": "efa9ffc50520412cb7d94fb09bfc4ea37a1a620e",
+ "port": 19001,
+ "dataRoot": "工作树根自含：data/workbench.sqlite3（main@efa9ffc 库 WAL 一致性快照，integrity ok、关键表行数与主库逐表相等）+ keys/wb-root.key 副本（0600，keys/ 0700）+ data/ontology-build-blobs。含真实数据与根密钥副本，不可自动丢弃",
+ "python": "system Python 3.9（依赖未安装；开发时按需独立准备）",
+ "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=19001；启动用工作树内 ./start.sh 或 python3 -m workbench.server",
+ "scope": "待用户下发",
+ "status": "environment-ready（仅建分支/工作树/数据快照，未安装依赖、未启动服务、未开发）",
+ "updatedAt": "2026-09-25（创建轮）",
+ "headSha": "efa9ffc50520412cb7d94fb09bfc4ea37a1a620e",
+ "notes": "分支 set_model 自最新已提交 main（efa9ffc，含 Codex model_setting 简化改版原型交付交接）。库快照为 main 链形态（alembic 20260922_0005，wb_model_configs 旧表 2 行；v4 双表属 model_setting 分支未合回 main，不含在本快照）。端口 19001 实测空闲；已登记端口互不冲突：18765=main/18941=fill_by_llm/18952=auto_build/18961=gpt_fix/18971=model_setting/18981=auto_test/18991=mcp。前端依赖未装；worktree 无 ontology/ 播种树与 .collaboration/context.py（按既有约定，需要时再按 2026-09-21 规则补）。"
+}
