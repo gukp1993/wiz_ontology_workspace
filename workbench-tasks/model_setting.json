@@ -1,6 +1,6 @@
 {
   "task": "model_setting",
-  "requirement": "文档/需求/20260922_模型供应商与模型管理改版/（四件套 v1，commit 5bfb605）",
+  "requirement": "需求变更：文档/v2/需求/20260925_模型设置简化改版/（四件套 v1，含交互原型 v1.1）；被变更需求：文档/v1/需求/20260922_模型供应商与模型管理改版/（交互 v4 的两级页面设计废弃，域层资产复用）",
   "owner": "zcode",
   "role": "实施（按执行指令开发、自测）；Codex 独立验收",
   "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_ontology_workspace/worktree/model_setting",
@@ -10,9 +10,9 @@
   "dataRoot": "工作树根（data/workbench.sqlite3 + keys/wb-root.key + data/ontology-build-blobs；含真实数据与根密钥副本，不可自动丢弃）",
   "python": "system Python 3.9（与本需求无新增依赖；依赖变化时改独立环境）",
   "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18971；启动用工作树内 ./start.sh",
-  "scope": "模型供应商与模型管理改版：llm_catalog 目录、wb_llm_providers/wb_llm_models、9 端点、前端设置页与消费方、迁移；范围以需求说明 v1/开发计划 v1 为准",
-  "status": "implemented（交互v4 已实施，待 Codex 独立验收；未合并 main）",
-  "updatedAt": "2026-09-23（交互v4轮）",
-  "notes": "交互 v4（v5 原型落地 + v2/v3 验收缺陷收口）实施完成：4 提交，全量回归 64/69（环境项），浏览器走查八项全过。隔离验收环境运行中（19502 工作台/19504 代理/19503 假上游，账号 v4accept/v4pass123）；18971 未动。含真实数据副本标注不变。",
-  "headSha": "75fa3bd"
+  "scope": "模型设置简化改版：设置页收敛为单层模型列表（模型名称/供应商/操作）+ 预设供应商添加弹窗（无高级配置）；复用 wb_llm_providers/wb_llm_models、llm_catalog、9 端点，目标零端点变更；消费端（NodeConfig/BuildScopePage）语义对齐；零新迁移。范围以 需求说明 v1/开发计划 v1 为准",
+  "status": "需求已确认待开发（交互v4 已实施未验收将被本变更替代页面设计；用户 2026-09-25 审核原型确认，等用户开发指令在原 worktree 实施）",
+  "updatedAt": "2026-09-25（简化改版需求轮）",
+  "notes": "用户 2026-09-25 审核交互原型 v1.1：「查看文档」入口删除、其余确认（含默认模型=编辑弹窗开关+列表徽标）。worktree 数据副本与 18971 常驻实例（cdb5939）原样保留，任何清理不得自动处理。交接条目见主仓库 .collaboration/entries/000315 与本轮记录。",
+  "headSha": "cdb5939"
 }
