@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>模型设置简化改版 · 交互原型 v1</title>
+<title>模型设置简化改版 · 交互原型 v1.1</title>
 <style>
   :root{
     --line:#d9dee5; --muted:#6b7480; --ink:#1f2733; --bg:#f4f6f8; --card:#ffffff;
@@ -47,7 +47,6 @@
   .modal-close{position:absolute;top:12px;right:14px;border:none;background:none;font-size:18px;color:var(--muted);cursor:pointer}
   label{display:block;margin:12px 0 0;font-size:13px}
   label > span.lbl{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
-  label > span.lbl .doclink{font-size:12px;color:var(--muted);cursor:pointer}
   .inputwrap{position:relative}
   input[type=text],input[type=password]{width:100%;padding:7px 34px 7px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
   input.plain{padding-right:10px}
@@ -87,8 +86,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>模型设置简化改版 · 交互原型 v1</h1>
-  <p class="muted small">变更对象：model_setting worktree 正在实施的「20260922_模型供应商与模型管理改版」（交互 v4，未合入 main）。本版把模型设置收敛为<b>单层模型列表 + 预设供应商添加弹窗</b>。配套文档：需求说明.md / 开发计划.md / 执行指令.md（同目录）。</p>
+  <h1>模型设置简化改版 · 交互原型 v1.1</h1>
+  <p class="muted small">变更对象：model_setting worktree 正在实施的「20260922_模型供应商与模型管理改版」（交互 v4，未合入 main）。本版把模型设置收敛为<b>单层模型列表 + 预设供应商添加弹窗</b>。v1.1（2026-09-25 审核修正：移除「查看文档」入口，其余经用户确认）。配套文档：需求说明.md / 开发计划.md / 执行指令.md（同目录）。</p>
   <div class="banner">⚠︎ 模拟范围：本页为纯前端静态原型，全部数据为内置演示数据（供应商目录、连通结果均为示意）；「保存 / 测试连通 / 删除 / 设为默认」仅改变页面状态，不落库、不发真实网络请求。实际能力以需求说明 v1 与开发计划 v1 为准。</div>
 
   <div class="card">
@@ -135,7 +134,7 @@
     <h2 id="modalTitle">添加模型</h2>
 
     <label>
-      <span class="lbl"><span>供应商（仅支持 OpenAI 兼容协议 API）</span><span class="doclink" onclick="toast('模拟：跳转该供应商接入文档（原型不发外部链接）')">查看文档 ↗</span></span>
+      <span class="lbl"><span>供应商（仅支持 OpenAI 兼容协议 API）</span></span>
       <div style="position:relative">
         <button type="button" class="prov-trigger" id="provTrigger" onclick="togglePop(event)">
           <span id="provTriggerBody"><span class="muted">选择供应商</span></span>
