@@ -1,0 +1,17 @@
+{
+  "task": "gpt_fix",
+  "owner": "zcode",
+  "role": "实施（用户 2026-09-25 指令：建分支/worktree 并多 agent 并行开发 G1）；Codex 独立验收",
+  "worktree": "/Users/gukepeng/Desktop/ZHDL/code/wiz_ai/wiz_ontology_workspace/worktree/gpt_fix",
+  "branch": "gpt_fix",
+  "baseSha": "3f29a226c79fef159539c64dd03a519fd59e9869",
+  "port": 18961,
+  "dataRoot": "工作树根（data/workbench.sqlite3 快照自 main@3f29a22，已显式升级迁移至 20260925_0007 + keys/wb-root.key 副本 + data/ontology-build-blobs；含真实数据与根密钥副本，不可自动丢弃）",
+  "python": "system Python 3.9（依赖与主环境同解释器，未新增依赖）",
+  "env": "WIZ_WORKBENCH_ROOT=<工作树根> WIZ_WORKBENCH_PORT=18961；启动用工作树内 ./start.sh 或 python3 -m workbench.server",
+  "scope": "文档/v2/需求/2026_0924gpt优化/ 01+02 清单 G1 阶段全部完成：T00 协调者基线 + Wave1 T01/T06/T08/T18a + Wave2 T03/T02 + Wave3 T04 + Wave4 T05/T07；T02/T03/T04 移植 auto_build（0a97fd5/01026de/6d46a06），其中 F02 净化 break 核实 auto_build 未修、gpt_fix 已真修",
+  "status": "remediated（Codex G1 验收整改已实施：health 失败上报零异常原文 4e24bc1，全门禁退出码 0；停在待 Codex 独立复验，未合并 main）",
+  "updatedAt": "2026-09-25",
+  "notes": "迁移编号：0006=完成报告契约（T01）、0007=扫描结构清单（T03 自 auto_build 0007 改写）。已对工作树库显式执行 0006+0007。冒烟账号 gpt_fix_smoke（仅副本库）。auto_build 工作树仅作只读移植来源未动。主树 文档/v2/需求/2026_0924gpt优化/ 两份需求文档为 Codex 未跟踪交付，未代提交。验收指令已落分支（04_验收指令_gpt_fix.md，8b50cc9，纯文档提交）；验收循环结论：无剩余归因于本轮的问题；5 个 blocked 测试（tests/frontend_blocked.json，附基线证据与退出条件）为既有环境债务不属本轮缺陷。 整改轮（2026-09-25）：按 Codex entry 000311 指令修复 health.record_failure 泄漏（str(exc)/完整堆栈→类别名+basename 安全堆栈位置），test_recovery_health 断言反转+敏感标记零泄漏回归+存储不可读双重语义，01 分册 §8.2/§8.3 口径修正；AutoGLM 扩展浏览器未登录为验收环境阻塞项不归业务整改。",
+  "headSha": "4e24bc1"
+}
