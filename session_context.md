@@ -1,6 +1,6 @@
 # Codex / zcode 共享上下文
 
-上下文版本：`ed5ea88d4afe7339`
+上下文版本：`b1d1121915ea9317`
 
 > 此文件由 `.collaboration/context.py` 生成，请勿手工覆盖。
 > 记录是各执行者的交接声明；“已实施”不等于“已验收”。同任务双方结论分开展示。
@@ -22,17 +22,27 @@
 
 ## 最近交接（新 → 旧）
 
-### model_setting · zcode · 需求已交付
+### model_setting · zcode · 已确认决定
 
-时间：2026-09-25T04:30:56.898730+00:00；记录：`.collaboration/entries/000315-6011f4a0a13d.json`
+时间：2026-09-25T04:46:04.013990+00:00；记录：`.collaboration/entries/000317-5c489099eb23.json`
 
-【zcode】用户对 model_setting worktree 提出需求变更：①列表只保留模型列表（字段=模型名称/供应商/操作=测试连通·编辑·删除）；②添加模型改单弹窗（供应商预设目录下拉含搜索与「其他→自定义」、API Key+测试连接、模型名称预设供应商=目录下拉/自定义=手填接口地址+参数名），不含「高级配置」。本轮仅交付交互原型 v1（纯前端静态演示）到 文档/v2/需求/20260925_模型设置简化改版/，待用户审核；需求说明/开发计划/执行指令待原型确认后补齐。
+【zcode】用户完成交互原型审核并确认需求变更：「查看文档」入口删除，其余全部确认（含默认模型=编辑弹窗「设为默认」开关+列表徽标的建议方案）。原型更新为 v1.1 并交付完整需求四件套到 文档/v2/需求/20260925_模型设置简化改版/（需求说明/开发计划/执行指令），开发任务已规划为 T1契约冻结→T2∥T3目录与域层→T4∥T5设置页与消费端→T6组合回归，实施继续使用已登记 model_setting worktree，等用户开发指令开工。
 
-- 决定：v4 两级交互废弃：可用模型/供应商双 Tab、供应商模板选择页、供应商编辑弹窗不再保留，收敛为单层模型列表；明确去除项：截图中的高级配置（工具调用/图片输入/思考模式/自定义协议）、输入/输出计价字段、Auto 模型选项均不纳入；默认模型机制建议保留（运行时语义沿用主干：未指定配置的节点使用默认），交互建议=编辑弹窗「设为默认」开关+列表徽标，已在原型标注「建议方案·待确认」；同供应商再次添加模型时 API Key 可留空沿用已保存密钥（密钥只写不读回不变），原型按此演示
-- 验证：原型为纯前端静态演示，全部数据内置示意，不发真实网络请求、不落库；内联脚本已抽取做 node --check 语法检查通过；文件：文档/v2/需求/20260925_模型设置简化改版/交互原型_v1.html
-- 下一步：用户审核原型（重点：三列字段与操作、弹窗字段构成、去除项、默认模型建议方案、预设供应商目录收录范围与命名）；原型确认后补需求说明/开发计划/执行指令三份文档，再在已登记 model_setting worktree（分支 model_setting，端口 18971，含真实数据副本不可自动丢弃）实施；不新建 worktree、不合并 main
-- 依据/文档：文档/v2/需求/20260925_模型设置简化改版/交互原型_v1.html；文档/v1/需求/20260922_模型供应商与模型管理改版/（被变更的旧需求）；worktree/model_setting（分支 model_setting@cdb5939，http://127.0.0.1:18971）
-- 提醒：写入时共享上下文已有新记录；执行者须重新读取，不能假定覆盖或采纳了对方需求。
+- 决定：用户确认：删除弹窗「查看文档」入口；列表三列（模型名称/供应商/操作=测试连通·编辑·删除）、添加弹窗字段构成、无高级配置均确认；默认模型交互经原型审核确认：编辑弹窗「设为默认」+列表徽标+默认条；默认不再带思考档位；删除默认置空+警告不自动改指；目录下拉展示范围冻结为「llm_catalog 全部 openai-chat-completions 模板（智谱/Kimi/MiniMax/深度求索/腾讯混元置顶）+自定义」；腾讯混元为本版新增目录条目（baseUrl/模型清单实施时核对官方）；目标零端点变更：GET 侧前端派生扁平列表；添加=按 templateId find-or-create 供应商+model-save 前端编排；末模型级联删除优先前端编排（若需原子性走接口文档变更流程）；存储零新迁移；启停过滤移除为预期行为：列表与消费端不再按 enabled 过滤，域层字段保留；同模板多存量供应商取第一个不合并
+- 验证：原型 v1.1 修正四处（标题/副标题/删除 doclink/清理样式），与确认口径一致；需求说明 R1–R7+验收标准 10 条+非目标；开发计划含任务表（负责文件互斥、并行组、门禁命令）与 10 项走查清单；执行指令自包含 §0 停止点与标准提示词表；workbench-tasks/model_setting.json 已更新：requirement/scope/status/headSha=cdb5939/updatedAt=2026-09-25；本轮为文档与登记变更，未改任何业务代码；worktree 与 18971 实例未动
+- 下一步：等用户开发指令后在 model_setting worktree 按执行指令实施（T1 先行）；交 Codex 独立验收，不合并 main；v4 旧验收线随本变更作废页面设计部分；域层已实施部分（迁移/端点/密钥）继续复用，验收时按新需求说明口径执行
+- 依据/文档：文档/v2/需求/20260925_模型设置简化改版/（四件套）；workbench-tasks/model_setting.json；worktree/model_setting（分支 model_setting@cdb5939，http://127.0.0.1:18971）
+
+### set_model · zcode · 需求已交付
+
+时间：2026-09-25T04:44:54.683625+00:00；记录：`.collaboration/entries/000316-71ee43a319a3.json`
+
+【zcode】按用户指令创建 set_model 开发环境（仅环境，未开发）：分支 set_model 自最新已提交 main@efa9ffc，工作树 worktree/set_model/，端口 19001（实测空闲）；数据按 2026-09-22 规则全量随迁（transfer backup 库快照 integrity ok、关键表行数与主库逐表相等 + keys/wb-root.key 副本 0600 + ontology-build-blobs），库为 main 链形态（alembic 20260922_0005）。未安装依赖、未启动服务、未开发，待用户下发任务。登记 workbench-tasks/set_model.json。
+
+- 决定：事故与裁定：登记提交时未限定路径，误将用户暂存的 375 个文档 v1 分层重命名一并卷入 1839113（提交信息只写 set_model 登记）；zcode 事后软回退重提未生效即停止操作，用户随后自行提交 152d9af（gpt_fix.json+7 文档）在其上；用户裁定保持现状不改写历史，内容零丢失。zcode 教训：共享主树提交必须用临时索引或 pathspec 严格限定自己负责的文件，不得裸 git commit；文档重命名 375 个已随 1839113 进入 main（含 v1 封存区 sed 替换待办由原计划负责人知悉此变化）
+- 验证：git worktree list 含 worktree/set_model @ efa9ffc [set_model]；快照 integrity ok；wb_users=2/wb_credentials=4/wb_model_configs=2/wb_assets=11/wb_releases=7 与主库逐表相等；keys/wb-root.key 0600、keys/ 与 data/ 0700；端口 19001 无占用；已登记端口 18765/18941/18952/18961/18971/18981/18991 均未冲突；main 最终链：efa9ffc → 1839113（set_model 登记+375 renames，用户裁定保留）→ 152d9af（用户自行提交 fix）；暂存区空、无内容丢失
+- 下一步：等用户下发 set_model 开发任务与需求文档；开发时在工作树内装依赖、WIZ_WORKBENCH_PORT=19001 启动；注意：set_model 基线含 375 renames 与 152d9af，与 model_setting 分支（ac97ab0）是并行线，将来集成时按用户指定已验收 SHA 处理
+- 依据/文档：workbench-tasks/set_model.json；worktree/set_model/；提交 1839113、152d9af
 
 ### gpt_fix · zcode · 已实施，待验收
 
@@ -143,12 +153,3 @@ T01 CompletionReport 契约落地（gpt_fix 工作树，未提交待协调者收
 - 验证：活动区 grep 零残留（仅存 AGENTS.md 改名记录与 legacyGraph 来源注释）；python3 tests/run.py quick 3/3 通过（formatting.py 有代码改动）；git log -1 --stat 确认 57f8de7 仅 11 文件、无 mode change；status 确认暂存区仅剩 Codex 375 renames；git ls-remote origin refs/heads/main=3f29a22
 - 下一步：Codex 提交 375 个暂存重命名后，对 文档/v1 做 sed 替换 + 单独 commit + 推送；worktree/ 内 494 处旧名随各任务分支合并时自然消亡，未单独处理
 - 依据/文档：57f8de7；3f29a22；workbench/formatting.py:17
-
-### repo-push-github · zcode · 已实施，待验收
-
-时间：2026-09-24T14:46:44.604904+00:00；记录：`.collaboration/entries/000299-68cf75f83b4b.json`
-
-添加远程 origin（git@github.com:gukp1993/wiz_ontology_workspace.git，SSH 认证），已推送 main 至 7eed787 并建立跟踪；远程此前为空仓库，推送后仅含 main。本地未提交改动（文档/v1 迁移的重命名暂存、AGENTS.md、session_context.md、workbench-tasks/*.json 修改）未包含在推送中。本地其余分支 auto_build/fill_by_llm/mcp/model_setting（worktree 任务分支）未推送。
-
-- 验证：git ls-remote origin 确认 refs/heads/main=7eed7879664d8178b9258baf041eba11bc1b4add
-- 下一步：用户决定是否提交当前工作区未提交改动；用户决定是否推送其余 worktree 任务分支
